@@ -1,0 +1,1851 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Agent Harness · 以 Loop 为核心的架构图</title>
+<style>
+  :root {
+    --bg: #fafafa;
+    --surface: #ffffff;
+    --ink: #111111;
+    --ink-soft: #555555;
+    --line: #e5e5e5;
+    --line-strong: #d4d4d4;
+    --accent: #ff6a3d;
+    --accent-soft: #fff1ec;
+    --muted: #888888;
+    --tag-bg: #f4f4f4;
+    --radius: 14px;
+    --shadow: 0 1px 2px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.04);
+    --mono: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--bg); color: var(--ink);
+    font-family: var(--sans); font-size: 15px; line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1400px; margin: 0 auto; padding: 56px 32px 80px; }
+
+  /* Header */
+  .eyebrow {
+    font-family: var(--mono); font-size: 12px; color: var(--muted);
+    letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 12px;
+  }
+  h1 { font-size: 40px; line-height: 1.1; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 10px; }
+  h1 .accent { color: var(--accent); }
+  .subtitle { color: var(--ink-soft); font-size: 16px; margin-bottom: 48px; }
+
+  /* ====== Connector arrows ====== */
+  .conn-down {
+    display: flex; flex-direction: column; align-items: center;
+    padding: 4px 0;
+  }
+  .conn-down .conn-line { width: 2px; height: 20px; background: var(--line-strong); }
+  .conn-down .conn-label {
+    font-family: var(--mono); font-size: 10px; color: var(--muted);
+    letter-spacing: 0.04em;
+    padding: 2px 10px; border-radius: 999px; margin: 4px 0;
+    white-space: nowrap;
+  }
+  .conn-down .conn-arrow {
+    width: 0; height: 0;
+    border-left: 5px solid transparent; border-right: 5px solid transparent;
+    border-top: 6px solid var(--line-strong);
+  }
+
+  /* ====== Central Loop ====== */
+  .loop-nucleus {
+    background: var(--surface); color: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: 20px; padding: 32px 36px 28px;
+    box-shadow: var(--shadow);
+    position: relative; z-index: 2;
+  }
+  .loop-header {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 22px;
+  }
+  .loop-header .lh-label {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--accent); font-weight: 600;
+  }
+  .loop-header .lh-mods {
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+  }
+  .loop-steps {
+    display: flex; flex-direction: column; align-items: stretch; gap: 4px;
+  }
+  .lstep {
+    border-radius: 12px; padding: 10px 16px;
+    display: flex; align-items: center; justify-content: center; gap: 12px;
+  }
+  .lstep.dark { background: var(--tag-bg); border: 1px solid var(--line); }
+  .lstep.lit  { background: rgba(255,255,255,0.95); color: var(--ink); border: 1px solid var(--line); }
+  .lstep .ls-num {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em;
+    text-transform: uppercase; opacity: 0.5;
+    flex-shrink: 0;
+  }
+  .lstep .ls-name { font-weight: 600; font-size: 14px; white-space: nowrap; }
+  .lstep .ls-hint { font-size: 11px; opacity: 0.6; white-space: nowrap; }
+  .lstep.lit .ls-num { color: var(--accent); opacity: 1; }
+  .larrow {
+    text-align: center; font-family: var(--mono); font-size: 16px;
+    color: var(--line-strong); padding: 2px 0;
+  }
+  .loop-return {
+    margin-top: 16px; display: flex; align-items: center; justify-content: center; gap: 8px;
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+  }
+  .loop-return .pill {
+    border: 1px dashed var(--line-strong);
+    padding: 2px 10px; border-radius: 999px;
+    color: var(--ink-soft);
+  }
+
+  /* ====== Main 3-column Layout ====== */
+  .middle-band {
+    display: grid;
+    grid-template-columns: 240px 1fr 280px;
+    gap: 0; align-items: stretch; margin-top: 0;
+    position: relative;
+  }
+  .mid-left, .mid-right {
+    display: flex; flex-direction: column; gap: 16px; padding-top: 0;
+    position: relative;
+  }
+  .mid-left { padding-right: 16px; }
+  .mid-right { padding-left: 16px; }
+  .mid-center { display: flex; flex-direction: column; align-items: stretch; }
+  .mid-center .loop-nucleus { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+
+  /* Horizontal flow arrows between side planes and the loop */
+  .flow-h {
+    position: absolute; top: 50%; transform: translateY(-50%);
+    font-family: var(--mono); font-size: 10px;
+    color: var(--accent); font-weight: 600;
+    background: var(--bg);
+    padding: 3px 8px; border-radius: 999px;
+    border: 1px dashed var(--accent);
+    white-space: nowrap; z-index: 3;
+    letter-spacing: 0.04em;
+  }
+  .flow-h.from-left  { right: 0; transform: translate(50%, -50%); }
+  .flow-h.from-right { left: 0;  transform: translate(-50%, -50%); }
+
+  /* "Extension / custom" badge for non-baseline modules */
+  .ext-badge {
+    display: inline-block;
+    font-family: var(--mono); font-size: 9px; font-weight: 600;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border: 1px solid var(--accent);
+    padding: 0 5px; border-radius: 4px;
+    margin-left: 6px;
+    letter-spacing: 0.04em;
+    vertical-align: middle;
+    line-height: 1.5;
+  }
+
+  /* ====== Plane Card (matches reference: white bg, gray border, shadow) ====== */
+  .pcard {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 18px 20px;
+    box-shadow: var(--shadow);
+  }
+  .pcard .pc-head {
+    display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px;
+  }
+  .pcard .pc-icon {
+    font-family: var(--mono); font-size: 11px; font-weight: 600;
+    color: var(--accent); letter-spacing: 0.08em; text-transform: uppercase;
+    min-width: 16px;
+  }
+  .pcard .pc-name { font-weight: 600; font-size: 14px; }
+  .pcard .pc-desc { font-size: 12px; color: var(--ink-soft); margin-bottom: 10px; }
+  .pcard .pc-attach {
+    font-family: var(--mono); font-size: 9.5px; color: var(--muted);
+    letter-spacing: 0.04em;
+    display: block; margin-bottom: 10px;
+  }
+
+  /* Module chip (matches reference .mod: white bg, gray border) */
+  .pcard .mods { display: flex; flex-direction: column; gap: 6px; }
+  .mod-chip {
+    background: #fff; border: 1px solid var(--line); border-radius: 10px;
+    padding: 8px 12px;
+    transition: border-color .12s ease;
+  }
+  .mod-chip:hover { border-color: var(--ink); }
+  .mod-chip .mhead {
+    display: flex; align-items: baseline; justify-content: space-between;
+  }
+  .mod-chip .mc-id {
+    font-family: var(--mono); font-size: 10.5px;
+    color: var(--muted); letter-spacing: 0.04em;
+  }
+  .mod-chip .mc-name { font-weight: 600; font-size: 13px; margin: 1px 0; }
+  .mod-chip .mc-func { font-size: 11.5px; color: var(--ink-soft); line-height: 1.4; }
+
+  /* ====== Bottom rows ====== */
+  .bottom-band {
+    display: grid; grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px; margin-top: 16px;
+  }
+
+  /* ====== Cross-cutting frame (Observability + Runtime as visual envelope) ====== */
+  .cross-frame {
+    margin-top: 32px;
+    border: 1px dashed var(--line-strong);
+    border-radius: var(--radius);
+    padding: 18px;
+    position: relative;
+    background:
+      repeating-linear-gradient(
+        135deg,
+        rgba(255,106,61,0.015) 0 8px,
+        transparent 8px 16px
+      );
+  }
+  .cross-frame .cf-tag {
+    position: absolute; top: -10px; left: 24px;
+    background: var(--bg); padding: 0 10px;
+    font-family: var(--mono); font-size: 11px;
+    color: var(--accent); font-weight: 600; letter-spacing: 0.08em;
+  }
+  .cross-frame .cf-note {
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+    margin-bottom: 12px;
+  }
+
+  /* Observability — left vertical band */
+  .obs-strip {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 18px 20px;
+    box-shadow: var(--shadow);
+    margin-bottom: 16px;
+  }
+  .obs-strip .os-head {
+    display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px;
+  }
+  .obs-strip .os-head .os-icon {
+    font-family: var(--mono); font-size: 11px; font-weight: 600;
+    color: var(--accent); letter-spacing: 0.08em;
+  }
+  .obs-strip .os-head .os-title { font-weight: 600; font-size: 14px; }
+  .obs-strip .os-head .os-desc { font-size: 12px; color: var(--muted); margin-left: 8px; }
+  .obs-strip .os-mods {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+  }
+
+  /* Foundation: Runtime — bottom band, with up-arrow indicating "支撑上方所有面" */
+  .runtime-strip {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 18px 20px;
+    box-shadow: var(--shadow);
+    position: relative;
+  }
+  .runtime-strip::before {
+    content: "▲ 被所有面依赖";
+    position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
+    background: var(--bg); padding: 0 10px;
+    font-family: var(--mono); font-size: 10px; color: var(--muted);
+    letter-spacing: 0.06em;
+  }
+  .runtime-strip .rs-head {
+    display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px;
+  }
+  .runtime-strip .rs-head .rs-label {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--accent); font-weight: 600;
+  }
+  .runtime-strip .rs-head .rs-desc {
+    font-size: 12px; color: var(--muted); margin-left: 8px;
+  }
+  .runtime-strip .rs-mods {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+  }
+
+  /* ====== Legend ====== */
+  .legend {
+    margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--line);
+    display: flex; flex-wrap: wrap; gap: 20px;
+    font-size: 12px; color: var(--ink-soft);
+    font-family: var(--mono);
+  }
+
+  footer {
+    margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--line);
+    color: var(--muted); font-size: 12px; font-family: var(--mono);
+    display: flex; justify-content: space-between;
+  }
+
+  /* ====== Roadmap section ====== */
+  .roadmap-divider {
+    height: 1px; background: var(--line);
+    margin: 64px 0 48px;
+  }
+  .roadmap-header { margin-bottom: 32px; }
+  .roadmap-title {
+    font-size: 32px; line-height: 1.1; font-weight: 600;
+    letter-spacing: -0.02em; margin: 6px 0 10px;
+  }
+  .roadmap-sub { color: var(--ink-soft); font-size: 15px;  }
+
+  .stack-card { margin-bottom: 24px; }
+  .stack-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+  }
+  .stack-grid .mod-chip .mc-id { color: var(--accent); font-weight: 600; }
+
+  .phases-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
+    margin-bottom: 24px;
+  }
+  .phase-card {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 18px 20px;
+    box-shadow: var(--shadow);
+    display: flex; flex-direction: column;
+  }
+  .phase-card .ph-id {
+    font-family: var(--mono); font-size: 11px;
+    color: var(--accent); font-weight: 600; letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .phase-card .ph-name {
+    font-weight: 600; font-size: 15px; margin: 4px 0 6px;
+  }
+  .phase-card .ph-weeks-range {
+    font-family: var(--mono); font-size: 10px; color: var(--muted);
+    margin-bottom: 10px;
+  }
+  .phase-card .ph-goal {
+    font-family: var(--mono); font-size: 11px; color: var(--ink);
+    background: #fff; border: 1px solid var(--line);
+    padding: 6px 10px; border-radius: 6px; margin-bottom: 12px;
+    text-align: center; font-weight: 500;
+  }
+  .phase-card .weeks {
+    display: flex; flex-direction: column; gap: 10px; flex: 1;
+  }
+  .phase-card .week-row {
+    display: grid; grid-template-columns: 28px 1fr; gap: 8px;
+    font-size: 12px; line-height: 1.5;
+  }
+  .phase-card .week-num {
+    font-family: var(--mono); font-size: 10px; color: var(--accent);
+    font-weight: 600; letter-spacing: 0.04em; padding-top: 2px;
+  }
+  .phase-card .week-body { color: var(--ink-soft); }
+  .phase-card .week-body .wb-mod {
+    color: var(--ink); font-weight: 600;
+    font-family: var(--mono); font-size: 10.5px;
+    display: block; margin-bottom: 1px;
+  }
+  .verify {
+    margin-top: 14px; padding: 12px 14px;
+    background: #fff; border: 1px solid var(--line); border-radius: 10px;
+    font-size: 11.5px; color: var(--ink); line-height: 1.55;
+  }
+  .verify-label {
+    font-family: var(--mono); font-size: 9.5px; font-weight: 600;
+    color: var(--muted); letter-spacing: 0.08em;
+    text-transform: uppercase; display: block; margin-bottom: 4px;
+  }
+  .phase-card .verify { margin-top: 14px; }
+
+  .milestones-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+  }
+  .ms-chip {
+    background: #fff; border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px 14px;
+  }
+  .ms-chip .ms-when {
+    font-family: var(--mono); font-size: 10px; color: var(--accent);
+    font-weight: 600; letter-spacing: 0.06em;
+  }
+  .ms-chip .ms-title { font-weight: 600; font-size: 13px; margin: 3px 0 2px; }
+  .ms-chip .ms-desc { font-size: 11.5px; color: var(--ink-soft); line-height: 1.45; }
+
+  .risks-grid {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;
+  }
+  .risk-chip {
+    background: #fff; border: 1px solid var(--line); border-radius: 10px;
+    padding: 10px 14px;
+    display: grid; grid-template-columns: 1fr 1.4fr; gap: 14px;
+    font-size: 12px; line-height: 1.5;
+  }
+  .risk-chip .risk-title { font-weight: 600; color: var(--ink); }
+  .risk-chip .risk-mit { color: var(--ink-soft); }
+  .risk-chip .risk-mit::before {
+    content: "→ "; color: var(--accent); font-weight: 700;
+  }
+
+  .v2-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+  }
+  .v2-chip {
+    background: #fff; border: 1px dashed var(--line-strong); border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 11.5px; color: var(--ink-soft);
+  }
+  .v2-chip strong {
+    font-family: var(--mono); font-size: 10.5px; color: var(--ink);
+    font-weight: 600; display: block; margin-bottom: 1px;
+  }
+
+  /* ====== Premise grid (top of roadmap) ====== */
+  .premise-card { margin-bottom: 24px; }
+  .premise-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+  }
+  .premise-cell {
+    padding: 14px 16px;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+  }
+  .premise-cell .pm-label {
+    font-family: var(--mono); font-size: 10px;
+    color: var(--muted); font-weight: 600;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .premise-cell .pm-value {
+    font-weight: 600; font-size: 13.5px; color: var(--ink);
+    line-height: 1.4; margin-bottom: 6px;
+  }
+  .premise-cell .pm-extra {
+    font-size: 11px; color: var(--ink-soft); line-height: 1.55;
+  }
+  @media (max-width: 1100px) {
+    .premise-grid { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 700px) {
+    .premise-grid { grid-template-columns: 1fr; }
+  }
+
+  /* ====== Directory tree ====== */
+  .tree-block {
+    background: #0e0e10; color: #e6e6e6;
+    border-radius: 12px; padding: 22px 26px;
+    font-family: var(--mono); font-size: 12px;
+    line-height: 1.7; white-space: pre;
+    overflow-x: auto; margin-bottom: 24px;
+    box-shadow: var(--shadow);
+  }
+  .tree-block .cmt   { color: #7a7a7a; }
+  .tree-block .plane { color: #ff9d7a; font-weight: 600; }
+  .tree-block .dir   { color: #9ec5ff; }
+  .tree-block .deferred { color: #b6e3a0; }
+
+  .pkg-grid {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px;
+    margin-bottom: 24px;
+  }
+  .pkg-card {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 14px 18px;
+    box-shadow: var(--shadow);
+  }
+  .pkg-card-head {
+    display: flex; align-items: baseline; gap: 10px;
+    padding-bottom: 8px; margin-bottom: 10px;
+    border-bottom: 1px dashed var(--line);
+  }
+  .pkg-card-head .pk-plane {
+    font-family: var(--mono); font-size: 10px; font-weight: 700;
+    color: var(--accent); letter-spacing: 0.06em;
+    background: var(--accent-soft); padding: 2px 7px;
+    border-radius: 4px; border: 1px solid var(--accent);
+    flex-shrink: 0;
+  }
+  .pkg-card-head .pk-name {
+    font-family: var(--mono); font-size: 13px; font-weight: 600;
+    color: var(--ink);
+  }
+  .pkg-card-head .pk-tag {
+    font-family: var(--mono); font-size: 10px;
+    color: var(--muted); margin-left: auto;
+  }
+  .pkg-tree {
+    margin: 0; padding: 0; font-family: var(--mono);
+    font-size: 11.5px; line-height: 1.7;
+    color: var(--ink); white-space: pre; overflow-x: auto;
+  }
+  .pkg-tree .cmt { color: var(--muted); }
+  .pkg-tree .dir { color: var(--ink); font-weight: 600; }
+
+  .deps-block {
+    background: #0e0e10; color: #e6e6e6;
+    border-radius: 12px; padding: 18px 22px;
+    font-family: var(--mono); font-size: 11.5px;
+    line-height: 1.75; white-space: pre;
+    overflow-x: auto; box-shadow: var(--shadow);
+  }
+  .deps-block .arr   { color: #ff9d7a; font-weight: 700; }
+  .deps-block .cmt   { color: #7a7a7a; }
+  .deps-block .tag   { color: #9ec5ff; }
+
+  /* ====== Responsive ====== */
+  @media (max-width: 1100px) {
+    .middle-band { grid-template-columns: 1fr; }
+    .mid-left, .mid-right { padding: 0; padding-top: 16px; }
+    .loop-steps { gap: 6px; }
+    .flow-h { display: none; }
+    .phases-grid { grid-template-columns: 1fr 1fr; }
+    .stack-grid { grid-template-columns: 1fr 1fr; }
+    .milestones-grid { grid-template-columns: 1fr 1fr; }
+    .v2-grid { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 900px) {
+    .bottom-band { grid-template-columns: 1fr; }
+    .obs-strip .os-mods { grid-template-columns: 1fr 1fr; }
+    .runtime-strip .rs-mods { grid-template-columns: 1fr; }
+    .risks-grid { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 700px) {
+    .phases-grid, .stack-grid, .milestones-grid, .v2-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+  @media (max-width: 600px) {
+    .wrap { padding: 32px 16px 48px; }
+    h1 { font-size: 28px; }
+    .roadmap-title { font-size: 24px; }
+    .obs-strip .os-mods { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="eyebrow">Agent Harness · Loop-Centric Architecture</div>
+  <h1>Base Harness Loop Architecture</h1>
+  <p class="subtitle">
+    所有模块都附着在同一个 Agent Loop 之上。这张图展示每个模块在循环中的位置——它在哪个阶段介入、做什么、依赖谁。
+  </p>
+
+  <!-- ============================================================ -->
+  <!-- LAYER 1: Context Injection — feeds INTO the loop             -->
+  <!-- ============================================================ -->
+  <div>
+    <div class="pcard">
+      <div class="pc-head">
+        <span class="pc-icon">C</span>
+        <span class="pc-name">上下文管理 Context Injection</span>
+      </div>
+      <span class="pc-attach">附着点 → ① 组装 system prompt &amp; messages 之前</span>
+      <div class="pc-desc">在 LLM 看到 messages 之前，把知识拼进上下文窗口</div>
+      <div class="mods" style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;">
+        <div class="mod-chip">
+          <div class="mc-id">ctx/memory</div>
+          <div class="mc-name">Memory Files</div>
+          <div class="mc-func">CLAUDE.md / user / project memory 注入 system prompt</div>
+        </div>
+        <div class="mod-chip">
+          <div class="mc-id">ctx/compact</div>
+          <div class="mc-name">Compaction</div>
+          <div class="mc-func">自动摘要压缩 messages[] 防止上下文溢出</div>
+        </div>
+        <div class="mod-chip">
+          <div class="mc-id">ctx/cache</div>
+          <div class="mc-name">Prompt Cache</div>
+          <div class="mc-func">cache_control 复用前缀（Sonnet/Opus ≥1024 · Haiku ≥2048 token）</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Connector: Context → Loop -->
+  <div class="conn-down">
+    <div class="conn-line"></div>
+    <div class="conn-label">注入 system prompt / messages[] / cache breakpoints</div>
+    <div class="conn-arrow"></div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- LAYER 2: The Loop + Flanking Planes                          -->
+  <!-- ============================================================ -->
+  <div class="middle-band">
+
+    <!-- LEFT: External Interface -->
+    <div class="mid-left">
+      <span class="flow-h from-left">ext/* → ② tool defs ↗</span>
+      <div class="pcard" style="height:100%;">
+        <div class="pc-head">
+          <span class="pc-icon">G</span>
+          <span class="pc-name">外部接入</span>
+        </div>
+        <span class="pc-attach">附着点 → 工具注册 &amp; 传输层</span>
+        <div class="pc-desc">把外部能力注册进 loop，提供多前端传输</div>
+        <div class="mods">
+          <div class="mod-chip">
+            <div class="mc-id">ext/mcp</div>
+            <div class="mc-name">MCP Client</div>
+            <div class="mc-func">stdio / HTTP / SSE 协议接入外部工具</div>
+          </div>
+          <div class="mod-chip">
+            <div class="mc-id">ext/slash</div>
+            <div class="mc-name">Slash Commands</div>
+            <div class="mc-func">.commands/*.md 用户工作流</div>
+          </div>
+          <div class="mod-chip">
+            <div class="mc-id">ext/transport</div>
+            <div class="mc-name">Transport</div>
+            <div class="mc-func">REPL / HTTP / WebSocket / IDE</div>
+          </div>
+          <div class="mod-chip">
+            <div class="mc-id">ext/skills</div>
+            <div class="mc-name">Skills</div>
+            <div class="mc-func">SKILL.md 索引 → 模型调用 Skill 工具时按需返回内容（渐进披露）</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CENTER: The Agent Loop -->
+    <div class="mid-center">
+      <div class="loop-nucleus" style="width:100%;">
+        <div class="loop-header">
+          <span class="lh-label">A · 执行核心 — Agent Loop</span>
+          <span class="lh-mods">core/loop · core/model · core/messages</span>
+        </div>
+        <div class="loop-steps">
+          <div class="lstep lit">
+            <div class="ls-num">①</div>
+            <div class="ls-name">System & User Prompt</div>
+            <div class="ls-hint">→ messages[]</div>
+          </div>
+          <div class="larrow">↓</div>
+          <div class="lstep lit">
+            <div class="ls-num">②</div>
+            <div class="ls-name">LLM Call</div>
+            <div class="ls-hint">model.create() 推理、规划、行动</div>
+          </div>
+          <div class="larrow">↓</div>
+          <div class="lstep lit">
+            <div class="ls-num">③</div>
+            <div class="ls-name">Tool Execute</div>
+            <div class="ls-hint">dispatch → safety check → run</div>
+          </div>
+          <div class="larrow">↓</div>
+          <div class="lstep lit">
+            <div class="ls-num">④</div>
+            <div class="ls-name">Tool Result</div>
+            <div class="ls-hint">→ messages[] 反馈迭代</div>
+          </div>
+        </div>
+        <div class="loop-return" style="flex-wrap:wrap; row-gap:6px;">
+          <span class="pill">tool_use</span> → 继续循环
+          <span style="margin:0 2px;">·</span>
+          <span class="pill">end_turn</span> → 返回
+          <span style="margin:0 2px;">·</span>
+          <span class="pill">pause_turn</span> → resume
+          <span style="margin:0 2px;">·</span>
+          <span class="pill">max_tokens</span> → 续接 / 报错
+          <span style="margin:0 2px;">·</span>
+          <span class="pill">refusal / stop_sequence</span> → 终止
+        </div>
+
+<pre style="margin:16px 0 0;background:#0e0e10;color:#e6e6e6;border-radius:12px;padding:18px 20px;font-family:var(--mono);font-size:12px;line-height:1.65;overflow-x:auto;"><span style="color:#ff9d7a">async function</span> <span style="color:#9ec5ff">agentLoop</span>(messages: MessageParam[]) {
+  <span style="color:#ff9d7a">while</span> (<span style="color:#ff9d7a">true</span>) {
+    <span style="color:#ff9d7a">const</span> res = <span style="color:#ff9d7a">await</span> client.messages.create({
+      model: MODEL, system: SYSTEM, messages, tools: TOOLS,
+    });
+    messages.push({ role: <span style="color:#b6e3a0">"assistant"</span>, content: res.content });
+
+    <span style="color:#ff9d7a">switch</span> (res.stop_reason) {
+      <span style="color:#ff9d7a">case</span> <span style="color:#b6e3a0">"end_turn"</span>:    <span style="color:#ff9d7a">return</span>;                          <span style="color:#7a7a7a">// 正常结束</span>
+      <span style="color:#ff9d7a">case</span> <span style="color:#b6e3a0">"pause_turn"</span>:  <span style="color:#ff9d7a">continue</span>;                        <span style="color:#7a7a7a">// 长任务暂停，回填后续</span>
+      <span style="color:#ff9d7a">case</span> <span style="color:#b6e3a0">"max_tokens"</span>:
+      <span style="color:#ff9d7a">case</span> <span style="color:#b6e3a0">"stop_sequence"</span>:
+      <span style="color:#ff9d7a">case</span> <span style="color:#b6e3a0">"refusal"</span>:     <span style="color:#ff9d7a">return</span> handleTerminal(res);
+    }
+    <span style="color:#7a7a7a">// stop_reason === "tool_use" — 同轮多个 tool_use 可并发执行</span>
+    <span style="color:#ff9d7a">const</span> results = <span style="color:#ff9d7a">await</span> Promise.all(
+      res.content.filter(b =&gt; b.type === <span style="color:#b6e3a0">"tool_use"</span>).map(runTool)
+    );
+    messages.push({ role: <span style="color:#b6e3a0">"user"</span>, content: results });
+  }
+}</pre>
+      </div>
+    </div>
+
+    <!-- RIGHT: Tool Pipeline + Safety -->
+    <div class="mid-right">
+      <span class="flow-h from-right">↖ ② tool_use → ③ dispatch + safety</span>
+      <div class="pcard">
+        <div class="pc-head">
+          <span class="pc-icon">B</span>
+          <span class="pc-name">工具管线 Tool Pipeline</span>
+        </div>
+        <span class="pc-attach">附着点 → ②→③ tool_use 分发与执行</span>
+        <div class="mods">
+          <div class="mod-chip">
+            <div class="mc-id">tools/registry</div>
+            <div class="mc-name">Registry</div>
+            <div class="mc-func">统一接口注册 builtin / mcp</div>
+          </div>
+          <div class="mod-chip">
+            <div class="mc-id">tools/dispatcher</div>
+            <div class="mc-name">Dispatcher</div>
+            <div class="mc-func">分发路径必经安全面</div>
+          </div>
+          <div class="mod-chip">
+            <div class="mc-id">tools/builtin</div>
+            <div class="mc-name">Built-in Tools</div>
+            <div class="mc-func">bash · read / write / edit · glob / grep · Task · TodoWrite · WebFetch / WebSearch · NotebookEdit · 等</div>
+          </div>
+          <div class="mod-chip">
+            <div class="mc-id">tools/invariants</div>
+            <div class="mc-name">Tool Invariants</div>
+            <div class="mc-func">read-before-edit · mtime check · 路径白名单 · 工具内部不变量</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pcard">
+        <div class="pc-head">
+          <span class="pc-icon">!</span>
+          <span class="pc-name">安全拦截器 Safety</span>
+        </div>
+        <span class="pc-attach">附着点 → ③ 必经路径 · dispatcher 内嵌，无法绕过</span>
+        <div class="mods">
+          <div class="mod-chip">
+            <div class="mc-id">safe/permission</div>
+            <div class="mc-name">Permission &amp; Approval</div>
+            <div class="mc-func">allow / deny / ask 规则机 → 命中 ask 触发交互确认（yes / no / always）</div>
+          </div>
+          <div class="mod-chip">
+            <div class="mc-id">safe/hooks</div>
+            <div class="mc-name">Hooks</div>
+            <div class="mc-func">PreToolUse / PostToolUse · UserPromptSubmit · Stop / SubagentStop · SessionStart / SessionEnd · PreCompact · Notification</div>
+          </div>
+          <div class="mod-chip">
+            <div class="mc-id">safe/sandbox-fs</div>
+            <div class="mc-name">FS &amp; Net Guard</div>
+            <div class="mc-func">工具级文件系统 / 网络访问白名单（与 F 面 iso/sandbox 协同）</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Connector: Loop → Bottom planes (split into 3 destinations) -->
+  <div class="conn-down">
+    <div class="conn-line"></div>
+    <div class="conn-label">D 跨轮次状态　·　E spawn 子 loop　·　F 子 loop 的环境</div>
+    <div class="conn-arrow"></div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- LAYER 3: State + Multi-Agent + Isolation                     -->
+  <!-- ============================================================ -->
+  <div class="bottom-band">
+    <!-- Task Orchestration -->
+    <div class="pcard">
+      <div class="pc-head">
+        <span class="pc-icon">D</span>
+        <span class="pc-name">任务编排</span>
+      </div>
+      <span class="pc-attach">附着点 → 跨轮次 · 跨会话工作管理</span>
+      <div class="pc-desc">编排 todo / task / background，让工作跨越单次循环</div>
+      <div class="mods">
+        <div class="mod-chip">
+          <div class="mc-id">orch/todo</div>
+          <div class="mc-name">TodoWrite</div>
+          <div class="mc-func">单次会话内有序计划（base harness）</div>
+        </div>
+        <div class="mod-chip">
+          <div class="mc-id">orch/tasks</div>
+          <div class="mc-name">Task Store</div>
+          <div class="mc-func">跨会话任务图 CRUD + 依赖</div>
+        </div>
+        <div class="mod-chip">
+          <div class="mc-id">orch/bg</div>
+          <div class="mc-name">Background</div>
+          <div class="mc-func">Bash run_in_background · daemon 线程 · 事件回注 messages[]</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Multi-Agent -->
+    <div class="pcard">
+      <div class="pc-head">
+        <span class="pc-icon">E</span>
+        <span class="pc-name">多智能体</span>
+      </div>
+      <span class="pc-attach">附着点 → spawn 独立子 loop · 多 agent 协作</span>
+      <div class="pc-desc">能力：subagent / agents team / autonomy　·　机制：mailbox / protocol</div>
+      <div class="mods">
+        <div class="mod-chip">
+          <div class="mc-id">multi/subagent</div>
+          <div class="mc-name">Subagent</div>
+          <div class="mc-func">spawn 短命子 loop → 独立 messages[] → 摘要返回（base harness · Task 工具）</div>
+        </div>
+        <div class="mod-chip">
+          <div class="mc-id">multi/team</div>
+          <div class="mc-name">Agents Team<span class="ext-badge">P1</span></div>
+          <div class="mc-func">多角色长期常驻 agent 协作 — base harness 仅短命 subagent，常驻需自研</div>
+        </div>
+        <div class="mod-chip">
+          <div class="mc-id">multi/autonomy</div>
+          <div class="mc-name">Autonomy<span class="ext-badge">P1</span></div>
+          <div class="mc-func">空闲轮询 + 任务自主认领 — 需自研调度器与触发条件</div>
+        </div>
+        <div class="mod-chip" style="border-style:dashed; opacity:0.85;">
+          <div class="mc-id">multi/mailbox <span style="color:var(--muted);font-weight:400;">· 机制</span></div>
+          <div class="mc-name">Mailbox<span class="ext-badge">P1</span></div>
+          <div class="mc-func">JSONL 信箱 agent 间异步通信</div>
+        </div>
+        <div class="mod-chip" style="border-style:dashed; opacity:0.85;">
+          <div class="mc-id">multi/protocol <span style="color:var(--muted);font-weight:400;">· 机制</span></div>
+          <div class="mc-name">Protocol FSM<span class="ext-badge">P1</span></div>
+          <div class="mc-func">request / response / shutdown</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Isolation -->
+    <div class="pcard">
+      <div class="pc-head">
+        <span class="pc-icon">F</span>
+        <span class="pc-name">隔离边界</span>
+      </div>
+      <span class="pc-attach">附着点 → 子 loop 的运行环境隔离</span>
+      <div class="pc-desc">每个子循环可绑定独立 worktree + 沙盒</div>
+      <div class="mods">
+        <div class="mod-chip">
+          <div class="mc-id">iso/worktree</div>
+          <div class="mc-name">Worktree Mgr<span class="ext-badge">P1</span></div>
+          <div class="mc-func">git worktree 与 task 绑定</div>
+        </div>
+        <div class="mod-chip">
+          <div class="mc-id">iso/sandbox</div>
+          <div class="mc-name">Process Sandbox</div>
+          <div class="mc-func">CPU / 内存 / 网络限额</div>
+        </div>
+        <div class="mod-chip">
+          <div class="mc-id">iso/eventbus</div>
+          <div class="mc-name">Lifecycle Bus</div>
+          <div class="mc-func">进程/任务生命周期事件流</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- CROSS-CUTTING ENVELOPE: Observability (above) + Runtime (below) -->
+  <!-- The dashed frame indicates these two layers wrap / underpin    -->
+  <!-- every plane in the main diagram above.                         -->
+  <!-- ============================================================ -->
+  <div class="cross-frame">
+    <span class="cf-tag">⇅ 横切 / 基础层</span>
+    <div class="cf-note">↑ 横切：观测埋点穿透 A–G 每一个 mod　·　↓ 基础：A–H 都依赖 Runtime 提供 config / logging / session</div>
+
+    <!-- Observability (cross-cutting) -->
+    <div class="obs-strip">
+      <div class="os-head">
+        <span class="os-icon">H</span>
+        <span class="os-title">可观测性 Observability</span>
+        <span class="os-desc">每个 mod 都带观测埋点 — 这一条只是把同类埋点汇总展示</span>
+      </div>
+      <div class="os-mods">
+        <div class="mod-chip">
+          <div class="mc-id">obs/cost</div>
+          <div class="mc-name">Cost Tracker</div>
+          <div class="mc-func">内嵌于 ② LLM Call · 按会话/任务汇总 token</div>
+        </div>
+        <div class="mod-chip">
+          <div class="mc-id">obs/transcript</div>
+          <div class="mc-name">Transcript Log</div>
+          <div class="mc-func">JSONL 持久化 ①→④ 每轮消息与工具调用</div>
+        </div>
+        <div class="mod-chip">
+          <div class="mc-id">obs/metrics</div>
+          <div class="mc-name">Metrics</div>
+          <div class="mc-func">② token / cache / 延迟　·　③ tool 调用 / 成功率 / 权限分布　·　loop 轮次 &amp; stop_reason　·　OTel / Prometheus 导出</div>
+        </div>
+        <div class="mod-chip">
+          <div class="mc-id">obs/eval</div>
+          <div class="mc-name">Agent Eval</div>
+          <div class="mc-func">离线回放 transcript 跑黄金集</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Runtime Foundation (underneath all planes) -->
+    <div class="runtime-strip">
+      <div class="rs-head">
+        <span class="rs-label">Runtime Foundation</span>
+        <span class="rs-desc">无依赖、纯基础件 — 上方 A–H 全部建立在这一层之上</span>
+      </div>
+      <div class="rs-mods">
+        <div class="mod-chip">
+          <div class="mc-id">rt/config</div>
+          <div class="mc-name">Config &amp; Settings</div>
+          <div class="mc-func">分层 settings.json · 热加载 · 被依赖最多的模块</div>
+        </div>
+        <div class="mod-chip">
+          <div class="mc-id">rt/logging</div>
+          <div class="mc-name">Structured Logging</div>
+          <div class="mc-func">JSON 结构化日志 · 级别 · sink</div>
+        </div>
+        <div class="mod-chip">
+          <div class="mc-id">rt/session</div>
+          <div class="mc-name">Session</div>
+          <div class="mc-func">会话目录 · resume / fork · 被几乎所有面依赖</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Legend -->
+  <div class="legend">
+    <span>A 执行核心</span><span>·</span>
+    <span>B 工具管线</span><span>·</span>
+    <span>C 上下文管理</span><span>·</span>
+    <span>D 任务编排</span><span>·</span>
+    <span>E 多智能体</span><span>·</span>
+    <span>F 隔离边界</span><span>·</span>
+    <span>G 外部接入</span><span>·</span>
+    <span>H 可观测性</span>
+  </div>
+
+  <footer>
+    <span>7 planes (A–G) · 1 cross-cutting (H) · 1 foundation · 1 loop</span>
+    <span>所有机制都叠在同一个循环之上 — 而不动循环本身。</span>
+  </footer>
+
+  <!-- ============================================================ -->
+  <!-- IMPLEMENTATION ROADMAP — 4-month plan (TypeScript stack)     -->
+  <!-- ============================================================ -->
+  <div class="roadmap-divider"></div>
+
+  <div class="roadmap-header">
+    <div class="eyebrow">Implementation Roadmap · 4-Month Plan · TypeScript</div>
+    <h2 class="roadmap-title">4 个月落地<span class="accent">路线图</span></h2>
+    <p class="roadmap-sub">
+      以上图为目标的 16 周实施计划。本计划据下方 <strong>4 项前提</strong> 制定 —
+      任何一项变化（团队规模、栈、范围、交付目标）都会推翻周度拆解，需要重排。
+      本期只做 <strong>base harness (P0)</strong> — 即架构图里 <strong>没有</strong> <span class="ext-badge">P1</span> 徽标的所有模块；
+      标 P1 的全部留 v2，详见底部 v2 储备区。
+    </p>
+  </div>
+
+  <!-- Project premises -->
+  <div class="pcard premise-card">
+    <div class="pc-head">
+      <span class="pc-icon">P</span>
+      <span class="pc-name">项目前提 Premises</span>
+    </div>
+    <span class="pc-attach">以下 4 项是本路线图的输入条件 · 跟实际不符请先校准</span>
+    <div class="premise-grid">
+      <div class="premise-cell">
+        <div class="pm-label">① 团队</div>
+        <div class="pm-value">2–3 人工程师全职<br/>+ 0.5 人产品 / QA</div>
+        <div class="pm-extra">合计 ~36–48 人月预算 · 角色不细分（前后端、工具、安全都要做）</div>
+      </div>
+      <div class="premise-cell">
+        <div class="pm-label">② 技术栈</div>
+        <div class="pm-value">TypeScript 5.x<br/>Node 20+ LTS · ESM</div>
+        <div class="pm-extra">pnpm workspaces · Anthropic SDK + MCP SDK · 具体选型见下方技术栈卡片</div>
+      </div>
+      <div class="premise-cell">
+        <div class="pm-label">③ 范围</div>
+        <div class="pm-value">base harness (P0)<br/>A–H + 横切观测 + Runtime · 含 Task Store</div>
+        <div class="pm-extra">标 <span class="ext-badge">P1</span> 的模块（Agents Team / Autonomy / Mailbox / Protocol / Worktree Mgr）全部留 v2，本期不动</div>
+      </div>
+      <div class="premise-cell">
+        <div class="pm-label">④ 交付</div>
+        <div class="pm-value">每月底可演示版本<br/>第 16 周 v1.0 GA</div>
+        <div class="pm-extra">面向内部使用 · macOS + Linux 双平台 · npm 内部 registry 发布 · Windows 留 v2</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stack details -->
+  <div class="pcard stack-card">
+    <div class="pc-head">
+      <span class="pc-icon">⚙</span>
+      <span class="pc-name">技术栈细节 Stack</span>
+    </div>
+    <span class="pc-attach">前提 ② 的展开 · M1–M4 全程使用的具体选型与版本锁定</span>
+    <div class="mods stack-grid">
+      <div class="mod-chip">
+        <div class="mc-id">runtime</div>
+        <div class="mc-name">Node 20+ LTS</div>
+        <div class="mc-func">ESM · TypeScript 5.x strict · pnpm workspaces (monorepo)</div>
+      </div>
+      <div class="mod-chip">
+        <div class="mc-id">sdk</div>
+        <div class="mc-name">Anthropic + MCP SDK</div>
+        <div class="mc-func">@anthropic-ai/sdk · @modelcontextprotocol/sdk</div>
+      </div>
+      <div class="mod-chip">
+        <div class="mc-id">build / test</div>
+        <div class="mc-name">tsx · tsup · Vitest</div>
+        <div class="mc-func">tsx 跑 dev · tsup 出 CJS+ESM · Vitest 单测 + 覆盖率</div>
+      </div>
+      <div class="mod-chip">
+        <div class="mc-id">cli ux</div>
+        <div class="mc-name">commander + Ink</div>
+        <div class="mc-func">commander 解析参数 · Ink (React for CLI) 渲染交互 UI</div>
+      </div>
+      <div class="mod-chip">
+        <div class="mc-id">config</div>
+        <div class="mc-name">zod + cosmiconfig</div>
+        <div class="mc-func">zod schema 校验 · cosmiconfig 分层加载 settings.json</div>
+      </div>
+      <div class="mod-chip">
+        <div class="mc-id">logging</div>
+        <div class="mc-name">pino</div>
+        <div class="mc-func">结构化 JSON 日志 · 异步 · 多 sink</div>
+      </div>
+      <div class="mod-chip">
+        <div class="mc-id">obs</div>
+        <div class="mc-name">@opentelemetry/sdk-node</div>
+        <div class="mc-func">OTel traces / metrics · Prometheus exporter</div>
+      </div>
+      <div class="mod-chip">
+        <div class="mc-id">subprocess</div>
+        <div class="mc-name">execa + node:child_process</div>
+        <div class="mc-func">execa 包装 bash · spawn 调 sandbox-exec / bubblewrap</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4 Phase cards -->
+  <div class="phases-grid">
+
+    <!-- M1 -->
+    <div class="phase-card">
+      <div class="ph-id">M1 · 第 1 个月</div>
+      <div class="ph-name">Loop 能跑</div>
+      <div class="ph-weeks-range">Week 1 → Week 4</div>
+      <div class="ph-goal">Foundation + 核心循环 MVP</div>
+      <div class="weeks">
+        <div class="week-row">
+          <div class="week-num">W1</div>
+          <div class="week-body">
+            <span class="wb-mod">rt/* Runtime</span>
+            settings.json + zod 校验 · pino logger · session dir 雏形
+          </div>
+        </div>
+        <div class="week-row">
+          <div class="week-num">W1</div>
+          <div class="week-body">
+            <span class="wb-mod">工程基建</span>
+            pnpm workspace · tsc strict · Vitest · ESLint · CI · API key 管理
+          </div>
+        </div>
+        <div class="week-row">
+          <div class="week-num">W2</div>
+          <div class="week-body">
+            <span class="wb-mod">A · Agent Loop</span>
+            agentLoop() 五态机（end / pause / max / refusal / tool_use）· Promise.all 并发 tool
+          </div>
+        </div>
+        <div class="week-row">
+          <div class="week-num">W2</div>
+          <div class="week-body">
+            <span class="wb-mod">A · core/messages</span>
+            content block 类型 + zod schema · ContentBlock discriminated union
+          </div>
+        </div>
+        <div class="week-row">
+          <div class="week-num">W3</div>
+          <div class="week-body">
+            <span class="wb-mod">B · registry + dispatcher</span>
+            Tool 接口 + 注册表 · dispatcher 必经 safety
+          </div>
+        </div>
+        <div class="week-row">
+          <div class="week-num">W3</div>
+          <div class="week-body">
+            <span class="wb-mod">B · builtin v0</span>
+            bash（execa）· read · write — 足够自举
+          </div>
+        </div>
+        <div class="week-row">
+          <div class="week-num">W4</div>
+          <div class="week-body">
+            <span class="wb-mod">! · safe/permission</span>
+            allow / deny / ask 规则机 · Ink 弹窗确认
+          </div>
+        </div>
+        <div class="week-row">
+          <div class="week-num">W4</div>
+          <div class="week-body">
+            <span class="wb-mod">obs/transcript</span>
+            JSONL writer · 每轮 messages + tool 调用持久化
+          </div>
+        </div>
+      </div>
+      <div class="verify">
+        <span class="verify-label">M1 验收</span>
+        CLI 跑 <code>harness "在 /tmp 写个 hello.ts 并跑一下"</code> 通过；危险 bash 命令被权限拦截。
+      </div>
+    </div>
+
+    <!-- M2 -->
+    <div class="phase-card">
+      <div class="ph-id">M2 · 第 2 个月</div>
+      <div class="ph-name">每天能用</div>
+      <div class="ph-weeks-range">Week 5 → Week 8</div>
+      <div class="ph-goal">Context + Safety + 工具齐备</div>
+      <div class="weeks">
+        <div class="week-row">
+          <div class="week-num">W5</div>
+          <div class="week-body">
+            <span class="wb-mod">C · ctx/memory</span>
+            CLAUDE.md 三层加载（project / user / global）注入 system prompt
+          </div>
+        </div>
+        <div class="week-row">
+          <div class="week-num">W5</div>
+          <div class="week-body">
+            <span class="wb-mod">C · ctx/cache</span>
+            cache_control 在 system / tools / messages 三处打断点 · 命中率统计
+          </div>
+        </div>
+        <div class="week-row">
+          <div class="week-num">W6</div>
+          <div class="week-body">
+            <span class="wb-mod">C · ctx/compact</span>
+            按 token 阈值触发自动摘要 · /compact 手动入口
+          </div>
+        </div>
+        <div class="week-row">
+          <div class="week-num">W6</div>
+          <div class="week-body">
+            <span class="wb-mod">B · builtin v1</span>
+            edit · glob（fast-glob）· grep（ripgrep spawn）· webfetch · websearch
+          </div>
+        </div>
+        <div class="week-row">
+          <div class="week-num">W7</div>
+          <div class="week-body">
+            <span class="wb-mod">B · tools/invariants</span>
+            read-before-edit · mtime check · 路径白名单
+          </div>
+        </div>
+        <div class="week-row">
+          <div class="week-num">W7</div>
+          <div class="week-body">
+            <span class="wb-mod">! · safe/hooks</span>
+            PreToolUse / PostToolUse / UserPromptSubmit / Stop — 4 个事件先上
+          </div>
+        </div>
+        <div class="week-row">
+          <div class="week-num">W8</div>
+          <div class="week-body">
+            <span class="wb-mod">G · ext/slash</span>
+            .commands/*.md 解析 + 注册为内部命令
+          </div>
+        </div>
+        <div class="week-row">
+          <div class="week-num">W8</div>
+          <div class="week-body">
+            <span class="wb-mod">obs/cost + metrics 基础</span>
+            token 计费 · 缓存命中 · 工具成功率 · 预算阈值告警
+          </div>
+        </div>
+      </div>
+      <div class="verify">
+        <span class="verify-label">M2 验收</span>
+        团队全员 dogfood — 一天真实 coding 工作能用，记得偏好、上下文不爆、token 成本可见。
+      </div>
+    </div>
+
+    <!-- M3 -->
+    <div class="phase-card">
+      <div class="ph-id">M3 · 第 3 个月</div>
+      <div class="ph-name">能集成 &amp; 能分身</div>
+      <div class="ph-weeks-range">Week 9 → Week 12</div>
+      <div class="ph-goal">外部接入 + 短命 subagent + 持久编排</div>
+      <div class="weeks">
+        <div class="week-row">
+          <div class="week-num">W9</div>
+          <div class="week-body">
+            <span class="wb-mod">G · ext/mcp</span>
+            StdioClientTransport 先上 · 再加 StreamableHTTPClientTransport
+          </div>
+        </div>
+        <div class="week-row">
+          <div class="week-num">W9</div>
+          <div class="week-body">
+            <span class="wb-mod">G · ext/skills</span>
+            SKILL.md 索引 · Skill 工具：模型调用时返回内容（渐进披露）
+          </div>
+        </div>
+        <div class="week-row">
+          <div class="week-num">W10</div>
+          <div class="week-body">
+            <span class="wb-mod">E · multi/subagent</span>
+            Task 工具：worker_threads 隔离 messages[] · 摘要返回主 loop（共用主仓 cwd · 不引入 worktree）
+          </div>
+        </div>
+        <div class="week-row">
+          <div class="week-num">W10</div>
+          <div class="week-body">
+            <span class="wb-mod">D · orch/todo</span>
+            TodoWrite 工具 + 单会话计划状态机（pending/in_progress/completed）
+          </div>
+        </div>
+        <div class="week-row">
+          <div class="week-num">W11</div>
+          <div class="week-body">
+            <span class="wb-mod">D · orch/bg</span>
+            bash run_in_background · readline pipe stdout → 事件回注 messages[]
+          </div>
+        </div>
+        <div class="week-row">
+          <div class="week-num">W11→12</div>
+          <div class="week-body">
+            <span class="wb-mod">D · orch/tasks</span>
+            Task Store — better-sqlite3 持久层 · 跨会话任务图 + 依赖图 · CRUD API
+          </div>
+        </div>
+        <div class="week-row">
+          <div class="week-num">W12</div>
+          <div class="week-body">
+            <span class="wb-mod">rt/session</span>
+            完整 resume / fork（多分支） · session 索引
+          </div>
+        </div>
+        <div class="week-row">
+          <div class="week-num">W12</div>
+          <div class="week-body">
+            <span class="wb-mod">obs/metrics</span>
+            OpenTelemetry exporter · Prometheus /metrics endpoint
+          </div>
+        </div>
+      </div>
+      <div class="verify">
+        <span class="verify-label">M3 验收</span>
+        能接 ≥3 个 MCP server · subagent（共用 cwd）跑通 · Task Store 跨会话保留任务图与依赖 · 从昨天会话 resume 不丢上下文。
+      </div>
+    </div>
+
+    <!-- M4 -->
+    <div class="phase-card">
+      <div class="ph-id">M4 · 第 4 个月</div>
+      <div class="ph-name">能上线</div>
+      <div class="ph-weeks-range">Week 13 → Week 16</div>
+      <div class="ph-goal">硬化 + 沙盒 + Eval + GA</div>
+      <div class="weeks">
+        <div class="week-row">
+          <div class="week-num">W13</div>
+          <div class="week-body">
+            <span class="wb-mod">F · iso/sandbox</span>
+            macOS sandbox-exec profile · Linux bubblewrap · spawn wrapper 统一接口
+          </div>
+        </div>
+        <div class="week-row">
+          <div class="week-num">W13</div>
+          <div class="week-body">
+            <span class="wb-mod">! · safe/sandbox-fs</span>
+            工具级 FS/网络白名单 · 与 F 面 sandbox 协同
+          </div>
+        </div>
+        <div class="week-row">
+          <div class="week-num">W14</div>
+          <div class="week-body">
+            <span class="wb-mod">! · hooks 全集</span>
+            SessionStart / SessionEnd · PreCompact · Notification · SubagentStop
+          </div>
+        </div>
+        <div class="week-row">
+          <div class="week-num">W14</div>
+          <div class="week-body">
+            <span class="wb-mod">F · iso/eventbus</span>
+            Node EventEmitter 暴露进程/任务生命周期事件 · 供观测和编排订阅
+          </div>
+        </div>
+        <div class="week-row">
+          <div class="week-num">W15</div>
+          <div class="week-body">
+            <span class="wb-mod">G · ext/transport</span>
+            HTTP API（Hono）· VS Code 扩展（webview + LSP 风格协议）
+          </div>
+        </div>
+        <div class="week-row">
+          <div class="week-num">W15</div>
+          <div class="week-body">
+            <span class="wb-mod">obs/eval</span>
+            transcript replay 框架 + 10–20 case 黄金集 + 回归基线
+          </div>
+        </div>
+        <div class="week-row">
+          <div class="week-num">W16</div>
+          <div class="week-body">
+            <span class="wb-mod">加固周</span>
+            性能（冷启动 / 内存）· 错误兜底 · 安全审计 · 文档 + 5 个示例
+          </div>
+        </div>
+        <div class="week-row">
+          <div class="week-num">W16</div>
+          <div class="week-body">
+            <span class="wb-mod">v1.0 release</span>
+            tag · changelog · npm publish（内部 registry）· 上线公告
+          </div>
+        </div>
+      </div>
+      <div class="verify">
+        <span class="verify-label">M4 验收</span>
+        v1.0 发布 · 沙盒里跑陌生 prompt 不出事故 · eval 黄金集通过率 ≥ 基线。
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Milestones strip -->
+  <div class="pcard" style="margin-bottom: 24px;">
+    <div class="pc-head">
+      <span class="pc-icon">★</span>
+      <span class="pc-name">关键里程碑</span>
+    </div>
+    <span class="pc-attach">每月末一个可演示版本，逐月加压</span>
+    <div class="milestones-grid">
+      <div class="ms-chip">
+        <div class="ms-when">Week 4 · M1</div>
+        <div class="ms-title">Demo</div>
+        <div class="ms-desc">自跑 bash + 编辑文件 + 权限拦截，可对内演示</div>
+      </div>
+      <div class="ms-chip">
+        <div class="ms-when">Week 8 · M2</div>
+        <div class="ms-title">Dogfood Start</div>
+        <div class="ms-desc">团队全部切到自家 harness 干活，每天产 transcript</div>
+      </div>
+      <div class="ms-chip">
+        <div class="ms-when">Week 12 · M3</div>
+        <div class="ms-title">Beta</div>
+        <div class="ms-desc">扩展到 10–20 内部用户，收集观测数据</div>
+      </div>
+      <div class="ms-chip">
+        <div class="ms-when">Week 16 · M4</div>
+        <div class="ms-title">GA 1.0</div>
+        <div class="ms-desc">文档齐备 · sandbox 上线 · eval 通过 · 正式发布</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Risks -->
+  <div class="pcard" style="margin-bottom: 24px;">
+    <div class="pc-head">
+      <span class="pc-icon">⚠</span>
+      <span class="pc-name">风险与对策</span>
+    </div>
+    <span class="pc-attach">提前识别 · 每周站会回顾</span>
+    <div class="risks-grid">
+      <div class="risk-chip">
+        <div class="risk-title">Compaction 质量不稳定<br/>压坏了上下文</div>
+        <div class="risk-mit">M2 上 token 触发 + 摘要基础版；M4 用 eval 框架做回归基线</div>
+      </div>
+      <div class="risk-chip">
+        <div class="risk-title">跨平台 sandbox 工程量大<br/>macOS / Linux / Windows 差异</div>
+        <div class="risk-mit">M4 优先 macOS（团队主力机），Linux 用 bubblewrap 兜底，Windows 留 v2</div>
+      </div>
+      <div class="risk-chip">
+        <div class="risk-title">MCP 协议演进<br/>SDK 版本可能 break</div>
+        <div class="risk-mit">锁版本 + 留 adapter 层；@modelcontextprotocol/sdk 升级走 PR review</div>
+      </div>
+      <div class="risk-chip">
+        <div class="risk-title">API 成本失控<br/>测试时反复跑大上下文</div>
+        <div class="risk-mit">M1 就上 obs/cost · 日预算阈值告警 · prompt cache 是硬指标（≥70% 命中）</div>
+      </div>
+      <div class="risk-chip">
+        <div class="risk-title">worker_threads 复杂度<br/>subagent 隔离踩坑</div>
+        <div class="risk-mit">M3 先 child_process fork MVP · 性能瓶颈再升级 worker_threads</div>
+      </div>
+      <div class="risk-chip">
+        <div class="risk-title">Scope 超载<br/>P0 4 个月做不完</div>
+        <div class="risk-mit">三档红线 — 保 P0 主线：① <span class="ext-badge">P1</span> 项已经全部在 v2，不会回流 · ② IDE 二选一只保 VS Code · ③ eval 黄金集 ≤ 20 case · 兜底：M4 加固周可吃掉 P0 收尾</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- v2 backlog -->
+  <div class="pcard">
+    <div class="pc-head">
+      <span class="pc-icon">→</span>
+      <span class="pc-name">v2 储备（4 个月之外）</span>
+    </div>
+    <span class="pc-attach">本期不做 · 留作 v2 — 全部 <span class="ext-badge">P1</span> 项归这里</span>
+    <div class="v2-grid">
+      <div class="v2-chip">
+        <strong>F · iso/worktree <span class="ext-badge">P1</span></strong>
+        git worktree 与 subagent 绑定 · 子 loop 拿独立工作树
+      </div>
+      <div class="v2-chip">
+        <strong>E · multi/mailbox <span class="ext-badge">P1</span></strong>
+        JSONL 信箱 · agent 间异步通信基础设施
+      </div>
+      <div class="v2-chip">
+        <strong>E · multi/protocol <span class="ext-badge">P1</span></strong>
+        request / response / shutdown FSM
+      </div>
+      <div class="v2-chip">
+        <strong>E · multi/team <span class="ext-badge">P1</span></strong>
+        长期常驻多角色 agent 协作 · 基于 mailbox/protocol
+      </div>
+      <div class="v2-chip">
+        <strong>E · multi/autonomy <span class="ext-badge">P1</span></strong>
+        空闲轮询 · 从 orch/tasks 自主认领任务
+      </div>
+      <div class="v2-chip">
+        <strong>IDE 第二款 + Web UI</strong>
+        JetBrains 扩展 · 浏览器端 transcript viewer
+      </div>
+      <div class="v2-chip">
+        <strong>Windows sandbox</strong>
+        AppContainer / Job Object 集成
+      </div>
+      <div class="v2-chip">
+        <strong>多模型适配</strong>
+        非 Anthropic 后端：OpenAI · 本地模型 · 自建推理服务
+      </div>
+      <div class="v2-chip">
+        <strong>Hosted / Marketplace</strong>
+        多租户 · 配额 · 第三方 skill / MCP 商店
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- PROJECT LAYOUT — pnpm monorepo, one package per plane        -->
+  <!-- ============================================================ -->
+  <div class="roadmap-divider"></div>
+
+  <div class="roadmap-header">
+    <div class="eyebrow">Project Layout · pnpm Workspace</div>
+    <h2 class="roadmap-title">工程目录<span class="accent">结构</span></h2>
+    <p class="roadmap-sub">
+      monorepo 形态：每个面一个 package（<code>packages/&lt;面&gt;/</code>），可执行入口放
+      <code>apps/</code>。包名一对一映射架构图的 A–H 面 + Runtime — 看图能直接定位到代码。
+    </p>
+  </div>
+
+  <!-- 1. Top-level monorepo tree -->
+<pre class="tree-block">nova/                                      <span class="cmt"># pnpm workspace 根</span>
+├── pnpm-workspace.yaml                    <span class="cmt"># packages/* + apps/*</span>
+├── package.json                           <span class="cmt"># 仅 devDeps + scripts（root）</span>
+├── tsconfig.base.json                     <span class="cmt"># 共享 strict 配置 · 各包 extends</span>
+├── .changeset/                            <span class="cmt"># changesets 版本管理</span>
+├── .github/workflows/                     <span class="cmt"># ci.yml · release.yml · eval.yml</span>
+│
+├── <span class="dir">apps/</span>                                  <span class="cmt"># 可执行入口（消费 packages/*）</span>
+│   ├── cli/                               <span class="cmt"># 主入口 · bin/harness（M1）</span>
+│   ├── http/                              <span class="cmt"># HTTP API（Hono）              <span class="deferred">[M4]</span></span>
+│   └── vscode/                            <span class="cmt"># VS Code 扩展                   <span class="deferred">[M4]</span></span>
+│
+├── <span class="dir">packages/</span>                              <span class="cmt"># 一个面一个包 · 看图找代码</span>
+│   ├── core/             <span class="plane">[A]</span>             <span class="cmt"># 执行核心 — loop · model · messages</span>
+│   ├── tools/            <span class="plane">[B]</span>             <span class="cmt"># 工具管线 — registry · dispatcher · builtin</span>
+│   ├── context/          <span class="plane">[C]</span>             <span class="cmt"># 上下文 — memory · cache · compact</span>
+│   ├── safety/           <span class="plane">[!]</span>             <span class="cmt"># 安全 — permission · hooks · sandbox-fs</span>
+│   ├── orchestration/    <span class="plane">[D]</span>             <span class="cmt"># 编排 — todo · background · tasks (Task Store, SQLite)</span>
+│   ├── multi-agent/      <span class="plane">[E]</span>             <span class="cmt"># 多体 — 仅 subagent；mailbox/protocol/team/autonomy 留 v2</span>
+│   ├── isolation/        <span class="plane">[F]</span>             <span class="cmt"># 隔离 — sandbox · eventbus；worktree 留 v2</span>
+│   ├── external/         <span class="plane">[G]</span>             <span class="cmt"># 外部 — mcp · slash · skills · transport</span>
+│   ├── observability/    <span class="plane">[H]</span>             <span class="cmt"># 观测 — cost · transcript · metrics · eval</span>
+│   ├── runtime/          <span class="plane">[rt]</span>            <span class="cmt"># 基础 — config · logging · session（叶子）</span>
+│   └── sdk/                              <span class="cmt"># 对外 SDK — 包装 core/* 给外部消费</span>
+│
+├── <span class="dir">examples/</span>                              <span class="cmt"># 5 个示例（M4 交付物）</span>
+│   ├── 01-hello-cli/
+│   ├── 02-custom-tool/
+│   ├── 03-mcp-server/
+│   ├── 04-skill-pack/
+│   └── 05-subagent-flow/
+│
+├── <span class="dir">eval/</span>                                  <span class="cmt"># obs/eval 黄金集（M4）</span>
+│   ├── cases/                             <span class="cmt"># 10–20 个回归 case · JSONL transcript</span>
+│   └── replay.ts                          <span class="cmt"># transcript replay 框架</span>
+│
+├── <span class="dir">e2e/</span>                                   <span class="cmt"># 端到端测试（跑真 API · 不进默认 CI）</span>
+├── <span class="dir">docs/</span>                                  <span class="cmt"># 架构 · 安全模型 · 插件指南 · API ref</span>
+└── README.md</pre>
+
+  <!-- 2. Per-package src/ details -->
+  <div class="pkg-grid">
+
+    <div class="pkg-card">
+      <div class="pkg-card-head">
+        <span class="pk-plane">A</span>
+        <span class="pk-name">packages/core</span>
+        <span class="pk-tag">M1</span>
+      </div>
+<pre class="pkg-tree">src/
+├── loop.ts          <span class="cmt"># agentLoop() 主循环</span>
+├── model.ts         <span class="cmt"># Anthropic client wrapper</span>
+├── messages.ts      <span class="cmt"># message append / serialize</span>
+├── stop-reason.ts   <span class="cmt"># 五态状态机</span>
+├── types.ts         <span class="cmt"># ContentBlock · Tool · zod schema</span>
+└── index.ts</pre>
+    </div>
+
+    <div class="pkg-card">
+      <div class="pkg-card-head">
+        <span class="pk-plane">B</span>
+        <span class="pk-name">packages/tools</span>
+        <span class="pk-tag">M1 → M2</span>
+      </div>
+<pre class="pkg-tree">src/
+├── registry.ts      <span class="cmt"># ToolRegistry · register / list</span>
+├── dispatcher.ts    <span class="cmt"># 分发 · 必经 safety check</span>
+├── invariants.ts    <span class="cmt"># read-before-edit · mtime</span>
+├── builtin/
+│   ├── bash.ts          <span class="cmt"># execa wrapper</span>
+│   ├── read.ts          write.ts          edit.ts
+│   ├── glob.ts          grep.ts           <span class="cmt"># fast-glob · ripgrep</span>
+│   ├── webfetch.ts      websearch.ts
+│   ├── notebook-edit.ts
+│   ├── task.ts          <span class="cmt"># → multi-agent/subagent</span>
+│   └── todo-write.ts    <span class="cmt"># → orchestration/todo</span>
+└── index.ts</pre>
+    </div>
+
+    <div class="pkg-card">
+      <div class="pkg-card-head">
+        <span class="pk-plane">C</span>
+        <span class="pk-name">packages/context</span>
+        <span class="pk-tag">M2</span>
+      </div>
+<pre class="pkg-tree">src/
+├── memory.ts        <span class="cmt"># CLAUDE.md 三层加载 → system</span>
+├── cache.ts         <span class="cmt"># cache_control 打点 + 命中率</span>
+├── compact.ts       <span class="cmt"># 自动摘要 · /compact 入口</span>
+└── index.ts</pre>
+    </div>
+
+    <div class="pkg-card">
+      <div class="pkg-card-head">
+        <span class="pk-plane">!</span>
+        <span class="pk-name">packages/safety</span>
+        <span class="pk-tag">M1 → M4</span>
+      </div>
+<pre class="pkg-tree">src/
+├── permission.ts    <span class="cmt"># allow / deny / ask 规则机</span>
+├── approval.tsx     <span class="cmt"># Ink 弹窗（jsx）</span>
+├── hooks.ts         <span class="cmt"># 8 个 hook 事件分发</span>
+├── sandbox-fs.ts    <span class="cmt"># FS/网络白名单</span>
+└── index.ts</pre>
+    </div>
+
+    <div class="pkg-card">
+      <div class="pkg-card-head">
+        <span class="pk-plane">D</span>
+        <span class="pk-name">packages/orchestration</span>
+        <span class="pk-tag">M3</span>
+      </div>
+<pre class="pkg-tree">src/
+├── todo.ts          <span class="cmt"># TodoWrite 状态机</span>
+├── background.ts    <span class="cmt"># run_in_background · readline pipe</span>
+├── tasks.ts         <span class="cmt"># Task Store · SQLite · 跨会话依赖图</span>
+└── index.ts</pre>
+    </div>
+
+    <div class="pkg-card">
+      <div class="pkg-card-head">
+        <span class="pk-plane">E</span>
+        <span class="pk-name">packages/multi-agent</span>
+        <span class="pk-tag">M3</span>
+      </div>
+<pre class="pkg-tree">src/
+├── subagent.ts      <span class="cmt"># Task 工具背后逻辑</span>
+├── worker.ts        <span class="cmt"># worker_threads / child_process</span>
+├── summarize.ts     <span class="cmt"># 子 loop 结果摘要回主 loop</span>
+└── index.ts         <span class="cmt"># mailbox / protocol / team / autonomy 全部留 v2</span></pre>
+    </div>
+
+    <div class="pkg-card">
+      <div class="pkg-card-head">
+        <span class="pk-plane">F</span>
+        <span class="pk-name">packages/isolation</span>
+        <span class="pk-tag">M4</span>
+      </div>
+<pre class="pkg-tree">src/
+├── sandbox.ts       <span class="cmt"># spawn sandbox-exec / bwrap</span>
+├── eventbus.ts      <span class="cmt"># EventEmitter lifecycle</span>
+└── index.ts         <span class="cmt"># worktree.ts 留 v2 (P1)</span></pre>
+    </div>
+
+    <div class="pkg-card">
+      <div class="pkg-card-head">
+        <span class="pk-plane">G</span>
+        <span class="pk-name">packages/external</span>
+        <span class="pk-tag">M3 → M4</span>
+      </div>
+<pre class="pkg-tree">src/
+├── mcp/
+│   ├── client.ts        <span class="cmt"># MCP client wrapper</span>
+│   ├── stdio.ts         <span class="cmt"># StdioClientTransport</span>
+│   └── http.ts          <span class="cmt"># StreamableHTTPClientTransport</span>
+├── slash.ts         <span class="cmt"># .commands/*.md 解析</span>
+├── skills.ts        <span class="cmt"># SKILL.md 索引 + Skill 工具</span>
+├── transport/
+│   ├── repl.ts          <span class="cmt"># CLI REPL（M1）</span>
+│   ├── http.ts          <span class="cmt"># Hono 路由（M4）</span>
+│   └── ide.ts           <span class="cmt"># VS Code 协议（M4）</span>
+└── index.ts</pre>
+    </div>
+
+    <div class="pkg-card">
+      <div class="pkg-card-head">
+        <span class="pk-plane">H</span>
+        <span class="pk-name">packages/observability</span>
+        <span class="pk-tag">M1 → M4</span>
+      </div>
+<pre class="pkg-tree">src/
+├── cost.ts          <span class="cmt"># token 计费 · 预算告警</span>
+├── transcript.ts    <span class="cmt"># JSONL writer</span>
+├── metrics.ts       <span class="cmt"># OTel + Prometheus</span>
+├── eval.ts          <span class="cmt"># transcript replay 框架</span>
+└── index.ts</pre>
+    </div>
+
+    <div class="pkg-card">
+      <div class="pkg-card-head">
+        <span class="pk-plane">rt</span>
+        <span class="pk-name">packages/runtime</span>
+        <span class="pk-tag">M1 · 叶子</span>
+      </div>
+<pre class="pkg-tree">src/
+├── config.ts        <span class="cmt"># zod schema + cosmiconfig 分层</span>
+├── logging.ts       <span class="cmt"># pino logger · 多 sink</span>
+├── session.ts       <span class="cmt"># session dir · resume / fork</span>
+└── index.ts         <span class="cmt"># 无内部依赖 — 被所有面 import</span></pre>
+    </div>
+
+  </div>
+
+  <!-- 3. Dependency rules -->
+<pre class="deps-block"><span class="cmt"># 依赖方向（高 → 低 · 绝不能反向 · CI 用 dependency-cruiser 强制）</span>
+
+  <span class="tag">apps/*</span>            <span class="arr">─→</span>  packages/* <span class="cmt"># 入口可消费所有包</span>
+  <span class="tag">packages/sdk</span>      <span class="arr">─→</span>  core · tools · context · external · observability
+  <span class="tag">[A]</span> core         <span class="arr">─→</span>  runtime  <span class="cmt"># 仅依赖 runtime</span>
+  <span class="tag">[B]</span> tools        <span class="arr">─→</span>  core · safety · runtime
+  <span class="tag">[C]</span> context      <span class="arr">─→</span>  core · runtime
+  <span class="tag">[!]</span> safety       <span class="arr">─→</span>  runtime  <span class="cmt"># 安全面尽量瘦</span>
+  <span class="tag">[D]</span> orchestration<span class="arr">─→</span>  core · runtime  <span class="cmt"># tasks.ts 引入 better-sqlite3</span>
+  <span class="tag">[E]</span> multi-agent  <span class="arr">─→</span>  core · runtime  <span class="cmt"># 仅 subagent；P1 (team/autonomy) → orchestration 留 v2</span>
+  <span class="tag">[F]</span> isolation    <span class="arr">─→</span>  runtime  <span class="cmt"># 仅 sandbox + eventbus；worktree 留 v2</span>
+  <span class="tag">[G]</span> external     <span class="arr">─→</span>  core · tools · runtime
+  <span class="tag">[H]</span> observability<span class="arr">─→</span>  runtime  <span class="cmt"># 通过事件订阅介入其他面，不反向 import</span>
+  <span class="tag">[rt]</span> runtime     <span class="arr">─→</span>  <span class="cmt">∅ （叶子 · 无内部依赖）</span></pre>
+
+  <!-- ============================================================ -->
+  <!-- ============== base harness 在业务系统中的应用 ============== -->
+  <!-- ============================================================ -->
+
+  <div class="roadmap-divider"></div>
+
+  <div class="roadmap-header">
+    <p class="eyebrow">PART · 04 · APPLICATION</p>
+    <h2 class="roadmap-title">base harness 在<span class="accent">业务系统中的应用</span></h2>
+    <p class="roadmap-sub">
+      Harness 是壳，业务是肉 —— 把领域能力通过工具暴露给模型，而不是把模型塞进业务代码里。
+    </p>
+  </div>
+
+  <!-- ① 应用路径 -->
+  <div class="pcard" style="margin-bottom: 24px;">
+    <div class="pc-head">
+      <span class="pc-icon">①</span>
+      <span class="pc-name">应用路径 — 把 harness 套到业务上</span>
+    </div>
+    <span class="pc-attach">薄壳厚业务 · Tool Adapter 是唯一耦合面</span>
+    <div class="premise-grid">
+      <div class="premise-cell">
+        <div class="pm-label">A · 保持薄壳</div>
+        <div class="pm-value">业务逻辑不入 harness</div>
+        <div class="pm-extra">harness 只做循环 + 上下文管理 + 工具调用；业务实现继续留在原 service / API。</div>
+      </div>
+      <div class="premise-cell">
+        <div class="pm-label">B · 场景先收窄</div>
+        <div class="pm-value">选一个有边界的子场景</div>
+        <div class="pm-extra">「客服查单 + 改单」「运维诊断」这类闭环场景先做透 — 不要一上来就做全能助理。</div>
+      </div>
+      <div class="premise-cell">
+        <div class="pm-label">C · Tool Adapter 层</div>
+        <div class="pm-value">原 API 包一层暴露给模型</div>
+        <div class="pm-extra">不动业务 service，写薄适配把现有 API 翻译成 tool description，独立部署独立演进。</div>
+      </div>
+      <div class="premise-cell">
+        <div class="pm-label">D · 领域知识外置</div>
+        <div class="pm-value">知识载体随 runtime 能力变</div>
+        <div class="pm-extra">不要硬编码进 harness 或 tool 实现 — 分 C 端 / B 端 / CLI 三档，详见下方专题。</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ①·补 知识载体三档 -->
+  <div class="pcard" style="margin-bottom: 24px;">
+    <div class="pc-head">
+      <span class="pc-icon">⋯</span>
+      <span class="pc-name">知识载体三档 — 跟着 runtime 能力走</span>
+    </div>
+    <span class="pc-attach">D 项展开 · 能跑代码就让知识带代码，不能跑就让知识当资料</span>
+    <div class="premise-grid" style="grid-template-columns: repeat(3, 1fr);">
+      <div class="premise-cell">
+        <div class="pm-label">TIER · 1 · C 端受限</div>
+        <div class="pm-value">system prompt + RAG doc</div>
+        <div class="pm-extra">
+          聊天框 / H5 widget / 商品页助手 — 没 shell、没 fs，工具是窄而稳的几个 API。<br/>
+          知识只能内嵌进 prompt 或走 RAG 检索；模型扮演「读资料的人」。
+        </div>
+      </div>
+      <div class="premise-cell">
+        <div class="pm-label">TIER · 2 · B 端工作台</div>
+        <div class="pm-value">playbook 化的结构 doc</div>
+        <div class="pm-extra">
+          坐席台 / 运维控制台 — 工具丰富，但安全上禁 shell。<br/>
+          markdown SOP 写明「先 A · 再判 B · 最后 C」，本质是结构化提示词包。<strong>多数 B 端 agent 该走这档，最被低估</strong>。
+        </div>
+      </div>
+      <div class="premise-cell">
+        <div class="pm-label">TIER · 3 · 可运行 CLI</div>
+        <div class="pm-value">skill — md + script + ref</div>
+        <div class="pm-extra">
+          Claude Code 类 / 内部研发 agent — 有 shell、fs、可装包。<br/>
+          <span class="pk-name" style="font-family: var(--mono);">SKILL.md</span>（何时用）+ 可执行脚本（怎么做）+ 引用文件（按需加载） — 渐进披露，<strong>把「怎么做」固化进代码</strong>。
+        </div>
+      </div>
+    </div>
+    <div class="verify" style="margin: 14px 4px 4px;">
+      <span class="verify-label">CORE INSIGHT</span>
+      <strong>doc 是「告诉模型怎么做」，skill 是「替模型做掉」。</strong>前者是信息，后者是固化的过程 — 能用 skill 就别用 doc，可执行性带来确定性。
+    </div>
+  </div>
+
+  <!-- ② 最小工具集 -->
+  <div class="pcard" style="margin-bottom: 24px;">
+    <div class="pc-head">
+      <span class="pc-icon">②</span>
+      <span class="pc-name">最小工具集 — 5 类覆盖 80% 场景</span>
+    </div>
+    <span class="pc-attach">先压到 10 个以内 · 工具越多模型选择质量越差</span>
+    <div class="milestones-grid">
+      <div class="ms-chip">
+        <div class="ms-when">TOOL · 01</div>
+        <div class="ms-title">search / list</div>
+        <div class="ms-desc">发现实体 — 按条件检索订单、用户、单据，输出 id 列表给后续 get 用。</div>
+      </div>
+      <div class="ms-chip">
+        <div class="ms-when">TOOL · 02</div>
+        <div class="ms-title">get</div>
+        <div class="ms-desc">读详情 — 拿到 id 之后取完整对象，是模型做判断的主要数据源。</div>
+      </div>
+      <div class="ms-chip">
+        <div class="ms-when">TOOL · 03</div>
+        <div class="ms-title">act / mutate</div>
+        <div class="ms-desc">执行写操作 — 改单、退款、发通知等，必须带二次确认或权限拦截。</div>
+      </div>
+      <div class="ms-chip">
+        <div class="ms-when">TOOL · 04</div>
+        <div class="ms-title">ask_user</div>
+        <div class="ms-desc">信息不足反问用户 — 防止模型乱猜参数。优先级高于继续 search。</div>
+      </div>
+    </div>
+    <div class="milestones-grid" style="margin-top: 10px;">
+      <div class="ms-chip">
+        <div class="ms-when">TOOL · 05</div>
+        <div class="ms-title">finish / handoff</div>
+        <div class="ms-desc">明确结束或转人工 — 让模型知道有体面的退出路径，避免死循环。</div>
+      </div>
+      <div class="ms-chip" style="border-style: dashed;">
+        <div class="ms-when">OPT · +1</div>
+        <div class="ms-title">lookup_doc</div>
+        <div class="ms-desc">RAG 检索业务知识库 / SOP / 政策文档，配上述 5 类基本完备。</div>
+      </div>
+      <div class="ms-chip" style="border-style: dashed; opacity: 0.7;">
+        <div class="ms-when">RULE</div>
+        <div class="ms-title">先少后多</div>
+        <div class="ms-desc">别一上来把 30 个内部接口全做成工具，先 5–7 个跑通再加。</div>
+      </div>
+      <div class="ms-chip" style="border-style: dashed; opacity: 0.7;">
+        <div class="ms-when">RULE</div>
+        <div class="ms-title">粒度对齐意图</div>
+        <div class="ms-desc">一次调用解决一个用户意图，而不是让模型自己拼 3 个底层 API。</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ③ 工具 vs 传统 API -->
+  <div class="pcard" style="margin-bottom: 24px;">
+    <div class="pc-head">
+      <span class="pc-icon">③</span>
+      <span class="pc-name">工具的标准 — 区别于传统 API</span>
+    </div>
+    <span class="pc-attach">调用者从「程序员」变成「模型」，所有设计都要为此重做</span>
+    <div class="premise-grid">
+      <div class="premise-cell">
+        <div class="pm-label">DIM · 调用者</div>
+        <div class="pm-value">程序员 → 模型</div>
+        <div class="pm-extra">传统 API 给程序员看，模型工具给 LLM 看 — description 是核心，不是签名。</div>
+      </div>
+      <div class="premise-cell">
+        <div class="pm-label">DIM · 描述</div>
+        <div class="pm-value">类型签名 → 自然语言</div>
+        <div class="pm-extra">description 必须包含「何时该用 / 何时不该用」，而不是只是参数说明。</div>
+      </div>
+      <div class="premise-cell">
+        <div class="pm-label">DIM · 粒度</div>
+        <div class="pm-value">细 → 粗</div>
+        <div class="pm-extra">传统 API 靠代码组合；模型工具一次调用对齐一个用户意图。</div>
+      </div>
+      <div class="premise-cell">
+        <div class="pm-label">DIM · 错误</div>
+        <div class="pm-value">异常码 → 可读文本</div>
+        <div class="pm-extra">错误信息要告诉模型「怎么纠正」，而不是只扔一个 4xx 或堆栈。</div>
+      </div>
+      <div class="premise-cell">
+        <div class="pm-label">DIM · 状态</div>
+        <div class="pm-value">常带 session → 尽量无状态</div>
+        <div class="pm-extra">每次调用自包含；上下文压缩时仍能被复述、重放、单独审计。</div>
+      </div>
+      <div class="premise-cell">
+        <div class="pm-label">DIM · 返回</div>
+        <div class="pm-value">结构化 JSON → 可读文本</div>
+        <div class="pm-extra">结构化也行，但要模型能直接理解；不要返回内部枚举码或对象引用。</div>
+      </div>
+      <div class="premise-cell">
+        <div class="pm-label">DIM · 幂等</div>
+        <div class="pm-value">可选 → 强烈建议</div>
+        <div class="pm-extra">模型会重试、会改主意；写操作没有幂等键，会留下脏数据。</div>
+      </div>
+      <div class="premise-cell">
+        <div class="pm-label">DIM · 边界</div>
+        <div class="pm-value">上层兜底 → 工具内强校验</div>
+        <div class="pm-extra">不能假设「上层会过滤」— 模型直连，每个 mutate 工具自检权限 / 审批 / 审计。</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ④ 核心判据 -->
+  <div class="pcard">
+    <div class="pc-head">
+      <span class="pc-icon">✓</span>
+      <span class="pc-name">核心判据 — 一句话验收</span>
+    </div>
+    <span class="pc-attach">把这条贴在工具评审会议室门口</span>
+    <div class="verify" style="margin: 14px 4px 4px;">
+      <span class="verify-label">RULE OF THUMB</span>
+      把 description 写完后，<strong>一个从未看过代码的人</strong>能不能判断「什么时候该调这个工具」？<br/>
+      不能 → 说明粒度和语义还没对齐 LLM，回炉重做。<strong>不是模型不会用，是工具没写好。</strong>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,32 @@
+{
+  "name": "@nova/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "harness": "bin/harness.js"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "bin"
+  ],
+  "scripts": {
+    "build": "echo \"cli runs via tsx in M1; nothing to build\"",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nova/context": "workspace:*",
+    "@nova/core": "workspace:*",
+    "@nova/observability": "workspace:*",
+    "@nova/orchestration": "workspace:*",
+    "@nova/runtime": "workspace:*",
+    "@nova/safety": "workspace:*",
+    "@nova/tools": "workspace:*",
+    "cli-highlight": "^2.1.11",
+    "commander": "^12.0.0",
+    "tsx": "^4.7.2"
+  }
+}
