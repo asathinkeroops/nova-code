@@ -45,6 +45,8 @@ export const green = (s: string): string => wrap(32, 39, s);
 export const red = (s: string): string => wrap(31, 39, s);
 export const dim = (s: string): string => wrap(2, 22, s);
 export const cyan = (s: string): string => wrap(36, 39, s);
+export const blue = (s: string): string => wrap(34, 39, s);
+export const gray = (s: string): string => wrap(90, 39, s);
 export const yellow = (s: string): string => wrap(33, 39, s);
 export const magenta = (s: string): string => wrap(35, 39, s);
 export const bold = (s: string): string => wrap(1, 22, s);
