@@ -45,6 +45,7 @@ pnpm dev [prompt...]                # 直接发起一轮对话
 /clear             清空会话历史（保留 session）
 /compact [focus…]  把历史压缩成单条摘要消息
 /resume [<id>]     切到指定 session（不带参数则从列表选）
+/predict [on|off]  查看 / 切换下一条输入预测占位
 /exit, /quit       退出
 ```
 

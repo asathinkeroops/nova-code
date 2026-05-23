@@ -45,6 +45,7 @@ pnpm dev [prompt...]                # send one turn directly
 /clear             clear conversation history (keeps session)
 /compact [focus…]  summarize history into a single message
 /resume [<id>]     switch to a saved session (no arg = pick from list)
+/predict [on|off]  show or toggle next-input prediction placeholder
 /exit, /quit       leave the REPL
 ```
 
