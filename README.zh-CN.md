@@ -108,4 +108,4 @@ pnpm format / pnpm format:check
 
 ## License
 
-未指定。私有项目。
+[MIT](LICENSE) © Nova contributors.

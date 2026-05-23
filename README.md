@@ -108,4 +108,4 @@ New collaborators should start here:
 
 ## License
 
-Unspecified. Private project.
+[MIT](LICENSE) © Nova contributors.
