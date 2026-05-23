@@ -301,15 +301,16 @@ export const toolRenderers: Record<string, ToolRenderer> = {
   },
 };
 
+const THINKING_PREVIEW_CHARS = 200;
+
 export function renderThinking(text: string, label?: string): string {
   const header = `${magenta("✻")} ${dim(`thinking${label ? ` · ${label}` : ""}`)}`;
   const trimmed = text.replace(/\s+$/u, "");
   if (trimmed.length === 0) return header;
-  const body = trimmed
-    .split("\n")
-    .map((line) => dim(italic(line)))
-    .join("\n");
-  return `${header}\n${indentAsChild(body)}`;
+  const flat = trimmed.replace(/\s+/g, " ");
+  const preview =
+    flat.length > THINKING_PREVIEW_CHARS ? `${flat.slice(0, THINKING_PREVIEW_CHARS)}…` : flat;
+  return `${header}\n${indentAsChild(dim(italic(preview)))}`;
 }
 
 export function renderRedactedThinking(label?: string): string {

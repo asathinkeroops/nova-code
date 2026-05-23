@@ -35,7 +35,17 @@ import { PermissionDeniedError, PermissionEngine, promptApproval } from "@nova/s
 import { ToolRegistry, builtinTools, createDispatcher } from "@nova/tools";
 import { renderBanner } from "./banner.js";
 import { Screen, type Spinner } from "./screen.js";
-import { bold, cyan, dim, green, magenta, red, strike } from "./colors.js";
+import {
+  bold,
+  CYAN_RGB,
+  cyan,
+  dim,
+  green,
+  MAGENTA_RGB,
+  magenta,
+  red,
+  strike,
+} from "./colors.js";
 import { askUser } from "./ask.js";
 import { readBoxedLine, type SlashCommand } from "./input.js";
 import { renderMarkdown } from "./markdown.js";
@@ -46,6 +56,7 @@ import {
   renderToolUse,
 } from "./renderers.js";
 import { buildCompactor, manualCompact } from "./compactor.js";
+import { predictNextInput } from "./predict.js";
 import { pickHorizontal, pickOne, pickerArrow } from "./picker.js";
 import { emptyCursor, loadMessages, persistMessages, type PersistCursor } from "./persistence.js";
 import { ensureSettings } from "./setup.js";
@@ -140,7 +151,7 @@ function firstUserLabel(msgs: MessageParam[]): string {
   return "(no user message)";
 }
 
-function buildSystemPrompt(workspace: string, memory: MemoryBundle): string {
+function buildSystemPrompt(workspace: string, memory: MemoryBundle, sessionId: string): string {
   const base = `You are a coding agent at ${workspace}. Use tools to solve tasks. Use todo tools for checklist, mark in_progress before starting, completed when done, error when failed. Act, don't explain.
 <identity>
 name: Nova
@@ -148,7 +159,12 @@ name: Nova
 
 <system-info>
 platform: ${process.platform}
+time: ${new Date().toISOString()}
 </system-info>
+
+<session>
+id: ${sessionId}
+</session>
 `;
   if (!memory.system) return base;
   return `${base}\n${memory.system}\n`;
@@ -175,24 +191,24 @@ function renderTodoHeader(todos: Todo[]): string[] {
 }
 
 const WORKING_WORDS = [
-  "Thinking",
-  "Pondering",
-  "Churning",
-  "Crunching",
-  "Cooking",
-  "Brewing",
-  "Hatching",
-  "Mulling",
-  "Computing",
-  "Reasoning",
-  "Synthesizing",
-  "Cogitating",
-  "Deliberating",
-  "Working",
-  "Hustling",
-  "Tinkering",
-  "Plotting",
-  "Scheming",
+  "Thinking...",
+  "Pondering...",
+  "Churning...",
+  "Crunching...",
+  "Cooking...",
+  "Brewing...",
+  "Hatching...",
+  "Mulling...",
+  "Computing...",
+  "Reasoning...",
+  "Synthesizing...",
+  "Cogitating...",
+  "Deliberating...",
+  "Working...",
+  "Hustling...",
+  "Tinkering...",
+  "Plotting...",
+  "Scheming...",
 ];
 
 const SLASH_COMMANDS: SlashCommand[] = [
@@ -202,6 +218,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   { name: "/clear", description: "clear conversation history (keeps session)" },
   { name: "/compact", description: "summarize history into a single message" },
   { name: "/resume", description: "switch to a saved session" },
+  { name: "/predict", description: "show or toggle next-input prediction" },
   { name: "/exit", description: "leave the REPL" },
   { name: "/quit", description: "leave the REPL" },
 ];
@@ -213,6 +230,7 @@ const HELP_TEXT = `Commands:
   /clear             clear conversation history (keeps session)
   /compact [focus…]  summarize history into a single message (optional focus hint)
   /resume [<id>]     switch to a saved session (no arg = pick from list)
+  /predict [on|off]  show or toggle next-input prediction placeholder
   /exit, /quit       leave the REPL (Ctrl+D also works)`;
 
 async function run(positional: string[], opts: CliOptions): Promise<void> {
@@ -275,21 +293,16 @@ async function run(positional: string[], opts: CliOptions): Promise<void> {
   };
   const printBanner = (): void => {
     process.stdout.write(
-      `\n${renderBanner({ version, model: settings.model, cwd: workspace, home: homedir() })}\n`,
+      `\n${renderBanner({ version, model: settings.model, cwd: workspace, home: homedir(), sessionId: session.id })}\n`,
     );
   };
   if (resumed) clearScreen();
   printBanner();
-  process.stdout.write(
-    `\n${dim(`${resumed ? "resumed" : "session"} ${session.id} · log: ${logPath}`)}\n`,
-  );
   logger.info(
     { sessionId: session.id, dir: session.dir, resumed },
     resumed ? "session resumed" : "session started",
   );
   if (memory.sources.length > 0) {
-    const summary = memory.sources.map((s) => `${s.layer}:${s.path}`).join(", ");
-    process.stdout.write(`${dim(`memory · ${summary}`)}\n`);
     logger.info({ sources: memory.sources }, "memory loaded");
   }
 
@@ -366,6 +379,7 @@ async function run(positional: string[], opts: CliOptions): Promise<void> {
       apiKey,
       model: id,
       ...(settings.baseURL ? { baseURL: settings.baseURL } : {}),
+      ...(settings.thinking.format ? { thinkingFormat: settings.thinking.format } : {}),
     });
 
   let model = buildModel(settings.model);
@@ -418,7 +432,7 @@ async function run(positional: string[], opts: CliOptions): Promise<void> {
     toolSpinnerTimer = setTimeout(() => {
       toolSpinnerTimer = null;
       spinner = screen.startSpinner(
-        { words: WORKING_WORDS, colorize: cyan },
+        { words: WORKING_WORDS, tint: CYAN_RGB, colorize: cyan },
         "esc to interrupt",
       );
     }, TOOL_SPINNER_DELAY_MS);
@@ -494,6 +508,11 @@ async function run(positional: string[], opts: CliOptions): Promise<void> {
 
   const pendingUses = new Map<string, { name: string; input: Record<string, unknown> }>();
 
+  // Todo tools are bookkeeping for the agent; the user already sees the
+  // resulting list in the footer, so suppress their tool_use/tool_result UI.
+  const isTodoTool = (name: string | undefined): boolean =>
+    name === "createTodo" || name === "updateTodo" || name === "getTodos";
+
   const observer: LoopObserver = async (event) => {
     if (!opts.noTranscript) {
       await transcript.append({
@@ -504,7 +523,7 @@ async function run(positional: string[], opts: CliOptions): Promise<void> {
     }
     if (event.kind === "request_start") {
       spinner = screen.startSpinner(
-        { words: WORKING_WORDS, colorize: magenta },
+        { words: WORKING_WORDS, tint: MAGENTA_RGB, colorize: magenta },
         "esc to interrupt",
       );
     } else if (event.kind === "request_end") {
@@ -533,12 +552,14 @@ async function run(positional: string[], opts: CliOptions): Promise<void> {
     } else if (event.kind === "tool_use") {
       const use = event.payload as { id: string; name: string; input: Record<string, unknown> };
       pendingUses.set(use.id, { name: use.name, input: use.input });
-      screen.print(`\n${renderToolUse(use)}\n`);
       logger.info({ tool: use.name, input: use.input }, "→ tool_use");
-      // Cover the no-permission-gate path: if no permission_start follows,
-      // this timer is what shows the running indicator. permission_start
-      // (if any) will cancel it before the interactive prompt opens.
-      armToolSpinner(use.name);
+      if (!isTodoTool(use.name)) {
+        screen.print(`\n${renderToolUse(use)}\n`);
+        // Cover the no-permission-gate path: if no permission_start follows,
+        // this timer is what shows the running indicator. permission_start
+        // (if any) will cancel it before the interactive prompt opens.
+        armToolSpinner(use.name);
+      }
     } else if (event.kind === "permission_start") {
       // Entering interactive permission phase — kill any pending/running
       // tool spinner so it does not contend with the prompt UI.
@@ -555,8 +576,10 @@ async function run(positional: string[], opts: CliOptions): Promise<void> {
       const r = event.payload as { tool_use_id: string; is_error?: boolean; content: unknown };
       const pending = pendingUses.get(r.tool_use_id);
       if (pending) pendingUses.delete(r.tool_use_id);
-      screen.print(`${renderToolResult(pending?.name, r, pending?.input)}\n`);
       logger.info({ tool: pending?.name, isError: r.is_error ?? false }, "← tool_result");
+      if (!isTodoTool(pending?.name)) {
+        screen.print(`${renderToolResult(pending?.name, r, pending?.input)}\n`);
+      }
       if (pending?.name === "createTodo" || pending?.name === "updateTodo") {
         refreshTodoFooter();
       }
@@ -689,7 +712,7 @@ async function run(positional: string[], opts: CliOptions): Promise<void> {
     return true;
   };
 
-  const runTurn = async (userInput: string): Promise<void> => {
+  const runTurn = async (userInput: string): Promise<boolean> => {
     const beforeMessageCount = messages.length;
     messages.push(userText(userInput));
     await transcript.append({ kind: "user_prompt", data: { text: userInput } });
@@ -707,7 +730,7 @@ async function run(positional: string[], opts: CliOptions): Promise<void> {
       const budget = currentThinkingBudget();
       const result = await agentLoop({
         model,
-        system: buildSystemPrompt(workspace, memory),
+        system: buildSystemPrompt(workspace, memory, session.id),
         tools: registry.definitions(),
         executeTool: dispatch,
         messages,
@@ -749,6 +772,7 @@ async function run(positional: string[], opts: CliOptions): Promise<void> {
         `\n${green("done")} ${dim(`· ${result.turns} turn(s) · ${result.stopReason} · in=${result.totalUsage.inputTokens} out=${result.totalUsage.outputTokens}`)}\n`,
       );
       await transcript.flush();
+      return true;
     } catch (err) {
       stopSpinner();
       if (abortController.signal.aborted) {
@@ -769,6 +793,7 @@ async function run(positional: string[], opts: CliOptions): Promise<void> {
         await transcript.append({ kind: "error", data: { message: msg } });
         await transcript.flush();
       }
+      return false;
     } finally {
       turnState.abort = null;
       turnState.watcher = null;
@@ -776,8 +801,45 @@ async function run(positional: string[], opts: CliOptions): Promise<void> {
     }
   };
 
+  let nextPlaceholder = "";
+  const refreshPrediction = async (): Promise<void> => {
+    if (!settings.predict.enabled) return;
+    if (messages.length === 0) return;
+    spinner = screen.startSpinner({
+      words: ["Thinking ahead..."],
+      tint: CYAN_RGB,
+      colorize: cyan,
+    });
+    const t0 = Date.now();
+    try {
+      const result = await predictNextInput({
+        model,
+        messages,
+        maxChars: settings.predict.maxChars,
+        timeoutMs: settings.predict.timeoutMs,
+        ...(memory.system ? { memorySystem: memory.system } : {}),
+      });
+      stopSpinner();
+      const durationMs = Date.now() - t0;
+      if (result.text) {
+        nextPlaceholder = result.text;
+        logger.debug({ text: result.text, durationMs }, "predict ok");
+      } else {
+        logger.info(
+          { error: result.error, raw: result.raw, durationMs },
+          "predict produced no placeholder",
+        );
+      }
+    } catch (err) {
+      stopSpinner();
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn({ err: msg }, "predict threw");
+    }
+  };
+
   if (initialPrompt) {
-    await runTurn(initialPrompt);
+    const ok = await runTurn(initialPrompt);
+    if (ok) await refreshPrediction();
   }
 
   process.stdout.write(`\n${dim("REPL ready. Type /help for commands, /exit to quit.")}\n`);
@@ -785,8 +847,11 @@ async function run(positional: string[], opts: CliOptions): Promise<void> {
   while (true) {
     screen.detach();
     process.stdout.write("\n");
+    const placeholder = nextPlaceholder;
+    nextPlaceholder = "";
     const raw = await readBoxedLine({
       commands: SLASH_COMMANDS,
+      ...(placeholder ? { placeholder } : {}),
     });
     if (raw === null) break;
     const line = raw.trim();
@@ -799,9 +864,10 @@ async function run(positional: string[], opts: CliOptions): Promise<void> {
     }
     if (line === "/clear") {
       messages = [];
+      nextPlaceholder = "";
       await persist();
-      process.stdout.write("\n");
-      process.stdout.write(`${dim("conversation cleared.")}\n`);
+      clearScreen();
+      printBanner();
       continue;
     }
     if (line === "/compact" || line.startsWith("/compact ")) {
@@ -820,6 +886,7 @@ async function run(positional: string[], opts: CliOptions): Promise<void> {
           ...(focus ? { focus } : {}),
         });
         messages = result.messages;
+        nextPlaceholder = "";
         await persist();
         const seconds = (spinner.elapsedMs() / 1000).toFixed(1);
         const tail = result.transcriptPath ? ` · snapshot: ${result.transcriptPath}` : "";
@@ -911,6 +978,7 @@ async function run(positional: string[], opts: CliOptions): Promise<void> {
         process.stdout.write(`${dim("already on that session.")}\n`);
         continue;
       }
+      nextPlaceholder = "";
       await switchToSession(target);
       continue;
     }
@@ -929,6 +997,28 @@ async function run(positional: string[], opts: CliOptions): Promise<void> {
           process.stdout.write(`${red("✗")} ${dim(`failed to save settings: ${msg}`)}\n`);
         }
         process.stdout.write(`${dim("model set to")} ${arg}\n`);
+      }
+      continue;
+    }
+    if (line === "/predict" || line.startsWith("/predict ")) {
+      process.stdout.write("\n");
+      const arg = line.slice("/predict".length).trim();
+      if (!arg) {
+        process.stdout.write(
+          `${dim("predict:")} ${settings.predict.enabled ? "on" : "off"}\n`,
+        );
+      } else if (arg === "on" || arg === "off") {
+        settings.predict.enabled = arg === "on";
+        if (!settings.predict.enabled) nextPlaceholder = "";
+        try {
+          await saveSettings({ predict: settings.predict });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          process.stdout.write(`${red("✗")} ${dim(`failed to save settings: ${msg}`)}\n`);
+        }
+        process.stdout.write(`${dim("predict set to")} ${arg}\n`);
+      } else {
+        process.stdout.write(`${red("✗")} ${dim("expected on or off")}\n`);
       }
       continue;
     }
@@ -986,7 +1076,8 @@ async function run(positional: string[], opts: CliOptions): Promise<void> {
 
     todoStore.clear();
     refreshTodoFooter();
-    await runTurn(line);
+    const ok = await runTurn(line);
+    if (ok) await refreshPrediction();
   }
 
   process.stdout.write(`\nBye!\n`);

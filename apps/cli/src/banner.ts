@@ -8,6 +8,7 @@ export interface BannerInput {
   model: string;
   cwd: string;
   home?: string;
+  sessionId: string;
 }
 
 export function renderBanner(opts: BannerInput): string {
@@ -28,7 +29,8 @@ export function renderBanner(opts: BannerInput): string {
     cyan("╚═╝  ╚═══╝ ╚═════╝   ╚═══╝  ╚═╝  ╚═╝"),
     "",
     `${dim("model:")}     ${opts.model}    ${dim("/model to change")}`,
-    `${dim("directory:")} ${cwdDisplay}`
+    `${dim("directory:")} ${cwdDisplay}`,
+    `${dim("session:")}   ${opts.sessionId}`,
   ];
 
   const inner = Math.max(...lines.map((l) => stripAnsi(l).length));

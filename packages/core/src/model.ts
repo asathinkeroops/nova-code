@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { zodToJsonSchema } from "zod-to-json-schema";
+import { THINKING_BUDGETS } from "./thinking.js";
 import type {
   AssistantTurn,
   ContentBlock,
@@ -26,10 +27,37 @@ export interface ModelRequest {
   thinkingBudgetTokens?: number;
 }
 
+/**
+ * Wire format for the thinking knob.
+ *
+ * - `anthropic` — first-party Claude format: `thinking.budget_tokens`.
+ * - `deepseek`  — DeepSeek's Anthropic-compatible endpoint: it accepts
+ *   `thinking.type` but rejects `budget_tokens`, taking intensity via
+ *   `output_config.effort` ("high" | "max") instead.
+ */
+export type ThinkingFormat = "anthropic" | "deepseek";
+
 export interface AnthropicModelConfig {
   apiKey: string;
   model: string;
   baseURL?: string;
+  /**
+   * Override the thinking wire format. Defaults to auto-detect from the model
+   * id (anything containing "deepseek" → `deepseek`, else `anthropic`).
+   */
+  thinkingFormat?: ThinkingFormat;
+}
+
+export function detectThinkingFormat(model: string): ThinkingFormat {
+  return /deepseek/i.test(model) ? "deepseek" : "anthropic";
+}
+
+// DeepSeek only exposes "high" and "max". Anything below our `max` budget
+// (32k tokens, see THINKING_BUDGETS) rounds to "high"; at-or-above rounds to
+// "max" — matches DeepSeek's documented behavior where low/medium are
+// rewritten to high on their side.
+function budgetToEffort(budget: number): "high" | "max" {
+  return budget >= THINKING_BUDGETS.max ? "max" : "high";
 }
 
 export function createAnthropicModel(config: AnthropicModelConfig): ModelClient {
@@ -37,6 +65,7 @@ export function createAnthropicModel(config: AnthropicModelConfig): ModelClient 
     apiKey: config.apiKey,
     ...(config.baseURL ? { baseURL: config.baseURL } : {}),
   });
+  const format = config.thinkingFormat ?? detectThinkingFormat(config.model);
 
   return {
     async call(req: ModelRequest): Promise<AssistantTurn> {
@@ -51,9 +80,29 @@ export function createAnthropicModel(config: AnthropicModelConfig): ModelClient 
 
       const budget = req.thinkingBudgetTokens ?? 0;
       const thinkingEnabled = budget > 0;
-      const maxTokens = thinkingEnabled
-        ? Math.max(req.maxTokens, budget + 4096)
-        : req.maxTokens;
+      // Anthropic requires max_tokens > budget_tokens; DeepSeek doesn't take a
+      // budget so there's nothing to outgrow.
+      const maxTokens =
+        thinkingEnabled && format === "anthropic"
+          ? Math.max(req.maxTokens, budget + 4096)
+          : req.maxTokens;
+      let thinkingParams: Record<string, unknown> = {};
+      if (thinkingEnabled) {
+        if (format === "deepseek") {
+          thinkingParams = {
+            thinking: { type: "enabled" as const },
+            output_config: { effort: budgetToEffort(budget) },
+          };
+        } else {
+          thinkingParams = {
+            thinking: { type: "enabled" as const, budget_tokens: budget },
+          };
+        }
+      } else {
+        thinkingParams = {
+          thinking: { type: "disabled" },
+        };
+      }
 
       const res = await client.messages.create(
         {
@@ -62,10 +111,8 @@ export function createAnthropicModel(config: AnthropicModelConfig): ModelClient 
           system: req.system,
           messages: req.messages as Anthropic.MessageParam[],
           tools: tools as Anthropic.Tool[],
-          ...(thinkingEnabled
-            ? { thinking: { type: "enabled" as const, budget_tokens: budget } }
-            : {}),
-        },
+          ...thinkingParams,
+        } as Anthropic.MessageCreateParamsNonStreaming,
         req.signal ? { signal: req.signal } : undefined,
       );
 

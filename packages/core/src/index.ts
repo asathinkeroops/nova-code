@@ -10,9 +10,11 @@ export {
 export { decide, type StopDecision } from "./stop-reason.js";
 export {
   createAnthropicModel,
+  detectThinkingFormat,
   type ModelClient,
   type ModelRequest,
   type AnthropicModelConfig,
+  type ThinkingFormat,
 } from "./model.js";
 export {
   agentLoop,

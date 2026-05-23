@@ -33,9 +33,11 @@ export const settingsSchema = z.object({
       rules: [
         { tool: "read", effect: "allow" },
         { tool: "ask_user_question", effect: "allow" },
-        { tool: "createTodo", effect:"allow" }, 
-        { tool: "updateTodo", effect:"allow" }, 
-        { tool: "getTodos", effect:"allow" }, 
+        { tool: "createTodo", effect: "allow" },
+        { tool: "updateTodo", effect: "allow" },
+        { tool: "getTodos", effect: "allow" },
+        { tool: "grep", effect: "allow" },
+        { tool: "glob", effect: "allow" },
       ],
     }),
   transcript: z
@@ -55,6 +57,9 @@ export const settingsSchema = z.object({
       // Explicit override wins over the level mapping when set; lets users
       // dial in an exact `budget_tokens` without inventing a new level.
       budgetTokens: z.number().int().positive().optional(),
+      // Wire format for the thinking parameter. Omit to auto-detect from the
+      // model id (DeepSeek uses output_config.effort, not budget_tokens).
+      format: z.enum(["anthropic", "deepseek"]).optional(),
     })
     .default({ level: "off" }),
   memory: z
@@ -90,6 +95,15 @@ export const settingsSchema = z.object({
         .default({ enabled: true }),
     })
     .default({ micro: { enabled: true }, auto: { enabled: true } }),
+  // Next-user-input prediction shown as the input box placeholder. The CLI
+  // runs this once after each successful agent turn using the main model.
+  predict: z
+    .object({
+      enabled: z.boolean().default(true),
+      timeoutMs: z.number().int().positive().default(8000),
+      maxChars: z.number().int().positive().default(20),
+    })
+    .default({ enabled: true, timeoutMs: 8000, maxChars: 20 }),
 });
 
 export type Settings = z.infer<typeof settingsSchema>;

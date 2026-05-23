@@ -388,6 +388,14 @@ export function readBoxedLine(opts: BoxedInputOptions = {}): Promise<string | nu
         return;
       }
       if (str === `${CSI}C`) {
+        if (buffer.length === 0 && placeholderText.length > 0) {
+          buffer = placeholderText;
+          cursor = buffer.length;
+          popupDismissed = false;
+          selectedSuggestion = 0;
+          render();
+          return;
+        }
         if (cursor < buffer.length) {
           cursor++;
           render();
