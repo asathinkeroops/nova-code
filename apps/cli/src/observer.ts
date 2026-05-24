@@ -32,6 +32,11 @@ export function createObserver(ctx: CliContext): LoopObserver {
     }
     if (event.kind === "messages_changed") {
       const p = event.payload as { messages: MessageParam[] };
+      // Mirror into ctx.messages too. agentLoop only returns its accumulated
+      // messages on success, so without this mirror an ESC mid-loop would
+      // drop every assistant/tool block that landed during the run and the
+      // next turn's setMessages would wipe the visible history.
+      ctx.messages = p.messages;
       ctx.screen.setMessages(p.messages);
       // Keep the thinking label in sync so historical thinking blocks render
       // with the level that was active when they were generated. (We only have

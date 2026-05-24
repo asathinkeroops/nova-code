@@ -49,6 +49,11 @@ export const blue = (s: string): string => wrap(34, 39, s);
 export const gray = (s: string): string => wrap(90, 39, s);
 export const yellow = (s: string): string => wrap(33, 39, s);
 export const magenta = (s: string): string => wrap(35, 39, s);
+export const orange = (s: string): string => {
+  if (!useColor) return s;
+  if (useTruecolor) return rgbFg([255, 140, 50], s);
+  return wrap(33, 39, s);
+};
 export const bold = (s: string): string => wrap(1, 22, s);
 export const italic = (s: string): string => wrap(3, 23, s);
 export const underline = (s: string): string => wrap(4, 24, s);

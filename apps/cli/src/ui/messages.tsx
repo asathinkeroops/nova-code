@@ -7,7 +7,7 @@ import {
   type MessageParam,
   type ToolResultBlock,
 } from "@nova/core";
-import { bold, cyan, dim, red, yellow } from "../colors.js";
+import { blue, bold, orange, red } from "../colors.js";
 import { renderMarkdown } from "./markdown.js";
 import type { Card } from "./store.js";
 import { RedactedThinkingBlock, ThinkingBlock } from "./thinking.js";
@@ -103,8 +103,9 @@ function groupCardsByAnchor(cards: Card[]): Map<number, Card[]> {
 }
 
 function CardView({ card }: { card: Card }): React.ReactElement {
-  const bar =
-    card.kind === "error" ? red("│") : card.kind === "warn" ? yellow("│") : dim("│");
+  const color = card.kind === "error" ? red : card.kind === "warn" ? orange : blue;
+  const symbol = card.kind === "error" ? "✗" : card.kind === "warn" ? "⚠" : "ℹ";
+  const bar = color("│");
   const bodyLines = card.text.split("\n");
   // Strip a single leading/trailing blank line — callers may pad with "\n"
   // out of habit from the static-print world, which would render as an empty
@@ -117,7 +118,7 @@ function CardView({ card }: { card: Card }): React.ReactElement {
       {card.title ? (
         <Box flexDirection="row">
           <Text>{bar} </Text>
-          <Text>{bold(cyan(card.title))}</Text>
+          <Text>{color(symbol)} {bold(color(card.title))}</Text>
         </Box>
       ) : null}
       {bodyLines.map((line, i) => (

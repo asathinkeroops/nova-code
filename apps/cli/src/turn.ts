@@ -18,7 +18,6 @@ import { buildSystemPrompt } from "./system-prompt.js";
  * conversation state stays valid).
  */
 export async function runTurn(ctx: CliContext, userInput: string): Promise<boolean> {
-  const beforeMessageCount = ctx.messages.length;
   ctx.messages.push(userText(userInput));
   // Show the user's prompt immediately — the loop's first messages_changed
   // event would do this too, but only after model.call starts; with the model
@@ -77,11 +76,11 @@ export async function runTurn(ctx: CliContext, userInput: string): Promise<boole
   } catch (err) {
     stopSpinner(ctx);
     if (abortController.signal.aborted) {
-      // Roll back the user message so the conversation state stays valid
-      // (no dangling user turn without an assistant reply).
-      ctx.messages.length = beforeMessageCount;
-      ctx.screen.setMessages([...ctx.messages]);
-      ctx.screen.print(`\n${dim("✗ interrupted by user (esc)")}\n`);
+      // Keep the user message in `ctx.messages` so the bubble the user just
+      // typed stays visible. The Anthropic API tolerates a trailing user turn
+      // (and even consecutive user turns), so this stays valid for the next
+      // call.
+      ctx.screen.card(dim("interrupted by user"), { title: "ESC" });
       ctx.logger.info({}, "loop interrupted by user");
       await ctx.transcript.append({ kind: "error", data: { message: "interrupted by user" } });
       await ctx.transcript.flush();
