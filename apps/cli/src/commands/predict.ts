@@ -3,13 +3,13 @@ import { dim, red } from "../colors.js";
 import type { CliContext } from "../context.js";
 
 export async function handlePredict(ctx: CliContext, arg: string): Promise<void> {
-  process.stdout.write("\n");
+  ctx.screen.print("\n");
   if (!arg) {
-    process.stdout.write(`${dim("predict:")} ${ctx.settings.predict.enabled ? "on" : "off"}\n`);
+    ctx.screen.print(`${dim("predict:")} ${ctx.settings.predict.enabled ? "on" : "off"}\n`);
     return;
   }
   if (arg !== "on" && arg !== "off") {
-    process.stdout.write(`${red("✗")} ${dim("expected on or off")}\n`);
+    ctx.screen.print(`${red("✗")} ${dim("expected on or off")}\n`);
     return;
   }
   ctx.settings.predict.enabled = arg === "on";
@@ -18,7 +18,7 @@ export async function handlePredict(ctx: CliContext, arg: string): Promise<void>
     await saveSettings({ predict: ctx.settings.predict });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    process.stdout.write(`${red("✗")} ${dim(`failed to save settings: ${msg}`)}\n`);
+    ctx.screen.print(`${red("✗")} ${dim(`failed to save settings: ${msg}`)}\n`);
   }
-  process.stdout.write(`${dim("predict set to")} ${arg}\n`);
+  ctx.screen.print(`${dim("predict set to")} ${arg}\n`);
 }

@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import React from "react";
 import { loadMemory, type MemoryBundle } from "@nova/context";
 import {
   createAnthropicModel,
@@ -19,26 +20,20 @@ import {
   type Session,
   type Settings,
 } from "@nova/runtime";
-import {
-  PermissionDeniedError,
-  PermissionEngine,
-  promptApproval,
-} from "@nova/safety";
+import { PermissionDeniedError, PermissionEngine } from "@nova/safety";
 import { ToolRegistry, builtinTools, createDispatcher } from "@nova/tools";
-import { renderBanner } from "./banner.js";
 import { CYAN_RGB, cyan, dim, red } from "./colors.js";
 import { buildCompactor } from "./compactor.js";
 import { TOOL_SPINNER_DELAY_MS, WORKING_WORDS } from "./constants.js";
-import type { EscWatcher } from "./esc-watcher.js";
 import {
   emptyCursor,
   loadMessages,
   persistMessages,
   type PersistCursor,
 } from "./persistence.js";
-import { renderHistory, resolveSession } from "./session-view.js";
+import { resolveSession } from "./session.js";
 import { Screen, type Spinner } from "./screen.js";
-import { renderTodoHeader } from "./todo-footer.js";
+import { Banner } from "./ui/banner.js";
 
 export interface CliRuntimeOptions {
   cwd?: string;
@@ -73,13 +68,12 @@ export interface CliContext {
   spinner: Spinner | null;
   toolSpinnerTimer: NodeJS.Timeout | null;
   nextPlaceholder: string;
-  pendingUses: Map<string, { name: string; input: Record<string, unknown> }>;
   /**
-   * Shared ref-box for the per-turn AbortController and ESC watcher. The
-   * persistent permission ask callback reads through this box to see the
-   * *current* turn's controller.
+   * Shared ref-box for the per-turn AbortController. The persistent
+   * permission ask callback reads through this box to see the *current*
+   * turn's controller.
    */
-  turnState: { abort: AbortController | null; watcher: EscWatcher | null };
+  turnState: { abort: AbortController | null };
 
   // ===== Read-only after init =====
   readonly apiKey: string;
@@ -116,24 +110,22 @@ async function readCliVersion(): Promise<string> {
   }
 }
 
-export function clearScreen(): void {
-  process.stdout.write("\x1b[2J\x1b[H");
-}
-
 export function printBanner(ctx: CliContext): void {
-  process.stdout.write(
-    `\n${renderBanner({
+  ctx.screen.print("\n");
+  ctx.screen.printNode(
+    React.createElement(Banner, {
       version: ctx.version,
       model: ctx.settings.model,
       cwd: ctx.workspace,
       home: homedir(),
       sessionId: ctx.session.id,
-    })}\n`,
+    }),
   );
+  ctx.screen.print("\n");
 }
 
 export function refreshTodoFooter(ctx: CliContext): void {
-  ctx.screen.setFooter(renderTodoHeader(ctx.todoStore.list()));
+  ctx.screen.setTodos(ctx.todoStore.list());
 }
 
 export function stopSpinner(ctx: CliContext, finalLine?: string): void {
@@ -177,7 +169,7 @@ export async function persist(ctx: CliContext): Promise<void> {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     ctx.logger.error({ err: msg }, "failed to persist messages");
-    process.stderr.write(`${dim(`(warning: persist failed — ${msg})`)}\n`);
+    ctx.screen.printErr(`${dim(`(warning: persist failed — ${msg})`)}\n`);
   }
 }
 
@@ -196,12 +188,11 @@ export function thinkingLevelLabel(ctx: CliContext): string | undefined {
 
 export async function createContext(
   settings: Settings,
+  screen: Screen,
   cliOpts: CliRuntimeOptions,
 ): Promise<CliContext> {
   const apiKey = settings.apiKey;
   if (!apiKey) {
-    // Caller (index.ts) is expected to check; defensive throw so internal
-    // misuse doesn't silently coerce to "".
     throw new Error("apiKey is not set in settings");
   }
 
@@ -237,7 +228,6 @@ export async function createContext(
     await transcript.append({ kind: "memory_loaded", data: { sources: memory.sources } });
   }
 
-  const screen = new Screen();
   const todoStore = new TodoStore();
   const registry = new ToolRegistry().registerAll(builtinTools(todoStore));
   const dispatch = createDispatcher({ registry, logger });
@@ -250,10 +240,6 @@ export async function createContext(
       ...(settings.thinking.format ? { thinkingFormat: settings.thinking.format } : {}),
     });
 
-  // Build ctx as a shell first, then attach helpers that close over ctx
-  // itself (compactor reads ctx.model / ctx.session.dir, askWithSignal reads
-  // ctx.turnState, etc.). The non-null casts on the fields populated below
-  // keep the public type honest.
   const ctx: CliContext = {
     session,
     logger,
@@ -269,8 +255,7 @@ export async function createContext(
     spinner: null,
     toolSpinnerTimer: null,
     nextPlaceholder: "",
-    pendingUses: new Map(),
-    turnState: { abort: null, watcher: null },
+    turnState: { abort: null },
     apiKey,
     workspace,
     memory,
@@ -288,28 +273,21 @@ export async function createContext(
     buildModel,
   };
 
-  // askWithSignal: bridges the persistent permission engine into the
-  // *current* turn's abort controller. Ink owns stdin during the prompt, so
-  // we suspend our raw-mode listener and detach the sticky footer.
-  const askWithSignal: typeof promptApproval = async (decision, input) => {
+  // Permission ask bridges into the current turn's abort controller so a
+  // long-pending prompt gets cancelled when the user hits Esc.
+  const askWithSignal: Screen["promptApproval"] = async (decision, input) => {
     const controller = ctx.turnState.abort;
     if (controller?.signal.aborted) return "no";
-    ctx.turnState.watcher?.suspend();
-    ctx.screen.detach();
-    try {
-      const promptOpts: Parameters<typeof promptApproval>[2] = {};
-      if (controller) {
-        promptOpts.signal = controller.signal;
-        promptOpts.onCancel = () => {
-          if (!controller.signal.aborted) {
-            controller.abort(new Error("interrupted by user"));
-          }
-        };
-      }
-      return await promptApproval(decision, input, promptOpts);
-    } finally {
-      ctx.turnState.watcher?.resume();
+    const promptOpts: Parameters<Screen["promptApproval"]>[2] = {};
+    if (controller) {
+      promptOpts.signal = controller.signal;
+      promptOpts.onCancel = () => {
+        if (!controller.signal.aborted) {
+          controller.abort(new Error("interrupted by user"));
+        }
+      };
     }
+    return await ctx.screen.promptApproval(decision, input, promptOpts);
   };
 
   const permission = PermissionEngine.fromSettings(settings, askWithSignal);
@@ -343,8 +321,11 @@ export async function createContext(
     },
   });
 
-  // Initial banner + log lines mirror the original startup order.
-  if (resumed) clearScreen();
+  // For resumed sessions, wipe whatever is already on screen (setup wizard
+  // output, previous scrollback, etc.) so the loaded history shows cleanly.
+  if (resumed) await ctx.screen.reset();
+
+  ctx.screen.setThinkingLabel(thinkingLevelLabel(ctx));
   printBanner(ctx);
   logger.info(
     { sessionId: session.id, dir: session.dir, resumed },
@@ -354,7 +335,6 @@ export async function createContext(
     logger.info({ sources: memory.sources }, "memory loaded");
   }
 
-  // Restore messages from disk if resuming.
   if (resumed) {
     try {
       const msgs = await loadMessages(session.messagesPath);
@@ -366,13 +346,14 @@ export async function createContext(
               count: msgs.length,
               lastLine: JSON.stringify(msgs[msgs.length - 1]),
             };
-      process.stdout.write(`${dim(`loaded ${msgs.length} message(s) from disk`)}\n`);
+      ctx.screen.print(`${dim(`loaded ${msgs.length} message(s) from disk`)}\n`);
       logger.info({ count: msgs.length }, "messages restored");
-      renderHistory(msgs);
+      ctx.screen.setMessages(msgs);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      process.stderr.write(`${red(`✗ failed to load messages: ${msg}`)}\n`);
+      ctx.screen.printErr(`${red(`✗ failed to load messages: ${msg}`)}\n`);
       logger.error({ err: msg }, "failed to load messages");
+      await ctx.screen.unmount();
       process.exit(2);
     }
   }

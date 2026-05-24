@@ -97,12 +97,12 @@ describe("createAnthropicModel thinking params", () => {
     expect(params.output_config).toEqual({ effort: "high" });
   });
 
-  it("omits thinking params entirely when budget is 0", async () => {
+  it("sends explicit thinking: disabled and no output_config when budget is 0", async () => {
     mockCreate.mockResolvedValueOnce(okResponse());
     const m = createAnthropicModel({ apiKey: "x", model: "deepseek-chat" });
     await m.call({ ...baseReq });
     const params = mockCreate.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(params.thinking).toBeUndefined();
+    expect(params.thinking).toEqual({ type: "disabled" });
     expect(params.output_config).toBeUndefined();
   });
 });

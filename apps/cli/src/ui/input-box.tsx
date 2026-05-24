@@ -1,0 +1,301 @@
+import React, { useState } from "react";
+import { Box, Text, useInput, useStdout } from "ink";
+import { charDisplayWidth, visibleWidth } from "./width.js";
+
+export interface SlashCommand {
+  name: string;
+  description: string;
+}
+
+export interface BoxedInputOptions {
+  prompt?: string;
+  placeholder?: string;
+  /** Override terminal width detection (for tests). */
+  width?: number;
+  /** Slash commands shown in a popup when the buffer starts with "/". */
+  commands?: SlashCommand[];
+  /** Render typed characters as `*` (passwords / API keys). */
+  mask?: boolean;
+}
+
+interface DisplayLine {
+  content: string;
+  bufStart: number;
+  bufEnd: number;
+}
+
+const POPUP_MAX_ROWS = 8;
+const RULE_CHAR = "─";
+const MIN_WIDTH = 20;
+const PROMPT_TEXT = "› ";
+const PROMPT_LEN = visibleWidth(PROMPT_TEXT);
+
+function wrapBuffer(buffer: string, width: number): DisplayLine[] {
+  const firstCap = Math.max(1, width - 1 - PROMPT_LEN);
+  const restCap = Math.max(1, width - 1);
+  if (buffer.length === 0) {
+    return [{ content: "", bufStart: 0, bufEnd: 0 }];
+  }
+  const lines: DisplayLine[] = [];
+  let i = 0;
+  while (i < buffer.length) {
+    const cap = lines.length === 0 ? firstCap : restCap;
+    let j = i;
+    let used = 0;
+    while (j < buffer.length) {
+      const w = charDisplayWidth(buffer, j);
+      if (used + w > cap) break;
+      used += w;
+      j++;
+    }
+    if (j === i) j = i + 1; // forward progress
+    lines.push({ content: buffer.slice(i, j), bufStart: i, bufEnd: j });
+    i = j;
+  }
+  return lines;
+}
+
+function findCursorPosition(
+  lines: DisplayLine[],
+  cursor: number,
+): { row: number; col: number } {
+  for (let li = 0; li < lines.length; li++) {
+    const dl = lines[li];
+    if (!dl) continue;
+    const inLine = li === lines.length - 1 ? cursor <= dl.bufEnd : cursor < dl.bufEnd;
+    if (cursor >= dl.bufStart && inLine) {
+      const col = visibleWidth(dl.content.slice(0, cursor - dl.bufStart));
+      return { row: li, col };
+    }
+  }
+  return { row: 0, col: 0 };
+}
+
+function matchingCommands(
+  buffer: string,
+  commands: SlashCommand[],
+  dismissed: boolean,
+): SlashCommand[] {
+  if (dismissed || commands.length === 0) return [];
+  if (!buffer.startsWith("/")) return [];
+  const query = buffer.slice(1).toLowerCase();
+  const seen = new Set<string>();
+  const out: SlashCommand[] = [];
+  for (const c of commands) {
+    if (seen.has(c.name)) continue;
+    const tail = c.name.startsWith("/") ? c.name.slice(1) : c.name;
+    if (tail.toLowerCase().startsWith(query)) {
+      seen.add(c.name);
+      out.push(c);
+    }
+  }
+  return out;
+}
+
+interface LineSlice {
+  content: string;
+  cursorCol: number | null;
+  showCursorAtEnd: boolean;
+}
+
+function buildLineWithCursor(
+  line: DisplayLine,
+  isCursorLine: boolean,
+  cursor: number,
+): LineSlice {
+  if (!isCursorLine) {
+    return { content: line.content, cursorCol: null, showCursorAtEnd: false };
+  }
+  const offsetInLine = cursor - line.bufStart;
+  if (offsetInLine >= line.content.length) {
+    return { content: line.content, cursorCol: null, showCursorAtEnd: true };
+  }
+  return { content: line.content, cursorCol: offsetInLine, showCursorAtEnd: false };
+}
+
+export interface InputBoxProps {
+  options: BoxedInputOptions;
+  onSubmit: (value: string) => void;
+  onCancel: () => void;
+}
+
+export function InputBox({ options, onSubmit, onCancel }: InputBoxProps): React.ReactElement {
+  const [buffer, setBuffer] = useState("");
+  const [cursor, setCursor] = useState(0);
+  const [popupCursor, setPopupCursor] = useState(0);
+  const [popupDismissed, setPopupDismissed] = useState(false);
+  const { stdout } = useStdout();
+
+  const width = Math.max(MIN_WIDTH, options.width ?? stdout?.columns ?? 80);
+  const placeholderText = options.placeholder ?? "";
+  const commands = options.commands ?? [];
+  const mask = options.mask ?? false;
+
+  const matches = matchingCommands(buffer, commands, popupDismissed);
+  const effectivePopupCursor = popupCursor >= matches.length ? 0 : popupCursor;
+
+  const replaceBuffer = (next: string, nextCursor: number): void => {
+    setBuffer(next);
+    setCursor(Math.max(0, Math.min(nextCursor, next.length)));
+    setPopupDismissed(false);
+    setPopupCursor(0);
+  };
+
+  useInput((input, key) => {
+    if (key.ctrl && input === "c") {
+      onCancel();
+      return;
+    }
+    if (key.ctrl && input === "d") return;
+
+    if (key.return) {
+      if (buffer.length === 0) return;
+      const pick = matches[effectivePopupCursor];
+      const out = pick ? pick.name : buffer;
+      onSubmit(out);
+      return;
+    }
+    // Ink 5 maps macOS Backspace (\x7f) to key.delete; treat both as backward delete.
+    if (key.backspace || key.delete) {
+      if (cursor > 0) {
+        replaceBuffer(buffer.slice(0, cursor - 1) + buffer.slice(cursor), cursor - 1);
+      }
+      return;
+    }
+    if (key.upArrow) {
+      if (matches.length > 0) {
+        setPopupCursor((p) => (p - 1 + matches.length) % matches.length);
+      }
+      return;
+    }
+    if (key.downArrow) {
+      if (matches.length > 0) {
+        setPopupCursor((p) => (p + 1) % matches.length);
+      }
+      return;
+    }
+    if (key.tab) {
+      const pick = matches[effectivePopupCursor];
+      if (pick) {
+        setBuffer(pick.name);
+        setCursor(pick.name.length);
+        setPopupDismissed(true);
+        setPopupCursor(0);
+      }
+      return;
+    }
+    if (key.escape) {
+      if (!popupDismissed && matches.length > 0) {
+        setPopupDismissed(true);
+        setPopupCursor(0);
+      }
+      return;
+    }
+    if (key.leftArrow) {
+      if (cursor > 0) setCursor(cursor - 1);
+      return;
+    }
+    if (key.rightArrow) {
+      if (buffer.length === 0 && placeholderText.length > 0) {
+        replaceBuffer(placeholderText, placeholderText.length);
+        return;
+      }
+      if (cursor < buffer.length) setCursor(cursor + 1);
+      return;
+    }
+    if (key.ctrl && input === "a") {
+      if (cursor !== 0) setCursor(0);
+      return;
+    }
+    if (key.ctrl && input === "e") {
+      if (cursor !== buffer.length) setCursor(buffer.length);
+      return;
+    }
+    if (key.ctrl && input === "u") {
+      if (cursor > 0) replaceBuffer(buffer.slice(cursor), 0);
+      return;
+    }
+    if (key.ctrl && input === "k") {
+      if (cursor < buffer.length) replaceBuffer(buffer.slice(0, cursor), cursor);
+      return;
+    }
+    if (key.ctrl && input === "w") {
+      if (cursor > 0) {
+        const left = buffer.slice(0, cursor);
+        const trimmed = left.replace(/\S*\s*$/, "");
+        replaceBuffer(trimmed + buffer.slice(cursor), trimmed.length);
+      }
+      return;
+    }
+    if (!input) return;
+    // eslint-disable-next-line no-control-regex
+    const text = input.replace(/[\x00-\x1f]/g, "");
+    if (text.length === 0) return;
+    replaceBuffer(buffer.slice(0, cursor) + text + buffer.slice(cursor), cursor + text.length);
+  });
+
+  const rule = RULE_CHAR.repeat(width);
+  const isEmpty = buffer.length === 0;
+  const lines = wrapBuffer(buffer, width);
+  const { row: cursorRow } = isEmpty ? { row: 0 } : findCursorPosition(lines, cursor);
+
+  const renderContentLine = (line: DisplayLine, idx: number): React.ReactElement => {
+    const isCursorLine = idx === cursorRow;
+    const slice = buildLineWithCursor(line, isCursorLine, cursor);
+    const content = mask ? "*".repeat(slice.content.length) : slice.content;
+    return (
+      <Box key={idx}>
+        <Text>{" "}</Text>
+        {idx === 0 ? <Text color="cyan">{PROMPT_TEXT}</Text> : null}
+        {slice.cursorCol === null ? (
+          <Text>{content}</Text>
+        ) : (
+          <>
+            <Text>{content.slice(0, slice.cursorCol)}</Text>
+            <Text inverse>{content[slice.cursorCol] ?? " "}</Text>
+            <Text>{content.slice(slice.cursorCol + 1)}</Text>
+          </>
+        )}
+        {slice.showCursorAtEnd ? <Text inverse> </Text> : null}
+      </Box>
+    );
+  };
+
+  return (
+    <Box flexDirection="column" marginTop={1}>
+      <Text dimColor>{rule}</Text>
+      {isEmpty ? (
+        <Box>
+          <Text> </Text>
+          <Text color="cyan">{PROMPT_TEXT}</Text>
+          <Text inverse> </Text>
+          {placeholderText ? <Text dimColor>{placeholderText}</Text> : null}
+        </Box>
+      ) : (
+        lines.map(renderContentLine)
+      )}
+      <Text dimColor>{rule}</Text>
+      {matches.slice(0, POPUP_MAX_ROWS).map((m, i) => {
+        const isSel = i === effectivePopupCursor;
+        const arrow = isSel ? "❯ " : "  ";
+        const nameWidth = Math.min(
+          20,
+          Math.max(...matches.slice(0, POPUP_MAX_ROWS).map((mm) => visibleWidth(mm.name))),
+        );
+        const pad = " ".repeat(Math.max(1, nameWidth + 2 - visibleWidth(m.name)));
+        return (
+          <Text key={m.name} color={isSel ? "cyan" : undefined} dimColor={!isSel}>
+            {arrow}
+            {m.name}
+            {pad}
+            {m.description}
+          </Text>
+        );
+      })}
+      {matches.length > POPUP_MAX_ROWS ? (
+        <Text dimColor> … {matches.length - POPUP_MAX_ROWS} more</Text>
+      ) : null}
+    </Box>
+  );
+}
+

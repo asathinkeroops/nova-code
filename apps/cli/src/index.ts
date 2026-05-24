@@ -1,9 +1,11 @@
 import { Command } from "commander";
 import { isThinkingLevel } from "@nova/core";
 import { loadSettings } from "@nova/runtime";
+import { red } from "./colors.js";
 import { createContext } from "./context.js";
 import { runRepl } from "./repl.js";
-import { printSessionList } from "./session-view.js";
+import { Screen } from "./screen.js";
+import { printSessionList } from "./session.js";
 import { ensureSettings } from "./setup.js";
 
 interface CliOptions {
@@ -23,44 +25,70 @@ async function run(positional: string[], opts: CliOptions): Promise<void> {
   const initialPrompt = opts.prompt ?? positional.join(" ").trim();
 
   let settings = await loadSettings();
-  settings = await ensureSettings(settings);
-  if (opts.model) settings.model = opts.model;
-  if (opts.maxTurns) settings.maxTurns = opts.maxTurns;
-  if (opts.think) {
-    const raw = opts.think.trim();
-    const asNumber = Number.parseInt(raw, 10);
-    if (Number.isFinite(asNumber) && asNumber > 0 && String(asNumber) === raw) {
-      settings.thinking.budgetTokens = asNumber;
-    } else if (isThinkingLevel(raw)) {
-      settings.thinking.level = raw;
-      settings.thinking.budgetTokens = undefined;
-    } else {
-      console.error(
-        `invalid --think value: ${raw} (expected off|low|medium|high|max or a positive integer)`,
-      );
-      process.exit(2);
-    }
-  }
 
+  // Non-interactive query mode — runs without Ink and exits.
   if (opts.listSessions) {
     await printSessionList(settings.sessionDir);
     return;
   }
 
-  if (!settings.apiKey) {
-    console.error("apiKey is not set in nova.config.json (or equivalent settings file).");
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    process.stderr.write(
+      "harness requires an interactive terminal (TTY). " +
+        "Non-TTY usage (pipes, redirects, CI without a PTY) is not supported.\n",
+    );
     process.exit(2);
   }
 
-  const ctx = await createContext(settings, {
-    ...(opts.cwd !== undefined ? { cwd: opts.cwd } : {}),
-    ...(opts.resume !== undefined ? { resume: opts.resume } : {}),
-    ...(opts.continue !== undefined ? { continue: opts.continue } : {}),
-    ...(opts.noTranscript !== undefined ? { noTranscript: opts.noTranscript } : {}),
-    ...(opts.noPretty !== undefined ? { noPretty: opts.noPretty } : {}),
-  });
+  const screen = new Screen();
+  screen.mount();
 
-  await runRepl(ctx, initialPrompt);
+  try {
+    settings = await ensureSettings(settings, screen);
+    if (opts.model) settings.model = opts.model;
+    if (opts.maxTurns) settings.maxTurns = opts.maxTurns;
+    if (opts.think) {
+      const raw = opts.think.trim();
+      const asNumber = Number.parseInt(raw, 10);
+      if (Number.isFinite(asNumber) && asNumber > 0 && String(asNumber) === raw) {
+        settings.thinking.budgetTokens = asNumber;
+      } else if (isThinkingLevel(raw)) {
+        settings.thinking.level = raw;
+        settings.thinking.budgetTokens = undefined;
+      } else {
+        screen.printErr(
+          red(
+            `invalid --think value: ${raw} (expected off|low|medium|high|max or a positive integer)\n`,
+          ),
+        );
+        await screen.unmount();
+        process.exit(2);
+      }
+    }
+
+    if (!settings.apiKey) {
+      screen.printErr(
+        red("apiKey is not set in nova.config.json (or equivalent settings file).\n"),
+      );
+      await screen.unmount();
+      process.exit(2);
+    }
+
+    const ctx = await createContext(settings, screen, {
+      ...(opts.cwd !== undefined ? { cwd: opts.cwd } : {}),
+      ...(opts.resume !== undefined ? { resume: opts.resume } : {}),
+      ...(opts.continue !== undefined ? { continue: opts.continue } : {}),
+      ...(opts.noTranscript !== undefined ? { noTranscript: opts.noTranscript } : {}),
+      ...(opts.noPretty !== undefined ? { noPretty: opts.noPretty } : {}),
+    });
+
+    await runRepl(ctx, initialPrompt);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    screen.printErr(`${red(`✗ ${msg}`)}\n`);
+    await screen.unmount();
+    process.exit(1);
+  }
 }
 
 const program = new Command();

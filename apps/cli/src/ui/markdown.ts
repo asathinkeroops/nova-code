@@ -8,9 +8,10 @@ import {
   strike,
   underline,
   yellow,
-} from "./colors.js";
+} from "../colors.js";
 
 const HR_WIDTH = 60;
+// eslint-disable-next-line no-control-regex
 const ANSI_RE = /\x1b\[[0-9;]*m/g;
 
 function charWidth(cp: number): number {
@@ -148,6 +149,7 @@ function renderInline(text: string): string {
 
   s = s.replace(/~~([^~\n]+)~~/g, (_m, t: string) => strike(t));
 
+  // eslint-disable-next-line no-control-regex
   s = s.replace(/\x00(\d+)\x00/g, (_m, i: string) => tokens[Number(i)] ?? "");
   return s;
 }

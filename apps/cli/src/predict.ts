@@ -38,6 +38,7 @@ function formatHistory(messages: MessageParam[]): string {
 
 function cleanPrediction(raw: string, maxChars: number): string | null {
   let cleaned = raw.split(/\r?\n/)[0] ?? "";
+  // eslint-disable-next-line no-control-regex
   cleaned = cleaned.replace(/[\x00-\x1f\x7f]/g, "").trim();
   cleaned = cleaned.replace(/^["'`「『（(]+|["'`」』）)]+$/g, "").trim();
   if (!cleaned) return null;

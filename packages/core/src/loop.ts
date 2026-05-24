@@ -35,8 +35,9 @@ export interface AgentLoopOptions {
   /**
    * Pre-call hook: invoked before every `model.call` so the caller can shrink
    * the message history (micro-compact, auto-summarize, etc.) without the loop
-   * knowing about any compaction strategy. The loop emits a "compact" event
-   * iff the returned array is not the same reference as the input.
+   * knowing about any compaction strategy. When the returned array is a
+   * different reference than the input, the loop swaps it in and emits a
+   * `messages_changed` event so observers can resync.
    */
   compactor?: (messages: MessageParam[]) => Promise<MessageParam[]>;
   /**
@@ -46,8 +47,8 @@ export interface AgentLoopOptions {
    * MessageParam to append to the conversation. Return undefined / [] for a
    * no-op. Exceptions bubble up and abort the loop.
    *
-   * The loop emits an "interject" event iff the returned array is non-empty,
-   * with payload { from, to } mirroring "compact".
+   * The loop emits an "interject" event with payload { from, to } iff the
+   * returned array is non-empty.
    */
   interject?: (ctx: {
     turn: number;
@@ -82,6 +83,7 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
     cacheCreationInputTokens: 0,
   };
 
+  // eslint-disable-next-line no-constant-condition
   while (true) {
     if (turn >= opts.maxTurns) {
       throw new Error(
@@ -93,12 +95,8 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
     if (opts.compactor) {
       const compacted = await opts.compactor(messages);
       if (compacted !== messages) {
-        await opts.observer?.({
-          turn,
-          kind: "compact",
-          payload: { from: messages.length, to: compacted.length },
-        });
         messages = compacted;
+        await opts.observer?.({ turn, kind: "messages_changed", payload: { messages } });
       }
     }
 
@@ -153,6 +151,7 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
     const assistantMsg = assistantMessage(res.content);
     messages = appendMessage(messages, assistantMsg);
     await opts.observer?.({ turn, kind: "assistant", payload: assistantMsg });
+    await opts.observer?.({ turn, kind: "messages_changed", payload: { messages } });
 
     const decision = decide(res.stopReason);
 
@@ -184,7 +183,20 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
     // permission_end → executeTool → tool_result. Every tool_use always
     // produces a tool_result so the pairing the API requires on the next
     // turn stays intact, even if a tool throws or an observer throws.
+    //
+    // Result commit is incremental: we append the user message before the
+    // loop with no results, then replace it after each tool finishes. This
+    // keeps `messages` as the single source of truth — observers see each
+    // tool_result land via the very next `messages_changed`, with no need
+    // for a parallel in-flight overlay. The intermediate state (assistant
+    // has N tool_uses, user has < N tool_results) is never exposed: the
+    // loop only calls `model.call` at the top of the next iteration, and
+    // callers don't read `messages` until the loop returns.
     const results: ToolResultBlock[] = [];
+    const userMsgIdx = messages.length;
+    messages = appendMessage(messages, userToolResults(results));
+    await opts.observer?.({ turn, kind: "messages_changed", payload: { messages } });
+
     for (const use of toolUses) {
       await safeObserve(opts.observer, { turn, kind: "tool_use", payload: use });
 
@@ -227,11 +239,13 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
       }
 
       results.push(result);
+      messages = [...messages];
+      messages[userMsgIdx] = userToolResults([...results]);
       await safeObserve(opts.observer, { turn, kind: "tool_result", payload: result });
+      await opts.observer?.({ turn, kind: "messages_changed", payload: { messages } });
     }
 
-    const userMsg = userToolResults(results);
-    messages = appendMessage(messages, userMsg);
+    const userMsg = messages[userMsgIdx]!;
     await opts.observer?.({ turn, kind: "user", payload: userMsg });
 
     if (opts.interject) {
@@ -244,6 +258,7 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
           kind: "interject",
           payload: { from, to: messages.length },
         });
+        await opts.observer?.({ turn, kind: "messages_changed", payload: { messages } });
       }
     }
   }

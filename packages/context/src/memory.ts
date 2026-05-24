@@ -70,6 +70,7 @@ async function readUtf8(p: string): Promise<string> {
 async function collectProjectDirs(start: string): Promise<string[]> {
   const dirs: string[] = [];
   let current = resolve(start);
+  // eslint-disable-next-line no-constant-condition
   while (true) {
     dirs.push(current);
     if (await dirExists(join(current, ".git"))) break;

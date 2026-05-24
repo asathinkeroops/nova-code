@@ -14,6 +14,11 @@ describe("settingsSchema", () => {
     expect(s.permissions.rules).toEqual([
       { tool: "read", effect: "allow" },
       { tool: "ask_user_question", effect: "allow" },
+      { tool: "createTodo", effect: "allow" },
+      { tool: "updateTodo", effect: "allow" },
+      { tool: "getTodos", effect: "allow" },
+      { tool: "grep", effect: "allow" },
+      { tool: "glob", effect: "allow" },
     ]);
     expect(s.transcript.enabled).toBe(true);
   });

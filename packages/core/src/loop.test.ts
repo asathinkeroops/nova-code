@@ -318,7 +318,6 @@ describe("agentLoop · stop_reason state machine", () => {
       { role: "user", content: "[compacted]" },
     ]);
 
-    const events: Array<{ kind: string; payload: unknown }> = [];
     const messages: MessageParam[] = [
       { role: "user", content: "1" },
       { role: "user", content: "2" },
@@ -330,29 +329,30 @@ describe("agentLoop · stop_reason state machine", () => {
       model,
       executeTool: makeExecutor(),
       compactor,
-      observer: (e) => {
-        events.push({ kind: e.kind, payload: e.payload });
-      },
     });
     expect(compactor).toHaveBeenCalledTimes(1);
     expect(seen).toEqual([1]); // model saw the compacted (1-msg) history, not the 3-msg original
-    const compactEvent = events.find((e) => e.kind === "compact");
-    expect(compactEvent?.payload).toEqual({ from: 3, to: 1 });
   });
 
-  it("does not emit a compact event when compactor returns the same array reference", async () => {
+  it("skips the messages_changed emit when compactor returns the same array reference", async () => {
     const model = mockModel([{ content: [{ type: "text", text: "ok" }], stopReason: "end_turn" }]);
-    const events: string[] = [];
+    const seenLengths: number[] = [];
     await agentLoop({
       ...baseOpts,
+      messages: [{ role: "user", content: "hi" }],
       model,
       executeTool: makeExecutor(),
       compactor: async (msgs) => msgs,
       observer: (e) => {
-        events.push(e.kind);
+        if (e.kind === "messages_changed") {
+          const p = e.payload as { messages: MessageParam[] };
+          seenLengths.push(p.messages.length);
+        }
       },
     });
-    expect(events).not.toContain("compact");
+    // Only the post-assistant messages_changed should fire (length 2), not a
+    // pre-call one from the compactor — the loop short-circuits on ref equality.
+    expect(seenLengths).toEqual([2]);
   });
 
   it("calls interject at the end of each tool_use turn and appends its return value", async () => {

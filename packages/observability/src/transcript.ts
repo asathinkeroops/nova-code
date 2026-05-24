@@ -13,7 +13,6 @@ export type TranscriptKind =
   | "tool_result"
   | "user"
   | "stop"
-  | "compact"
   | "interject"
   | "error";
 

@@ -9,12 +9,7 @@ import {
   handleThink,
 } from "./commands/index.js";
 import { SLASH_COMMANDS } from "./constants.js";
-import {
-  refreshTodoFooter,
-  stopSpinner,
-  type CliContext,
-} from "./context.js";
-import { readBoxedLine } from "./input.js";
+import { stopSpinner, type CliContext } from "./context.js";
 import { predictNextInput } from "./predict.js";
 import { runTurn } from "./turn.js";
 
@@ -60,7 +55,7 @@ async function refreshPrediction(ctx: CliContext): Promise<void> {
 async function dispatchLine(ctx: CliContext, line: string): Promise<"continue" | "exit" | "turn"> {
   if (line === "/exit" || line === "/quit") return "exit";
   if (line === "/help") {
-    handleHelp();
+    handleHelp(ctx);
     return "continue";
   }
   if (line === "/clear") {
@@ -96,14 +91,13 @@ export async function runRepl(ctx: CliContext, initialPrompt: string): Promise<v
     if (ok) await refreshPrediction(ctx);
   }
 
-  process.stdout.write(`\n${dim("REPL ready. Type /help for commands, /exit to quit.")}\n`);
+  ctx.screen.print(`\n${dim("REPL ready. Type /help for commands, /exit to quit.")}\n`);
 
+  // eslint-disable-next-line no-constant-condition
   while (true) {
-    ctx.screen.detach();
-    process.stdout.write("\n");
     const placeholder = ctx.nextPlaceholder;
     ctx.nextPlaceholder = "";
-    const raw = await readBoxedLine({
+    const raw = await ctx.screen.promptInput({
       commands: SLASH_COMMANDS,
       ...(placeholder ? { placeholder } : {}),
     });
@@ -111,17 +105,23 @@ export async function runRepl(ctx: CliContext, initialPrompt: string): Promise<v
     const line = raw.trim();
     if (!line) continue;
 
+    // Echo slash commands into the static scrollback so they remain visible
+    // above the next prompt. Non-slash input lands in ctx.messages and is
+    // echoed by the Messages component instead — one canonical render path.
+    if (line.startsWith("/")) {
+      ctx.screen.print(`${dim("›")} ${line}\n`);
+    }
+
     const action = await dispatchLine(ctx, line);
     if (action === "exit") break;
     if (action === "continue") continue;
 
     // Non-slash: run a user turn.
-    ctx.todoStore.clear();
-    refreshTodoFooter(ctx);
     const ok = await runTurn(ctx, line);
     if (ok) await refreshPrediction(ctx);
   }
 
-  process.stdout.write(`\nBye!\n`);
+  ctx.screen.print(`\nBye!\n`);
   await ctx.transcript.flush();
+  await ctx.screen.unmount();
 }

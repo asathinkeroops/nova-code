@@ -12,7 +12,6 @@ name: Nova
 
 <system-info>
 platform: ${process.platform}
-time: ${new Date().toISOString()}
 </system-info>
 
 <session>

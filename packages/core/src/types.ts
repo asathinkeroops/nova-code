@@ -148,8 +148,8 @@ export interface LoopEvent {
     | "tool_result"
     | "stop"
     | "user"
-    | "compact"
-    | "interject";
+    | "interject"
+    | "messages_changed";
   payload: unknown;
 }
 

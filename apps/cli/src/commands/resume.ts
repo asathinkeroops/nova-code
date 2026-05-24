@@ -2,18 +2,18 @@ import { listSessions, type Session } from "@nova/runtime";
 import { dim, green, red } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { loadMessages } from "../persistence.js";
-import { pickOne, pickerArrow } from "../picker.js";
+import { pickerArrow } from "../ui/picker.js";
 import {
   firstUserLabel,
   formatTimestamp,
   switchToSession,
-} from "../session-view.js";
+} from "../session.js";
 
 export async function handleResume(ctx: CliContext, arg: string): Promise<void> {
-  process.stdout.write("\n");
+  ctx.screen.print("\n");
   const list = await listSessions(ctx.settings.sessionDir);
   if (list.length === 0) {
-    process.stdout.write(`${dim("no sessions to resume.")}\n`);
+    ctx.screen.print(`${dim("no sessions to resume.")}\n`);
     return;
   }
 
@@ -22,7 +22,7 @@ export async function handleResume(ctx: CliContext, arg: string): Promise<void> 
   if (arg) {
     target = list.find((s) => s.id === arg) ?? null;
     if (!target) {
-      process.stdout.write(`${red(`session ${arg} not found.`)}\n`);
+      ctx.screen.print(`${red(`session ${arg} not found.`)}\n`);
       return;
     }
   } else {
@@ -41,11 +41,11 @@ export async function handleResume(ctx: CliContext, arg: string): Promise<void> 
       items.push({ session: s, label });
     }
     if (items.length === 0) {
-      process.stdout.write(`${dim("no sessions to resume.")}\n`);
+      ctx.screen.print(`${dim("no sessions to resume.")}\n`);
       return;
     }
     const currentIdx = items.findIndex((it) => it.session.id === ctx.session.id);
-    const pick = await pickOne<PickerItem>({
+    const pick = await ctx.screen.pickOne<PickerItem>({
       items,
       header: dim("select session to resume:"),
       footer: dim("↑↓ navigate · enter confirm · esc cancel"),
@@ -57,14 +57,14 @@ export async function handleResume(ctx: CliContext, arg: string): Promise<void> 
       },
     });
     if (!pick) {
-      process.stdout.write(`${dim("cancelled.")}\n`);
+      ctx.screen.print(`${dim("cancelled.")}\n`);
       return;
     }
     target = pick.session;
   }
 
   if (target.id === ctx.session.id) {
-    process.stdout.write(`${dim("already on that session.")}\n`);
+    ctx.screen.print(`${dim("already on that session.")}\n`);
     return;
   }
   ctx.nextPlaceholder = "";

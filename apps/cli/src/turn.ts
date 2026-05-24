@@ -1,15 +1,14 @@
 import { agentLoop, userText } from "@nova/core";
 import { makeTodoReminder } from "@nova/orchestration";
-import { askUser } from "./ask.js";
-import { dim, green, red } from "./colors.js";
+import { dim, red } from "./colors.js";
 import {
   clearToolSpinner,
   currentThinkingBudget,
   persist,
+  refreshTodoFooter,
   stopSpinner,
   type CliContext,
 } from "./context.js";
-import { watchForEscape } from "./esc-watcher.js";
 import { createObserver } from "./observer.js";
 import { buildSystemPrompt } from "./system-prompt.js";
 
@@ -21,16 +20,19 @@ import { buildSystemPrompt } from "./system-prompt.js";
 export async function runTurn(ctx: CliContext, userInput: string): Promise<boolean> {
   const beforeMessageCount = ctx.messages.length;
   ctx.messages.push(userText(userInput));
+  // Show the user's prompt immediately — the loop's first messages_changed
+  // event would do this too, but only after model.call starts; with the model
+  // request in flight the gap can be hundreds of ms.
+  ctx.screen.setMessages([...ctx.messages]);
   await ctx.transcript.append({ kind: "user_prompt", data: { text: userInput } });
 
   const abortController = new AbortController();
-  const watcher = watchForEscape(() => {
+  ctx.turnState.abort = abortController;
+  ctx.screen.setEscHandler(() => {
     if (!abortController.signal.aborted) {
       abortController.abort(new Error("interrupted by user"));
     }
   });
-  ctx.turnState.abort = abortController;
-  ctx.turnState.watcher = watcher;
 
   const observer = createObserver(ctx);
 
@@ -49,13 +51,7 @@ export async function runTurn(ctx: CliContext, userInput: string): Promise<boole
         signal: abortController.signal,
         askUser: async (req) => {
           clearToolSpinner(ctx);
-          watcher.suspend();
-          ctx.screen.detach();
-          try {
-            return await askUser(req, { signal: abortController.signal });
-          } finally {
-            watcher.resume();
-          }
+          return await ctx.screen.askUser(req, { signal: abortController.signal });
         },
       },
       checkPermission: ctx.checkPermission,
@@ -76,9 +72,6 @@ export async function runTurn(ctx: CliContext, userInput: string): Promise<boole
       },
       "loop finished",
     );
-    ctx.screen.print(
-      `\n${green("done")} ${dim(`· ${result.turns} turn(s) · ${result.stopReason} · in=${result.totalUsage.inputTokens} out=${result.totalUsage.outputTokens}`)}\n`,
-    );
     await ctx.transcript.flush();
     return true;
   } catch (err) {
@@ -87,6 +80,7 @@ export async function runTurn(ctx: CliContext, userInput: string): Promise<boole
       // Roll back the user message so the conversation state stays valid
       // (no dangling user turn without an assistant reply).
       ctx.messages.length = beforeMessageCount;
+      ctx.screen.setMessages([...ctx.messages]);
       ctx.screen.print(`\n${dim("✗ interrupted by user (esc)")}\n`);
       ctx.logger.info({}, "loop interrupted by user");
       await ctx.transcript.append({ kind: "error", data: { message: "interrupted by user" } });
@@ -104,7 +98,10 @@ export async function runTurn(ctx: CliContext, userInput: string): Promise<boole
     return false;
   } finally {
     ctx.turnState.abort = null;
-    ctx.turnState.watcher = null;
-    watcher.dispose();
+    ctx.screen.setEscHandler(null);
+    // Todos are per-turn scratch state; drop them once the loop ends so the
+    // next turn starts with a clean footer (covers success, error, and abort).
+    ctx.todoStore.clear();
+    refreshTodoFooter(ctx);
   }
 }

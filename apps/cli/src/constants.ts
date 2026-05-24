@@ -1,4 +1,4 @@
-import type { SlashCommand } from "./input.js";
+import type { SlashCommand } from "./ui/input-box.js";
 
 export const WORKING_WORDS = [
   "Thinking...",

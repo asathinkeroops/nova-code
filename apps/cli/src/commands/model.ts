@@ -3,9 +3,9 @@ import { dim, red } from "../colors.js";
 import type { CliContext } from "../context.js";
 
 export async function handleModel(ctx: CliContext, arg: string): Promise<void> {
-  process.stdout.write("\n");
+  ctx.screen.print("\n");
   if (!arg) {
-    process.stdout.write(`${dim("model:")} ${ctx.settings.model}\n`);
+    ctx.screen.print(`${dim("model:")} ${ctx.settings.model}\n`);
     return;
   }
   ctx.settings.model = arg;
@@ -14,7 +14,7 @@ export async function handleModel(ctx: CliContext, arg: string): Promise<void> {
     await saveSettings({ model: arg });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    process.stdout.write(`${red("✗")} ${dim(`failed to save settings: ${msg}`)}\n`);
+    ctx.screen.print(`${red("✗")} ${dim(`failed to save settings: ${msg}`)}\n`);
   }
-  process.stdout.write(`${dim("model set to")} ${arg}\n`);
+  ctx.screen.print(`${dim("model set to")} ${arg}\n`);
 }
