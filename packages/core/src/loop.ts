@@ -93,10 +93,16 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
     turn++;
 
     if (opts.compactor) {
+      const before = messages.length;
       const compacted = await opts.compactor(messages);
       if (compacted !== messages) {
         messages = compacted;
         await opts.observer?.({ turn, kind: "messages_changed", payload: { messages } });
+        await opts.observer?.({
+          turn,
+          kind: "compact_end",
+          payload: { before, after: messages.length },
+        });
       }
     }
 

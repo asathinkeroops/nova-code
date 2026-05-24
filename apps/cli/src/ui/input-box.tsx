@@ -24,7 +24,7 @@ interface DisplayLine {
   bufEnd: number;
 }
 
-const POPUP_MAX_ROWS = 8;
+const POPUP_MAX_ROWS = 5;
 const RULE_CHAR = "─";
 const MIN_WIDTH = 20;
 const PROMPT_TEXT = "› ";
@@ -123,6 +123,7 @@ export function InputBox({ options, onSubmit, onCancel }: InputBoxProps): React.
   const [buffer, setBuffer] = useState("");
   const [cursor, setCursor] = useState(0);
   const [popupCursor, setPopupCursor] = useState(0);
+  const [popupOffset, setPopupOffset] = useState(0);
   const [popupDismissed, setPopupDismissed] = useState(false);
   const { stdout } = useStdout();
 
@@ -133,12 +134,23 @@ export function InputBox({ options, onSubmit, onCancel }: InputBoxProps): React.
 
   const matches = matchingCommands(buffer, commands, popupDismissed);
   const effectivePopupCursor = popupCursor >= matches.length ? 0 : popupCursor;
+  const maxOffset = Math.max(0, matches.length - POPUP_MAX_ROWS);
+  const safeOffset = Math.max(0, Math.min(popupOffset, maxOffset));
 
   const replaceBuffer = (next: string, nextCursor: number): void => {
     setBuffer(next);
     setCursor(Math.max(0, Math.min(nextCursor, next.length)));
     setPopupDismissed(false);
     setPopupCursor(0);
+    setPopupOffset(0);
+  };
+
+  const scrollPopupTo = (next: number): void => {
+    if (next < safeOffset) {
+      setPopupOffset(next);
+    } else if (next >= safeOffset + POPUP_MAX_ROWS) {
+      setPopupOffset(next - POPUP_MAX_ROWS + 1);
+    }
   };
 
   useInput((input, key) => {
@@ -164,13 +176,17 @@ export function InputBox({ options, onSubmit, onCancel }: InputBoxProps): React.
     }
     if (key.upArrow) {
       if (matches.length > 0) {
-        setPopupCursor((p) => (p - 1 + matches.length) % matches.length);
+        const next = (effectivePopupCursor - 1 + matches.length) % matches.length;
+        setPopupCursor(next);
+        scrollPopupTo(next);
       }
       return;
     }
     if (key.downArrow) {
       if (matches.length > 0) {
-        setPopupCursor((p) => (p + 1) % matches.length);
+        const next = (effectivePopupCursor + 1) % matches.length;
+        setPopupCursor(next);
+        scrollPopupTo(next);
       }
       return;
     }
@@ -181,6 +197,7 @@ export function InputBox({ options, onSubmit, onCancel }: InputBoxProps): React.
         setCursor(pick.name.length);
         setPopupDismissed(true);
         setPopupCursor(0);
+        setPopupOffset(0);
       }
       return;
     }
@@ -188,6 +205,7 @@ export function InputBox({ options, onSubmit, onCancel }: InputBoxProps): React.
       if (!popupDismissed && matches.length > 0) {
         setPopupDismissed(true);
         setPopupCursor(0);
+        setPopupOffset(0);
       }
       return;
     }
@@ -275,12 +293,16 @@ export function InputBox({ options, onSubmit, onCancel }: InputBoxProps): React.
         lines.map(renderContentLine)
       )}
       <Text dimColor>{rule}</Text>
-      {matches.slice(0, POPUP_MAX_ROWS).map((m, i) => {
-        const isSel = i === effectivePopupCursor;
+      {matches.length > 0 && safeOffset > 0 ? (
+        <Text dimColor> ↑ {safeOffset} more</Text>
+      ) : null}
+      {matches.slice(safeOffset, safeOffset + POPUP_MAX_ROWS).map((m, i) => {
+        const absIndex = i + safeOffset;
+        const isSel = absIndex === effectivePopupCursor;
         const arrow = isSel ? "❯ " : "  ";
         const nameWidth = Math.min(
           20,
-          Math.max(...matches.slice(0, POPUP_MAX_ROWS).map((mm) => visibleWidth(mm.name))),
+          Math.max(...matches.map((mm) => visibleWidth(mm.name))),
         );
         const pad = " ".repeat(Math.max(1, nameWidth + 2 - visibleWidth(m.name)));
         return (
@@ -292,8 +314,8 @@ export function InputBox({ options, onSubmit, onCancel }: InputBoxProps): React.
           </Text>
         );
       })}
-      {matches.length > POPUP_MAX_ROWS ? (
-        <Text dimColor> … {matches.length - POPUP_MAX_ROWS} more</Text>
+      {matches.length > 0 && safeOffset + POPUP_MAX_ROWS < matches.length ? (
+        <Text dimColor> ↓ {matches.length - safeOffset - POPUP_MAX_ROWS} more</Text>
       ) : null}
     </Box>
   );

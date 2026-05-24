@@ -36,6 +36,32 @@ export interface SpinnerSpec {
 
 export type ApprovalAnswer = "yes" | "no" | "always-allow";
 
+export type CardKind = "info" | "warn" | "error";
+
+/**
+ * Inline UI entries that render in chronological place between messages but are
+ * never sent to the model. Used for slash-command output and other CLI-side
+ * notices that should appear in the time line rather than pile up at the top.
+ *
+ * `anchor` is the index of the message after which this card renders;
+ * `-1` renders before all messages (e.g. session-load notices on /resume).
+ *
+ * `title` is an optional short label rendered above the body — slash commands
+ * use it to display the invoked command name (e.g. "/think").
+ */
+export interface Card {
+  id: number;
+  anchor: number;
+  kind: CardKind;
+  title?: string;
+  text: string;
+}
+
+export interface CardOptions {
+  kind?: CardKind;
+  title?: string;
+}
+
 export type ModalState =
   | { kind: "input"; opts: BoxedInputOptions }
   | {
@@ -69,6 +95,13 @@ export interface AppState {
    * means "no matching tool_result block in this array yet."
    */
   messages: MessageParam[];
+  /**
+   * Inline UI entries (slash-command output, etc.) interleaved with `messages`
+   * by the renderer. Purely client-side — never persisted to messages.jsonl
+   * and never sent to the model. Cleared on /clear and on compact_end so they
+   * never outlive the messages they were anchored to.
+   */
+  cards: Card[];
   todos: Todo[];
   spinner: SpinnerSpec | null;
   modal: ModalState | null;
@@ -88,6 +121,8 @@ export interface AppState {
 export interface AppActions {
   print: (text: string) => void;
   printNode: (node: ReactNode) => void;
+  pushCard: (text: string, opts?: CardOptions) => void;
+  clearCards: () => void;
   setMessages: (messages: MessageParam[]) => void;
   setThinkingLabel: (label: string | undefined) => void;
   setTodos: (todos: Todo[]) => void;
@@ -130,6 +165,7 @@ interface ModalSlot {
 export function createAppStore(): AppStoreApi {
   const slot: ModalSlot = { resolve: null, abortCleanup: null };
   let spinnerCounter = 0;
+  let cardCounter = 0;
 
   return create<AppStoreState>((set, get) => {
     function clearSlot(): void {
@@ -177,6 +213,7 @@ export function createAppStore(): AppStoreApi {
       // ===== State =====
       history: [],
       messages: [],
+      cards: [],
       todos: [],
       spinner: null,
       modal: null,
@@ -193,6 +230,24 @@ export function createAppStore(): AppStoreApi {
       printNode(node) {
         if (node === null || node === undefined || node === false) return;
         set((s) => ({ history: [...s.history, node] }));
+      },
+
+      pushCard(text, opts = {}) {
+        const id = ++cardCounter;
+        const anchor = get().messages.length - 1;
+        const card: Card = {
+          id,
+          anchor,
+          kind: opts.kind ?? "info",
+          text,
+          ...(opts.title ? { title: opts.title } : {}),
+        };
+        set((s) => ({ cards: [...s.cards, card] }));
+      },
+
+      clearCards() {
+        if (get().cards.length === 0) return;
+        set({ cards: [] });
       },
 
       setMessages(messages) {
@@ -295,7 +350,7 @@ export function createAppStore(): AppStoreApi {
        */
       reset() {
         clearSlot();
-        set({ history: [], messages: [], spinner: null, modal: null });
+        set({ history: [], messages: [], cards: [], spinner: null, modal: null });
         // thinkingLabel intentionally preserved across reset — it tracks user
         // preference, not session state.
       },

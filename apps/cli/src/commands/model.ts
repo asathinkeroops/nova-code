@@ -1,11 +1,12 @@
 import { saveSettings } from "@nova/runtime";
-import { dim, red } from "../colors.js";
+import { dim } from "../colors.js";
 import type { CliContext } from "../context.js";
 
+const TITLE = "/model";
+
 export async function handleModel(ctx: CliContext, arg: string): Promise<void> {
-  ctx.screen.print("\n");
   if (!arg) {
-    ctx.screen.print(`${dim("model:")} ${ctx.settings.model}\n`);
+    ctx.screen.card(`${dim("model:")} ${ctx.settings.model}`, { title: TITLE });
     return;
   }
   ctx.settings.model = arg;
@@ -14,7 +15,7 @@ export async function handleModel(ctx: CliContext, arg: string): Promise<void> {
     await saveSettings({ model: arg });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    ctx.screen.print(`${red("✗")} ${dim(`failed to save settings: ${msg}`)}\n`);
+    ctx.screen.card(`failed to save settings: ${msg}`, { kind: "error", title: TITLE });
   }
-  ctx.screen.print(`${dim("model set to")} ${arg}\n`);
+  ctx.screen.card(`${dim("model set to")} ${arg}`, { title: TITLE });
 }

@@ -63,10 +63,11 @@ interface AppProps {
 }
 
 export function App({ store }: AppProps): React.ReactElement {
-  const { history, messages, thinkingLabel, todos, spinner, modal, escHandler } = store(
+  const { history, messages, cards, thinkingLabel, todos, spinner, modal, escHandler } = store(
     useShallow((s) => ({
       history: s.history,
       messages: s.messages,
+      cards: s.cards,
       thinkingLabel: s.thinkingLabel,
       todos: s.todos,
       spinner: s.spinner,
@@ -90,6 +91,7 @@ export function App({ store }: AppProps): React.ReactElement {
       </Static>
       <Messages
         messages={messages}
+        cards={cards}
         {...(thinkingLabel !== undefined ? { thinkingLabel } : {})}
       />
       {modal ? (

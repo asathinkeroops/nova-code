@@ -7,7 +7,9 @@ import {
   type MessageParam,
   type ToolResultBlock,
 } from "@nova/core";
+import { bold, cyan, dim, red, yellow } from "../colors.js";
 import { renderMarkdown } from "./markdown.js";
+import type { Card } from "./store.js";
 import { RedactedThinkingBlock, ThinkingBlock } from "./thinking.js";
 import { ToolCall } from "./tool-call.js";
 import { visibleWidth } from "./width.js";
@@ -36,6 +38,13 @@ function buildResultIndex(messages: MessageParam[]): Map<string, ToolResultBlock
 export interface MessagesProps {
   messages: MessageParam[];
   /**
+   * Inline UI cards interleaved with messages by anchor. Cards with
+   * `anchor === -1` render before all messages; otherwise a card renders
+   * immediately after `messages[anchor]`. Cards anchored beyond the end of
+   * `messages` (defensive — should not happen in normal flow) render last.
+   */
+  cards?: Card[];
+  /**
    * Label appended to thinking headers (e.g. "high" or "16384t"). Mirrors the
    * value the observer passed through previously; lifted into props so the
    * component stays a pure projection of state.
@@ -45,18 +54,77 @@ export interface MessagesProps {
 
 export function Messages({
   messages,
+  cards,
   thinkingLabel,
 }: MessagesProps): React.ReactElement {
   const resultIndex = React.useMemo(() => buildResultIndex(messages), [messages]);
+  const cardsByAnchor = React.useMemo(() => groupCardsByAnchor(cards ?? []), [cards]);
+
+  const leading = cardsByAnchor.get(-1) ?? [];
+  const trailing: Card[] = [];
+  if (cards) {
+    for (const c of cards) {
+      if (c.anchor >= messages.length) trailing.push(c);
+    }
+  }
+
   return (
     <Box flexDirection="column">
+      {leading.map((c) => (
+        <CardView key={`c${c.id}`} card={c} />
+      ))}
       {messages.map((msg, i) => (
-        <MessageView
-          key={i}
-          msg={msg}
-          resultIndex={resultIndex}
-          {...(thinkingLabel !== undefined ? { thinkingLabel } : {})}
-        />
+        <React.Fragment key={i}>
+          <MessageView
+            msg={msg}
+            resultIndex={resultIndex}
+            {...(thinkingLabel !== undefined ? { thinkingLabel } : {})}
+          />
+          {(cardsByAnchor.get(i) ?? []).map((c) => (
+            <CardView key={`c${c.id}`} card={c} />
+          ))}
+        </React.Fragment>
+      ))}
+      {trailing.map((c) => (
+        <CardView key={`c${c.id}`} card={c} />
+      ))}
+    </Box>
+  );
+}
+
+function groupCardsByAnchor(cards: Card[]): Map<number, Card[]> {
+  const m = new Map<number, Card[]>();
+  for (const c of cards) {
+    const arr = m.get(c.anchor);
+    if (arr) arr.push(c);
+    else m.set(c.anchor, [c]);
+  }
+  return m;
+}
+
+function CardView({ card }: { card: Card }): React.ReactElement {
+  const bar =
+    card.kind === "error" ? red("│") : card.kind === "warn" ? yellow("│") : dim("│");
+  const bodyLines = card.text.split("\n");
+  // Strip a single leading/trailing blank line — callers may pad with "\n"
+  // out of habit from the static-print world, which would render as an empty
+  // bar row here.
+  while (bodyLines.length > 0 && bodyLines[0]?.trim() === "") bodyLines.shift();
+  while (bodyLines.length > 0 && bodyLines[bodyLines.length - 1]?.trim() === "") bodyLines.pop();
+  if (bodyLines.length === 0 && !card.title) return <></>;
+  return (
+    <Box flexDirection="column" marginTop={1}>
+      {card.title ? (
+        <Box flexDirection="row">
+          <Text>{bar} </Text>
+          <Text>{bold(cyan(card.title))}</Text>
+        </Box>
+      ) : null}
+      {bodyLines.map((line, i) => (
+        <Box key={i} flexDirection="row">
+          <Text>{bar} </Text>
+          <Text>{line}</Text>
+        </Box>
       ))}
     </Box>
   );

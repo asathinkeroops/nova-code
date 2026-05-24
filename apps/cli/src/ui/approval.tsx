@@ -64,7 +64,7 @@ export function ApprovalPrompt({
   });
 
   return (
-    <Box flexDirection="column" padding={0} marginY={1}>
+    <Box flexDirection="column" padding={1} marginTop={1} marginBottom={1} borderStyle={"round"}>
       <Text bold color="#FFA500">
         Permission required
       </Text>
@@ -86,4 +86,3 @@ export function ApprovalPrompt({
     </Box>
   );
 }
-

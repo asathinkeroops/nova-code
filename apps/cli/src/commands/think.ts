@@ -1,7 +1,9 @@
 import { isThinkingLevel, THINKING_LEVELS, type ThinkingLevel } from "@nova/core";
 import { saveSettings } from "@nova/runtime";
-import { dim, red } from "../colors.js";
+import { dim } from "../colors.js";
 import { thinkingLevelLabel, type CliContext } from "../context.js";
+
+const TITLE = "/think";
 
 async function persistThinking(ctx: CliContext): Promise<void> {
   ctx.settings.thinking.level = ctx.thinkingLevel;
@@ -11,12 +13,11 @@ async function persistThinking(ctx: CliContext): Promise<void> {
     await saveSettings({ thinking: ctx.settings.thinking });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    ctx.screen.print(`${red("✗")} ${dim(`failed to save settings: ${msg}`)}\n`);
+    ctx.screen.card(`failed to save settings: ${msg}`, { kind: "error", title: TITLE });
   }
 }
 
 export async function handleThink(ctx: CliContext, arg: string): Promise<void> {
-  ctx.screen.print("\n");
   if (!arg) {
     const currentIdx = THINKING_LEVELS.indexOf(ctx.thinkingLevel);
     const pick = await ctx.screen.pickHorizontal<ThinkingLevel>({
@@ -27,13 +28,13 @@ export async function handleThink(ctx: CliContext, arg: string): Promise<void> {
       label: (level) => level,
     });
     if (!pick) {
-      ctx.screen.print(`${dim("cancelled.")}\n`);
+      ctx.screen.card(dim("cancelled."), { title: TITLE });
       return;
     }
     ctx.thinkingLevel = pick;
     ctx.thinkingBudgetOverride = undefined;
     await persistThinking(ctx);
-    ctx.screen.print(`${dim("thinking set to")} ${pick}\n`);
+    ctx.screen.card(`${dim("thinking set to")} ${pick}`, { title: TITLE });
     return;
   }
 
@@ -41,8 +42,9 @@ export async function handleThink(ctx: CliContext, arg: string): Promise<void> {
   if (Number.isFinite(asNumber) && asNumber > 0 && String(asNumber) === arg) {
     ctx.thinkingBudgetOverride = asNumber;
     await persistThinking(ctx);
-    ctx.screen.print(
-      `${dim("thinking budget set to")} ${asNumber} ${dim(`tokens (level: ${ctx.thinkingLevel})`)}\n`,
+    ctx.screen.card(
+      `${dim("thinking budget set to")} ${asNumber} ${dim(`tokens (level: ${ctx.thinkingLevel})`)}`,
+      { title: TITLE },
     );
     return;
   }
@@ -50,10 +52,11 @@ export async function handleThink(ctx: CliContext, arg: string): Promise<void> {
     ctx.thinkingLevel = arg;
     ctx.thinkingBudgetOverride = undefined;
     await persistThinking(ctx);
-    ctx.screen.print(`${dim("thinking set to")} ${arg}\n`);
+    ctx.screen.card(`${dim("thinking set to")} ${arg}`, { title: TITLE });
     return;
   }
-  ctx.screen.print(
-    `${red("✗")} ${dim("expected off|low|medium|high|max or a positive integer")}\n`,
+  ctx.screen.card(
+    "expected off|low|medium|high|max or a positive integer",
+    { kind: "error", title: TITLE },
   );
 }

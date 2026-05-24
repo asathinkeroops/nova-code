@@ -233,8 +233,7 @@ export function AskPanel({ req, onResolve }: AskPanelProps): React.ReactElement 
   const labelWidth = Math.max(...q.options.map((o) => visibleWidth(o.label)));
 
   return (
-    <Box flexDirection="column">
-      <Text> </Text>
+    <Box flexDirection="column" padding={1} marginTop={1} marginBottom={1} borderStyle={'round'}>
       <Text>
         <Text bold color="cyan">
           ?

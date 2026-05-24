@@ -9,11 +9,12 @@ import {
   switchToSession,
 } from "../session.js";
 
+const TITLE = "/resume";
+
 export async function handleResume(ctx: CliContext, arg: string): Promise<void> {
-  ctx.screen.print("\n");
   const list = await listSessions(ctx.settings.sessionDir);
   if (list.length === 0) {
-    ctx.screen.print(`${dim("no sessions to resume.")}\n`);
+    ctx.screen.card(dim("no sessions to resume."), { title: TITLE });
     return;
   }
 
@@ -22,7 +23,7 @@ export async function handleResume(ctx: CliContext, arg: string): Promise<void> 
   if (arg) {
     target = list.find((s) => s.id === arg) ?? null;
     if (!target) {
-      ctx.screen.print(`${red(`session ${arg} not found.`)}\n`);
+      ctx.screen.card(`session ${arg} not found.`, { kind: "error", title: TITLE });
       return;
     }
   } else {
@@ -41,7 +42,7 @@ export async function handleResume(ctx: CliContext, arg: string): Promise<void> 
       items.push({ session: s, label });
     }
     if (items.length === 0) {
-      ctx.screen.print(`${dim("no sessions to resume.")}\n`);
+      ctx.screen.card(dim("no sessions to resume."), { title: TITLE });
       return;
     }
     const currentIdx = items.findIndex((it) => it.session.id === ctx.session.id);
@@ -57,14 +58,14 @@ export async function handleResume(ctx: CliContext, arg: string): Promise<void> 
       },
     });
     if (!pick) {
-      ctx.screen.print(`${dim("cancelled.")}\n`);
+      ctx.screen.card(dim("cancelled."), { title: TITLE });
       return;
     }
     target = pick.session;
   }
 
   if (target.id === ctx.session.id) {
-    ctx.screen.print(`${dim("already on that session.")}\n`);
+    ctx.screen.card(dim("already on that session."), { title: TITLE });
     return;
   }
   ctx.nextPlaceholder = "";

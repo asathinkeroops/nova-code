@@ -346,9 +346,11 @@ export async function createContext(
               count: msgs.length,
               lastLine: JSON.stringify(msgs[msgs.length - 1]),
             };
-      ctx.screen.print(`${dim(`loaded ${msgs.length} message(s) from disk`)}\n`);
-      logger.info({ count: msgs.length }, "messages restored");
+      // Push the "loaded N" card before setMessages so its anchor (-1) puts
+      // it above the restored history rather than below it.
+      ctx.screen.card(dim(`loaded ${msgs.length} message(s) from disk`));
       ctx.screen.setMessages(msgs);
+      logger.info({ count: msgs.length }, "messages restored");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       ctx.screen.printErr(`${red(`✗ failed to load messages: ${msg}`)}\n`);

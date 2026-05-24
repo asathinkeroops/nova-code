@@ -105,13 +105,6 @@ export async function runRepl(ctx: CliContext, initialPrompt: string): Promise<v
     const line = raw.trim();
     if (!line) continue;
 
-    // Echo slash commands into the static scrollback so they remain visible
-    // above the next prompt. Non-slash input lands in ctx.messages and is
-    // echoed by the Messages component instead — one canonical render path.
-    if (line.startsWith("/")) {
-      ctx.screen.print(`${dim("›")} ${line}\n`);
-    }
-
     const action = await dispatchLine(ctx, line);
     if (action === "exit") break;
     if (action === "continue") continue;

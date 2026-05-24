@@ -17,6 +17,7 @@ import {
 import {
   createAppStore,
   type AppStoreApi,
+  type CardOptions,
   type SpinnerHandle,
   type SpinnerLabel,
 } from "./ui/store.js";
@@ -108,6 +109,20 @@ export class Screen {
     // Route stderr-class output into the same scroll history so it stays
     // in order with surrounding stdout.
     this.store.getState().print(text);
+  }
+
+  /**
+   * Push an inline card into the conversation timeline. Cards render between
+   * messages at the position they were pushed and are dropped on /clear and
+   * compact_end — they never enter the model context or messages.jsonl.
+   */
+  card(text: string, opts: CardOptions = {}): void {
+    if (text.length === 0 && !opts.title) return;
+    this.store.getState().pushCard(text, opts);
+  }
+
+  clearCards(): void {
+    this.store.getState().clearCards();
   }
 
   setTodos(todos: Todo[]): void {

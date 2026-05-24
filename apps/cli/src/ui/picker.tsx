@@ -78,7 +78,7 @@ export function PickList<T>({ opts, onResolve }: PickListProps<T>): React.ReactE
       : null;
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" marginTop={1} marginBottom={1} borderStyle={'round'}>
       {opts.header ? <Text>{opts.header}</Text> : null}
       {rows}
       {indicator ? <Text>{indicator}</Text> : null}
@@ -163,7 +163,7 @@ export function PickHorizontal<T>({ opts, onResolve }: PickHorizontalProps<T>): 
   });
 
   return (
-    <Box flexDirection="column">
+    <Box width={'fit-content'} flexDirection="column" borderStyle={'round'} marginTop={1} marginBottom={1} padding={1}>
       {opts.header ? <Text>{opts.header}</Text> : null}
       <Text> </Text>
       <Box>{cells}</Box>

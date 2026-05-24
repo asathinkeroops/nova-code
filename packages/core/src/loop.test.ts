@@ -334,6 +334,35 @@ describe("agentLoop · stop_reason state machine", () => {
     expect(seen).toEqual([1]); // model saw the compacted (1-msg) history, not the 3-msg original
   });
 
+  it("emits compact_end with before/after counts when the compactor swaps the array", async () => {
+    const events: { kind: string; payload: unknown }[] = [];
+    const model = mockModel([{ content: [{ type: "text", text: "ok" }], stopReason: "end_turn" }]);
+    await agentLoop({
+      ...baseOpts,
+      messages: [
+        { role: "user", content: "1" },
+        { role: "user", content: "2" },
+        { role: "user", content: "3" },
+      ],
+      model,
+      executeTool: makeExecutor(),
+      compactor: async (_msgs) => [{ role: "user", content: "[compacted]" }],
+      observer: (e) => {
+        events.push({ kind: e.kind, payload: e.payload });
+      },
+    });
+    const compactEnds = events.filter((e) => e.kind === "compact_end");
+    expect(compactEnds).toHaveLength(1);
+    expect(compactEnds[0]?.payload).toEqual({ before: 3, after: 1 });
+    // compact_end must follow the messages_changed that swapped in the new array.
+    const idxMsg = events.findIndex(
+      (e) => e.kind === "messages_changed" && (e.payload as { messages: MessageParam[] }).messages.length === 1,
+    );
+    const idxCompact = events.findIndex((e) => e.kind === "compact_end");
+    expect(idxMsg).toBeGreaterThanOrEqual(0);
+    expect(idxCompact).toBeGreaterThan(idxMsg);
+  });
+
   it("skips the messages_changed emit when compactor returns the same array reference", async () => {
     const model = mockModel([{ content: [{ type: "text", text: "ok" }], stopReason: "end_turn" }]);
     const seenLengths: number[] = [];

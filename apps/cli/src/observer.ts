@@ -43,6 +43,12 @@ export function createObserver(ctx: CliContext): LoopObserver {
       refreshTodoFooter(ctx);
       return;
     }
+    if (event.kind === "compact_end") {
+      // Inline cards anchored to pre-compaction message indices are now
+      // meaningless — drop them all rather than try to rebase.
+      ctx.screen.clearCards();
+      return;
+    }
     if (event.kind === "request_start") {
       ctx.spinner = ctx.screen.startSpinner(
         { words: WORKING_WORDS, tint: MAGENTA_RGB, colorize: magenta },

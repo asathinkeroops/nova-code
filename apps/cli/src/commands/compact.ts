@@ -3,11 +3,11 @@ import { manualCompact } from "../compactor.js";
 import { persist, stopSpinner, type CliContext } from "../context.js";
 
 export async function handleCompact(ctx: CliContext, focus: string): Promise<void> {
-  ctx.screen.print("\n");
   if (ctx.messages.length === 0) {
-    ctx.screen.print(`${dim("nothing to compact (empty history).")}\n`);
+    ctx.screen.card(dim("nothing to compact (empty history)."), { title: "/compact" });
     return;
   }
+  ctx.screen.print("\n");
   const spinner = ctx.screen.startSpinner("Compacting");
   ctx.spinner = spinner;
   try {
@@ -19,6 +19,7 @@ export async function handleCompact(ctx: CliContext, focus: string): Promise<voi
     });
     ctx.messages = result.messages;
     ctx.screen.setMessages(ctx.messages);
+    ctx.screen.clearCards();
     ctx.nextPlaceholder = "";
     await persist(ctx);
     const seconds = (spinner.elapsedMs() / 1000).toFixed(1);

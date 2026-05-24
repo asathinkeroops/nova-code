@@ -14,6 +14,7 @@ export type TranscriptKind =
   | "user"
   | "stop"
   | "interject"
+  | "compact_end"
   | "error";
 
 export interface TranscriptRecord {
