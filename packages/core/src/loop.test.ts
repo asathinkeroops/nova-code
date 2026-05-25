@@ -154,6 +154,112 @@ describe("agentLoop · stop_reason state machine", () => {
     }
   });
 
+  it("reveals tool_use blocks to messages_changed one-at-a-time, paired with their permission gate", async () => {
+    // Regression guard: if the assistant message is committed with all
+    // tool_uses up front, the UI paints every card before the first permission
+    // popup opens, which is what the user reported. The loop must instead
+    // splice each tool_use into the assistant message immediately before its
+    // tool_use event so the UI shows them one at a time.
+    const model = mockModel([
+      {
+        content: [
+          { type: "text", text: "running three tools" },
+          { type: "tool_use", id: "a", name: "echo", input: { msg: "a" } },
+          { type: "tool_use", id: "b", name: "echo", input: { msg: "b" } },
+          { type: "tool_use", id: "c", name: "echo", input: { msg: "c" } },
+        ],
+        stopReason: "tool_use",
+      },
+      { content: [{ type: "text", text: "ok" }], stopReason: "end_turn" },
+    ]);
+
+    // Record the visible tool_use ids at each event boundary so we can assert
+    // ordering relative to the permission gate.
+    const log: { kind: string; visibleUses: string[] }[] = [];
+    const snapshotVisible = (messages: MessageParam[]): string[] => {
+      const ids: string[] = [];
+      for (const m of messages) {
+        if (m.role !== "assistant" || typeof m.content === "string") continue;
+        for (const b of m.content) if (b.type === "tool_use") ids.push(b.id);
+      }
+      return ids;
+    };
+    let lastMessages: MessageParam[] = [];
+
+    await agentLoop({
+      ...baseOpts,
+      model,
+      executeTool: makeExecutor(),
+      checkPermission: async (_tool, input) => {
+        log.push({
+          kind: `permission:${(input as { msg: string }).msg}`,
+          visibleUses: snapshotVisible(lastMessages),
+        });
+        return { granted: true };
+      },
+      observer: (e) => {
+        if (e.kind === "messages_changed") {
+          lastMessages = (e.payload as { messages: MessageParam[] }).messages;
+        }
+        if (e.kind === "tool_use") {
+          log.push({
+            kind: `tool_use:${(e.payload as { id: string }).id}`,
+            visibleUses: snapshotVisible(lastMessages),
+          });
+        }
+      },
+    });
+
+    // Each permission check fires with only the prior tools' tool_use blocks
+    // visible (its own card has just been revealed via messages_changed → that
+    // event landed before tool_use, so the gate sees [...prior, self]).
+    const permA = log.find((e) => e.kind === "permission:a");
+    const permB = log.find((e) => e.kind === "permission:b");
+    const permC = log.find((e) => e.kind === "permission:c");
+    expect(permA?.visibleUses).toEqual(["a"]);
+    expect(permB?.visibleUses).toEqual(["a", "b"]);
+    expect(permC?.visibleUses).toEqual(["a", "b", "c"]);
+
+    // The tool_use observer event for b never fires while c is already
+    // visible — i.e. the reveal stays in lockstep with the gate, never ahead
+    // of it.
+    const useB = log.find((e) => e.kind === "tool_use:b");
+    expect(useB?.visibleUses).toEqual(["a", "b"]);
+  });
+
+  it("preserves the model's original block order in the final assistant message even with interleaved tool_uses", async () => {
+    // Regression guard for the progressive-reveal change: phase 1 splices
+    // tool_uses to the end of the assistant message as a UI trick, but the
+    // canonical history that gets re-sent on the next model.call MUST match
+    // res.content block-for-block. Otherwise the next turn sees a permuted
+    // history (e.g. thinking blocks no longer sit before the tool_use they
+    // were reasoning about), which can affect model coherence.
+    const interleaved = [
+      { type: "text" as const, text: "first I will run a" },
+      { type: "tool_use" as const, id: "a", name: "echo", input: { msg: "a" } },
+      { type: "text" as const, text: "now b" },
+      { type: "tool_use" as const, id: "b", name: "echo", input: { msg: "b" } },
+      { type: "text" as const, text: "and finally c" },
+      { type: "tool_use" as const, id: "c", name: "echo", input: { msg: "c" } },
+    ];
+    const model = mockModel([
+      { content: interleaved, stopReason: "tool_use" },
+      { content: [{ type: "text", text: "ok" }], stopReason: "end_turn" },
+    ]);
+
+    const result = await agentLoop({
+      ...baseOpts,
+      model,
+      executeTool: makeExecutor(),
+    });
+
+    // baseOpts.messages starts with one user msg; the first assistant turn
+    // lands at index 1.
+    const assistantMsg = result.messages[1];
+    expect(assistantMsg?.role).toBe("assistant");
+    expect(assistantMsg?.content).toEqual(interleaved);
+  });
+
   it("runs permission checks strictly serially even though execution is concurrent", async () => {
     const model = mockModel([
       {

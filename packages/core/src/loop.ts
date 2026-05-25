@@ -1,4 +1,10 @@
-import { appendMessage, assistantMessage, extractToolUses, userToolResults } from "./messages.js";
+import {
+  appendMessage,
+  assistantMessage,
+  blocksOf,
+  extractToolUses,
+  userToolResults,
+} from "./messages.js";
 import type { ModelClient } from "./model.js";
 import { decide } from "./stop-reason.js";
 import type {
@@ -163,13 +169,20 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
     const assistantMsg = assistantMessage(res.content);
     await opts.observer?.({ turn, kind: "assistant", payload: assistantMsg });
 
-    messages = appendMessage(messages, assistantMsg);
+    // Progressive reveal: commit the assistant message into `messages` without
+    // its tool_use blocks for now. Each tool_use is spliced back in phase 1
+    // immediately before its permission gate so the UI shows one card at a
+    // time in lockstep with the popup, instead of painting all of them at
+    // once and then prompting for the first.
+    const nonToolUseContent = res.content.filter((b) => b.type !== "tool_use");
+    const assistantMsgIdx = messages.length;
+    messages = appendMessage(messages, assistantMessage(nonToolUseContent));
     await safeObserve(opts.observer, {
       turn,
       kind: "messages_changed",
       payload: { messages },
     });
-    
+
     const decision = decide(res.stopReason);
 
     if (decision.kind === "error") {
@@ -221,6 +234,21 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
 
     const slots: Phase1Slot[] = [];
     for (const use of toolUses) {
+      // Reveal this tool_use to the UI right before we emit it: splice it into
+      // the assistant message (which currently holds only non-tool_use blocks
+      // plus any prior phase-1 tool_uses) and re-publish the snapshot. This
+      // keeps visible tool_uses in lockstep with their permission gates so the
+      // user sees one card appear, decides on it, then sees the next — rather
+      // than seeing the full batch up front and only then being prompted.
+      const priorBlocks = blocksOf(messages[assistantMsgIdx]!);
+      messages = [...messages];
+      messages[assistantMsgIdx] = assistantMessage([...priorBlocks, use]);
+      await safeObserve(opts.observer, {
+        turn,
+        kind: "messages_changed",
+        payload: { messages },
+      });
+
       await safeObserve(opts.observer, { turn, kind: "tool_use", payload: use });
 
       if (opts.toolContext.signal?.aborted) {
@@ -256,6 +284,23 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
         slots.push({ use, status: "denied", reason: decision.reason ?? "unknown" });
       }
     }
+
+    // Phase 1 ended with tool_uses appended in declaration order (a side-
+    // effect of the progressive reveal above), which may not match the
+    // original interleaved order of `res.content` (e.g. when the model
+    // emitted text or thinking blocks between tool_uses). Restore the
+    // assistant message to the model's exact block order before phase 2
+    // so the canonical history sent back on the next model.call matches
+    // what the model produced. UI-wise this is a no-op for the cases that
+    // matter (text is collapsed to the end of the assistant view, tool_use
+    // cards keep rendering in the same relative order).
+    messages = [...messages];
+    messages[assistantMsgIdx] = assistantMsg;
+    await safeObserve(opts.observer, {
+      turn,
+      kind: "messages_changed",
+      payload: { messages },
+    });
 
     // Reserve the user-message slot before phase 2 so concurrent tasks
     // can mutate it in place via index. Start with no results; each task
