@@ -11,15 +11,7 @@ describe("settingsSchema", () => {
     expect(s.maxTokens).toBe(4096);
     expect(s.maxTurns).toBe(40);
     expect(s.permissions.defaultEffect).toBe("ask");
-    expect(s.permissions.rules).toEqual([
-      { tool: "read", effect: "allow" },
-      { tool: "ask_user_question", effect: "allow" },
-      { tool: "createTodo", effect: "allow" },
-      { tool: "updateTodo", effect: "allow" },
-      { tool: "getTodos", effect: "allow" },
-      { tool: "grep", effect: "allow" },
-      { tool: "glob", effect: "allow" },
-    ]);
+    expect(s.permissions.rules).toEqual([]);
     expect(s.transcript.enabled).toBe(true);
     expect(s.slash.enabled).toBe(true);
     expect(s.slash.projectDirs).toBeUndefined();

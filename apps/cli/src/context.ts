@@ -31,6 +31,7 @@ import {
 } from "@nova/tools";
 import { CYAN_RGB, cyan, dim } from "./colors.js";
 import { buildCompactor } from "./compactor.js";
+import { resolvePermissionRules } from "./permissions.js";
 import {
   handleClear,
   handleCommands,
@@ -419,7 +420,11 @@ export async function createContext(
     return await ctx.screen.promptApproval(decision, input, promptOpts);
   };
 
-  const permission = PermissionEngine.fromSettings(settings, askWithSignal);
+  const permission = new PermissionEngine({
+    defaultEffect: settings.permissions.defaultEffect,
+    rules: resolvePermissionRules(settings, workspace),
+    ask: askWithSignal,
+  });
   (ctx as { permission: PermissionEngine }).permission = permission;
 
   (ctx as { checkPermission: CliContext["checkPermission"] }).checkPermission = async (

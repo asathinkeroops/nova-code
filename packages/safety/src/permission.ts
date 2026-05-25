@@ -1,4 +1,4 @@
-import type { PermissionRule, Settings } from "@nova/runtime";
+import type { PermissionRule } from "@nova/runtime";
 import { isDangerousBash } from "@nova/runtime";
 
 export type PermissionEffect = "allow" | "deny" | "ask";
@@ -70,14 +70,6 @@ export class PermissionEngine {
 
   constructor(private readonly config: PermissionConfig) {}
 
-  static fromSettings(settings: Settings, ask?: AskCallback): PermissionEngine {
-    return new PermissionEngine({
-      defaultEffect: settings.permissions.defaultEffect,
-      rules: settings.permissions.rules,
-      ask,
-    });
-  }
-
   evaluate(req: PermissionInput): PermissionDecision {
     if (req.tool === "bash") {
       const cmd = (req.input as { command?: string }).command;
@@ -89,27 +81,39 @@ export class PermissionEngine {
       }
     }
 
-    const runtimeBucket = this.runtimeAllow.get(req.tool);
-    if (runtimeBucket?.has(stableInputKey(req.input))) {
-      return { effect: "allow", reason: "runtime always-allow" };
-    }
-    if (runtimeBucket?.has("*")) {
-      return { effect: "allow", reason: "runtime always-allow-tool" };
-    }
-
-    for (const rule of this.config.rules) {
-      if (ruleMatches(rule, req)) {
-        return {
-          effect: rule.effect,
-          reason: `matched rule: ${rule.tool} → ${rule.effect}`,
-          matchedRule: rule,
-        };
+    try {
+      const runtimeBucket = this.runtimeAllow.get(req.tool);
+      if (runtimeBucket?.has(stableInputKey(req.input))) {
+        return { effect: "allow", reason: "runtime always-allow" };
       }
+      if (runtimeBucket?.has("*")) {
+        return { effect: "allow", reason: "runtime always-allow-tool" };
+      }
+
+      for (const rule of this.config.rules) {
+        if (ruleMatches(rule, req)) {
+          return {
+            effect: rule.effect,
+            reason: `matched rule: ${rule.tool} → ${rule.effect}`,
+            matchedRule: rule,
+          };
+        }
+      }
+      return {
+        effect: this.config.defaultEffect,
+        reason: `default effect: ${this.config.defaultEffect}`,
+      };
+    } catch (err) {
+      // Any throw from match evaluation (bad regex source we didn't catch,
+      // Proxy getters on the input, JSON.stringify in stableInputKey, etc.)
+      // degrades to `ask` rather than crashing the turn. We deliberately
+      // don't downgrade to `deny` — that would let a misconfigured rule
+      // silently block tools; `ask` keeps the user in the loop.
+      return {
+        effect: "ask",
+        reason: `permission evaluation error, fallback to ask: ${err instanceof Error ? err.message : String(err)}`,
+      };
     }
-    return {
-      effect: this.config.defaultEffect,
-      reason: `default effect: ${this.config.defaultEffect}`,
-    };
   }
 
   async check(req: PermissionInput): Promise<PermissionDecision> {

@@ -51,5 +51,5 @@ cli ──► everything
 - **ESM with `.js` import extensions.** Intra-package imports use `.js` even when importing from `.ts` source (`import { x } from "./foo.js";`). TS is configured with `moduleResolution: "Bundler"` and `verbatimModuleSyntax: false`.
 - **TS strict, `noUncheckedIndexedAccess` on.** Array/object access returns `T | undefined`; handle the `undefined` case — don't disable it locally.
 - **Public APIs get a zod schema** — tool inputs, settings, anything crossing a package boundary that originates outside the type system.
-- **Tests live next to source** as `*.test.ts(x)` under `packages/*/src/`. The vitest glob does not pick up `apps/`, `eval/`, or `examples/`.
+- **Tests live next to source** as `*.test.ts(x)` under `packages/*/src/` and `apps/cli/src/`. The vitest glob does not pick up other `apps/`, `eval/`, or `examples/`.
 - This CLAUDE.md is loaded by Nova's own memory system if `nova` runs on this repo.

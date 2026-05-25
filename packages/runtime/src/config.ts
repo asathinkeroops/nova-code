@@ -23,23 +23,15 @@ export const settingsSchema = z.object({
   maxTokens: z.number().int().positive().default(4096),
   contextWindowTokens: z.number().int().positive().default(256_000),
   maxTurns: z.number().int().positive().default(40),
+  // Schema only — concrete tool-name defaults live with the layer that
+  // registers those tools (apps/cli/src/permissions.ts). @nova/runtime must
+  // not know about specific tool identifiers.
   permissions: z
     .object({
       defaultEffect: z.enum(["allow", "deny", "ask"]).default("ask"),
       rules: z.array(permissionRuleSchema).default([]),
     })
-    .default({
-      defaultEffect: "ask",
-      rules: [
-        { tool: "read", effect: "allow" },
-        { tool: "ask_user_question", effect: "allow" },
-        { tool: "createTodo", effect: "allow" },
-        { tool: "updateTodo", effect: "allow" },
-        { tool: "getTodos", effect: "allow" },
-        { tool: "grep", effect: "allow" },
-        { tool: "glob", effect: "allow" },
-      ],
-    }),
+    .default({ defaultEffect: "ask", rules: [] }),
   transcript: z
     .object({
       enabled: z.boolean().default(true),

@@ -44,6 +44,33 @@ describe("PermissionEngine.evaluate", () => {
     });
     expect(eng.evaluate({ tool: "write", input: { path: "/x" } }).effect).toBe("allow");
   });
+
+  it("falls back to ask when input access throws during match evaluation", () => {
+    const eng = new PermissionEngine({
+      defaultEffect: "deny",
+      rules: [{ tool: "read", effect: "allow", match: { path: "anything" } }],
+    });
+    const hostileInput = new Proxy({} as Record<string, unknown>, {
+      get() {
+        throw new Error("getter exploded");
+      },
+    });
+    const d = eng.evaluate({ tool: "read", input: hostileInput });
+    expect(d.effect).toBe("ask");
+    expect(d.reason).toMatch(/getter exploded/);
+  });
+
+  it("falls back to ask when stableInputKey throws on an exotic input", async () => {
+    const ask: AskCallback = vi.fn(async () => "always-allow");
+    const eng = new PermissionEngine({ defaultEffect: "ask", rules: [], ask });
+    // Build a runtime bucket so stableInputKey runs on subsequent evaluates.
+    await eng.check({ tool: "x", input: { p: "ok" } });
+    // BigInt can't be JSON.stringified — without the catch this would throw
+    // out of evaluate. With the catch we expect a reasoned ask.
+    const d = eng.evaluate({ tool: "x", input: { p: 1n } });
+    expect(d.effect).toBe("ask");
+    expect(d.reason).toMatch(/permission evaluation error/);
+  });
 });
 
 describe("PermissionEngine.check", () => {
