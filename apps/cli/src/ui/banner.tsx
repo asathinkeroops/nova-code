@@ -54,7 +54,7 @@ export function Banner({ version, model, cwd, home, sessionId }: BannerProps): R
       <LabelRow label="model:">
         {model}    <Text dimColor>/model to change</Text>
       </LabelRow>
-      <LabelRow label="directory:">{displayCwd(cwd, home)}</LabelRow>
+      <LabelRow label="workspace:">{displayCwd(cwd, home)}</LabelRow>
       <LabelRow label="session:">{sessionId}</LabelRow>
     </Box>
   );

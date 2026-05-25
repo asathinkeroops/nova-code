@@ -1,11 +1,13 @@
 import React from "react";
-import { Box, Static, Text, useInput } from "ink";
+import { Box, Text, useInput } from "ink";
 import { useShallow } from "zustand/react/shallow";
 import { ApprovalPrompt } from "./approval.js";
 import { AskPanel } from "./ask-user.js";
+import { Banner } from "./banner.js";
 import { InputBox } from "./input-box.js";
 import { Messages } from "./messages.js";
 import { PickHorizontal, PickList } from "./picker.js";
+import { SetupView } from "./setup-view.js";
 import { Spinner } from "./spinner.js";
 import type { AppStoreApi, ModalState } from "./store.js";
 import { TodoFooter } from "./todo-footer.js";
@@ -63,32 +65,44 @@ interface AppProps {
 }
 
 export function App({ store }: AppProps): React.ReactElement {
-  const { history, messages, cards, thinkingLabel, todos, spinner, modal, escHandler } = store(
-    useShallow((s) => ({
-      history: s.history,
-      messages: s.messages,
-      cards: s.cards,
-      thinkingLabel: s.thinkingLabel,
-      todos: s.todos,
-      spinner: s.spinner,
-      modal: s.modal,
-      escHandler: s.escHandler,
-    })),
-  );
+  const { setup, banner, messages, cards, thinkingLabel, todos, spinner, modal, escHandler } =
+    store(
+      useShallow((s) => ({
+        setup: s.setup,
+        banner: s.banner,
+        messages: s.messages,
+        cards: s.cards,
+        thinkingLabel: s.thinkingLabel,
+        todos: s.todos,
+        spinner: s.spinner,
+        modal: s.modal,
+        escHandler: s.escHandler,
+      })),
+    );
   // Actions are stable across renders — grab them once via getState().
   const resolveModal = store.getState().resolveModal;
 
+  // Setup mode commandeers the whole screen — everything else (banner,
+  // messages, cards, spinner, footer) is suppressed until the wizard finishes.
+  if (setup) {
+    return (
+      <Box flexDirection="column">
+        <SetupView state={setup} />
+        {modal ? <ModalView modal={modal} resolveModal={resolveModal} /> : null}
+      </Box>
+    );
+  }
+
   return (
     <Box flexDirection="column">
-      <Static items={history}>
-        {(block, i) =>
-          typeof block === "string" ? (
-            <Text key={i}>{block}</Text>
-          ) : (
-            <React.Fragment key={i}>{block}</React.Fragment>
-          )
-        }
-      </Static>
+      {banner ? (
+        <>
+          <Banner {...banner} />
+          <Box marginTop={1}>
+            <Text dimColor>REPL ready. Type /help for commands, /exit to quit.</Text>
+          </Box>
+        </>
+      ) : null}
       <Messages
         messages={messages}
         cards={cards}

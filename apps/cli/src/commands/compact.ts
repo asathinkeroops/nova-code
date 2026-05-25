@@ -1,4 +1,4 @@
-import { dim, green, red } from "../colors.js";
+import { dim } from "../colors.js";
 import { manualCompact } from "../compactor.js";
 import { persist, stopSpinner, type CliContext } from "../context.js";
 
@@ -7,7 +7,6 @@ export async function handleCompact(ctx: CliContext, focus: string): Promise<voi
     ctx.screen.card(dim("nothing to compact (empty history)."), { title: "/compact" });
     return;
   }
-  ctx.screen.print("\n");
   const spinner = ctx.screen.startSpinner("Compacting");
   ctx.spinner = spinner;
   try {
@@ -23,10 +22,11 @@ export async function handleCompact(ctx: CliContext, focus: string): Promise<voi
     ctx.nextPlaceholder = "";
     await persist(ctx);
     const seconds = (spinner.elapsedMs() / 1000).toFixed(1);
-    const tail = result.transcriptPath ? ` · snapshot: ${result.transcriptPath}` : "";
-    stopSpinner(
-      ctx,
-      `${green("✓")} ${dim(`compacted · ${seconds}s · ${result.before} → ${result.after} msgs${tail}`)}`,
+    const tail = result.transcriptPath ? `\nsnapshot: ${result.transcriptPath}` : "";
+    stopSpinner(ctx);
+    ctx.screen.card(
+      `${seconds}s · ${result.before} → ${result.after} msgs${tail}`,
+      { kind: "info", title: "/compact" },
     );
     ctx.logger.info(
       {
@@ -39,7 +39,8 @@ export async function handleCompact(ctx: CliContext, focus: string): Promise<voi
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    stopSpinner(ctx, red(`✗ compact failed · ${msg}`));
+    stopSpinner(ctx);
+    ctx.screen.card(msg, { kind: "error", title: "/compact failed" });
     ctx.logger.error({ err: msg }, "manual /compact failed");
   }
 }

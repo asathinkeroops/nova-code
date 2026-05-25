@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
+import type { ToolUseBlock } from "@nova/core";
 import type { PermissionDecision, PermissionInput } from "@nova/safety";
+import { ToolUsePreview } from "./tool-call.js";
 
 export type ApprovalAnswer = "yes" | "no" | "always-allow";
 
@@ -32,8 +34,8 @@ export interface ApprovalPromptProps {
 }
 
 export function ApprovalPrompt({
-  decision: _decision,
-  input: _input,
+  decision,
+  input,
   onAnswer,
   onCancel,
 }: ApprovalPromptProps): React.ReactElement {
@@ -63,11 +65,31 @@ export function ApprovalPrompt({
     if (match) onAnswer(match.value);
   });
 
+  // Synthesize a ToolUseBlock for the shared preview. The `id` is unused by
+  // ToolUsePreview itself — it only matters in transcripts for pairing with
+  // tool_results — but the type still requires a string.
+  const use: ToolUseBlock = {
+    type: "tool_use",
+    id: "approval-preview",
+    name: input.tool,
+    input: input.input,
+  };
+
   return (
     <Box flexDirection="column" padding={1} marginTop={1} marginBottom={1} borderStyle={"round"}>
       <Text bold color="#FFA500">
         Permission required
       </Text>
+
+      <Box flexDirection="column" marginTop={1}>
+        <ToolUsePreview use={use} headerOnly />
+        {decision.reason ? (
+          <Box marginTop={1}>
+            <Text dimColor>Reason: {decision.reason}</Text>
+          </Box>
+        ) : null}
+      </Box>
+
       <Box flexDirection="column" marginTop={1}>
         {OPTIONS.map((opt, i) => {
           const active = i === cursor;

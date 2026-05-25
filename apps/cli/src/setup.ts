@@ -1,7 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { DEFAULT_CONFIG_PATH, saveSettings, type Settings } from "@nova/runtime";
-import { bold, cyan, dim, green, red } from "./colors.js";
-import type { Screen } from "./screen.js";
+import { fatalExit, type Screen } from "./screen.js";
 
 type RequiredKey = "apiKey" | "model" | "baseURL";
 
@@ -70,48 +69,49 @@ export async function ensureSettings(
   const missing = PROMPTS.filter((p) => !hasValue(raw, p.key));
   if (missing.length === 0) return settings;
 
-  screen.print(`\n${cyan(bold("Welcome to Nova!"))}\n`);
-  screen.print(
-    `${dim(`Missing ${missing.length} setting${missing.length === 1 ? "" : "s"} — let's configure them. (Ctrl+C to abort)`)}\n`,
-  );
-  screen.print(`${dim(`Config will be saved to: ${configPath}`)}\n`);
-  if (missing.some((p) => p.key === "baseURL")) {
-    screen.print(
-      `${dim("Note: baseURL must point to an Anthropic-compatible API endpoint.")}\n`,
-    );
+  screen.beginSetup({
+    header: {
+      configPath,
+      missingCount: missing.length,
+      noteBaseURL: missing.some((p) => p.key === "baseURL"),
+    },
+    entries: [],
+    currentPrompt: null,
+  });
+
+  try {
+    for (const p of missing) {
+      let value: string | null = null;
+      while (value === null) {
+        screen.setSetupPrompt({ label: p.label, hint: p.hint });
+        const answer = await screen.promptInput(p.secret ? { mask: true } : {});
+        if (answer === null) {
+          await fatalExit(screen, "setup aborted.");
+        }
+        const trimmed = (answer as string).trim();
+        const err = p.validate(trimmed);
+        if (err) {
+          screen.pushSetupEntry({ kind: "err", text: `✗ ${err}` });
+          continue;
+        }
+        value = trimmed;
+      }
+
+      settings[p.key] = value;
+      try {
+        await saveSettings({ [p.key]: value });
+        screen.pushSetupEntry({
+          kind: "ok",
+          text: `✓ saved ${p.label.toLowerCase()}`,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        await fatalExit(screen, `failed to save settings: ${msg}`);
+      }
+    }
+  } finally {
+    screen.endSetup();
   }
 
-  for (const p of missing) {
-    let value: string | null = null;
-    while (value === null) {
-      screen.print(`\n${cyan("?")} ${bold(p.label)} ${dim(`(${p.hint})`)}\n`);
-      const answer = await screen.promptInput(p.secret ? { mask: true } : {});
-      if (answer === null) {
-        screen.printErr(`\n${red("✗")} setup aborted.\n`);
-        await screen.unmount();
-        process.exit(2);
-      }
-      const trimmed = answer.trim();
-      const err = p.validate(trimmed);
-      if (err) {
-        screen.print(`${red("✗")} ${err}\n`);
-        continue;
-      }
-      value = trimmed;
-    }
-
-    settings[p.key] = value;
-    try {
-      await saveSettings({ [p.key]: value });
-      screen.print(`${green("✓")} ${dim(`saved ${p.label.toLowerCase()}`)}\n`);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      screen.printErr(`${red("✗")} failed to save settings: ${msg}\n`);
-      await screen.unmount();
-      process.exit(2);
-    }
-  }
-
-  screen.print(`\n${green("✓")} ${dim("setup complete.")}\n`);
   return settings;
 }

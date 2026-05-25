@@ -1,4 +1,4 @@
-import { CYAN_RGB, cyan, dim } from "./colors.js";
+import { CYAN_RGB, cyan } from "./colors.js";
 import {
   handleClear,
   handleCompact,
@@ -91,8 +91,6 @@ export async function runRepl(ctx: CliContext, initialPrompt: string): Promise<v
     if (ok) await refreshPrediction(ctx);
   }
 
-  ctx.screen.print(`\n${dim("REPL ready. Type /help for commands, /exit to quit.")}\n`);
-
   // eslint-disable-next-line no-constant-condition
   while (true) {
     const placeholder = ctx.nextPlaceholder;
@@ -114,7 +112,6 @@ export async function runRepl(ctx: CliContext, initialPrompt: string): Promise<v
     if (ok) await refreshPrediction(ctx);
   }
 
-  ctx.screen.print(`\nBye!\n`);
   await ctx.transcript.flush();
   await ctx.screen.unmount();
 }

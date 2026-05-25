@@ -9,7 +9,9 @@ import type { Todo } from "@nova/orchestration";
 import type { PermissionDecision, PermissionInput } from "@nova/safety";
 import { App } from "./ui/app.js";
 import { type ApprovalAnswer } from "./ui/approval.js";
+import { type BannerProps } from "./ui/banner.js";
 import { type BoxedInputOptions } from "./ui/input-box.js";
+import { type SetupEntry, type SetupState } from "./ui/setup-view.js";
 import {
   type HorizontalPickerOptions,
   type PickerOptions,
@@ -24,6 +26,22 @@ import {
 
 export type { SpinnerLabel } from "./ui/store.js";
 export type Spinner = SpinnerHandle;
+
+/**
+ * Tear down Ink and exit with `message` on stderr. Used by start-up failures
+ * and fatal mid-session errors — anything that needs to surface a message
+ * the user can still see after Ink releases the terminal. Writing to stderr
+ * AFTER unmount avoids interleaving with Ink's live-region paint.
+ */
+export async function fatalExit(
+  screen: Screen,
+  message: string,
+  code: number = 2,
+): Promise<never> {
+  await screen.unmount();
+  process.stderr.write(`\n✗ ${message}\n`);
+  process.exit(code);
+}
 
 interface InkInstance {
   unmount(): void;
@@ -82,33 +100,15 @@ export class Screen {
 
   /**
    * Tear down the Ink tree, clear the terminal, and remount a fresh tree.
-   * Used by /clear and /resume since `<Static>` is append-only.
+   * Used by /clear and /resume to drop any content the terminal has already
+   * scrolled past, so the loaded history (or empty post-clear state) starts
+   * at the top of a fresh screen.
    */
   async reset(): Promise<void> {
     await this.unmount();
     process.stdout.write("\x1b[2J\x1b[H");
     this.store.getState().reset();
     this.mount();
-  }
-
-  print(text: string): void {
-    if (text.length === 0) return;
-    this.store.getState().print(text);
-  }
-
-  /**
-   * Push a React node into the Static history. Used for things that benefit
-   * from Ink layout primitives (banner, etc.).
-   */
-  printNode(node: React.ReactNode): void {
-    this.store.getState().printNode(node);
-  }
-
-  printErr(text: string): void {
-    if (text.length === 0) return;
-    // Route stderr-class output into the same scroll history so it stays
-    // in order with surrounding stdout.
-    this.store.getState().print(text);
   }
 
   /**
@@ -123,6 +123,10 @@ export class Screen {
 
   clearCards(): void {
     this.store.getState().clearCards();
+  }
+
+  setBanner(banner: BannerProps | null): void {
+    this.store.getState().setBanner(banner);
   }
 
   setTodos(todos: Todo[]): void {
@@ -145,18 +149,24 @@ export class Screen {
     this.store.getState().setEscHandler(fn);
   }
 
+  beginSetup(state: SetupState): void {
+    this.store.getState().beginSetup(state);
+  }
+
+  setSetupPrompt(prompt: { label: string; hint: string } | null): void {
+    this.store.getState().setSetupPrompt(prompt);
+  }
+
+  pushSetupEntry(entry: SetupEntry): void {
+    this.store.getState().pushSetupEntry(entry);
+  }
+
+  endSetup(): void {
+    this.store.getState().endSetup();
+  }
+
   async promptInput(opts: BoxedInputOptions): Promise<string | null> {
-    const state = this.store.getState();
-    const value = await state.openInputModal(opts);
-    if (value !== null && opts.mask) {
-      // For masked input (passwords / API keys), echo a fixed-width placeholder
-      // so the user still sees that *something* was submitted. Non-masked input
-      // is echoed by the caller (REPL for slash commands, runTurn via Messages
-      // for user prompts) so that visibility stays consistent across both
-      // live and resumed sessions.
-      this.store.getState().print(`› ${"*".repeat(value.length)}\n`);
-    }
-    return value;
+    return this.store.getState().openInputModal(opts);
   }
 
   async promptApproval(

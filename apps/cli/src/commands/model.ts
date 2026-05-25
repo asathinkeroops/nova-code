@@ -1,6 +1,6 @@
 import { saveSettings } from "@nova/runtime";
 import { dim } from "../colors.js";
-import type { CliContext } from "../context.js";
+import { refreshBanner, type CliContext } from "../context.js";
 
 const TITLE = "/model";
 
@@ -11,6 +11,7 @@ export async function handleModel(ctx: CliContext, arg: string): Promise<void> {
   }
   ctx.settings.model = arg;
   ctx.model = ctx.buildModel(arg);
+  refreshBanner(ctx);
   try {
     await saveSettings({ model: arg });
   } catch (err) {

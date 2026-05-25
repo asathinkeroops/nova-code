@@ -2,7 +2,6 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import React from "react";
 import { loadMemory, type MemoryBundle } from "@nova/context";
 import {
   createAnthropicModel,
@@ -22,7 +21,7 @@ import {
 } from "@nova/runtime";
 import { PermissionDeniedError, PermissionEngine } from "@nova/safety";
 import { ToolRegistry, builtinTools, createDispatcher } from "@nova/tools";
-import { CYAN_RGB, cyan, dim, red } from "./colors.js";
+import { CYAN_RGB, cyan, dim } from "./colors.js";
 import { buildCompactor } from "./compactor.js";
 import { TOOL_SPINNER_DELAY_MS, WORKING_WORDS } from "./constants.js";
 import {
@@ -32,8 +31,7 @@ import {
   type PersistCursor,
 } from "./persistence.js";
 import { resolveSession } from "./session.js";
-import { Screen, type Spinner } from "./screen.js";
-import { Banner } from "./ui/banner.js";
+import { Screen, fatalExit, type Spinner } from "./screen.js";
 
 export interface CliRuntimeOptions {
   cwd?: string;
@@ -68,6 +66,13 @@ export interface CliContext {
   spinner: Spinner | null;
   toolSpinnerTimer: NodeJS.Timeout | null;
   nextPlaceholder: string;
+  /**
+   * Carrier for the auto-compact summary card across the compactor →
+   * compact_end window. The compactor's onAutoCompact callback stashes the
+   * info here; the observer's compact_end handler reads it back after the
+   * mandatory `clearCards()` and pushes the card, so the notice survives.
+   */
+  pendingAutoCompactNotice: { before: number; after: number; transcriptPath?: string } | null;
   /**
    * Shared ref-box for the per-turn AbortController. The persistent
    * permission ask callback reads through this box to see the *current*
@@ -110,27 +115,23 @@ async function readCliVersion(): Promise<string> {
   }
 }
 
-export function printBanner(ctx: CliContext): void {
-  ctx.screen.print("\n");
-  ctx.screen.printNode(
-    React.createElement(Banner, {
-      version: ctx.version,
-      model: ctx.settings.model,
-      cwd: ctx.workspace,
-      home: homedir(),
-      sessionId: ctx.session.id,
-    }),
-  );
-  ctx.screen.print("\n");
+export function refreshBanner(ctx: CliContext): void {
+  ctx.screen.setBanner({
+    version: ctx.version,
+    model: ctx.settings.model,
+    cwd: ctx.workspace,
+    home: homedir(),
+    sessionId: ctx.session.id,
+  });
 }
 
 export function refreshTodoFooter(ctx: CliContext): void {
   ctx.screen.setTodos(ctx.todoStore.list());
 }
 
-export function stopSpinner(ctx: CliContext, finalLine?: string): void {
+export function stopSpinner(ctx: CliContext): void {
   if (ctx.spinner) {
-    ctx.spinner.stop(finalLine);
+    ctx.spinner.stop();
     ctx.spinner = null;
   }
 }
@@ -169,7 +170,7 @@ export async function persist(ctx: CliContext): Promise<void> {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     ctx.logger.error({ err: msg }, "failed to persist messages");
-    ctx.screen.printErr(`${dim(`(warning: persist failed — ${msg})`)}\n`);
+    ctx.screen.card(msg, { kind: "warn", title: "persist failed" });
   }
 }
 
@@ -255,6 +256,7 @@ export async function createContext(
     spinner: null,
     toolSpinnerTimer: null,
     nextPlaceholder: "",
+    pendingAutoCompactNotice: null,
     turnState: { abort: null },
     apiKey,
     workspace,
@@ -313,10 +315,11 @@ export async function createContext(
     getModel: () => ctx.model,
     getSessionDir: () => ctx.session.dir,
     onAutoCompact: ({ before, after, transcriptPath }) => {
-      const tail = transcriptPath ? ` · snapshot: ${transcriptPath}` : "";
-      ctx.screen.print(
-        `\n${dim(`↻ auto-compacted history ${before} → ${after} msgs${tail}`)}\n`,
-      );
+      ctx.pendingAutoCompactNotice = {
+        before,
+        after,
+        ...(transcriptPath ? { transcriptPath } : {}),
+      };
       ctx.logger.info({ before, after, transcriptPath }, "auto-compacted");
     },
   });
@@ -326,7 +329,7 @@ export async function createContext(
   if (resumed) await ctx.screen.reset();
 
   ctx.screen.setThinkingLabel(thinkingLevelLabel(ctx));
-  printBanner(ctx);
+  refreshBanner(ctx);
   logger.info(
     { sessionId: session.id, dir: session.dir, resumed },
     resumed ? "session resumed" : "session started",
@@ -353,10 +356,8 @@ export async function createContext(
       logger.info({ count: msgs.length }, "messages restored");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      ctx.screen.printErr(`${red(`✗ failed to load messages: ${msg}`)}\n`);
       logger.error({ err: msg }, "failed to load messages");
-      await ctx.screen.unmount();
-      process.exit(2);
+      await fatalExit(ctx.screen, `failed to load messages: ${msg}`);
     }
   }
 

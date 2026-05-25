@@ -104,7 +104,6 @@ function groupCardsByAnchor(cards: Card[]): Map<number, Card[]> {
 
 function CardView({ card }: { card: Card }): React.ReactElement {
   const color = card.kind === "error" ? red : card.kind === "warn" ? orange : blue;
-  const symbol = card.kind === "error" ? "✗" : card.kind === "warn" ? "⚠" : "ℹ";
   const bar = color("│");
   const bodyLines = card.text.split("\n");
   // Strip a single leading/trailing blank line — callers may pad with "\n"
@@ -118,7 +117,7 @@ function CardView({ card }: { card: Card }): React.ReactElement {
       {card.title ? (
         <Box flexDirection="row">
           <Text>{bar} </Text>
-          <Text>{color(symbol)} {bold(color(card.title))}</Text>
+          <Text bold>{color(card.title)}</Text>
         </Box>
       ) : null}
       {bodyLines.map((line, i) => (

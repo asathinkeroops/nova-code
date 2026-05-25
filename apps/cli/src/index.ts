@@ -1,10 +1,9 @@
 import { Command } from "commander";
 import { isThinkingLevel } from "@nova/core";
 import { loadSettings } from "@nova/runtime";
-import { red } from "./colors.js";
 import { createContext } from "./context.js";
 import { runRepl } from "./repl.js";
-import { Screen } from "./screen.js";
+import { Screen, fatalExit } from "./screen.js";
 import { printSessionList } from "./session.js";
 import { ensureSettings } from "./setup.js";
 
@@ -56,22 +55,18 @@ async function run(positional: string[], opts: CliOptions): Promise<void> {
         settings.thinking.level = raw;
         settings.thinking.budgetTokens = undefined;
       } else {
-        screen.printErr(
-          red(
-            `invalid --think value: ${raw} (expected off|low|medium|high|max or a positive integer)\n`,
-          ),
+        await fatalExit(
+          screen,
+          `invalid --think value: ${raw} (expected off|low|medium|high|max or a positive integer)`,
         );
-        await screen.unmount();
-        process.exit(2);
       }
     }
 
     if (!settings.apiKey) {
-      screen.printErr(
-        red("apiKey is not set in nova.config.json (or equivalent settings file).\n"),
+      await fatalExit(
+        screen,
+        "apiKey is not set in nova.config.json (or equivalent settings file).",
       );
-      await screen.unmount();
-      process.exit(2);
     }
 
     const ctx = await createContext(settings, screen, {
@@ -85,9 +80,7 @@ async function run(positional: string[], opts: CliOptions): Promise<void> {
     await runRepl(ctx, initialPrompt);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    screen.printErr(`${red(`✗ ${msg}`)}\n`);
-    await screen.unmount();
-    process.exit(1);
+    await fatalExit(screen, msg, 1);
   }
 }
 

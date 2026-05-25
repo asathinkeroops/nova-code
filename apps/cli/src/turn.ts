@@ -1,6 +1,6 @@
 import { agentLoop, userText } from "@nova/core";
 import { makeTodoReminder } from "@nova/orchestration";
-import { dim, red } from "./colors.js";
+import { dim } from "./colors.js";
 import {
   clearToolSpinner,
   currentThinkingBudget,
@@ -88,9 +88,10 @@ export async function runTurn(ctx: CliContext, userInput: string): Promise<boole
       const msg = err instanceof Error ? (err.stack ?? err.message) : String(err);
       ctx.logger.error({ err: msg }, "loop terminated");
       const head = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
-      ctx.screen.printErr(
-        `\n${red(`✗ loop terminated — ${head}`)}\n  ${dim(`see log: ${ctx.logPath}`)}\n`,
-      );
+      ctx.screen.card(`${head}\nsee log: ${ctx.logPath}`, {
+        kind: "error",
+        title: "loop terminated",
+      });
       await ctx.transcript.append({ kind: "error", data: { message: msg } });
       await ctx.transcript.flush();
     }

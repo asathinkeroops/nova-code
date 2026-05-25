@@ -248,20 +248,43 @@ export interface ToolCallProps {
   result: ToolResultBlock | undefined;
 }
 
-export function ToolCall({ use, result }: ToolCallProps): React.ReactElement {
+/**
+ * Renders just the per-tool header (and optional body — e.g. write/edit's
+ * diff) without the result row. Shared between the transcript's
+ * <ToolCall> and the permission approval popup so previews stay in sync.
+ * Pass `headerOnly` to suppress the body (used by the approval popup,
+ * which has limited vertical space and doesn't need the full diff).
+ */
+export function ToolUsePreview({
+  use,
+  headerOnly = false,
+}: {
+  use: ToolUseBlock;
+  headerOnly?: boolean;
+}): React.ReactElement {
   const def = tools[use.name];
   const view: UseView = def?.use
     ? def.use(use.input as Record<string, unknown>)
     : { header: <GenericUseHeader use={use} /> };
 
   return (
-    <Box flexDirection="column" marginTop={1}>
+    <Box flexDirection="column">
       {view.header}
-      {view.body ? (
+      {!headerOnly && view.body ? (
         <Box marginTop={1}>
           <Text>{view.body}</Text>
         </Box>
       ) : null}
+    </Box>
+  );
+}
+
+export function ToolCall({ use, result }: ToolCallProps): React.ReactElement {
+  const def = tools[use.name];
+
+  return (
+    <Box flexDirection="column" marginTop={1}>
+      <ToolUsePreview use={use} />
       <ResultRow>
         {result ? (
           def?.result ? (

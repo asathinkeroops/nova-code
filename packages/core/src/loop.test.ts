@@ -94,7 +94,7 @@ describe("agentLoop · stop_reason state machine", () => {
     }
   });
 
-  it("runs tools strictly serially and emits use/result in declaration order", async () => {
+  it("emits tool_use events in declaration order then executes them concurrently", async () => {
     const model = mockModel([
       {
         content: [
@@ -120,29 +120,88 @@ describe("agentLoop · stop_reason state machine", () => {
       return { type: "tool_result", tool_use_id: use.id, content: `done:${use.id}` };
     };
 
-    const seen: string[] = [];
-    await agentLoop({
+    const useOrder: string[] = [];
+    const resultIds = new Set<string>();
+    const result = await agentLoop({
       ...baseOpts,
       model,
       executeTool: exec,
       observer: (e) => {
         if (e.kind === "tool_use") {
-          seen.push(`use:${(e.payload as { id: string }).id}`);
+          useOrder.push((e.payload as { id: string }).id);
         } else if (e.kind === "tool_result") {
-          seen.push(`result:${(e.payload as { tool_use_id: string }).tool_use_id}`);
+          resultIds.add((e.payload as { tool_use_id: string }).tool_use_id);
         }
       },
     });
 
-    expect(maxActive).toBe(1);
-    expect(seen).toEqual([
-      "use:a",
-      "result:a",
-      "use:b",
-      "result:b",
-      "use:c",
-      "result:c",
+    // tool_use events fire in declaration order during phase 1.
+    expect(useOrder).toEqual(["a", "b", "c"]);
+    // Phase 2 fires every executor concurrently — the 5ms sleeps all start
+    // before any finishes, so the peak in-flight count is the full batch.
+    expect(maxActive).toBe(3);
+    // Every tool_use yields a tool_result (set membership; completion order
+    // is intentionally not asserted — it's a function of executor latency).
+    expect(resultIds).toEqual(new Set(["a", "b", "c"]));
+    // The final user message commits the results back in declaration order
+    // so the next API turn sees them paired with the assistant's tool_uses.
+    const userMsg = result.messages[2];
+    if (Array.isArray(userMsg?.content)) {
+      const ids = userMsg.content.map((b) =>
+        b.type === "tool_result" ? b.tool_use_id : null,
+      );
+      expect(ids).toEqual(["a", "b", "c"]);
+    }
+  });
+
+  it("runs permission checks strictly serially even though execution is concurrent", async () => {
+    const model = mockModel([
+      {
+        content: [
+          { type: "tool_use", id: "a", name: "echo", input: { msg: "a" } },
+          { type: "tool_use", id: "b", name: "echo", input: { msg: "b" } },
+          { type: "tool_use", id: "c", name: "echo", input: { msg: "c" } },
+        ],
+        stopReason: "tool_use",
+      },
+      { content: [{ type: "text", text: "ok" }], stopReason: "end_turn" },
     ]);
+
+    let permActive = 0;
+    let permMaxActive = 0;
+    const permOrder: string[] = [];
+    const checkPermission = async (
+      _tool: string,
+      input: unknown,
+    ): Promise<{ granted: boolean }> => {
+      permActive++;
+      permMaxActive = Math.max(permMaxActive, permActive);
+      permOrder.push((input as { msg: string }).msg);
+      await new Promise((r) => setTimeout(r, 3));
+      permActive--;
+      return { granted: true };
+    };
+
+    let execActive = 0;
+    let execMaxActive = 0;
+    const exec: ToolExecutor = async (use) => {
+      execActive++;
+      execMaxActive = Math.max(execMaxActive, execActive);
+      await new Promise((r) => setTimeout(r, 5));
+      execActive--;
+      return { type: "tool_result", tool_use_id: use.id, content: "ok" };
+    };
+
+    await agentLoop({
+      ...baseOpts,
+      model,
+      executeTool: exec,
+      checkPermission,
+    });
+
+    expect(permMaxActive).toBe(1);
+    expect(permOrder).toEqual(["a", "b", "c"]);
+    expect(execMaxActive).toBe(3);
   });
 
   it("isolates per-tool failure: one tool throwing still yields tool_results for the rest", async () => {
@@ -209,6 +268,52 @@ describe("agentLoop · stop_reason state machine", () => {
         b.type === "tool_result" ? b.tool_use_id : null,
       );
       expect(ids).toEqual(["a", "b"]);
+    }
+  });
+
+  it("preserves every tool_result when one executor rejects and an observer also throws", async () => {
+    // Belt-and-braces for the concurrent phase: if executor b rejects AND
+    // the observer throws on messages_changed (both unsafe paths in
+    // earlier versions), the other two tools must still land their results
+    // and the final user message must carry all three in declaration order.
+    const model = mockModel([
+      {
+        content: [
+          { type: "tool_use", id: "a", name: "echo", input: { msg: "a" } },
+          { type: "tool_use", id: "b", name: "echo", input: { msg: "b" } },
+          { type: "tool_use", id: "c", name: "echo", input: { msg: "c" } },
+        ],
+        stopReason: "tool_use",
+      },
+      { content: [{ type: "text", text: "ok" }], stopReason: "end_turn" },
+    ]);
+
+    const exec: ToolExecutor = async (use) => {
+      if (use.id === "b") throw new Error("executor exploded");
+      return { type: "tool_result", tool_use_id: use.id, content: `ok:${use.id}` };
+    };
+
+    const result = await agentLoop({
+      ...baseOpts,
+      model,
+      executeTool: exec,
+      observer: (e) => {
+        if (e.kind === "messages_changed") throw new Error("observer exploded");
+      },
+    });
+
+    const userMsg = result.messages[2];
+    expect(userMsg?.role).toBe("user");
+    if (Array.isArray(userMsg?.content)) {
+      const ids = userMsg.content.map((b) =>
+        b.type === "tool_result" ? b.tool_use_id : null,
+      );
+      expect(ids).toEqual(["a", "b", "c"]);
+      const bResult = userMsg.content[1];
+      if (bResult?.type === "tool_result") {
+        expect(bResult.is_error).toBe(true);
+        expect(String(bResult.content)).toContain("executor exploded");
+      }
     }
   });
 

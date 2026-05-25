@@ -1,5 +1,5 @@
 import type { LoopObserver, MessageParam } from "@nova/core";
-import { MAGENTA_RGB, magenta, red } from "./colors.js";
+import { MAGENTA_RGB, magenta } from "./colors.js";
 import { WORKING_WORDS } from "./constants.js";
 import {
   armToolSpinner,
@@ -52,6 +52,16 @@ export function createObserver(ctx: CliContext): LoopObserver {
       // Inline cards anchored to pre-compaction message indices are now
       // meaningless — drop them all rather than try to rebase.
       ctx.screen.clearCards();
+      // Surface the auto-compact summary AFTER the wipe so it survives.
+      const notice = ctx.pendingAutoCompactNotice;
+      ctx.pendingAutoCompactNotice = null;
+      if (notice) {
+        const tail = notice.transcriptPath ? `\nsnapshot: ${notice.transcriptPath}` : "";
+        ctx.screen.card(`history ${notice.before} → ${notice.after} msgs${tail}`, {
+          kind: "info",
+          title: "auto-compact",
+        });
+      }
       return;
     }
     if (event.kind === "request_start") {
@@ -64,7 +74,11 @@ export function createObserver(ctx: CliContext): LoopObserver {
       if (p.error) {
         const seconds = (p.durationMs / 1000).toFixed(1);
         const word = ctx.spinner?.label() ?? "working";
-        stopSpinner(ctx, red(`✗ ${word} · ${seconds}s · ${p.error}`));
+        stopSpinner(ctx);
+        ctx.screen.card(`${word} · ${seconds}s · ${p.error}`, {
+          kind: "error",
+          title: "request failed",
+        });
       } else {
         stopSpinner(ctx);
       }

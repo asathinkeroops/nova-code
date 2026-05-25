@@ -8,7 +8,7 @@ import {
 } from "@nova/runtime";
 import { Transcript } from "@nova/observability";
 import { dim, red } from "./colors.js";
-import { printBanner, type CliContext } from "./context.js";
+import { refreshBanner, type CliContext } from "./context.js";
 import { loadMessages, emptyCursor } from "./persistence.js";
 
 export function formatTimestamp(d: Date): string {
@@ -90,7 +90,10 @@ export async function switchToSession(ctx: CliContext, newSession: Session): Pro
     newMessages = await loadMessages(newSession.messagesPath);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    ctx.screen.printErr(`${red(`✗ failed to load messages from ${newSession.id}: ${msg}`)}\n`);
+    ctx.screen.card(`failed to load messages from ${newSession.id}: ${msg}`, {
+      kind: "error",
+      title: "/resume",
+    });
     ctx.logger.error({ err: msg, target: newSession.id }, "resume failed");
     return false;
   }
@@ -120,9 +123,10 @@ export async function switchToSession(ctx: CliContext, newSession: Session): Pro
   }
 
   await ctx.screen.reset();
-  printBanner(ctx);
-  ctx.screen.print(
-    `${dim(`↻ resumed ${newSession.id} · log: ${ctx.logPath} · ${newMessages.length} message(s)`)}\n`,
+  refreshBanner(ctx);
+  ctx.screen.card(
+    `${newSession.id}\nlog: ${ctx.logPath}\n${newMessages.length} message(s)`,
+    { kind: "info", title: "/resume" },
   );
   ctx.screen.setMessages(newMessages);
   ctx.logger.info(

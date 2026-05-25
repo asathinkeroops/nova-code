@@ -1,22 +1,15 @@
-import type { ReactNode } from "react";
 import { create, type StoreApi, type UseBoundStore } from "zustand";
 import type { Rgb } from "../colors.js";
 import type { AskUserRequest, AskUserResponse, MessageParam } from "@nova/core";
 import type { Todo } from "@nova/orchestration";
 import type { PermissionDecision, PermissionInput } from "@nova/safety";
+import type { BannerProps } from "./banner.js";
 import type { BoxedInputOptions } from "./input-box.js";
 import type {
   HorizontalPickerOptions,
   PickerOptions,
 } from "./picker.js";
-
-/**
- * History items are either ANSI strings (from string-producing renderers
- * like markdown, slash-command echoes) or React nodes (for things that
- * benefit from Ink layout primitives, e.g. the banner). The Static children
- * render them in two branches.
- */
-export type HistoryItem = string | ReactNode;
+import type { SetupEntry, SetupState } from "./setup-view.js";
 
 export type SpinnerLabel =
   | string
@@ -75,18 +68,18 @@ export type ModalState =
   | { kind: "pickH"; opts: HorizontalPickerOptions<unknown> };
 
 export interface SpinnerHandle {
-  stop(finalLine?: string): void;
+  stop(): void;
   elapsedMs(): number;
   label(): string;
 }
 
 export interface AppState {
   /**
-   * Pre-rendered ANSI blocks and React nodes that flow above the live region
-   * via `<Static>`. Reserved for non-message UI: banner, slash-command output,
-   * system notices. Conversation content lives in `messages` instead.
+   * Header banner rendered at the top of the App. Updated in place when the
+   * model or session changes; preserved across `reset()` since it tracks
+   * process-level state, not conversation history.
    */
-  history: HistoryItem[];
+  banner: BannerProps | null;
   /**
    * Canonical projection of the loop's MessageParam[]. Updated by the observer
    * on `messages_changed`, and directly by /clear and /resume. The `<Messages>`
@@ -116,18 +109,28 @@ export interface AppState {
    * thinking is off.
    */
   thinkingLabel: string | undefined;
+  /**
+   * Active setup wizard state. When non-null, the App renders ONLY the
+   * `<SetupView>` (plus any open modal) and suppresses every other branch
+   * — banner, scrollback, messages, cards, spinner, footer all stay hidden
+   * until setup completes and this returns to null.
+   */
+  setup: SetupState | null;
 }
 
 export interface AppActions {
-  print: (text: string) => void;
-  printNode: (node: ReactNode) => void;
   pushCard: (text: string, opts?: CardOptions) => void;
   clearCards: () => void;
+  setBanner: (banner: BannerProps | null) => void;
   setMessages: (messages: MessageParam[]) => void;
   setThinkingLabel: (label: string | undefined) => void;
   setTodos: (todos: Todo[]) => void;
   startSpinner: (label: SpinnerLabel, hint?: string) => SpinnerHandle;
   setEscHandler: (fn: (() => void) | null) => void;
+  beginSetup: (state: SetupState) => void;
+  setSetupPrompt: (prompt: { label: string; hint: string } | null) => void;
+  pushSetupEntry: (entry: SetupEntry) => void;
+  endSetup: () => void;
   resolveModal: (value: unknown) => void;
   openInputModal: (opts: BoxedInputOptions) => Promise<string | null>;
   openApprovalModal: (
@@ -146,10 +149,6 @@ export interface AppActions {
 
 export type AppStoreState = AppState & AppActions;
 export type AppStoreApi = UseBoundStore<StoreApi<AppStoreState>>;
-
-function normalizeBlock(text: string): string {
-  return text.replace(/\n+$/g, "");
-}
 
 /**
  * Module-scoped slot for the currently-open modal's Promise resolver. Kept
@@ -211,7 +210,7 @@ export function createAppStore(): AppStoreApi {
 
     return {
       // ===== State =====
-      history: [],
+      banner: null,
       messages: [],
       cards: [],
       todos: [],
@@ -219,19 +218,9 @@ export function createAppStore(): AppStoreApi {
       modal: null,
       escHandler: null,
       thinkingLabel: undefined,
+      setup: null,
 
       // ===== Actions =====
-      print(text) {
-        if (text.length === 0) return;
-        const block = normalizeBlock(text);
-        set((s) => ({ history: [...s.history, block] }));
-      },
-
-      printNode(node) {
-        if (node === null || node === undefined || node === false) return;
-        set((s) => ({ history: [...s.history, node] }));
-      },
-
       pushCard(text, opts = {}) {
         const id = ++cardCounter;
         const anchor = get().messages.length - 1;
@@ -248,6 +237,10 @@ export function createAppStore(): AppStoreApi {
       clearCards() {
         if (get().cards.length === 0) return;
         set({ cards: [] });
+      },
+
+      setBanner(banner) {
+        set({ banner });
       },
 
       setMessages(messages) {
@@ -278,11 +271,10 @@ export function createAppStore(): AppStoreApi {
         set({ spinner: spec });
         const startedAt = spec.startedAt;
         return {
-          stop: (finalLine?: string): void => {
+          stop: (): void => {
             const cur = get().spinner;
             if (cur?.id !== id) return;
             set({ spinner: null });
-            if (finalLine) get().print(`${finalLine}\n`);
           },
           elapsedMs: (): number => Date.now() - startedAt,
           label: (): string => {
@@ -294,6 +286,26 @@ export function createAppStore(): AppStoreApi {
 
       setEscHandler(fn) {
         set({ escHandler: fn });
+      },
+
+      beginSetup(state) {
+        set({ setup: state });
+      },
+
+      setSetupPrompt(prompt) {
+        const cur = get().setup;
+        if (!cur) return;
+        set({ setup: { ...cur, currentPrompt: prompt } });
+      },
+
+      pushSetupEntry(entry) {
+        const cur = get().setup;
+        if (!cur) return;
+        set({ setup: { ...cur, entries: [...cur.entries, entry] } });
+      },
+
+      endSetup() {
+        set({ setup: null });
       },
 
       resolveModal(value) {
@@ -345,14 +357,16 @@ export function createAppStore(): AppStoreApi {
       },
 
       /**
-       * Clears history. `<Static>` is append-only, so the Screen controller
-       * also unmounts/remounts the Ink instance — see `Screen.reset()`.
+       * Clears conversation state. The Screen controller also unmounts and
+       * remounts the Ink instance (and clears the terminal) — see
+       * `Screen.reset()` — to drop any output that was already committed.
        */
       reset() {
         clearSlot();
-        set({ history: [], messages: [], cards: [], spinner: null, modal: null });
-        // thinkingLabel intentionally preserved across reset — it tracks user
-        // preference, not session state.
+        set({ messages: [], cards: [], spinner: null, modal: null });
+        // banner and thinkingLabel intentionally preserved across reset —
+        // banner tracks process-level state (model/session header),
+        // thinkingLabel tracks user preference, neither is conversation state.
       },
     };
   });
