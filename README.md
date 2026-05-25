@@ -6,7 +6,7 @@
 
 Nova is a coding agent that lives in your terminal — reads code, runs commands, edits files, and drives a task to done through tool use. It speaks the Anthropic message shape internally, but the model layer is built around **DeepSeek**: thinking is wired to DeepSeek's `output_config.effort` (not Anthropic's `budget_tokens`), the wire format is auto-detected from the model id, and the default prompts/permissions are tuned for DeepSeek's behavior. Other Anthropic-compatible endpoints still work — DeepSeek is the path that gets first-class care.
 
-Under the hood Nova is a loop-centric harness: `@nova/core` exposes a model-agnostic agent loop, and tools, permissions, context management, observability, and orchestration plug in through its hooks and observer. `apps/cli` wires the pieces into the working REPL (the `harness` binary).
+Under the hood Nova is a loop-centric harness: `@nova/core` exposes a model-agnostic agent loop, and tools, permissions, context management, observability, and orchestration plug in through its hooks and observer. `apps/cli` wires the pieces into the working REPL (the `nova` binary).
 
 Status: **M1 shipped** (base loop + bash/read/write + permissions + transcript). **M2 in progress** — three-layer memory loading and micro/auto compaction are done; prompt cache, hooks, and cost/metrics are next. Full roadmap in `docs/M1-TODO.md` through `docs/M4-TODO.md`.
 
@@ -66,7 +66,7 @@ packages/
   multi-agent    subagent isolation + summary handoff (M3 W10)
   isolation, sdk reserved (M3/M4)
 apps/
-  cli            the harness binary (only active app)
+  cli            the nova binary (only active app)
   http, vscode   placeholders, not implemented
 eval/            replay harness + golden cases (excluded from main build / eslint / tsconfig)
 docs/            per-milestone TODO (M1–M4) and design notes

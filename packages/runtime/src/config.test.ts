@@ -21,6 +21,18 @@ describe("settingsSchema", () => {
       { tool: "glob", effect: "allow" },
     ]);
     expect(s.transcript.enabled).toBe(true);
+    expect(s.slash.enabled).toBe(true);
+    expect(s.slash.projectDirs).toBeUndefined();
+    expect(s.slash.userPaths).toBeUndefined();
+  });
+
+  it("accepts slash overrides", () => {
+    const s = parseSettings({
+      slash: { enabled: false, projectDirs: ["prompts"], userPaths: ["~/.my/cmds"] },
+    });
+    expect(s.slash.enabled).toBe(false);
+    expect(s.slash.projectDirs).toEqual(["prompts"]);
+    expect(s.slash.userPaths).toEqual(["~/.my/cmds"]);
   });
 
   it("accepts permission rules", () => {

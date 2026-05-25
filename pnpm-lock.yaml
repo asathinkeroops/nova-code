@@ -47,6 +47,9 @@ importers:
       '@nova/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@nova/external':
+        specifier: workspace:*
+        version: link:../../packages/external
       '@nova/observability':
         specifier: workspace:*
         version: link:../../packages/observability
@@ -108,6 +111,18 @@ importers:
       zod-to-json-schema:
         specifier: ^3.23.0
         version: 3.25.2(zod@3.25.76)
+
+  packages/external:
+    dependencies:
+      '@nova/core':
+        specifier: workspace:*
+        version: link:../core
+      '@nova/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
 
   packages/observability:
     dependencies:

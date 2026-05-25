@@ -2,7 +2,7 @@
 
 ## What this is
 
-Nova is a loop-centric agent harness — a TypeScript/Node LLM agent runtime (model loop, tools, permissions, context management, observability) packaged as a pnpm monorepo. The CLI binary is `harness`. Current milestone scope lives in `docs/M1-TODO.md` … `docs/M4-TODO.md` — read the active milestone before adding a feature so you don't pull future-milestone work into the current one.
+A terminal coding agent, deeply tuned for DeepSeek. — a TypeScript/Node LLM agent runtime (model loop, tools, permissions, context management, observability) packaged as a pnpm monorepo. The CLI binary is `nova`. Current milestone scope lives in `docs/M1-TODO.md` … `docs/M4-TODO.md` — read the active milestone before adding a feature so you don't pull future-milestone work into the current one.
 
 ## Commands
 
@@ -52,4 +52,4 @@ cli ──► everything
 - **TS strict, `noUncheckedIndexedAccess` on.** Array/object access returns `T | undefined`; handle the `undefined` case — don't disable it locally.
 - **Public APIs get a zod schema** — tool inputs, settings, anything crossing a package boundary that originates outside the type system.
 - **Tests live next to source** as `*.test.ts(x)` under `packages/*/src/`. The vitest glob does not pick up `apps/`, `eval/`, or `examples/`.
-- This CLAUDE.md is loaded by Nova's own memory system if `harness` runs on this repo.
+- This CLAUDE.md is loaded by Nova's own memory system if `nova` runs on this repo.

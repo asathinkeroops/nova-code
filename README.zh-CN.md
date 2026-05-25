@@ -6,7 +6,7 @@
 
 Nova 是一个终端里的编码 agent —— 读代码、跑命令、改文件，通过工具调用把一项任务推到完成。内部消息走的是 Anthropic 的格式，但模型层是围绕 **DeepSeek** 做的：thinking 接到 DeepSeek 的 `output_config.effort`（而不是 Anthropic 的 `budget_tokens`），wire format 会根据模型 id 自动判断，默认 prompt 和权限规则也按 DeepSeek 的表现调过。其他 Anthropic 兼容端点也能跑，只是 DeepSeek 是第一优先级。
 
-底层上 Nova 是一个 loop-centric 的 harness：`@nova/core` 提供模型无关的 agent loop，工具、权限、上下文管理、可观测性、编排这些都通过它暴露的 hook 和 observer 接入；`apps/cli` 把这些拼成可用的命令行 REPL（`harness`）。
+底层上 Nova 是一个 loop-centric 的 harness：`@nova/core` 提供模型无关的 agent loop，工具、权限、上下文管理、可观测性、编排这些都通过它暴露的 hook 和 observer 接入；`apps/cli` 把这些拼成可用的命令行 REPL（`nova`）。
 
 当前状态：**M1 已交付**（基础 loop + bash/read/write + 权限 + transcript）；**M2 进行中** —— context memory 三层加载、micro/auto compact 已完成，prompt cache、hooks、cost/metrics 在路上。完整路线图见 `docs/M1-TODO.md` ~ `docs/M4-TODO.md`。
 
@@ -66,7 +66,7 @@ packages/
   multi-agent    subagent 隔离 + 摘要回注（M3 W10）
   isolation, sdk 预留位（M3/M4 启用）
 apps/
-  cli            harness 二进制入口（唯一在跑的 app）
+  cli            nova 二进制入口（唯一在跑的 app）
   http, vscode   占位，未实现
 eval/            replay harness + 黄金 case（不走主构建，eslint/tsconfig 已排除）
 docs/            分阶段 TODO（M1 ~ M4）+ 设计笔记

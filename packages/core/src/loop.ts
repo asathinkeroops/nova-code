@@ -50,10 +50,7 @@ export interface AgentLoopOptions {
    * The loop emits an "interject" event with payload { from, to } iff the
    * returned array is non-empty.
    */
-  interject?: (ctx: {
-    turn: number;
-    toolUses: ToolUseBlock[];
-  }) => Promise<MessageParam[] | void>;
+  interject?: (ctx: { turn: number; toolUses: ToolUseBlock[] }) => Promise<MessageParam[] | void>;
   /**
    * When > 0, asks the model to allocate up to this many tokens to extended
    * thinking. Forwarded to every `model.call` in the loop.
@@ -111,7 +108,11 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
     }
 
     const requestStartedAt = Date.now();
-    await opts.observer?.({ turn, kind: "request_start", payload: { startedAt: requestStartedAt } });
+    await opts.observer?.({
+      turn,
+      kind: "request_start",
+      payload: { startedAt: requestStartedAt },
+    });
 
     let res: AssistantTurn;
     try {
@@ -158,15 +159,17 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
       },
     });
 
+    // report assistant message
     const assistantMsg = assistantMessage(res.content);
-    messages = appendMessage(messages, assistantMsg);
     await opts.observer?.({ turn, kind: "assistant", payload: assistantMsg });
+
+    messages = appendMessage(messages, assistantMsg);
     await safeObserve(opts.observer, {
       turn,
       kind: "messages_changed",
       payload: { messages },
     });
-
+    
     const decision = decide(res.stopReason);
 
     if (decision.kind === "error") {
@@ -357,10 +360,7 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
   }
 }
 
-async function safeObserve(
-  observer: LoopObserver | undefined,
-  event: LoopEvent,
-): Promise<void> {
+async function safeObserve(observer: LoopObserver | undefined, event: LoopEvent): Promise<void> {
   if (!observer) return;
   try {
     await observer(event);

@@ -116,9 +116,9 @@
 - [ ] 暴露 metric：`micro_compact_replacements_total`、`auto_compact_triggered_total`、`auto_compact_tokens_before/after`
 
 #### 3.1.5 验收
-- [ ] 构造长会话（连续 N 轮 tool_use），确认 micro_compact 把老 tool_result 缩成占位符且后续对话继续
-- [ ] 构造超阈值消息，确认 auto_compact 触发后 estimateTokens 显著下降、对话能继续
-- [ ] `/compact` 在 REPL 中跑通；`focus` 文本进入摘要 prompt
+- [x] 构造长会话（连续 N 轮 tool_use），确认 micro_compact 把老 tool_result 缩成占位符且后续对话继续
+- [x] 构造超阈值消息，确认 auto_compact 触发后 estimateTokens 显著下降、对话能继续
+- [x] `/compact` 在 REPL 中跑通；`focus` 文本进入摘要 prompt
 
 ### 3.2 `builtin v1` · 工具补齐
 
@@ -129,10 +129,10 @@
 - [x] **edit.ts**：精确字符串替换（old_string → new_string），要求 old_string 唯一；支持 `replace_all`
 - [x] **glob.ts**：基于 `fast-glob`；返回相对路径列表；尊重 `.gitignore`
 - [x] **grep.ts**：spawn `rg`（ripgrep）；支持 pattern / path / glob / `-A`/`-B` 上下文行
-- [ ] **webfetch.ts**：fetch HTML → 转 markdown（`turndown` 或类似）；30 秒超时；尊重 robots
-- [ ] **websearch.ts**：接入外部搜索 API（先用一个，可配置）；返回 title + url + snippet
-- [ ] 全部工具的 description 写明"何时该用 / 何时不该用"（参考架构文档"③ 工具的标准"）
-- [ ] 在 `tools.test.ts` 里加 happy path + 错误路径用例
+- [x] **webfetch.ts**：fetch HTML → 转 markdown（`turndown` 或类似）；30 秒超时；尊重 robots
+- [x] **websearch.ts**：接入外部搜索 API（先用一个，可配置）；返回 title + url + snippet
+- [x] 全部工具的 description 写明"何时该用 / 何时不该用"（参考架构文档"③ 工具的标准"）
+- [x] 在 `tools.test.ts` 里加 happy path + 错误路径用例
 
 ---
 
@@ -142,13 +142,12 @@
 
 **目标**：在 dispatcher 调用工具前后强制保持几条铁律。
 
-- [ ] 在 `packages/tools/src/invariants.ts` 实现：
-  - [ ] **read-before-edit**：edit/write 调用前必须有同 session 的 read 记录（按绝对路径）
-  - [ ] **mtime check**：read 时记录 mtime；edit 时若文件已被外部修改则报错并要求重新 read
-  - [ ] **路径白名单**：从 `settings.json` 读取允许的工作目录；超出范围拒绝
-- [ ] 在 `dispatcher.ts` 中将 invariants 串入调用链：`dispatch → safety → invariants → tool`
-- [ ] 给违规返回结构化错误（模型可读，告诉它"先 read 再 edit"）
-- [ ] 单测覆盖三类违规场景
+- [x] 在 `packages/tools/src/invariants.ts` 实现：
+  - [x] **read-before-edit**：edit/write 调用前必须有同 session 的 read 记录（按绝对路径）
+  - [x] **mtime check**：read 时记录 mtime；edit 时若文件已被外部修改则报错并要求重新 read
+- [x] 在 `dispatcher.ts` 中将 invariants 串入调用链：`dispatch → safety → invariants → tool`
+- [x] 给违规返回结构化错误（模型可读，告诉它"先 read 再 edit"）
+- [x] 单测覆盖两类违规场景（read-before-edit / mtime drift）
 
 ### 4.2 `safe/hooks` · 4 个核心 hook 事件
 
@@ -173,13 +172,16 @@
 
 **目标**：扫描 `.commands/*.md` 注册为内部 slash 命令，运行时把 markdown 模板插入 messages。
 
-- [ ] 在 `packages/external/src/slash.ts` 实现解析
-- [ ] 扫描位置：`{cwd}/.commands/*.md` + `~/.claude/commands/*.md`
-- [ ] markdown front-matter 解析（描述、参数 schema）
-- [ ] 注册到一个内部 slash registry；REPL 输入 `/name args` 时分发
-- [ ] 命令体支持 `{{arg}}` 占位替换
-- [ ] 与 `ctx/compact` 的 `/compact` 共用 registry
-- [ ] 测试：放一个 `hello.md` 命令，REPL 跑通
+- [x] 在 `packages/external/src/slash.ts` 实现解析（front-matter + `{{arg|default}}` 占位）
+- [x] 扫描位置（先发现胜，nova 生态优先）：
+  - project: `{cwd}/.nova/commands/*.md` → `{cwd}/.claude/commands/*.md` → `{cwd}/.commands/*.md`
+  - user: `~/.nova/commands/*.md` → `~/.claude/commands/*.md`
+- [x] markdown front-matter 解析（描述、`args` schema）
+- [x] `SlashRegistry`：内置命令（`/help` `/model` `/compact` …）与文件命令共用；同名时 **builtin 胜**，被遮蔽项记到 `source.shadowedBy`
+- [x] REPL 输入 `/name args` 走 registry 分发；文件命令返回 `{ kind: "prompt", text }`，运行时塞进下一轮用户消息
+- [x] `/commands` 列出所有命令（`[builtin]` / `[user]` / `[project]` 区分），`/commands reload` 重扫文件层
+- [x] `settings.slash.{ enabled, projectDirs, userPaths, extraDirs }` 全开可配
+- [x] 单测：解析 / 占位符 / 优先级 / 注册冲突
 
 ### 5.2 `obs/cost` + metrics 基础
 

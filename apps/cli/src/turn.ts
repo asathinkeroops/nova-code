@@ -18,11 +18,11 @@ import { buildSystemPrompt } from "./system-prompt.js";
  * conversation state stays valid).
  */
 export async function runTurn(ctx: CliContext, userInput: string): Promise<boolean> {
-  ctx.messages.push(userText(userInput));
+  const withUserText = [...ctx.screen.getMessages(), userText(userInput)];
   // Show the user's prompt immediately — the loop's first messages_changed
   // event would do this too, but only after model.call starts; with the model
   // request in flight the gap can be hundreds of ms.
-  ctx.screen.setMessages([...ctx.messages]);
+  ctx.screen.setMessages(withUserText);
   await ctx.transcript.append({ kind: "user_prompt", data: { text: userInput } });
 
   const abortController = new AbortController();
@@ -40,14 +40,15 @@ export async function runTurn(ctx: CliContext, userInput: string): Promise<boole
     const result = await agentLoop({
       model: ctx.model,
       system: buildSystemPrompt(ctx.workspace, ctx.memory, ctx.session.id),
-      tools: ctx.registry.definitions(),
+      tools: ctx.tools.definitions(),
       executeTool: ctx.dispatch,
-      messages: ctx.messages,
+      messages: withUserText,
       maxTokens: ctx.settings.maxTokens,
       maxTurns: ctx.settings.maxTurns,
       toolContext: {
         cwd: ctx.workspace,
         signal: abortController.signal,
+        fileLedger: ctx.fileLedger,
         askUser: async (req) => {
           clearToolSpinner(ctx);
           return await ctx.screen.askUser(req, { signal: abortController.signal });
@@ -60,7 +61,11 @@ export async function runTurn(ctx: CliContext, userInput: string): Promise<boole
       ...(budget > 0 ? { thinkingBudgetTokens: budget } : {}),
     });
 
-    ctx.messages = result.messages;
+    // The observer's `messages_changed` handler has been mirroring the loop's
+    // accumulator into the store the whole way; result.messages is the final
+    // snapshot of that same stream. Forward it once more defensively so any
+    // skipped event (best-effort observer) can't leave persist out of sync.
+    ctx.screen.setMessages(result.messages);
     await persist(ctx);
 
     ctx.logger.info(
@@ -76,10 +81,10 @@ export async function runTurn(ctx: CliContext, userInput: string): Promise<boole
   } catch (err) {
     stopSpinner(ctx);
     if (abortController.signal.aborted) {
-      // Keep the user message in `ctx.messages` so the bubble the user just
-      // typed stays visible. The Anthropic API tolerates a trailing user turn
-      // (and even consecutive user turns), so this stays valid for the next
-      // call.
+      // The user message we pushed to the store before the loop stays
+      // visible — observer.messages_changed kept the store in sync up to the
+      // abort point. The Anthropic API tolerates a trailing user turn (and
+      // even consecutive user turns), so this stays valid for the next call.
       ctx.screen.card(dim("interrupted by user"), { title: "ESC" });
       ctx.logger.info({}, "loop interrupted by user");
       await ctx.transcript.append({ kind: "error", data: { message: "interrupted by user" } });

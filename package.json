@@ -2,7 +2,7 @@
   "name": "nova",
   "version": "0.1.0",
   "private": true,
-  "description": "Loop-centric agent harness — M1 base",
+  "description": "A terminal coding agent, deeply tuned for DeepSeek.",
   "engines": {
     "node": ">=20"
   },

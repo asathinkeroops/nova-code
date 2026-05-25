@@ -20,6 +20,7 @@
   "dependencies": {
     "@nova/context": "workspace:*",
     "@nova/core": "workspace:*",
+    "@nova/external": "workspace:*",
     "@nova/observability": "workspace:*",
     "@nova/orchestration": "workspace:*",
     "@nova/runtime": "workspace:*",

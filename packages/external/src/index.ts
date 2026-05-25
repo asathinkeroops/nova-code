@@ -1,0 +1,17 @@
+export {
+  SlashRegistry,
+  expandPlaceholders,
+  fileCommandToSlash,
+  loadFileCommands,
+  parseCommandFile,
+  type FileCommandRaw,
+  type LoadCommandsOptions,
+  type LoadCommandsResult,
+  type SlashArgSpec,
+  type SlashCommand,
+  type SlashCommandKind,
+  type SlashCommandSource,
+  type SlashOutcome,
+  type SlashParseError,
+  type SlashRunCtx,
+} from "./slash.js";

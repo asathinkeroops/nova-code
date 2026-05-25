@@ -104,7 +104,6 @@ export async function switchToSession(ctx: CliContext, newSession: Session): Pro
   ctx.logPath = join(newSession.dir, "session.log");
   ctx.logger = ctx.buildLogger(ctx.logPath);
   ctx.transcript = new Transcript(newSession.transcriptPath);
-  ctx.messages = newMessages;
   ctx.persistCursor =
     newMessages.length === 0
       ? emptyCursor

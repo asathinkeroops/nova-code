@@ -7,8 +7,9 @@ coverage/
 .env
 .env.local
 *.log
-.harness/
+.nova/
 .vscode/
 .idea/
 __pycache__/
 *.pyc
+.commands

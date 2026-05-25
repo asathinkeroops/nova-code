@@ -1,4 +1,5 @@
 export { handleClear } from "./clear.js";
+export { handleCommands } from "./commands.js";
 export { handleCompact } from "./compact.js";
 export { handleHelp } from "./help.js";
 export { handleModel } from "./model.js";

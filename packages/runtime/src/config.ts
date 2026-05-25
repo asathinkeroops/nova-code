@@ -95,6 +95,15 @@ export const settingsSchema = z.object({
         .default({ enabled: true }),
     })
     .default({ micro: { enabled: true }, auto: { enabled: true } }),
+  // Tool invariants (read-before-edit, mtime drift). Enforced by the
+  // dispatcher before each read/write/edit.
+  invariants: z
+    .object({
+      enabled: z.boolean().default(true),
+      readBeforeEdit: z.boolean().default(true),
+      mtimeCheck: z.boolean().default(true),
+    })
+    .default({ enabled: true, readBeforeEdit: true, mtimeCheck: true }),
   // Next-user-input prediction shown as the input box placeholder. The CLI
   // runs this once after each successful agent turn using the main model.
   predict: z
@@ -104,6 +113,18 @@ export const settingsSchema = z.object({
       maxChars: z.number().int().positive().default(20),
     })
     .default({ enabled: true, timeoutMs: 8000, maxChars: 20 }),
+  // Custom slash commands loaded from .md templates. Project layer
+  // (.nova/commands → .claude/commands → .commands) wins over user layer
+  // (~/.nova/commands → ~/.claude/commands); builtins always win on
+  // name collisions.
+  slash: z
+    .object({
+      enabled: z.boolean().default(true),
+      projectDirs: z.array(z.string().min(1)).optional(),
+      userPaths: z.array(z.string().min(1)).optional(),
+      extraDirs: z.array(z.string().min(1)).optional(),
+    })
+    .default({ enabled: true }),
 });
 
 export type Settings = z.infer<typeof settingsSchema>;

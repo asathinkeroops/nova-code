@@ -1,21 +1,13 @@
 import { CYAN_RGB, cyan } from "./colors.js";
-import {
-  handleClear,
-  handleCompact,
-  handleHelp,
-  handleModel,
-  handlePredict,
-  handleResume,
-  handleThink,
-} from "./commands/index.js";
-import { SLASH_COMMANDS } from "./constants.js";
 import { stopSpinner, type CliContext } from "./context.js";
 import { predictNextInput } from "./predict.js";
+import { toUiSlashCommands } from "./slash.js";
 import { runTurn } from "./turn.js";
 
 async function refreshPrediction(ctx: CliContext): Promise<void> {
   if (!ctx.settings.predict.enabled) return;
-  if (ctx.messages.length === 0) return;
+  const messages = ctx.screen.getMessages();
+  if (messages.length === 0) return;
   ctx.spinner = ctx.screen.startSpinner({
     words: ["Thinking ahead..."],
     tint: CYAN_RGB,
@@ -25,7 +17,7 @@ async function refreshPrediction(ctx: CliContext): Promise<void> {
   try {
     const result = await predictNextInput({
       model: ctx.model,
-      messages: ctx.messages,
+      messages,
       maxChars: ctx.settings.predict.maxChars,
       timeoutMs: ctx.settings.predict.timeoutMs,
       ...(ctx.memory.system ? { memorySystem: ctx.memory.system } : {}),
@@ -48,41 +40,31 @@ async function refreshPrediction(ctx: CliContext): Promise<void> {
   }
 }
 
+type DispatchAction =
+  | "exit"
+  | "continue"
+  | { kind: "turn"; prompt: string };
+
 /**
- * Returns true if the REPL should keep running, false if the user asked to
- * exit. Returning a sentinel keeps `runRepl` simpler than throwing.
+ * Returns "exit" to leave the REPL, "continue" to skip the LLM turn, or a
+ * turn descriptor with the prompt text to feed to runTurn.
  */
-async function dispatchLine(ctx: CliContext, line: string): Promise<"continue" | "exit" | "turn"> {
+async function dispatchLine(ctx: CliContext, line: string): Promise<DispatchAction> {
   if (line === "/exit" || line === "/quit") return "exit";
-  if (line === "/help") {
-    handleHelp(ctx);
-    return "continue";
+  if (!line.startsWith("/")) return { kind: "turn", prompt: line };
+
+  const hit = ctx.registry.resolve(line);
+  if (!hit) {
+    return { kind: "turn", prompt: line };
   }
-  if (line === "/clear") {
-    await handleClear(ctx);
-    return "continue";
+  const outcome = await hit.cmd.run({ cwd: ctx.workspace }, hit.args);
+  if (outcome.kind === "prompt") {
+    return { kind: "turn", prompt: outcome.text };
   }
-  if (line === "/compact" || line.startsWith("/compact ")) {
-    await handleCompact(ctx, line.slice("/compact".length).trim());
-    return "continue";
+  if (outcome.kind === "error") {
+    ctx.screen.card(outcome.message, { kind: "error", title: `/${hit.cmd.name}` });
   }
-  if (line === "/resume" || line.startsWith("/resume ")) {
-    await handleResume(ctx, line.slice("/resume".length).trim());
-    return "continue";
-  }
-  if (line === "/model" || line.startsWith("/model ")) {
-    await handleModel(ctx, line.slice("/model".length).trim());
-    return "continue";
-  }
-  if (line === "/predict" || line.startsWith("/predict ")) {
-    await handlePredict(ctx, line.slice("/predict".length).trim());
-    return "continue";
-  }
-  if (line === "/think" || line.startsWith("/think ")) {
-    await handleThink(ctx, line.slice("/think".length).trim());
-    return "continue";
-  }
-  return "turn";
+  return "continue";
 }
 
 export async function runRepl(ctx: CliContext, initialPrompt: string): Promise<void> {
@@ -96,7 +78,7 @@ export async function runRepl(ctx: CliContext, initialPrompt: string): Promise<v
     const placeholder = ctx.nextPlaceholder;
     ctx.nextPlaceholder = "";
     const raw = await ctx.screen.promptInput({
-      commands: SLASH_COMMANDS,
+      commands: toUiSlashCommands(ctx.registry.list()),
       ...(placeholder ? { placeholder } : {}),
     });
     if (raw === null) break;
@@ -107,8 +89,7 @@ export async function runRepl(ctx: CliContext, initialPrompt: string): Promise<v
     if (action === "exit") break;
     if (action === "continue") continue;
 
-    // Non-slash: run a user turn.
-    const ok = await runTurn(ctx, line);
+    const ok = await runTurn(ctx, action.prompt);
     if (ok) await refreshPrediction(ctx);
   }
 

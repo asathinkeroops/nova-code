@@ -6,11 +6,13 @@ import { loadMemory, type MemoryBundle } from "@nova/context";
 import {
   createAnthropicModel,
   resolveBudget,
+  type FileAccessLedger,
   type MessageParam,
   type ModelClient,
   type ThinkingLevel,
   type ToolExecutor,
 } from "@nova/core";
+import { SlashRegistry } from "@nova/external";
 import { Transcript } from "@nova/observability";
 import { TodoStore } from "@nova/orchestration";
 import {
@@ -20,10 +22,27 @@ import {
   type Settings,
 } from "@nova/runtime";
 import { PermissionDeniedError, PermissionEngine } from "@nova/safety";
-import { ToolRegistry, builtinTools, createDispatcher } from "@nova/tools";
+import {
+  InMemoryFileAccessLedger,
+  ToolRegistry,
+  builtinTools,
+  createDispatcher,
+  createInvariants,
+} from "@nova/tools";
 import { CYAN_RGB, cyan, dim } from "./colors.js";
 import { buildCompactor } from "./compactor.js";
+import {
+  handleClear,
+  handleCommands,
+  handleCompact,
+  handleHelp,
+  handleModel,
+  handlePredict,
+  handleResume,
+  handleThink,
+} from "./commands/index.js";
 import { TOOL_SPINNER_DELAY_MS, WORKING_WORDS } from "./constants.js";
+import { loadFileCommandsInto } from "./slash.js";
 import {
   emptyCursor,
   loadMessages,
@@ -52,7 +71,6 @@ export interface CliContext {
   logger: Logger;
   logPath: string;
   transcript: Transcript;
-  messages: MessageParam[];
   persistCursor: PersistCursor;
   resumed: boolean;
 
@@ -89,8 +107,10 @@ export interface CliContext {
   readonly noPretty: boolean;
   readonly screen: Screen;
   readonly todoStore: TodoStore;
-  readonly registry: ToolRegistry;
+  readonly registry: SlashRegistry;
+  readonly tools: ToolRegistry;
   readonly dispatch: ToolExecutor;
+  readonly fileLedger: FileAccessLedger;
   readonly permission: PermissionEngine;
   readonly checkPermission: (
     tool: string,
@@ -164,7 +184,7 @@ export async function persist(ctx: CliContext): Promise<void> {
   try {
     ctx.persistCursor = await persistMessages(
       ctx.session.messagesPath,
-      ctx.messages,
+      ctx.screen.getMessages(),
       ctx.persistCursor,
     );
   } catch (err) {
@@ -176,6 +196,100 @@ export async function persist(ctx: CliContext): Promise<void> {
 
 export function currentThinkingBudget(ctx: CliContext): number {
   return resolveBudget(ctx.thinkingLevel, ctx.thinkingBudgetOverride);
+}
+
+function registerBuiltinSlashCommands(ctx: CliContext): void {
+  const handled = { kind: "handled" as const };
+  ctx.registry.register({
+    name: "help",
+    description: "show this help",
+    source: { kind: "builtin" },
+    run: () => {
+      handleHelp(ctx);
+      return handled;
+    },
+  });
+  ctx.registry.register({
+    name: "model",
+    description: "show or change the active model",
+    argHint: "[<name>]",
+    source: { kind: "builtin" },
+    run: async (_c, args) => {
+      await handleModel(ctx, args.trim());
+      return handled;
+    },
+  });
+  ctx.registry.register({
+    name: "think",
+    description: "show or change the extended-thinking level",
+    argHint: "[<level>]",
+    source: { kind: "builtin" },
+    run: async (_c, args) => {
+      await handleThink(ctx, args.trim());
+      return handled;
+    },
+  });
+  ctx.registry.register({
+    name: "clear",
+    description: "clear conversation history (keeps session)",
+    source: { kind: "builtin" },
+    run: async () => {
+      await handleClear(ctx);
+      return handled;
+    },
+  });
+  ctx.registry.register({
+    name: "compact",
+    description: "summarize history into a single message",
+    argHint: "[focus…]",
+    source: { kind: "builtin" },
+    run: async (_c, args) => {
+      await handleCompact(ctx, args.trim());
+      return handled;
+    },
+  });
+  ctx.registry.register({
+    name: "resume",
+    description: "switch to a saved session",
+    argHint: "[<id>]",
+    source: { kind: "builtin" },
+    run: async (_c, args) => {
+      await handleResume(ctx, args.trim());
+      return handled;
+    },
+  });
+  ctx.registry.register({
+    name: "predict",
+    description: "show or toggle next-input prediction",
+    argHint: "[on|off]",
+    source: { kind: "builtin" },
+    run: async (_c, args) => {
+      await handlePredict(ctx, args.trim());
+      return handled;
+    },
+  });
+  ctx.registry.register({
+    name: "commands",
+    description: "list registered slash commands; use `reload` to rescan files",
+    argHint: "[reload]",
+    source: { kind: "builtin" },
+    run: async (_c, args) => {
+      await handleCommands(ctx, args.trim());
+      return handled;
+    },
+  });
+  ctx.registry.register({
+    name: "exit",
+    description: "leave the REPL",
+    source: { kind: "builtin" },
+    run: () => handled,
+  });
+  ctx.registry.register({
+    name: "quit",
+    description: "leave the REPL",
+    source: { kind: "builtin" },
+    run: () => handled,
+  });
 }
 
 export function thinkingLevelLabel(ctx: CliContext): string | undefined {
@@ -230,8 +344,20 @@ export async function createContext(
   }
 
   const todoStore = new TodoStore();
-  const registry = new ToolRegistry().registerAll(builtinTools(todoStore));
-  const dispatch = createDispatcher({ registry, logger });
+  const tools = new ToolRegistry().registerAll(builtinTools(todoStore));
+  const fileLedger = new InMemoryFileAccessLedger();
+  const invariants = settings.invariants.enabled
+    ? createInvariants({
+        readBeforeEdit: settings.invariants.readBeforeEdit,
+        mtimeCheck: settings.invariants.mtimeCheck,
+      })
+    : undefined;
+  const dispatch = createDispatcher({
+    registry: tools,
+    logger,
+    ...(invariants ? { invariants } : {}),
+  });
+  const registry = new SlashRegistry();
 
   const buildModel = (id: string): ModelClient =>
     createAnthropicModel({
@@ -246,7 +372,6 @@ export async function createContext(
     logger,
     logPath,
     transcript,
-    messages: [],
     persistCursor: emptyCursor,
     resumed,
     settings,
@@ -267,7 +392,9 @@ export async function createContext(
     screen,
     todoStore,
     registry,
+    tools,
     dispatch,
+    fileLedger,
     permission: null as unknown as PermissionEngine,
     checkPermission: null as unknown as CliContext["checkPermission"],
     compactor: null as unknown as CliContext["compactor"],
@@ -324,6 +451,16 @@ export async function createContext(
     },
   });
 
+  registerBuiltinSlashCommands(ctx);
+  const loaded = await loadFileCommandsInto(ctx.registry, {
+    cwd: workspace,
+    settings,
+    logger,
+  });
+  if (loaded.added > 0 || loaded.errors > 0) {
+    logger.info({ ...loaded }, "slash commands loaded");
+  }
+
   // For resumed sessions, wipe whatever is already on screen (setup wizard
   // output, previous scrollback, etc.) so the loaded history shows cleanly.
   if (resumed) await ctx.screen.reset();
@@ -341,7 +478,6 @@ export async function createContext(
   if (resumed) {
     try {
       const msgs = await loadMessages(session.messagesPath);
-      ctx.messages = msgs;
       ctx.persistCursor =
         msgs.length === 0
           ? emptyCursor

@@ -33,7 +33,7 @@ async function run(positional: string[], opts: CliOptions): Promise<void> {
 
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     process.stderr.write(
-      "harness requires an interactive terminal (TTY). " +
+      "Nova requires an interactive terminal (TTY). " +
         "Non-TTY usage (pipes, redirects, CI without a PTY) is not supported.\n",
     );
     process.exit(2);
@@ -86,8 +86,8 @@ async function run(positional: string[], opts: CliOptions): Promise<void> {
 
 const program = new Command();
 program
-  .name("harness")
-  .description("Loop-centric agent harness (M1 base)")
+  .name("nova")
+  .description("A terminal coding agent, deeply tuned for DeepSeek.")
   .argument("[prompt...]", "optional initial prompt (REPL still starts after it runs)")
   .option("-p, --prompt <text>", "optional initial prompt (alternative to positional)")
   .option("-m, --model <name>", "override model id")

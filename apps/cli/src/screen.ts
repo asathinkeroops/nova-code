@@ -137,6 +137,15 @@ export class Screen {
     this.store.getState().setMessages(messages);
   }
 
+  /**
+   * Read the canonical message array. The store is the single source of
+   * truth for conversation history; everything that previously held a
+   * separate `ctx.messages` field now reads through here.
+   */
+  getMessages(): MessageParam[] {
+    return this.store.getState().messages;
+  }
+
   setThinkingLabel(label: string | undefined): void {
     this.store.getState().setThinkingLabel(label);
   }

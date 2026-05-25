@@ -105,10 +105,23 @@ export interface AskUserResponse {
 
 export type AskUserFn = (req: AskUserRequest) => Promise<AskUserResponse>;
 
+/**
+ * Session-scoped file access ledger used by tool invariants (read-before-edit,
+ * mtime drift). The loop itself never touches it — it's threaded through
+ * ToolContext so the dispatcher's invariants layer can read/write entries.
+ * Typed as an opaque interface so @nova/core stays implementation-agnostic.
+ */
+export interface FileAccessLedger {
+  recordRead(absPath: string, mtimeMs: number): void;
+  recordWrite(absPath: string, mtimeMs: number): void;
+  get(absPath: string): { lastReadMtimeMs: number } | undefined;
+}
+
 export interface ToolContext {
   cwd: string;
   signal?: AbortSignal;
   askUser?: AskUserFn;
+  fileLedger?: FileAccessLedger;
 }
 
 export interface ToolHandler {

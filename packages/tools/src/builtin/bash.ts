@@ -11,7 +11,7 @@ const inputSchema = z.object({
     .max(10 * 60_000)
     .default(120_000)
     .describe("Timeout in milliseconds. Default 120000 (2 min)."),
-  cwd: z.string().optional().describe("Working directory; defaults to the harness session cwd."),
+  cwd: z.string().optional().describe("Working directory; defaults to the nova session cwd."),
 });
 
 const MAX_OUTPUT = 200_000;
