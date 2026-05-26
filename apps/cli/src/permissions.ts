@@ -20,6 +20,7 @@ export const DEFAULT_PERMISSION_RULES: readonly PermissionRule[] = [
   { tool: "getTodos", effect: "allow" },
   { tool: "grep", effect: "allow" },
   { tool: "glob", effect: "allow" },
+  { tool: "loadSkill", effect: "allow" },
 ];
 
 function escapeRegex(s: string): string {

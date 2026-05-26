@@ -6,6 +6,7 @@ const item = (name: string, description: string): SkillListItem => ({
   name,
   description,
   triggers: [],
+  location: `/tmp/skills/${name}`,
 });
 
 describe("renderSkillsBlock", () => {

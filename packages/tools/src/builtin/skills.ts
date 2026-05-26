@@ -6,6 +6,8 @@ export interface SkillListItem {
   name: string;
   description: string;
   triggers: string[];
+  /** Absolute path to the skill's directory (the parent of its SKILL.md). */
+  location: string;
 }
 
 export interface SkillsLogger {
@@ -42,7 +44,6 @@ const FRONT_MATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
 
 interface CacheEntry {
   list: SkillListItem[];
-  bodies: Map<string, string>;
 }
 
 interface ResolvedOpts {
@@ -196,7 +197,7 @@ function scan(r: ResolvedOpts, logger: SkillsLogger | undefined): CacheEntry {
   for (const d of r.extraDirs) targets.push({ kind: "user", root: expandHome(d, r.home) });
 
   const list: SkillListItem[] = [];
-  const bodies = new Map<string, string>();
+  const seen = new Set<string>();
 
   for (const t of targets) {
     if (!isDir(t.root)) continue;
@@ -226,16 +227,17 @@ function scan(r: ResolvedOpts, logger: SkillsLogger | undefined): CacheEntry {
         logger?.warn({ path, err: parsed.error }, "skill parse failed");
         continue;
       }
-      if (bodies.has(parsed.ok.name)) continue;
+      if (seen.has(parsed.ok.name)) continue;
       list.push({
         name: parsed.ok.name,
         description: parsed.ok.description,
         triggers: parsed.ok.triggers,
+        location: dir,
       });
-      bodies.set(parsed.ok.name, parsed.ok.body);
+      seen.add(parsed.ok.name);
     }
   }
-  return { list, bodies };
+  return { list };
 }
 
 function ensureScanned(opts: SkillsOptions | undefined): CacheEntry {
@@ -252,11 +254,26 @@ export function getSkillList(opts?: SkillsOptions): SkillListItem[] {
   return ensureScanned(opts).list;
 }
 
+export interface LoadedSkill {
+  body: string;
+  location: string;
+}
+
 export function getSkill(
   input: { name: string },
   opts?: SkillsOptions,
-): string | undefined {
-  return ensureScanned(opts).bodies.get(input.name);
+): LoadedSkill | undefined {
+  const item = ensureScanned(opts).list.find((s) => s.name === input.name);
+  if (!item) return undefined;
+  let text: string;
+  try {
+    text = readFileSync(join(item.location, "SKILL.md"), "utf8");
+  } catch {
+    return undefined;
+  }
+  const parsed = parseSkillFile(text);
+  if ("error" in parsed) return undefined;
+  return { body: parsed.ok.body, location: item.location };
 }
 
 /** Exported for tests; not part of the public API. */

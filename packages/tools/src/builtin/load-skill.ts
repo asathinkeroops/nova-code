@@ -15,7 +15,9 @@ const TOOL_DESCRIPTION =
   "Returns the SKILL.md body; if the skill references supporting files, read those " +
   "with the Read tool. Read-only.";
 
-export type GetSkillFn = (input: { name: string }) => string | undefined;
+export type GetSkillFn = (
+  input: { name: string },
+) => { body: string; location: string } | undefined;
 
 export function createLoadSkillTool(
   getSkill: GetSkillFn,
@@ -30,17 +32,18 @@ export function createLoadSkillTool(
     },
     async run(rawInput) {
       const input = inputSchema.parse(rawInput);
-      const body = getSkill({ name: input.name });
-      if (body === undefined) {
+      const loaded = getSkill({ name: input.name });
+      if (loaded === undefined) {
         return {
           output: `unknown skill: ${input.name}. Use /skills to list available skills.`,
           isError: true,
         };
       }
+      const { body, location } = loaded;
       const payload =
         body.length > maxBytes ? `${body.slice(0, maxBytes)}\n${TRUNCATION_HINT}` : body;
       return {
-        output: `<skill name="${input.name}">\n${payload}\n</skill>`,
+        output: `<skill name="${input.name}" location="${location}">\n${payload}\n</skill>`,
       };
     },
   };

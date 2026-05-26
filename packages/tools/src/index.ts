@@ -36,6 +36,7 @@ export { createTodoTool, getTodosTool, updateTodoTool, createTodoTools } from ".
 export {
   getSkill,
   getSkillList,
+  type LoadedSkill,
   type SkillListItem,
   type SkillsLogger,
   type SkillsOptions,

@@ -34,7 +34,12 @@ describe("getSkillList — parsing", () => {
     );
     const list = getSkillList({ cwd, home: cwd, userPaths: [] });
     expect(list).toEqual([
-      { name: "code-reviewer", description: "Review a diff", triggers: ["review", "diff"] },
+      {
+        name: "code-reviewer",
+        description: "Review a diff",
+        triggers: ["review", "diff"],
+        location: join(projectRoot, "code-reviewer"),
+      },
     ]);
   });
 
@@ -148,13 +153,14 @@ describe("getSkillList — scanning", () => {
 });
 
 describe("getSkill", () => {
-  it("returns the body for a known name", () => {
+  it("returns body and location for a known name", () => {
     const cwd = fixture();
     const projectRoot = join(cwd, ".nova/skills");
     mkdirSync(projectRoot, { recursive: true });
     writeSkill(projectRoot, "x", `name: x\ndescription: d`, "  hello body  ");
-    const body = getSkill({ name: "x" }, { cwd, home: cwd, userPaths: [] });
-    expect(body?.startsWith("hello body")).toBe(true);
+    const loaded = getSkill({ name: "x" }, { cwd, home: cwd, userPaths: [] });
+    expect(loaded?.body.startsWith("hello body")).toBe(true);
+    expect(loaded?.location).toBe(join(projectRoot, "x"));
   });
 
   it("returns undefined for unknown name", () => {
@@ -169,7 +175,22 @@ describe("getSkill", () => {
     mkdirSync(join(home, ".nova/skills"), { recursive: true });
     writeSkill(join(cwd, ".nova/skills"), "same", `name: same\ndescription: d`, "PROJECT");
     writeSkill(join(home, ".nova/skills"), "same", `name: same\ndescription: d`, "USER");
-    expect(getSkill({ name: "same" }, { cwd, home })?.includes("PROJECT")).toBe(true);
+    const loaded = getSkill({ name: "same" }, { cwd, home });
+    expect(loaded?.body.includes("PROJECT")).toBe(true);
+    expect(loaded?.location).toBe(join(cwd, ".nova/skills/same"));
+  });
+
+  it("reads SKILL.md fresh on each call (not from a cached body)", () => {
+    const cwd = fixture();
+    const projectRoot = join(cwd, ".nova/skills");
+    mkdirSync(projectRoot, { recursive: true });
+    writeSkill(projectRoot, "x", `name: x\ndescription: d`, "FIRST");
+    expect(getSkill({ name: "x" }, { cwd, home: cwd, userPaths: [] })?.body).toContain("FIRST");
+    writeFileSync(
+      join(projectRoot, "x/SKILL.md"),
+      `---\nname: x\ndescription: d\n---\nSECOND\n`,
+    );
+    expect(getSkill({ name: "x" }, { cwd, home: cwd, userPaths: [] })?.body).toContain("SECOND");
   });
 });
 

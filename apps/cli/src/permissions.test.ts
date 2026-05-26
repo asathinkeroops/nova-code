@@ -32,7 +32,15 @@ describe("resolvePermissionRules", () => {
   it("static default list covers safe read-only builtins (read is workspace-scoped, not here)", () => {
     const tools = DEFAULT_PERMISSION_RULES.map((r) => r.tool).sort();
     expect(tools).toEqual(
-      ["ask_user_question", "createTodo", "getTodos", "glob", "grep", "updateTodo"].sort(),
+      [
+        "ask_user_question",
+        "createTodo",
+        "getTodos",
+        "glob",
+        "grep",
+        "loadSkill",
+        "updateTodo",
+      ].sort(),
     );
     expect(tools).not.toContain("read");
   });
