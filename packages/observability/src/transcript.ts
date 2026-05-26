@@ -3,6 +3,7 @@ import { appendFile, readFile } from "node:fs/promises";
 export type TranscriptKind =
   | "session_start"
   | "memory_loaded"
+  | "skills_loaded"
   | "user_prompt"
   | "request_start"
   | "request_end"

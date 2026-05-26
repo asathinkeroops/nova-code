@@ -117,6 +117,19 @@ export const settingsSchema = z.object({
       extraDirs: z.array(z.string().min(1)).optional(),
     })
     .default({ enabled: true }),
+  // Skills: SKILL.md files scanned from project / user roots, surfaced to
+  // the model as an index in the system prompt and pulled in full via the
+  // loadSkill tool. Mirrors `slash` for layering + cache windowing.
+  skills: z
+    .object({
+      enabled: z.boolean().default(true),
+      projectDirs: z.array(z.string().min(1)).optional(),
+      userPaths: z.array(z.string().min(1)).optional(),
+      extraDirs: z.array(z.string().min(1)).optional(),
+      maxIndexBytes: z.number().int().positive().default(8_192),
+      maxResponseBytes: z.number().int().positive().default(16_384),
+    })
+    .default({ enabled: true, maxIndexBytes: 8_192, maxResponseBytes: 16_384 }),
 });
 
 export type Settings = z.infer<typeof settingsSchema>;

@@ -39,7 +39,7 @@ export async function runTurn(ctx: CliContext, userInput: string): Promise<boole
     const budget = currentThinkingBudget(ctx);
     const result = await agentLoop({
       model: ctx.model,
-      system: buildSystemPrompt(ctx.workspace, ctx.memory, ctx.session.id),
+      system: buildSystemPrompt(ctx.workspace, ctx.memory, ctx.session.id, ctx.skillsBlock),
       tools: ctx.tools.definitions(),
       executeTool: ctx.dispatch,
       messages: withUserText,

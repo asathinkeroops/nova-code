@@ -28,6 +28,8 @@ import {
   builtinTools,
   createDispatcher,
   createInvariants,
+  getSkillList,
+  type SkillsOptions,
 } from "@nova/tools";
 import { CYAN_RGB, cyan, dim } from "./colors.js";
 import { buildCompactor } from "./compactor.js";
@@ -40,9 +42,11 @@ import {
   handleModel,
   handlePredict,
   handleResume,
+  handleSkills,
   handleThink,
 } from "./commands/index.js";
 import { TOOL_SPINNER_DELAY_MS, WORKING_WORDS } from "./constants.js";
+import { renderSkillsBlock } from "./skills-render.js";
 import { loadFileCommandsInto } from "./slash.js";
 import {
   emptyCursor,
@@ -103,6 +107,11 @@ export interface CliContext {
   readonly apiKey: string;
   readonly workspace: string;
   readonly memory: MemoryBundle;
+  /**
+   * Pre-rendered `<available-skills>` block injected into the system prompt.
+   * Empty string when skills are disabled or no SKILL.md files were found.
+   */
+  readonly skillsBlock: string;
   readonly version: string;
   readonly noTranscript: boolean;
   readonly noPretty: boolean;
@@ -280,6 +289,15 @@ function registerBuiltinSlashCommands(ctx: CliContext): void {
     },
   });
   ctx.registry.register({
+    name: "skills",
+    description: "list discovered skills (SKILL.md)",
+    source: { kind: "builtin" },
+    run: () => {
+      handleSkills(ctx);
+      return handled;
+    },
+  });
+  ctx.registry.register({
     name: "exit",
     description: "leave the REPL",
     source: { kind: "builtin" },
@@ -344,8 +362,34 @@ export async function createContext(
     await transcript.append({ kind: "memory_loaded", data: { sources: memory.sources } });
   }
 
+  // Skills index: build one SkillsOptions and let getSkillList + builtinTools
+  // both consume it. The first call warms the cache; the second hits it.
+  const skillsOpts: SkillsOptions | undefined = settings.skills.enabled
+    ? {
+        cwd: workspace,
+        ...(settings.skills.projectDirs ? { projectDirs: settings.skills.projectDirs } : {}),
+        ...(settings.skills.userPaths ? { userPaths: settings.skills.userPaths } : {}),
+        ...(settings.skills.extraDirs ? { extraDirs: settings.skills.extraDirs } : {}),
+        maxResponseBytes: settings.skills.maxResponseBytes,
+        logger,
+      }
+    : undefined;
+  const skillItems = skillsOpts ? getSkillList(skillsOpts) : [];
+  const skillsBlock = skillsOpts
+    ? renderSkillsBlock(skillItems, settings.skills.maxIndexBytes)
+    : "";
+  if (skillsOpts) {
+    await transcript.append({
+      kind: "skills_loaded",
+      data: { count: skillItems.length },
+    });
+    if (skillItems.length > 0) {
+      logger.info({ count: skillItems.length }, "skills loaded");
+    }
+  }
+
   const todoStore = new TodoStore();
-  const tools = new ToolRegistry().registerAll(builtinTools(todoStore));
+  const tools = new ToolRegistry().registerAll(builtinTools(todoStore, skillsOpts));
   const fileLedger = new InMemoryFileAccessLedger();
   const invariants = settings.invariants.enabled
     ? createInvariants({
@@ -387,6 +431,7 @@ export async function createContext(
     apiKey,
     workspace,
     memory,
+    skillsBlock,
     version,
     noTranscript,
     noPretty,

@@ -4,20 +4,16 @@ export function buildSystemPrompt(
   workspace: string,
   memory: MemoryBundle,
   sessionId: string,
+  skillsBlock = "",
 ): string {
   const base = `You are a coding agent at ${workspace}. Use tools to solve tasks. Use todo tools for checklist, mark in_progress before starting, completed when done, error when failed. Act, don't explain.
-<identity>
-name: Nova
-</identity>
+<identity name="Nova"></identity>
 
-<system-info>
-platform: ${process.platform}
-</system-info>
+<system-info platform="${process.platform}"></system-info>
 
-<session>
-id: ${sessionId}
-</session>
+<session id="${sessionId}"></session>
 `;
-  if (!memory.system) return base;
-  return `${base}\n${memory.system}\n`;
+  const skills = skillsBlock ? `\n${skillsBlock}\n` : "";
+  if (!memory.system) return `${base}${skills}`;
+  return `${base}${skills}\n${memory.system}\n`;
 }

@@ -5,7 +5,9 @@ import { bashTool } from "./builtin/bash.js";
 import { editTool } from "./builtin/edit.js";
 import { globTool } from "./builtin/glob.js";
 import { grepTool } from "./builtin/grep.js";
+import { createLoadSkillTool } from "./builtin/load-skill.js";
 import { readTool } from "./builtin/read.js";
+import { getSkill, getSkillList, type SkillsOptions } from "./builtin/skills.js";
 import { createTodoTools } from "./builtin/todo/index.js";
 import { webfetchTool } from "./builtin/webfetch.js";
 import { websearchTool } from "./builtin/websearch.js";
@@ -31,9 +33,28 @@ export {
   writeTool,
 };
 export { createTodoTool, getTodosTool, updateTodoTool, createTodoTools } from "./builtin/todo/index.js";
+export {
+  getSkill,
+  getSkillList,
+  type SkillListItem,
+  type SkillsLogger,
+  type SkillsOptions,
+} from "./builtin/skills.js";
+export { createLoadSkillTool, type GetSkillFn } from "./builtin/load-skill.js";
 
-export function builtinTools(todoStore: TodoStore = new TodoStore()): ToolHandler[] {
-  return [
+/**
+ * Build the default set of builtin tools.
+ *
+ * When `skills` is provided, the loadSkill tool is auto-registered iff
+ * `getSkillList(skills)` returns at least one entry. The tool's lookup
+ * closure shares the same `skills` options, so it sees the same cached
+ * scan — no separate plumbing needed.
+ */
+export function builtinTools(
+  todoStore: TodoStore = new TodoStore(),
+  skills?: SkillsOptions,
+): ToolHandler[] {
+  const tools: ToolHandler[] = [
     bashTool,
     readTool,
     writeTool,
@@ -45,4 +66,15 @@ export function builtinTools(todoStore: TodoStore = new TodoStore()): ToolHandle
     askUserQuestionTool,
     ...createTodoTools(todoStore),
   ];
+  if (skills && getSkillList(skills).length > 0) {
+    tools.push(
+      createLoadSkillTool(
+        (input) => getSkill(input, skills),
+        skills.maxResponseBytes !== undefined
+          ? { maxResponseBytes: skills.maxResponseBytes }
+          : undefined,
+      ),
+    );
+  }
+  return tools;
 }
