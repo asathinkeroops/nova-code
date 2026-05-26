@@ -31,3 +31,4 @@ export {
   type AgentLoopOptions,
   type LoopResult,
 } from "./loop.js";
+export { xmlEscape, xmlAttr } from "./xml.js";

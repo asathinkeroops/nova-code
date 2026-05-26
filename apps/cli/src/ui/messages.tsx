@@ -11,7 +11,7 @@ import { blue, bold, orange, red } from "../colors.js";
 import { renderMarkdown } from "./markdown.js";
 import type { Card } from "./store.js";
 import { RedactedThinkingBlock, ThinkingBlock } from "./thinking.js";
-import { ToolCall } from "./tool-call.js";
+import { ReadBatch, ToolCall } from "./tool-call.js";
 import { visibleWidth } from "./width.js";
 
 const USER_BUBBLE_BG = "#3a3a3a";
@@ -240,7 +240,8 @@ function AssistantMessageView({
   const items: React.ReactNode[] = [];
   let key = 0;
 
-  for (const block of blocks) {
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i] as ContentBlock;
     if (block.type === "thinking") {
       items.push(
         <ThinkingBlock
@@ -258,6 +259,31 @@ function AssistantMessageView({
       );
     } else if (block.type === "tool_use") {
       if (isHiddenTool(block.name)) continue;
+
+      // Collapse strictly-adjacent runs of `read` calls into a single batch.
+      if (block.name === "read") {
+        const entries = [{ use: block, result: resultIndex.get(block.id) }];
+        let j = i + 1;
+        while (j < blocks.length) {
+          const next = blocks[j];
+          if (
+            !next ||
+            next.type !== "tool_use" ||
+            next.name !== "read" ||
+            isHiddenTool(next.name)
+          ) {
+            break;
+          }
+          entries.push({ use: next, result: resultIndex.get(next.id) });
+          j++;
+        }
+        if (entries.length >= 2) {
+          items.push(<ReadBatch key={key++} entries={entries} />);
+          i = j - 1; // for-loop will increment to j
+          continue;
+        }
+      }
+
       items.push(
         <ToolCall key={key++} use={block} result={resultIndex.get(block.id)} />,
       );

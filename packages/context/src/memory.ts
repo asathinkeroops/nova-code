@@ -1,6 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
+import { xmlAttr, xmlEscape } from "@nova/core";
 import { DEFAULT_MEMORY_FILENAMES } from "@nova/runtime";
 
 export type MemoryLayer = "global" | "user" | "project";
@@ -114,7 +115,10 @@ async function pickGlobalFile(path: string | undefined): Promise<MemorySource | 
 }
 
 function renderSection(src: MemorySource, body: string): string {
-  return `<memory layer="${src.layer}" path="${src.path}">\n${body.trimEnd()}\n</memory>`;
+  return (
+    `<memory layer="${xmlAttr(src.layer)}" path="${xmlAttr(src.path)}">\n` +
+    `${xmlEscape(body.trimEnd())}\n</memory>`
+  );
 }
 
 /**

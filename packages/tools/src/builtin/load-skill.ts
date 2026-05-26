@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ToolHandler } from "@nova/core";
+import { xmlAttr, xmlEscape, type ToolHandler } from "@nova/core";
 
 const inputSchema = z.object({
   name: z.string().min(1).describe("Skill name as shown in <available-skills>."),
@@ -43,7 +43,9 @@ export function createLoadSkillTool(
       const payload =
         body.length > maxBytes ? `${body.slice(0, maxBytes)}\n${TRUNCATION_HINT}` : body;
       return {
-        output: `<skill name="${input.name}" location="${location}">\n${payload}\n</skill>`,
+        output:
+          `<skill name="${xmlAttr(input.name)}" location="${xmlAttr(location)}">\n` +
+          `${xmlEscape(payload)}\n</skill>`,
       };
     },
   };

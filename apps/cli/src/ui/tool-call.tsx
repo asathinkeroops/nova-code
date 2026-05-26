@@ -318,3 +318,68 @@ function ResultRow({ children }: { children: ReactNode }): React.ReactElement {
     </Box>
   );
 }
+
+const BATCH_MAX_VISIBLE = 5;
+
+/**
+ * Collapse a run of consecutive same-tool calls (currently just `read`) into a
+ * single header + per-entry status list. Caps the visible rows at
+ * BATCH_MAX_VISIBLE; everything beyond gets summarised on a `… +N more` row.
+ */
+export function ReadBatch({
+  entries,
+}: {
+  entries: Array<{ use: ToolUseBlock; result: ToolResultBlock | undefined }>;
+}): React.ReactElement {
+  const visible = entries.slice(0, BATCH_MAX_VISIBLE);
+  const hidden = entries.length - visible.length;
+  return (
+    <Box flexDirection="column" marginTop={1}>
+      <BulletHeader name="read">
+        <Text>{`${entries.length} file${entries.length === 1 ? "" : "s"}`}</Text>
+      </BulletHeader>
+      <Box flexDirection="column">
+        {visible.map((entry, i) => (
+          <BatchRow
+            key={entry.use.id}
+            entry={entry}
+            isFirst={i === 0}
+          />
+        ))}
+        {hidden > 0 ? (
+          <Box>
+            <Text dimColor>{"     "}</Text>
+            <Text dimColor>{`… +${hidden} more`}</Text>
+          </Box>
+        ) : null}
+      </Box>
+    </Box>
+  );
+}
+
+function BatchRow({
+  entry,
+  isFirst,
+}: {
+  entry: { use: ToolUseBlock; result: ToolResultBlock | undefined };
+  isFirst: boolean;
+}): React.ReactElement {
+  const input = entry.use.input as Record<string, unknown>;
+  const path = typeof input.path === "string" ? input.path : "?";
+  const result = entry.result;
+  const mark =
+    result === undefined ? (
+      <Text dimColor>…</Text>
+    ) : result.is_error ? (
+      <Text color="red">✗</Text>
+    ) : (
+      <Text color="green">✓</Text>
+    );
+  return (
+    <Box>
+      <Text dimColor>{isFirst ? "  ⎿  " : "     "}</Text>
+      {mark}
+      <Text>{` ${path}`}</Text>
+    </Box>
+  );
+}
