@@ -41,6 +41,9 @@ importers:
 
   apps/cli:
     dependencies:
+      '@nova/agent':
+        specifier: workspace:*
+        version: link:../../packages/agent
       '@nova/context':
         specifier: workspace:*
         version: link:../../packages/context
@@ -87,6 +90,28 @@ importers:
       '@types/react':
         specifier: ^18.3.0
         version: 18.3.29
+
+  packages/agent:
+    dependencies:
+      '@nova/context':
+        specifier: workspace:*
+        version: link:../context
+      '@nova/core':
+        specifier: workspace:*
+        version: link:../core
+      '@nova/observability':
+        specifier: workspace:*
+        version: link:../observability
+      '@nova/orchestration':
+        specifier: workspace:*
+        version: link:../orchestration
+      '@nova/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+    devDependencies:
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
 
   packages/context:
     dependencies:

@@ -1,6 +1,15 @@
 export * from "./types.js";
 export * from "./messages.js";
 export {
+  HookRegistry,
+  isBlockingPoint,
+  type HookDecision,
+  type HookFn,
+  type HookPayload,
+  type HookPoint,
+  type HookSpec,
+} from "./hooks.js";
+export {
   THINKING_BUDGETS,
   THINKING_LEVELS,
   isThinkingLevel,

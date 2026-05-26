@@ -18,6 +18,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@nova/agent": "workspace:*",
     "@nova/context": "workspace:*",
     "@nova/core": "workspace:*",
     "@nova/external": "workspace:*",

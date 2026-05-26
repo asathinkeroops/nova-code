@@ -2,6 +2,13 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  createAgent,
+  emptyCursor,
+  loadMessages,
+  type Agent,
+  type PersistCursor,
+} from "@nova/agent";
 import { loadMemory, type MemoryBundle } from "@nova/context";
 import {
   createAnthropicModel,
@@ -14,7 +21,7 @@ import {
 } from "@nova/core";
 import { SlashRegistry } from "@nova/external";
 import { Transcript } from "@nova/observability";
-import { TodoStore } from "@nova/orchestration";
+import { TodoStore, makeTodoReminder } from "@nova/orchestration";
 import {
   createLogger,
   type Logger,
@@ -46,14 +53,9 @@ import {
   handleThink,
 } from "./commands/index.js";
 import { TOOL_SPINNER_DELAY_MS, WORKING_WORDS } from "./constants.js";
+import { registerUiHooks } from "./hooks.js";
 import { renderSkillsBlock } from "./skills-render.js";
 import { loadFileCommandsInto } from "./slash.js";
-import {
-  emptyCursor,
-  loadMessages,
-  persistMessages,
-  type PersistCursor,
-} from "./persistence.js";
 import { resolveSession } from "./session.js";
 import { Screen, fatalExit, type Spinner } from "./screen.js";
 
@@ -91,19 +93,14 @@ export interface CliContext {
   nextPlaceholder: string;
   /**
    * Carrier for the auto-compact summary card across the compactor →
-   * compact_end window. The compactor's onAutoCompact callback stashes the
-   * info here; the observer's compact_end handler reads it back after the
-   * mandatory `clearCards()` and pushes the card, so the notice survives.
+   * post_compact window. The compactor's onAutoCompact callback stashes the
+   * info here; the post_compact UI hook reads it back after the mandatory
+   * `clearCards()` and pushes the card, so the notice survives.
    */
   pendingAutoCompactNotice: { before: number; after: number; transcriptPath?: string } | null;
-  /**
-   * Shared ref-box for the per-turn AbortController. The persistent
-   * permission ask callback reads through this box to see the *current*
-   * turn's controller.
-   */
-  turnState: { abort: AbortController | null };
 
   // ===== Read-only after init =====
+  readonly agent: Agent;
   readonly apiKey: string;
   readonly workspace: string;
   readonly memory: MemoryBundle;
@@ -168,7 +165,7 @@ export function stopSpinner(ctx: CliContext): void {
 
 /**
  * Tool execution spinner: starts 300ms after a tool enters its execution
- * phase, stops on tool_result. The delay swallows the visual flash for fast
+ * phase, stops on post_tool_use. The delay swallows the visual flash for fast
  * tools (Read of small files, Glob with few hits, etc.).
  */
 export function armToolSpinner(ctx: CliContext): void {
@@ -192,14 +189,9 @@ export function clearToolSpinner(ctx: CliContext): void {
 
 export async function persist(ctx: CliContext): Promise<void> {
   try {
-    ctx.persistCursor = await persistMessages(
-      ctx.session.messagesPath,
-      ctx.screen.getMessages(),
-      ctx.persistCursor,
-    );
+    await ctx.agent.persist();
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    ctx.logger.error({ err: msg }, "failed to persist messages");
     ctx.screen.card(msg, { kind: "warn", title: "persist failed" });
   }
 }
@@ -427,7 +419,6 @@ export async function createContext(
     toolSpinnerTimer: null,
     nextPlaceholder: "",
     pendingAutoCompactNotice: null,
-    turnState: { abort: null },
     apiKey,
     workspace,
     memory,
@@ -444,23 +435,21 @@ export async function createContext(
     permission: null as unknown as PermissionEngine,
     checkPermission: null as unknown as CliContext["checkPermission"],
     compactor: null as unknown as CliContext["compactor"],
+    agent: null as unknown as Agent,
     buildLogger,
     buildModel,
   };
 
-  // Permission ask bridges into the current turn's abort controller so a
-  // long-pending prompt gets cancelled when the user hits Esc.
+  // Permission ask bridges into the in-flight turn's signal so a long-pending
+  // prompt gets cancelled when the user hits Esc. The agent owns the
+  // controller; we just read its signal and tell the agent to abort on cancel.
   const askWithSignal: Screen["promptApproval"] = async (decision, input) => {
-    const controller = ctx.turnState.abort;
-    if (controller?.signal.aborted) return "no";
+    const signal = ctx.agent.currentSignal();
+    if (signal?.aborted) return "no";
     const promptOpts: Parameters<Screen["promptApproval"]>[2] = {};
-    if (controller) {
-      promptOpts.signal = controller.signal;
-      promptOpts.onCancel = () => {
-        if (!controller.signal.aborted) {
-          controller.abort(new Error("interrupted by user"));
-        }
-      };
+    if (signal) {
+      promptOpts.signal = signal;
+      promptOpts.onCancel = () => ctx.agent.abort(new Error("interrupted by user"));
     }
     return await ctx.screen.promptApproval(decision, input, promptOpts);
   };
@@ -500,6 +489,41 @@ export async function createContext(
       ctx.logger.info({ before, after, transcriptPath }, "auto-compacted");
     },
   });
+
+  (ctx as { agent: Agent }).agent = createAgent({
+    workspace,
+    memory,
+    skillsBlock,
+    getSessionId: () => ctx.session.id,
+    getMessagesPath: () => ctx.session.messagesPath,
+    getTranscript: () => ctx.transcript,
+    getLogger: () => ctx.logger,
+    getPersistCursor: () => ctx.persistCursor,
+    setPersistCursor: (c) => {
+      ctx.persistCursor = c;
+    },
+    getModel: () => ctx.model,
+    getThinkingBudget: () => currentThinkingBudget(ctx),
+    getSettings: () => ({
+      maxTokens: ctx.settings.maxTokens,
+      maxTurns: ctx.settings.maxTurns,
+      noTranscript: ctx.noTranscript,
+    }),
+    getTools: () => ctx.tools.definitions(),
+    dispatch: ctx.dispatch,
+    checkPermission: ctx.checkPermission,
+    compactor: ctx.compactor,
+    interject: makeTodoReminder(todoStore),
+    fileLedger,
+    todoStore,
+    askUser: async (req) => {
+      clearToolSpinner(ctx);
+      const signal = ctx.agent.currentSignal();
+      return await ctx.screen.askUser(req, signal ? { signal } : undefined);
+    },
+    getMessages: () => ctx.screen.getMessages(),
+  });
+  registerUiHooks(ctx);
 
   registerBuiltinSlashCommands(ctx);
   const loaded = await loadFileCommandsInto(ctx.registry, {

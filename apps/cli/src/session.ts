@@ -9,7 +9,7 @@ import {
 import { Transcript } from "@nova/observability";
 import { dim, red } from "./colors.js";
 import { refreshBanner, type CliContext } from "./context.js";
-import { loadMessages, emptyCursor } from "./persistence.js";
+import { loadMessages, emptyCursor } from "@nova/agent";
 
 export function formatTimestamp(d: Date): string {
   const p = (n: number) => n.toString().padStart(2, "0");

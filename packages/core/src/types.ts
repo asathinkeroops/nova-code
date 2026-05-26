@@ -143,28 +143,3 @@ export interface PermissionResult {
   granted: boolean;
   reason?: string;
 }
-
-export type CheckPermissionFn = (
-  tool: string,
-  input: unknown,
-) => Promise<PermissionResult>;
-
-export interface LoopEvent {
-  turn: number;
-  kind:
-    | "request_start"
-    | "request_end"
-    | "assistant"
-    | "tool_use"
-    | "permission_start"
-    | "permission_end"
-    | "tool_result"
-    | "stop"
-    | "user"
-    | "interject"
-    | "messages_changed"
-    | "compact_end";
-  payload: unknown;
-}
-
-export type LoopObserver = (event: LoopEvent) => void | Promise<void>;

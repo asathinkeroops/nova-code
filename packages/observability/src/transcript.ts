@@ -1,21 +1,29 @@
 import { appendFile, readFile } from "node:fs/promises";
 
+/**
+ * Kinds that appear in `transcript.jsonl`. Mirrors what the agent actually
+ * writes — bootstrap records (`session_start`, `memory_loaded`,
+ * `skills_loaded`, `user_prompt`, `error`) plus the advisory hook points the
+ * agent forwards on every turn.
+ *
+ * Older sessions on disk may contain pre-rename kinds (`request_end`,
+ * `assistant`, `tool_use`, …); `Transcript.readAll` casts the parsed JSON
+ * as `TranscriptRecord` rather than re-validating, so legacy files still
+ * load. Don't add the old names back — newly-written records should only
+ * use the set below.
+ */
 export type TranscriptKind =
   | "session_start"
   | "memory_loaded"
   | "skills_loaded"
   | "user_prompt"
-  | "request_start"
-  | "request_end"
-  | "assistant"
-  | "tool_use"
-  | "permission_start"
-  | "permission_end"
-  | "tool_result"
-  | "user"
-  | "stop"
-  | "interject"
-  | "compact_end"
+  | "pre_permission"
+  | "post_permission"
+  | "post_request"
+  | "post_assistant"
+  | "post_user_message"
+  | "post_stop"
+  | "post_compact"
   | "error";
 
 export interface TranscriptRecord {

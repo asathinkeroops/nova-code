@@ -81,8 +81,8 @@ export interface AppState {
    */
   banner: BannerProps | null;
   /**
-   * Canonical projection of the loop's MessageParam[]. Updated by the observer
-   * on `messages_changed`, and directly by /clear and /resume. The `<Messages>`
+   * Canonical projection of the loop's MessageParam[]. Updated by the
+   * `post_messages` hook, and directly by /clear and /resume. The `<Messages>`
    * component renders this; no other path should print conversation content.
    * The loop commits tool_results incrementally, so a pending tool_use simply
    * means "no matching tool_result block in this array yet."
@@ -91,7 +91,7 @@ export interface AppState {
   /**
    * Inline UI entries (slash-command output, etc.) interleaved with `messages`
    * by the renderer. Purely client-side — never persisted to messages.jsonl
-   * and never sent to the model. Cleared on /clear and on compact_end so they
+   * and never sent to the model. Cleared on /clear and on post_compact so they
    * never outlive the messages they were anchored to.
    */
   cards: Card[];

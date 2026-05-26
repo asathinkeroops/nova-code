@@ -1,8 +1,7 @@
-import { CYAN_RGB, cyan } from "./colors.js";
+import { CYAN_RGB, cyan, dim } from "./colors.js";
 import { stopSpinner, type CliContext } from "./context.js";
 import { predictNextInput } from "./predict.js";
 import { toUiSlashCommands } from "./slash.js";
-import { runTurn } from "./turn.js";
 
 async function refreshPrediction(ctx: CliContext): Promise<void> {
   if (!ctx.settings.predict.enabled) return;
@@ -47,7 +46,7 @@ type DispatchAction =
 
 /**
  * Returns "exit" to leave the REPL, "continue" to skip the LLM turn, or a
- * turn descriptor with the prompt text to feed to runTurn.
+ * turn descriptor with the prompt text to feed to the agent.
  */
 async function dispatchLine(ctx: CliContext, line: string): Promise<DispatchAction> {
   if (line === "/exit" || line === "/quit") return "exit";
@@ -65,6 +64,24 @@ async function dispatchLine(ctx: CliContext, line: string): Promise<DispatchActi
     ctx.screen.card(outcome.message, { kind: "error", title: `/${hit.cmd.name}` });
   }
   return "continue";
+}
+
+/**
+ * Drive one user turn through the agent. The agent owns transcript/persist/
+ * lifecycle; the REPL just binds the ESC key to its abort method and reports
+ * the post-turn state.
+ */
+async function runTurn(ctx: CliContext, input: string): Promise<boolean> {
+  ctx.screen.setEscHandler(() => ctx.agent.abort(new Error("interrupted by user")));
+  try {
+    const result = await ctx.agent.runTurn(input);
+    if (result.aborted) {
+      ctx.screen.card(dim("interrupted by user"), { title: "ESC" });
+    }
+    return result.ok;
+  } finally {
+    ctx.screen.setEscHandler(null);
+  }
 }
 
 export async function runRepl(ctx: CliContext, initialPrompt: string): Promise<void> {

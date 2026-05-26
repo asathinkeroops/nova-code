@@ -114,7 +114,7 @@ export class Screen {
   /**
    * Push an inline card into the conversation timeline. Cards render between
    * messages at the position they were pushed and are dropped on /clear and
-   * compact_end — they never enter the model context or messages.jsonl.
+   * post_compact — they never enter the model context or messages.jsonl.
    */
   card(text: string, opts: CardOptions = {}): void {
     if (text.length === 0 && !opts.title) return;

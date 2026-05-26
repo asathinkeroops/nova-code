@@ -1,7 +1,7 @@
 import { listSessions, type Session } from "@nova/runtime";
 import { dim, green, red } from "../colors.js";
 import type { CliContext } from "../context.js";
-import { loadMessages } from "../persistence.js";
+import { loadMessages } from "@nova/agent";
 import { pickerArrow } from "../ui/picker.js";
 import {
   firstUserLabel,
