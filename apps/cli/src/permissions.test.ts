@@ -34,6 +34,7 @@ describe("resolvePermissionRules", () => {
     expect(tools).toEqual(
       [
         "askUserQuestion",
+        "checkLongRunningCommand",
         "clearTaskList",
         "clearTodoList",
         "createTask",

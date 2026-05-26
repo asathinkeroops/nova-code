@@ -27,6 +27,7 @@ export const DEFAULT_PERMISSION_RULES: readonly PermissionRule[] = [
   { tool: "grep", effect: "allow" },
   { tool: "glob", effect: "allow" },
   { tool: "loadSkill", effect: "allow" },
+  { tool: "checkLongRunningCommand", effect: "allow" },
 ];
 
 function escapeRegex(s: string): string {

@@ -17,10 +17,25 @@ import { visibleWidth } from "./width.js";
 const USER_BUBBLE_BG = "#3a3a3a";
 
 /**
- * Todo and task tools are bookkeeping for the agent; the user sees the result
- * in the footer, so we hide their tool_use / tool_result rows from the transcript.
+ * Hook-injected user-role messages (todo/task reminders, long-running command
+ * notifications) are not real user input — they should not render as user
+ * bubbles in the transcript. Each injection wraps its payload in a known tag
+ * so we can detect it by prefix.
  */
-function isPlanTool(name: string): boolean {
+function isSystemInjectionText(text: string): boolean {
+  const trimmed = text.trimStart();
+  return (
+    trimmed.startsWith("<reminder>") ||
+    trimmed.startsWith("<long-running-command")
+  );
+}
+
+/**
+ * Bookkeeping tools the user doesn't need to see — todo/task updates show up
+ * in the footer, and long-running status polls are pure agent-side telemetry.
+ * Their tool_use / tool_result rows are hidden from the transcript.
+ */
+function isHiddenTool(name: string): boolean {
   return (
     name === "createTodo" ||
     name === "updateTodo" ||
@@ -30,7 +45,8 @@ function isPlanTool(name: string): boolean {
     name === "updateTask" ||
     name === "getTask" ||
     name === "getTaskList" ||
-    name === "clearTaskList"
+    name === "clearTaskList" ||
+    name === "checkLongRunningCommand"
   );
 }
 
@@ -163,13 +179,19 @@ function MessageView({
 
 function UserMessageView({ msg }: { msg: MessageParam }): React.ReactElement | null {
   if (typeof msg.content === "string") {
+    if (isSystemInjectionText(msg.content)) return null;
     return <UserBubble text={msg.content} />;
   }
   // user content blocks: tool_results render via their paired tool_use (skipped here),
   // text blocks (interject nudges, etc.) render with the prompt prefix.
+  // System-injected text (reminders, long-running-command notifications) is
+  // filtered out — those are not real user input.
   const textBlocks: string[] = [];
   for (const b of msg.content) {
-    if (b.type === "text" && b.text.trim().length > 0) textBlocks.push(b.text);
+    if (b.type !== "text") continue;
+    if (b.text.trim().length === 0) continue;
+    if (isSystemInjectionText(b.text)) continue;
+    textBlocks.push(b.text);
   }
   if (textBlocks.length === 0) return null;
   return (
@@ -235,7 +257,7 @@ function AssistantMessageView({
         />,
       );
     } else if (block.type === "tool_use") {
-      if (isPlanTool(block.name)) continue;
+      if (isHiddenTool(block.name)) continue;
       items.push(
         <ToolCall key={key++} use={block} result={resultIndex.get(block.id)} />,
       );

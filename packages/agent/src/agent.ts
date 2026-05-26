@@ -35,12 +35,13 @@ export interface AgentSettingsSlice {
  * the agent transparently sees CLI-side mutations (e.g. /model, /resume) on
  * the next turn. Stable values (workspace, memory) are passed by reference.
  *
- * Built-in capabilities (`checkPermission`, `compactor`, `interject`) are
- * still accepted as deps for ergonomic reasons — `createAgent` registers
- * them as `pre_tool_use` / `pre_compact` / `pre_continue` hooks on the
- * shared `HookRegistry`. Callers who want to register *additional* hooks at
- * those points can do so via `agent.on(...)` after construction; first-match-
- * wins gives them a way to override the defaults.
+ * Built-in capabilities (`checkPermission`, `compactor`) are still accepted
+ * as deps for ergonomic reasons — `createAgent` registers them as
+ * `pre_tool_use` / `pre_compact` hooks on the shared `HookRegistry`.
+ * Callers who want to register *additional* hooks at those points (or any
+ * other point, e.g. `pre_continue` for reminders, `pre_request` for
+ * notifiers) do so via `agent.on(...)` after construction; first-match-wins
+ * gives them a way to override the defaults.
  */
 export interface AgentDeps {
   workspace: string;
@@ -67,10 +68,6 @@ export interface AgentDeps {
   dispatch: ToolExecutor;
   checkPermission: (tool: string, input: unknown) => Promise<PermissionResult>;
   compactor: (messages: MessageParam[]) => Promise<MessageParam[]>;
-  interject?: (ctx: {
-    turn: number;
-    toolUses: import("@nova/core").ToolUseBlock[];
-  }) => Promise<MessageParam[] | void>;
   fileLedger: FileAccessLedger;
   askUser: AskUserFn;
 
@@ -158,15 +155,6 @@ export function createAgent(deps: AgentDeps): Agent {
     if (next === messages) return undefined;
     return { messages: next };
   });
-
-  if (deps.interject) {
-    const interject = deps.interject;
-    hooks.on("pre_continue", async (ctx) => {
-      const msgs = await interject(ctx);
-      if (!msgs || msgs.length === 0) return undefined;
-      return { messages: msgs };
-    });
-  }
 
   // ── transcript writer: one advisory hook per recorded point ─────────────
   for (const point of TRANSCRIPT_POINTS) {

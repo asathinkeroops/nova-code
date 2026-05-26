@@ -11,6 +11,8 @@ import { type TaskStore } from "./builtin/task/store.js";
 import { createTaskTools } from "./builtin/task/index.js";
 import { TodoStore } from "./builtin/todo/store.js";
 import { createTodoTools } from "./builtin/todo/index.js";
+import { type LongRunningCommandManager } from "./builtin/long-running/manager.js";
+import { createLongRunningCommandTools } from "./builtin/long-running/index.js";
 import { webfetchTool } from "./builtin/webfetch.js";
 import { websearchTool } from "./builtin/websearch.js";
 import { writeTool } from "./builtin/write.js";
@@ -65,6 +67,21 @@ export {
 } from "./builtin/task/store.js";
 export { makeTaskReminder, type TaskReminderOptions } from "./builtin/task/reminder.js";
 export {
+  runLongRunningCommandTool,
+  checkLongRunningCommandTool,
+  createLongRunningCommandTools,
+  makeLongRunningNotifier,
+  type LongRunningNotifierHook,
+} from "./builtin/long-running/index.js";
+export {
+  LongRunningCommandManager,
+  LongRunningCommandError,
+  type CommandRecord,
+  type CommandStatus,
+  type ManagerOptions as LongRunningManagerOptions,
+  type StartInput as LongRunningStartInput,
+} from "./builtin/long-running/manager.js";
+export {
   getSkill,
   getSkillList,
   type LoadedSkill,
@@ -86,6 +103,7 @@ export function builtinTools(
   todoStore: TodoStore = new TodoStore(),
   skills?: SkillsOptions,
   taskStore?: TaskStore,
+  longRunningManager?: LongRunningCommandManager,
 ): ToolHandler[] {
   const tools: ToolHandler[] = [
     bashTool,
@@ -101,6 +119,9 @@ export function builtinTools(
   ];
   if (taskStore) {
     tools.push(...createTaskTools(taskStore));
+  }
+  if (longRunningManager) {
+    tools.push(...createLongRunningCommandTools(longRunningManager));
   }
   if (skills && getSkillList(skills).length > 0) {
     tools.push(

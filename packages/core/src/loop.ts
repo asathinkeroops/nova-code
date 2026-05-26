@@ -102,6 +102,15 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
     const requestOverride = await hooks.runBlocking("pre_request", baseRequest);
     const finalRequest = { ...baseRequest, ...(requestOverride ?? {}) };
 
+    // `messages` overrides are persisted to the canonical history so the next
+    // iteration sees them; system/tools/maxTokens/thinkingBudgetTokens stay
+    // per-request. Identity returns (same array reference) are treated as a
+    // no-op so a hook can probe payload.messages without forcing a re-emit.
+    if (requestOverride?.messages && requestOverride.messages !== messages) {
+      messages = requestOverride.messages;
+      await hooks.runAdvisory("post_messages", { messages });
+    }
+
     let res: AssistantTurn;
     try {
       res = await opts.model.call({

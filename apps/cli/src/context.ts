@@ -21,8 +21,15 @@ import {
 } from "@nova/core";
 import { SlashRegistry } from "@nova/external";
 import { Transcript } from "@nova/observability";
-import type { InterjectFn } from "@nova/tools";
-import { TaskStore, TodoStore, makeTaskReminder, makeTodoReminder } from "@nova/tools";
+import {
+  LongRunningCommandManager,
+  TaskStore,
+  TodoStore,
+  makeLongRunningNotifier,
+  makeTaskReminder,
+  makeTodoReminder,
+  type InterjectFn,
+} from "@nova/tools";
 import {
   createLogger,
   type Logger,
@@ -116,6 +123,7 @@ export interface CliContext {
   readonly screen: Screen;
   readonly todoStore: TodoStore;
   readonly taskStore: TaskStore;
+  readonly longRunningManager: LongRunningCommandManager;
   readonly registry: SlashRegistry;
   readonly tools: ToolRegistry;
   readonly dispatch: ToolExecutor;
@@ -162,15 +170,13 @@ export async function refreshTaskFooter(ctx: CliContext): Promise<void> {
   ctx.screen.setTasks(await ctx.taskStore.list());
 }
 
-function composeInterjects(...fns: InterjectFn[]): InterjectFn {
-  return async (ctx) => {
-    const collected: MessageParam[] = [];
-    for (const fn of fns) {
-      const out = await fn(ctx);
-      if (out) collected.push(...out);
-    }
-    return collected.length > 0 ? collected : undefined;
-  };
+/** Wire an `InterjectFn` onto the agent's `pre_continue` hook. */
+function registerInterject(agent: Agent, fn: InterjectFn): void {
+  agent.on("pre_continue", async (ctx) => {
+    const msgs = await fn(ctx);
+    if (!msgs || msgs.length === 0) return undefined;
+    return { messages: msgs };
+  });
 }
 
 export function stopSpinner(ctx: CliContext): void {
@@ -399,8 +405,9 @@ export async function createContext(
 
   const todoStore = new TodoStore();
   const taskStore = new TaskStore(workspace, session.id);
+  const longRunningManager = new LongRunningCommandManager();
   const tools = new ToolRegistry().registerAll(
-    builtinTools(todoStore, skillsOpts, taskStore),
+    builtinTools(todoStore, skillsOpts, taskStore, longRunningManager),
   );
   const fileLedger = new InMemoryFileAccessLedger();
   const invariants = settings.invariants.enabled
@@ -449,6 +456,7 @@ export async function createContext(
     screen,
     todoStore,
     taskStore,
+    longRunningManager,
     registry,
     tools,
     dispatch,
@@ -534,10 +542,6 @@ export async function createContext(
     dispatch: ctx.dispatch,
     checkPermission: ctx.checkPermission,
     compactor: ctx.compactor,
-    interject: composeInterjects(
-      makeTodoReminder(todoStore),
-      makeTaskReminder(taskStore),
-    ),
     fileLedger,
     askUser: async (req) => {
       clearToolSpinner(ctx);
@@ -547,6 +551,9 @@ export async function createContext(
     getMessages: () => ctx.screen.getMessages(),
   });
   registerUiHooks(ctx);
+  registerInterject(ctx.agent, makeTodoReminder(todoStore));
+  registerInterject(ctx.agent, makeTaskReminder(taskStore));
+  ctx.agent.on("pre_request", makeLongRunningNotifier(longRunningManager));
   void refreshTaskFooter(ctx);
 
   registerBuiltinSlashCommands(ctx);

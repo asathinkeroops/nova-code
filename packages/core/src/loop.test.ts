@@ -775,4 +775,48 @@ describe("agentLoop · pre_request hook", () => {
     await agentLoop({ ...baseOpts(hooks), model, executeTool: makeExecutor() });
     expect(saw?.endsWith("[INJECTED]")).toBe(true);
   });
+
+  it("persists a messages override into the canonical history", async () => {
+    const hooks = new HookRegistry();
+    const seen: MessageParam[][] = [];
+    const model: ModelClient = {
+      call: async (req): Promise<AssistantTurn> => {
+        seen.push(req.messages);
+        if (seen.length === 1) {
+          return {
+            content: [
+              {
+                type: "tool_use",
+                id: "t1",
+                name: "echo",
+                input: { msg: "first" },
+              },
+            ],
+            stopReason: "tool_use",
+          };
+        }
+        return { content: [{ type: "text", text: "done" }], stopReason: "end_turn" };
+      },
+    };
+
+    let injected = false;
+    hooks.on("pre_request", ({ messages }) => {
+      if (injected) return undefined;
+      injected = true;
+      return {
+        messages: [
+          ...messages,
+          { role: "user", content: [{ type: "text", text: "[notification]" }] },
+        ],
+      };
+    });
+
+    const result = await agentLoop({ ...baseOpts(hooks), model, executeTool: makeExecutor() });
+
+    expect(seen).toHaveLength(2);
+    expect(seen[0]?.length).toBe(2); // original user + injection
+    expect(seen[1]?.length).toBeGreaterThan(seen[0]!.length); // injection still there + assistant + tool_result
+    expect(JSON.stringify(seen[1])).toContain("[notification]");
+    expect(JSON.stringify(result.messages)).toContain("[notification]");
+  });
 });

@@ -8,9 +8,12 @@ const inputSchema = z.object({
     .number()
     .int()
     .positive()
-    .max(10 * 60_000)
-    .default(120_000)
-    .describe("Timeout in milliseconds. Default 120000 (2 min)."),
+    .max(10_000)
+    .default(10_000)
+    .describe(
+      "Timeout in milliseconds. Default and max 10000 (10s). Anything that " +
+        "might take longer should be launched with runLongRunningCommand instead.",
+    ),
   cwd: z.string().optional().describe("Working directory; defaults to the nova session cwd."),
 });
 
@@ -25,7 +28,11 @@ export const bashTool: ToolHandler = {
   definition: {
     name: "bash",
     description:
-      "Execute a shell command and return stdout+stderr. Use for running scripts, building, listing files, etc. Long-running commands time out at `timeout_ms`.",
+      "Execute a short, blocking shell command and return stdout+stderr. " +
+      "Use for quick scripts, lookups, builds that finish in seconds, etc. " +
+      "Hard cap is 10 seconds — for anything that might take longer (dev " +
+      "servers, watchers, long builds, sleeps, downloads) use " +
+      "runLongRunningCommand instead.",
     inputSchema,
   },
   async run(rawInput, ctx) {

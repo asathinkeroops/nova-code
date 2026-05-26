@@ -64,6 +64,10 @@ export interface HookSpec {
    * Fires immediately before every `model.call`. Advisory subscribers (UI
    * spinners) return `undefined`; policy hooks return a partial override of
    * any of `system / messages / tools / maxTokens / thinkingBudgetTokens`.
+   *
+   * A `messages` override is **persisted** back to the loop's canonical
+   * history (so the next iteration sees it); other overrides are
+   * per-request only.
    */
   pre_request: {
     payload: {
