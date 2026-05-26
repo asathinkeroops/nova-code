@@ -31,7 +31,6 @@
   },
   "dependencies": {
     "@nova/core": "workspace:*",
-    "@nova/orchestration": "workspace:*",
     "@nova/runtime": "workspace:*",
     "@vscode/ripgrep": "^1.18.0",
     "execa": "^9.0.0",

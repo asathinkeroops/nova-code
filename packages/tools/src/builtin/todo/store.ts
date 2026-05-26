@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 
-export type TodoStatus = "pending" | "in_progress" | "completed" | "error";
+export type TodoStatus = "pending" | "in_progress" | "completed";
 
 export interface Todo {
   id: string;
@@ -9,10 +9,9 @@ export interface Todo {
 }
 
 const ALLOWED_TRANSITIONS: Record<TodoStatus, readonly TodoStatus[]> = {
-  pending: ["in_progress", "completed", "error"],
-  in_progress: ["completed", "error", "pending"],
+  pending: ["in_progress", "completed"],
+  in_progress: ["completed", "pending"],
   completed: ["pending"],
-  error: ["pending"],
 };
 
 function generateId(): string {
@@ -80,8 +79,12 @@ export class TodoStore {
     return this.todos.size;
   }
 
-  clear(): void {
-    this.todos.clear();
+  clear(ids?: readonly string[]): void {
+    if (ids === undefined) {
+      this.todos.clear();
+      return;
+    }
+    for (const id of ids) this.todos.delete(id);
   }
 
   private findInProgress(): Todo | undefined {

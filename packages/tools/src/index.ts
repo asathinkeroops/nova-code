@@ -1,5 +1,4 @@
 import type { ToolHandler } from "@nova/core";
-import { TodoStore } from "@nova/orchestration";
 import { askUserQuestionTool } from "./builtin/ask-user.js";
 import { bashTool } from "./builtin/bash.js";
 import { editTool } from "./builtin/edit.js";
@@ -8,6 +7,9 @@ import { grepTool } from "./builtin/grep.js";
 import { createLoadSkillTool } from "./builtin/load-skill.js";
 import { readTool } from "./builtin/read.js";
 import { getSkill, getSkillList, type SkillsOptions } from "./builtin/skills.js";
+import { type TaskStore } from "./builtin/task/store.js";
+import { createTaskTools } from "./builtin/task/index.js";
+import { TodoStore } from "./builtin/todo/store.js";
 import { createTodoTools } from "./builtin/todo/index.js";
 import { webfetchTool } from "./builtin/webfetch.js";
 import { websearchTool } from "./builtin/websearch.js";
@@ -32,7 +34,36 @@ export {
   websearchTool,
   writeTool,
 };
-export { createTodoTool, getTodosTool, updateTodoTool, createTodoTools } from "./builtin/todo/index.js";
+export {
+  createTodoTool,
+  getTodoListTool,
+  updateTodoTool,
+  clearTodoListTool,
+  createTodoTools,
+} from "./builtin/todo/index.js";
+export { TodoStore, TodoError, type Todo, type TodoStatus } from "./builtin/todo/store.js";
+export {
+  makeTodoReminder,
+  type TodoReminderOptions,
+  type InterjectFn,
+  type InterjectCtx,
+} from "./builtin/todo/reminder.js";
+export {
+  createTaskTool,
+  updateTaskTool,
+  getTaskTool,
+  getTaskListTool,
+  clearTaskListTool,
+  createTaskTools,
+} from "./builtin/task/index.js";
+export {
+  TaskStore,
+  TaskError,
+  type Task,
+  type TaskStatus,
+  type TaskUpdatePatch,
+} from "./builtin/task/store.js";
+export { makeTaskReminder, type TaskReminderOptions } from "./builtin/task/reminder.js";
 export {
   getSkill,
   getSkillList,
@@ -54,6 +85,7 @@ export { createLoadSkillTool, type GetSkillFn } from "./builtin/load-skill.js";
 export function builtinTools(
   todoStore: TodoStore = new TodoStore(),
   skills?: SkillsOptions,
+  taskStore?: TaskStore,
 ): ToolHandler[] {
   const tools: ToolHandler[] = [
     bashTool,
@@ -67,6 +99,9 @@ export function builtinTools(
     askUserQuestionTool,
     ...createTodoTools(todoStore),
   ];
+  if (taskStore) {
+    tools.push(...createTaskTools(taskStore));
+  }
   if (skills && getSkillList(skills).length > 0) {
     tools.push(
       createLoadSkillTool(

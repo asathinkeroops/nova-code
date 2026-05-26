@@ -1,7 +1,7 @@
 import { create, type StoreApi, type UseBoundStore } from "zustand";
 import type { Rgb } from "../colors.js";
 import type { AskUserRequest, AskUserResponse, MessageParam } from "@nova/core";
-import type { Todo } from "@nova/orchestration";
+import type { Task, Todo } from "@nova/tools";
 import type { PermissionDecision, PermissionInput } from "@nova/safety";
 import type { BannerProps } from "./banner.js";
 import type { BoxedInputOptions } from "./input-box.js";
@@ -96,6 +96,7 @@ export interface AppState {
    */
   cards: Card[];
   todos: Todo[];
+  tasks: Task[];
   spinner: SpinnerSpec | null;
   modal: ModalState | null;
   /**
@@ -125,6 +126,7 @@ export interface AppActions {
   setMessages: (messages: MessageParam[]) => void;
   setThinkingLabel: (label: string | undefined) => void;
   setTodos: (todos: Todo[]) => void;
+  setTasks: (tasks: Task[]) => void;
   startSpinner: (label: SpinnerLabel, hint?: string) => SpinnerHandle;
   setEscHandler: (fn: (() => void) | null) => void;
   beginSetup: (state: SetupState) => void;
@@ -214,6 +216,7 @@ export function createAppStore(): AppStoreApi {
       messages: [],
       cards: [],
       todos: [],
+      tasks: [],
       spinner: null,
       modal: null,
       escHandler: null,
@@ -253,6 +256,10 @@ export function createAppStore(): AppStoreApi {
 
       setTodos(todos) {
         set({ todos });
+      },
+
+      setTasks(tasks) {
+        set({ tasks });
       },
 
       startSpinner(label, hint) {

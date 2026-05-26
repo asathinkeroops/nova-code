@@ -6,11 +6,10 @@ export function buildSystemPrompt(
   sessionId: string,
   skillsBlock = "",
 ): string {
-  const base = `You are a coding agent at ${workspace}. 
-
-- Use tools to solve tasks. 
-- Use todo tools for checklist, mark in_progress before starting, completed when done, error when failed. 
-- Use loadSkill to access specialized knowledge before tackling unfamiliar topics.
+  const base = `You are a coding agent at ${workspace}. Use tools to solve tasks. 
+- Use todo tools for short checklists.
+- Use task tools for multi-step work.
+- Use loadSkill to access specialized knowledge.
 
 Act, don't explain.
 

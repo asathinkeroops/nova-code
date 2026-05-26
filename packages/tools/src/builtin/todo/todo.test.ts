@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { TodoStore } from "@nova/orchestration";
-import { createTodoTool, getTodosTool, updateTodoTool } from "./index.js";
+import { TodoStore } from "./store.js";
+import { createTodoTool, getTodoListTool, updateTodoTool } from "./index.js";
 
 interface CreateResult {
   id: string;
@@ -16,7 +16,7 @@ function tools() {
     store,
     create: createTodoTool(store),
     update: updateTodoTool(store),
-    get: getTodosTool(store),
+    get: getTodoListTool(store),
   };
 }
 
@@ -84,18 +84,6 @@ describe("updateTodo tool", () => {
     expect(res.output).toMatch(/already in_progress/);
   });
 
-  it("allows error -> pending (retry)", async () => {
-    const t = tools();
-    const created = JSON.parse(
-      (await t.create.run({ description: "x" }, ctx)).output,
-    ) as CreateResult;
-    await t.update.run({ id: created.id, status: "error" }, ctx);
-    const res = await t.update.run({ id: created.id, status: "pending" }, ctx);
-    expect(res.isError).toBeUndefined();
-    const todo = JSON.parse(res.output) as CreateResult;
-    expect(todo.status).toBe("pending");
-  });
-
   it("returns isError when id is unknown", async () => {
     const t = tools();
     const res = await t.update.run({ id: "missing", status: "completed" }, ctx);
@@ -104,7 +92,7 @@ describe("updateTodo tool", () => {
   });
 });
 
-describe("getTodos tool", () => {
+describe("getTodoList tool", () => {
   it("returns all todos when no filter", async () => {
     const t = tools();
     await t.create.run({ description: "a" }, ctx);

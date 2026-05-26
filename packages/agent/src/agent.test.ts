@@ -11,7 +11,6 @@ import {
   type ToolUseBlock,
 } from "@nova/core";
 import { Transcript } from "@nova/observability";
-import { TodoStore } from "@nova/orchestration";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { createAgent, type AgentDeps } from "./agent.js";
@@ -59,7 +58,6 @@ function makeDeps(overrides: Partial<AgentDeps> & {
 }): AgentDeps {
   const messagesStore: { value: MessageParam[] } = { value: [] };
   const cursorStore: { value: PersistCursor } = { value: emptyCursor };
-  const todoStore = new TodoStore();
   const transcript = new Transcript(overrides.transcriptPath);
 
   return {
@@ -86,7 +84,6 @@ function makeDeps(overrides: Partial<AgentDeps> & {
       recordWrite: () => {},
       get: () => undefined,
     },
-    todoStore,
     askUser: async () => ({ answers: [] }),
     getMessages: () => messagesStore.value,
     ...overrides,
@@ -162,27 +159,6 @@ describe("createAgent.runTurn", () => {
 
     const raw = await readFile(transcriptPath, "utf8");
     expect(raw).toContain('"kind":"user_prompt"');
-  });
-
-  it("clears todoStore at the end of the turn", async () => {
-    const messagesPath = join(tmp, "messages.jsonl");
-    const transcriptPath = join(tmp, "transcript.jsonl");
-    const todoStore = new TodoStore();
-    todoStore.create("stale todo from a prior turn");
-
-    const model = mockModel([
-      {
-        content: [{ type: "text", text: "ok" }],
-        stopReason: "end_turn",
-        usage: { inputTokens: 1, outputTokens: 1 },
-      },
-    ]);
-    const deps = makeDeps({ model, messagesPath, transcriptPath });
-    const agent = createAgent({ ...deps, todoStore });
-
-    expect(todoStore.list()).toHaveLength(1);
-    await agent.runTurn("hello");
-    expect(todoStore.list()).toHaveLength(0);
   });
 
   it("currentSignal returns the in-flight signal and undefined when idle", async () => {

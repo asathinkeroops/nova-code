@@ -5,7 +5,7 @@ import type {
   AskUserResponse,
   MessageParam,
 } from "@nova/core";
-import type { Todo } from "@nova/orchestration";
+import type { Task, Todo } from "@nova/tools";
 import type { PermissionDecision, PermissionInput } from "@nova/safety";
 import { App } from "./ui/app.js";
 import { type ApprovalAnswer } from "./ui/approval.js";
@@ -131,6 +131,10 @@ export class Screen {
 
   setTodos(todos: Todo[]): void {
     this.store.getState().setTodos(todos);
+  }
+
+  setTasks(tasks: Task[]): void {
+    this.store.getState().setTasks(tasks);
   }
 
   setMessages(messages: MessageParam[]): void {

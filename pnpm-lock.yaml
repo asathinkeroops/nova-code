@@ -56,9 +56,6 @@ importers:
       '@nova/observability':
         specifier: workspace:*
         version: link:../../packages/observability
-      '@nova/orchestration':
-        specifier: workspace:*
-        version: link:../../packages/orchestration
       '@nova/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
@@ -102,12 +99,12 @@ importers:
       '@nova/observability':
         specifier: workspace:*
         version: link:../observability
-      '@nova/orchestration':
-        specifier: workspace:*
-        version: link:../orchestration
       '@nova/runtime':
         specifier: workspace:*
         version: link:../runtime
+      '@nova/tools':
+        specifier: workspace:*
+        version: link:../tools
     devDependencies:
       zod:
         specifier: ^3.23.0
@@ -155,12 +152,6 @@ importers:
         specifier: workspace:*
         version: link:../runtime
 
-  packages/orchestration:
-    dependencies:
-      '@nova/core':
-        specifier: workspace:*
-        version: link:../core
-
   packages/runtime:
     dependencies:
       pino:
@@ -184,9 +175,6 @@ importers:
       '@nova/core':
         specifier: workspace:*
         version: link:../core
-      '@nova/orchestration':
-        specifier: workspace:*
-        version: link:../orchestration
       '@nova/runtime':
         specifier: workspace:*
         version: link:../runtime

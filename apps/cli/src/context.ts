@@ -21,7 +21,8 @@ import {
 } from "@nova/core";
 import { SlashRegistry } from "@nova/external";
 import { Transcript } from "@nova/observability";
-import { TodoStore, makeTodoReminder } from "@nova/orchestration";
+import type { InterjectFn } from "@nova/tools";
+import { TaskStore, TodoStore, makeTaskReminder, makeTodoReminder } from "@nova/tools";
 import {
   createLogger,
   type Logger,
@@ -114,6 +115,7 @@ export interface CliContext {
   readonly noPretty: boolean;
   readonly screen: Screen;
   readonly todoStore: TodoStore;
+  readonly taskStore: TaskStore;
   readonly registry: SlashRegistry;
   readonly tools: ToolRegistry;
   readonly dispatch: ToolExecutor;
@@ -154,6 +156,21 @@ export function refreshBanner(ctx: CliContext): void {
 
 export function refreshTodoFooter(ctx: CliContext): void {
   ctx.screen.setTodos(ctx.todoStore.list());
+}
+
+export async function refreshTaskFooter(ctx: CliContext): Promise<void> {
+  ctx.screen.setTasks(await ctx.taskStore.list());
+}
+
+function composeInterjects(...fns: InterjectFn[]): InterjectFn {
+  return async (ctx) => {
+    const collected: MessageParam[] = [];
+    for (const fn of fns) {
+      const out = await fn(ctx);
+      if (out) collected.push(...out);
+    }
+    return collected.length > 0 ? collected : undefined;
+  };
 }
 
 export function stopSpinner(ctx: CliContext): void {
@@ -381,7 +398,10 @@ export async function createContext(
   }
 
   const todoStore = new TodoStore();
-  const tools = new ToolRegistry().registerAll(builtinTools(todoStore, skillsOpts));
+  const taskStore = new TaskStore(workspace, session.id);
+  const tools = new ToolRegistry().registerAll(
+    builtinTools(todoStore, skillsOpts, taskStore),
+  );
   const fileLedger = new InMemoryFileAccessLedger();
   const invariants = settings.invariants.enabled
     ? createInvariants({
@@ -428,6 +448,7 @@ export async function createContext(
     noPretty,
     screen,
     todoStore,
+    taskStore,
     registry,
     tools,
     dispatch,
@@ -513,9 +534,11 @@ export async function createContext(
     dispatch: ctx.dispatch,
     checkPermission: ctx.checkPermission,
     compactor: ctx.compactor,
-    interject: makeTodoReminder(todoStore),
+    interject: composeInterjects(
+      makeTodoReminder(todoStore),
+      makeTaskReminder(taskStore),
+    ),
     fileLedger,
-    todoStore,
     askUser: async (req) => {
       clearToolSpinner(ctx);
       const signal = ctx.agent.currentSignal();
@@ -524,6 +547,7 @@ export async function createContext(
     getMessages: () => ctx.screen.getMessages(),
   });
   registerUiHooks(ctx);
+  void refreshTaskFooter(ctx);
 
   registerBuiltinSlashCommands(ctx);
   const loaded = await loadFileCommandsInto(ctx.registry, {

@@ -1,5 +1,5 @@
 import type { MessageParam, ToolUseBlock } from "@nova/core";
-import { TodoStore } from "./todo.js";
+import { TodoStore } from "./store.js";
 
 export interface TodoReminderOptions {
   threshold?: number;

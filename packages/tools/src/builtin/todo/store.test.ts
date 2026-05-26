@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TodoError, TodoStore, type TodoStatus } from "./todo.js";
+import { TodoError, TodoStore, type TodoStatus } from "./store.js";
 
 describe("TodoStore", () => {
   it("creates todos with generated ids and pending status", () => {
@@ -51,29 +51,10 @@ describe("TodoStore", () => {
       expect(store.update(t.id, "pending").status).toBe("pending");
     });
 
-    it("allows error -> pending (retry, no message attached)", () => {
-      const store = new TodoStore();
-      const t = store.create("task");
-      store.update(t.id, "error");
-      const retried = store.update(t.id, "pending");
-      expect(retried.status).toBe("pending");
-      expect(Object.keys(retried)).toEqual(["id", "description", "status"]);
-    });
-
     it("rejects self-transitions (e.g. pending -> pending)", () => {
       const store = new TodoStore();
       const t = store.create("task");
       expect(() => store.update(t.id, "pending")).toThrow(TodoError);
-    });
-
-    it("rejects pending -> error -> in_progress (must go via pending)", () => {
-      const store = new TodoStore();
-      const t = store.create("task");
-      store.update(t.id, "error");
-      expect(() => store.update(t.id, "in_progress")).toThrow(/invalid transition/);
-      // retry path: error -> pending -> in_progress
-      store.update(t.id, "pending");
-      expect(store.update(t.id, "in_progress").status).toBe("in_progress");
     });
 
     it("rejects updates to unknown ids", () => {
@@ -129,6 +110,27 @@ describe("TodoStore", () => {
       store.create("a");
       const completed: TodoStatus = "completed";
       expect(store.list(completed)).toEqual([]);
+    });
+  });
+
+  describe("clear", () => {
+    it("with no args clears all todos", () => {
+      const store = new TodoStore();
+      store.create("a");
+      store.create("b");
+      store.clear();
+      expect(store.list()).toEqual([]);
+    });
+
+    it("with ids removes only those todos (missing ids silently ignored)", () => {
+      const store = new TodoStore();
+      const a = store.create("a");
+      const b = store.create("b");
+      store.create("c");
+      store.clear([a.id, b.id, "missing"]);
+      const remaining = store.list();
+      expect(remaining).toHaveLength(1);
+      expect(remaining[0]?.description).toBe("c");
     });
   });
 });

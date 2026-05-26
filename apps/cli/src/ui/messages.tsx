@@ -17,11 +17,21 @@ import { visibleWidth } from "./width.js";
 const USER_BUBBLE_BG = "#3a3a3a";
 
 /**
- * Todo tools are bookkeeping for the agent; the user sees the result in the
- * footer, so we hide their tool_use / tool_result rows from the transcript.
+ * Todo and task tools are bookkeeping for the agent; the user sees the result
+ * in the footer, so we hide their tool_use / tool_result rows from the transcript.
  */
-function isTodoTool(name: string): boolean {
-  return name === "createTodo" || name === "updateTodo" || name === "getTodos";
+function isPlanTool(name: string): boolean {
+  return (
+    name === "createTodo" ||
+    name === "updateTodo" ||
+    name === "getTodoList" ||
+    name === "clearTodoList" ||
+    name === "createTask" ||
+    name === "updateTask" ||
+    name === "getTask" ||
+    name === "getTaskList" ||
+    name === "clearTaskList"
+  );
 }
 
 function buildResultIndex(messages: MessageParam[]): Map<string, ToolResultBlock> {
@@ -225,7 +235,7 @@ function AssistantMessageView({
         />,
       );
     } else if (block.type === "tool_use") {
-      if (isTodoTool(block.name)) continue;
+      if (isPlanTool(block.name)) continue;
       items.push(
         <ToolCall key={key++} use={block} result={resultIndex.get(block.id)} />,
       );

@@ -1,8 +1,8 @@
 import { z } from "zod";
 import type { ToolHandler } from "@nova/core";
-import type { TodoStore } from "@nova/orchestration";
+import type { TodoStore } from "./store.js";
 
-const STATUSES = ["pending", "in_progress", "completed", "error"] as const;
+const STATUSES = ["pending", "in_progress", "completed"] as const;
 
 const inputSchema = z
   .object({
@@ -11,7 +11,7 @@ const inputSchema = z
       .enum(STATUSES)
       .describe(
         "New status. Only one todo may be in_progress at a time; " +
-          "use 'error' to mark a failed attempt and 'pending' again to retry.",
+          "move it back to 'pending' to pause.",
       ),
   })
   .strict();
@@ -22,7 +22,7 @@ export function updateTodoTool(store: TodoStore): ToolHandler {
       name: "updateTodo",
       description:
         "Update a todo's status. Only status is mutable — description cannot be changed. " +
-        "Allowed transitions: pending↔in_progress, → completed/error, completed/error → pending (retry). " +
+        "Allowed transitions: pending↔in_progress, → completed, completed → pending (retry). " +
         "Invariant: at most one todo can be in_progress at any time; violating updates are rejected " +
         "(finish or pause the current in_progress one first).",
       inputSchema,
@@ -31,10 +31,6 @@ export function updateTodoTool(store: TodoStore): ToolHandler {
       const input = inputSchema.parse(rawInput);
       try {
         const todo = store.update(input.id, input.status);
-        const all = store.list();
-        if (all.length > 0 && all.every((t) => t.status === "completed")) {
-          store.clear();
-        }
         return { output: JSON.stringify(todo) };
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);

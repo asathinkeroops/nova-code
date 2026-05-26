@@ -4,6 +4,7 @@ import { highlight, supportsLanguage } from "cli-highlight";
 import { dim, useColor } from "../colors.js";
 
 const MAX_CONTENT_LINES = 300;
+const COMPACT_MAX_LINES = 7;
 
 const ADD_BG_OPEN = "\x1b[48;2;14;68;41m";
 const ADD_BG_CLOSE = "\x1b[49m";
@@ -130,6 +131,14 @@ export function renderDiff(oldText: string, newText: string, path: string | unde
   if (shown >= total) return rendered.join("\n");
   const hidden = total - shown;
   return `${rendered.join("\n")}\n${dim(`… (${hidden} more line${hidden === 1 ? "" : "s"} truncated)`)}`;
+}
+
+export function compactBody(body: string): string {
+  const lines = body.split("\n");
+  if (lines.length <= COMPACT_MAX_LINES) return body;
+  const hidden = lines.length - COMPACT_MAX_LINES;
+  const shown = lines.slice(0, COMPACT_MAX_LINES).join("\n");
+  return `${shown}\n${dim(`… (${hidden} more line${hidden === 1 ? "" : "s"} hidden — collapsed after completion)`)}`;
 }
 
 export function readExisting(path: string): string | null {

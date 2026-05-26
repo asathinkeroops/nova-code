@@ -1,8 +1,8 @@
 import { z } from "zod";
 import type { ToolHandler } from "@nova/core";
-import type { TodoStore } from "@nova/orchestration";
+import type { TodoStore } from "./store.js";
 
-const STATUSES = ["pending", "in_progress", "completed", "error"] as const;
+const STATUSES = ["pending", "in_progress", "completed"] as const;
 
 const inputSchema = z
   .object({
@@ -13,10 +13,10 @@ const inputSchema = z
   })
   .strict();
 
-export function getTodosTool(store: TodoStore): ToolHandler {
+export function getTodoListTool(store: TodoStore): ToolHandler {
   return {
     definition: {
-      name: "getTodos",
+      name: "getTodoList",
       description:
         "List the current session's todos in creation order. Optionally filter by status. " +
         "Todos are kept in memory only and reset when the process exits. " +

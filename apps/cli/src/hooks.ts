@@ -3,6 +3,7 @@ import { WORKING_WORDS } from "./constants.js";
 import {
   armToolSpinner,
   clearToolSpinner,
+  refreshTaskFooter,
   refreshTodoFooter,
   stopSpinner,
   thinkingLevelLabel,
@@ -21,6 +22,7 @@ export function registerUiHooks(ctx: CliContext): void {
     ctx.screen.setMessages(messages);
     ctx.screen.setThinkingLabel(thinkingLevelLabel(ctx));
     refreshTodoFooter(ctx);
+    void refreshTaskFooter(ctx);
   });
 
   ctx.agent.on("post_compact", () => {
@@ -73,6 +75,7 @@ export function registerUiHooks(ctx: CliContext): void {
   ctx.agent.on("post_turn", () => {
     stopSpinner(ctx);
     refreshTodoFooter(ctx);
+    void refreshTaskFooter(ctx);
   });
 
   ctx.agent.on("error", ({ message }) => {

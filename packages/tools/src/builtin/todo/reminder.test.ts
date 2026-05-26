@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { MessageParam, ToolUseBlock } from "@nova/core";
-import { TodoStore } from "./todo.js";
-import { makeTodoReminder } from "./todo-reminder.js";
+import { TodoStore } from "./store.js";
+import { makeTodoReminder } from "./reminder.js";
 
 function use(name: string, id = name): ToolUseBlock {
   return { type: "tool_use", id, name, input: {} };
@@ -79,17 +79,6 @@ describe("makeTodoReminder", () => {
     const store = new TodoStore();
     const t = store.create("done already");
     store.update(t.id, "completed");
-    const remind = makeTodoReminder(store);
-
-    await call(remind, [use("bash")]);
-    await call(remind, [use("bash")]);
-    expect(await call(remind, [use("bash")])).toBeUndefined();
-  });
-
-  it("does not inject when remaining todos are all in `error` state", async () => {
-    const store = new TodoStore();
-    const t = store.create("broke");
-    store.update(t.id, "error");
     const remind = makeTodoReminder(store);
 
     await call(remind, [use("bash")]);

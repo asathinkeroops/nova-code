@@ -10,6 +10,7 @@ import { PickHorizontal, PickList } from "./picker.js";
 import { SetupView } from "./setup-view.js";
 import { Spinner } from "./spinner.js";
 import type { AppStoreApi, ModalState } from "./store.js";
+import { TaskFooter } from "./task-footer.js";
 import { TodoFooter } from "./todo-footer.js";
 
 interface EscWatcherProps {
@@ -65,20 +66,31 @@ interface AppProps {
 }
 
 export function App({ store }: AppProps): React.ReactElement {
-  const { setup, banner, messages, cards, thinkingLabel, todos, spinner, modal, escHandler } =
-    store(
-      useShallow((s) => ({
-        setup: s.setup,
-        banner: s.banner,
-        messages: s.messages,
-        cards: s.cards,
-        thinkingLabel: s.thinkingLabel,
-        todos: s.todos,
-        spinner: s.spinner,
-        modal: s.modal,
-        escHandler: s.escHandler,
-      })),
-    );
+  const {
+    setup,
+    banner,
+    messages,
+    cards,
+    thinkingLabel,
+    todos,
+    tasks,
+    spinner,
+    modal,
+    escHandler,
+  } = store(
+    useShallow((s) => ({
+      setup: s.setup,
+      banner: s.banner,
+      messages: s.messages,
+      cards: s.cards,
+      thinkingLabel: s.thinkingLabel,
+      todos: s.todos,
+      tasks: s.tasks,
+      spinner: s.spinner,
+      modal: s.modal,
+      escHandler: s.escHandler,
+    })),
+  );
   // Actions are stable across renders — grab them once via getState().
   const resolveModal = store.getState().resolveModal;
 
@@ -112,8 +124,15 @@ export function App({ store }: AppProps): React.ReactElement {
         <ModalView modal={modal} resolveModal={resolveModal} />
       ) : (
         <Box flexDirection="column">
-          {spinner && todos.length === 0 ? <Spinner spec={spinner} /> : null}
-          <TodoFooter todos={todos} />
+          {spinner && todos.length === 0 && tasks.length === 0 ? (
+            <Spinner spec={spinner} />
+          ) : null}
+          {spinner ? (
+            <>
+              <TaskFooter tasks={tasks} />
+              <TodoFooter todos={todos} />
+            </>
+          ) : null}
           {escHandler ? <EscWatcher onInterrupt={escHandler} /> : null}
         </Box>
       )}

@@ -1,7 +1,13 @@
 import React, { type ReactNode } from "react";
 import { Box, Text } from "ink";
 import type { ToolResultBlock, ToolUseBlock } from "@nova/core";
-import { readExisting, renderDiff, renderFileContent, splitDisplayLines } from "./diff.js";
+import {
+  compactBody,
+  readExisting,
+  renderDiff,
+  renderFileContent,
+  splitDisplayLines,
+} from "./diff.js";
 
 const trim = (s: string, n = 120): string => (s.length > n ? `${s.slice(0, n)}…` : s);
 const flatten = (s: string): string => s.replace(/\n/g, " ");
@@ -258,21 +264,25 @@ export interface ToolCallProps {
 export function ToolUsePreview({
   use,
   headerOnly = false,
+  compact = false,
 }: {
   use: ToolUseBlock;
   headerOnly?: boolean;
+  /** Collapse multi-line bodies (diffs, file contents) to a short preview — used after the tool finishes so transcripts stay readable. */
+  compact?: boolean;
 }): React.ReactElement {
   const def = tools[use.name];
   const view: UseView = def?.use
     ? def.use(use.input as Record<string, unknown>)
     : { header: <GenericUseHeader use={use} /> };
+  const body = view.body && compact ? compactBody(view.body) : view.body;
 
   return (
     <Box flexDirection="column">
       {view.header}
-      {!headerOnly && view.body ? (
+      {!headerOnly && body ? (
         <Box marginTop={1}>
-          <Text>{view.body}</Text>
+          <Text>{body}</Text>
         </Box>
       ) : null}
     </Box>
@@ -284,7 +294,7 @@ export function ToolCall({ use, result }: ToolCallProps): React.ReactElement {
 
   return (
     <Box flexDirection="column" marginTop={1}>
-      <ToolUsePreview use={use} />
+      <ToolUsePreview use={use} compact={result !== undefined} />
       <ResultRow>
         {result ? (
           def?.result ? (

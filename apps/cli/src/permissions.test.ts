@@ -34,11 +34,17 @@ describe("resolvePermissionRules", () => {
     expect(tools).toEqual(
       [
         "askUserQuestion",
+        "clearTaskList",
+        "clearTodoList",
+        "createTask",
         "createTodo",
-        "getTodos",
+        "getTask",
+        "getTaskList",
+        "getTodoList",
         "glob",
         "grep",
         "loadSkill",
+        "updateTask",
         "updateTodo",
       ].sort(),
     );

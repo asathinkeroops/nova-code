@@ -15,7 +15,6 @@ import {
 } from "@nova/core";
 import type { MemoryBundle } from "@nova/context";
 import type { Transcript, TranscriptKind } from "@nova/observability";
-import type { TodoStore } from "@nova/orchestration";
 import type { Logger } from "@nova/runtime";
 import { buildSystemPrompt } from "./system-prompt.js";
 import { persistMessages, type PersistCursor } from "./persistence.js";
@@ -34,8 +33,7 @@ export interface AgentSettingsSlice {
 /**
  * Inputs to `createAgent`. Identity / model / settings live behind getters so
  * the agent transparently sees CLI-side mutations (e.g. /model, /resume) on
- * the next turn. Stable values (workspace, memory, todoStore) are passed by
- * reference.
+ * the next turn. Stable values (workspace, memory) are passed by reference.
  *
  * Built-in capabilities (`checkPermission`, `compactor`, `interject`) are
  * still accepted as deps for ergonomic reasons — `createAgent` registers
@@ -74,7 +72,6 @@ export interface AgentDeps {
     toolUses: import("@nova/core").ToolUseBlock[];
   }) => Promise<MessageParam[] | void>;
   fileLedger: FileAccessLedger;
-  todoStore: TodoStore;
   askUser: AskUserFn;
 
   /** Returns the canonical pre-turn message buffer (e.g. CLI's screen store). */
@@ -357,10 +354,6 @@ export function createAgent(deps: AgentDeps): Agent {
         ...(error.stack ? { stack: error.stack } : {}),
       });
     }
-
-    // Per-turn scratch state: drop todos so the next turn starts clean. UI
-    // bridges should redraw on `post_turn`.
-    deps.todoStore.clear();
 
     const ok = !!result;
     await emitPostTurn({

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { ToolHandler } from "@nova/core";
-import type { TodoStore } from "@nova/orchestration";
+import type { TodoStore } from "./store.js";
 
 const inputSchema = z
   .object({
