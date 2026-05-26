@@ -144,7 +144,7 @@ const tools: Record<string, ToolDef> = {
     },
   },
 
-  ask_user_question: {
+  askUserQuestion: {
     use: (input) => {
       const qs = Array.isArray(input.questions) ? input.questions : [];
       const headers = qs

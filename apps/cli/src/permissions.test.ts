@@ -33,7 +33,7 @@ describe("resolvePermissionRules", () => {
     const tools = DEFAULT_PERMISSION_RULES.map((r) => r.tool).sort();
     expect(tools).toEqual(
       [
-        "ask_user_question",
+        "askUserQuestion",
         "createTodo",
         "getTodos",
         "glob",

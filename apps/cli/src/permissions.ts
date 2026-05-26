@@ -14,7 +14,7 @@ import type { PermissionRule, Settings } from "@nova/runtime";
  * package stays free of tool-identifier knowledge.
  */
 export const DEFAULT_PERMISSION_RULES: readonly PermissionRule[] = [
-  { tool: "ask_user_question", effect: "allow" },
+  { tool: "askUserQuestion", effect: "allow" },
   { tool: "createTodo", effect: "allow" },
   { tool: "updateTodo", effect: "allow" },
   { tool: "getTodos", effect: "allow" },

@@ -42,7 +42,7 @@ function formatAnswers(questions: QuestionInput[], answers: AskUserAnswer[]): st
 
 export const askUserQuestionTool: ToolHandler = {
   definition: {
-    name: "ask_user_question",
+    name: "askUserQuestion",
     description:
       "Ask the user 1–4 multiple-choice questions in a single turn and wait for their answers. " +
       "Each question has its own short header (≤12 chars, used as a tab label), 2–4 options, and an " +
