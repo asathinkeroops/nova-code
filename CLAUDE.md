@@ -29,17 +29,19 @@ Standard `pnpm install / build / typecheck / test / lint / format` also work. No
 
 ```
 core, runtime ──► (no @nova/* deps)
-context, observability, orchestration, safety, tools ──► core + runtime
+context, observability, safety, tools ──► core + runtime
+agent ──► core + runtime + context + observability
 cli ──► everything
 ```
 
 **Loop contracts** (`packages/core/src/loop.ts`) — load-bearing, read before changing:
 
-- Every `tool_use` block always produces a paired `tool_result`, even on throw or permission denial. The next API turn requires the pairing.
-- `compactor` must return a new array **iff** it actually changed something — the loop uses reference equality to decide whether to emit a `compact` event.
-- `observer` is best-effort (errors swallowed) and cannot mutate messages. All side-channels (logging, transcript, cost, UI) flow through it.
+- The loop has a single extension point: a `HookRegistry` passed in via `opts.hooks`. Permission gating, compaction, transcript writing, UI updates — all attach as hooks. There is no separate `observer` / `compactor` / `permission` option. `@nova/agent`'s `createAgent` registers the defaults; callers add more via `agent.on(point, fn)`.
+- **Blocking hooks** (`pre_*`, `post_tool_use`) can return a decision the loop must respect; first non-undefined wins. **Advisory hooks** (`post_*`, `post_messages`) are best-effort — registry swallows their errors and they cannot mutate state.
+- Every `tool_use` block always produces a paired `tool_result`, even on throw or permission denial — `packages/tools/src/invariants.ts` enforces this at dispatch time. The next API turn requires the pairing.
+- The `pre_compact` hook must return `{ messages: next }` **iff** `next !== messages` — the loop uses reference equality on the returned array to decide whether to emit `post_compact`.
 
-**Settings** — every new configurable option must be added to the zod schema in `packages/runtime/src/config.ts` (with a default) before being read anywhere. Config file: `~/.nova/nova.config.json`. Sessions live at `~/.nova/sessions/{id}/` with `transcript.jsonl` (observer events) and `messages.jsonl` (replayable history).
+**Settings** — every new configurable option must be added to the zod schema in `packages/runtime/src/config.ts` (with a default) before being read anywhere. Config file: `~/.nova/nova.config.json`. Sessions live at `~/.nova/sessions/{id}/` with `transcript.jsonl` (hook events) and `messages.jsonl` (replayable history).
 
 **Memory** — global → user → project bundle, with per-directory priority `NOVA.md` > `CLAUDE.md` > `AGENTS.md` (highest priority wins; files are **not** merged). Filenames are configurable via `settings.memory.filenames`.
 

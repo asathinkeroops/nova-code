@@ -6,9 +6,7 @@
 
 Nova is a coding agent that lives in your terminal — reads code, runs commands, edits files, and drives a task to done through tool use. It speaks the Anthropic message shape internally, but the model layer is built around **DeepSeek**: thinking is wired to DeepSeek's `output_config.effort` (not Anthropic's `budget_tokens`), the wire format is auto-detected from the model id, and the default prompts/permissions are tuned for DeepSeek's behavior. Other Anthropic-compatible endpoints still work — DeepSeek is the path that gets first-class care.
 
-Under the hood Nova is a loop-centric harness: `@nova/core` exposes a model-agnostic agent loop, and tools, permissions, context management, observability, and orchestration plug in through its hooks and observer. `apps/cli` wires the pieces into the working REPL (the `nova` binary).
-
-Status: **M1 shipped** (base loop + bash/read/write + permissions + transcript). **M2 in progress** — three-layer memory loading and micro/auto compaction are done; prompt cache, hooks, and cost/metrics are next.
+Under the hood Nova is a loop-centric harness: `@nova/core` exposes a model-agnostic agent loop and a single `HookRegistry` extension point; tools, permissions, context, observability, skills, and slash commands all attach through it. `@nova/agent` packages the loop into a per-turn `createAgent` with persistence and transcript wiring, and `apps/cli` is what you actually run — the `nova` binary, an Ink/React REPL.
 
 ## Quick start
 
@@ -39,37 +37,57 @@ pnpm dev [prompt...]                # send one turn directly
 ### Slash commands (inside the REPL)
 
 ```
-/help              this help
-/model [<name>]    show or change the active model
-/think [<level>]   show or change extended-thinking level
-/clear             clear conversation history (keeps session)
-/compact [focus…]  summarize history into a single message
-/resume [<id>]     switch to a saved session (no arg = pick from list)
-/predict [on|off]  show or toggle next-input prediction placeholder
-/exit, /quit       leave the REPL
+/help                this help
+/model [<name>]      show or change the active model
+/think [<level>]     show or change extended-thinking level
+/clear               clear conversation history (keeps session)
+/compact [focus…]    summarize history into a single message
+/resume [<id>]       switch to a saved session (no arg = pick from list)
+/predict [on|off]    show or toggle next-input prediction placeholder
+/commands [reload]   list registered slash commands; `reload` rescans files
+/skills              list discovered SKILL.md files
+/exit, /quit         leave the REPL
 ```
 
+Builtins always win on name collisions; on top of them, any `*.md` file in
+`.nova/commands` (project) or `~/.nova/commands` (user) — also `.claude/commands`
+and `~/.claude/commands` — is auto-registered as a slash command. The front
+matter declares the description, arg hint, and arg spec; the body is sent as the
+next prompt with placeholders expanded.
+
 `Ctrl+D` also exits; `Esc` interrupts the current turn.
+
+### Skills
+
+Drop a `SKILL.md` under `.nova/skills/<name>/` (project) or `~/.nova/skills/<name>/`
+(user) — also `.claude/skills` / `~/.claude/skills`. Nova scans them on startup,
+injects the name/description index into the system prompt, and exposes a
+`loadSkill` tool the model can call to pull the full body on demand. `/skills`
+shows what was found and where each one was loaded from.
 
 ## Repository layout
 
 ```
 packages/
-  core           agent loop · model client · message/stop-reason types
-  runtime        config (zod) · pino logger · session storage
-  tools          ToolRegistry · dispatcher · built-ins (bash/read/write/edit/glob/grep/webfetch/websearch/ask-user/todo)
-  safety         PermissionEngine · approval UI (Ink/React) · hooks (M2 W7)
-  context        3-layer memory (NOVA.md > CLAUDE.md > AGENTS.md) · micro/auto compact · cache (M2 W5)
-  orchestration  TodoStore · todo tools · background tasks
-  observability  Transcript (JSONL) · cost/metrics (M2 W8)
-  external       MCP / Skills / slash command loader (M2 W8 + M3 W9)
-  multi-agent    subagent isolation + summary handoff (M3 W10)
-  isolation, sdk reserved (M3/M4)
+  core           agent loop · model client · HookRegistry · message/stop-reason types
+  agent          createAgent: per-turn driver + persistence + transcript wiring
+  runtime        settings (zod) · pino logger · session storage
+  tools          ToolRegistry · dispatcher · built-ins
+                   bash · read · write · edit · glob · grep · notebook-edit
+                   webfetch · websearch · askUserQuestion
+                   todo (todoCreate/Update/Get/Clear) · task (taskCreate/Update/Get/List/Clear)
+                   runLongRunningCommand / checkLongRunningCommand · loadSkill
+  context        3-layer memory (NOVA.md > CLAUDE.md > AGENTS.md) · micro/auto compact
+  safety         PermissionEngine · approval prompts (rules + cwd-scoped read)
+  external       SlashRegistry · .md slash command loader (MCP/transport stubs reserved)
+  observability  Transcript (JSONL)
+  multi-agent, isolation, sdk
+                 reserved package slots
 apps/
-  cli            the nova binary (only active app)
+  cli            the nova binary (Ink/React REPL, only active app)
   http, vscode   placeholders, not implemented
 eval/            replay harness + golden cases (excluded from main build / eslint / tsconfig)
-docs/            per-milestone TODO (M1–M4) and design notes
+docs/            design notes (skills, ask-user)
 ```
 
 Inside the workspace, `@nova/*` packages import each other directly from `./src/index.ts`; on publish, `publishConfig` switches that to `dist/`.
