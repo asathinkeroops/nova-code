@@ -11,6 +11,8 @@ import {
 
 const trim = (s: string, n = 120): string => (s.length > n ? `${s.slice(0, n)}…` : s);
 const flatten = (s: string): string => s.replace(/\n/g, " ");
+const formatBytes = (n: number): string =>
+  n < 1024 ? `${n} bytes` : n < 1024 * 1024 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`;
 
 function contentToString(content: unknown): string {
   if (typeof content === "string") return content;
@@ -36,6 +38,12 @@ interface ToolDef {
     result: ToolResultBlock,
     input: Record<string, unknown> | undefined,
   ): ReactNode;
+  /**
+   * When true and the result has arrived, render the header and result on a
+   * single row instead of header + `⎿ result`. Use for tools whose result is
+   * a short summary with no body (grep / glob).
+   */
+  inline?: boolean;
 }
 
 function ErrLine({ result }: { result: ToolResultBlock }): React.ReactElement {
@@ -95,6 +103,7 @@ const tools: Record<string, ToolDef> = {
   },
 
   read: {
+    inline: true,
     use: (input) => {
       const path = typeof input.path === "string" ? input.path : "?";
       const hasRange =
@@ -199,6 +208,27 @@ const tools: Record<string, ToolDef> = {
   },
 
   grep: {
+    inline: true,
+    use: (input) => {
+      const pattern = typeof input.pattern === "string" ? input.pattern : "";
+      const path = typeof input.path === "string" ? input.path : "";
+      const glob = typeof input.glob === "string" ? input.glob : "";
+      const flags: string[] = [];
+      if (input.case_insensitive === true) flags.push("-i");
+      if (input.fixed_strings === true) flags.push("-F");
+      if (input.files_with_matches === true) flags.push("-l");
+      const parts: string[] = [`"${trim(pattern, 60)}"`];
+      if (path) parts.push(`in ${path}`);
+      if (glob) parts.push(`· ${glob}`);
+      if (flags.length) parts.push(flags.join(" "));
+      return {
+        header: (
+          <BulletHeader name="grep">
+            <Text dimColor>{parts.join(" ")}</Text>
+          </BulletHeader>
+        ),
+      };
+    },
     result: (result) => {
       if (result.is_error) return <ErrLine result={result} />;
       const text = contentToString(result.content);
@@ -223,6 +253,20 @@ const tools: Record<string, ToolDef> = {
   },
 
   glob: {
+    inline: true,
+    use: (input) => {
+      const pattern = typeof input.pattern === "string" ? input.pattern : "";
+      const path = typeof input.path === "string" ? input.path : "";
+      const parts: string[] = [trim(pattern, 80)];
+      if (path) parts.push(`in ${path}`);
+      return {
+        header: (
+          <BulletHeader name="glob">
+            <Text dimColor>{parts.join(" ")}</Text>
+          </BulletHeader>
+        ),
+      };
+    },
     result: (result) => {
       if (result.is_error) return <ErrLine result={result} />;
       const text = contentToString(result.content);
@@ -230,6 +274,116 @@ const tools: Record<string, ToolDef> = {
       // glob's own first line is a count header like "3 matches under /abs". Strip the path.
       const header = (text.split("\n", 1)[0] ?? "").replace(/\s+under\s+.+$/, "");
       return <OkLine text={header} />;
+    },
+  },
+
+  webfetch: {
+    inline: true,
+    use: (input) => {
+      const url = typeof input.url === "string" ? input.url : "?";
+      const format = typeof input.format === "string" ? input.format : "markdown";
+      return {
+        header: (
+          <BulletHeader name="webfetch">
+            {trim(url, 120)}
+            {format !== "markdown" ? (
+              <>
+                {" "}
+                <Text dimColor>{`→${format}`}</Text>
+              </>
+            ) : null}
+          </BulletHeader>
+        ),
+      };
+    },
+    result: (result) => {
+      if (result.is_error) return <ErrLine result={result} />;
+      const text = contentToString(result.content);
+      const lines = text.length === 0 ? 0 : text.split("\n").length;
+      return <OkLine text={`${lines} line(s) · ${formatBytes(text.length)}`} />;
+    },
+  },
+
+  websearch: {
+    inline: true,
+    use: (input) => {
+      const query = typeof input.query === "string" ? input.query : "";
+      const limit = typeof input.limit === "number" ? input.limit : undefined;
+      const provider = typeof input.provider === "string" ? input.provider : "auto";
+      const meta: string[] = [];
+      if (limit !== undefined && limit !== 10) meta.push(`×${limit}`);
+      if (provider !== "auto") meta.push(provider);
+      return {
+        header: (
+          <BulletHeader name="websearch">
+            {`"${trim(query, 80)}"`}
+            {meta.length > 0 ? (
+              <>
+                {" "}
+                <Text dimColor>{`(${meta.join(" ")})`}</Text>
+              </>
+            ) : null}
+          </BulletHeader>
+        ),
+      };
+    },
+    result: (result) => {
+      if (result.is_error) return <ErrLine result={result} />;
+      const text = contentToString(result.content);
+      // formatResults emits "websearch[<provider>] N result(s) for ..." or
+      // "websearch[<provider>] no results for ...". Parse the leading summary.
+      const head = text.split("\n", 1)[0] ?? "";
+      const m = /^websearch\[(\w+)\]\s+(\d+|no)\s+results?/i.exec(head);
+      if (!m) return <OkLine text={flatten(trim(head, 80))} />;
+      const [, provider, countTok] = m;
+      const count = countTok === "no" ? 0 : Number.parseInt(countTok ?? "0", 10);
+      return <OkLine text={`${count} result(s) · ${provider}`} />;
+    },
+  },
+
+  loadSkill: {
+    inline: true,
+    use: (input) => {
+      const name = typeof input.name === "string" ? input.name : "?";
+      return {
+        header: (
+          <BulletHeader name="skill">
+            {name}
+          </BulletHeader>
+        ),
+      };
+    },
+    result: (result) => {
+      if (result.is_error) return <ErrLine result={result} />;
+      const text = contentToString(result.content);
+      return <OkLine text={formatBytes(text.length)} />;
+    },
+  },
+
+  runLongRunningCommand: {
+    inline: true,
+    use: (input) => {
+      const cmd = typeof input.command === "string" ? input.command : JSON.stringify(input);
+      return {
+        header: (
+          <BulletHeader name="bg">
+            <Text dimColor>{trim(cmd, 160)}</Text>
+          </BulletHeader>
+        ),
+      };
+    },
+    result: (result) => {
+      if (result.is_error) return <ErrLine result={result} />;
+      const text = contentToString(result.content);
+      try {
+        const parsed = JSON.parse(text) as { id?: unknown };
+        if (typeof parsed.id === "string") {
+          return <OkLine text={`started ${parsed.id}`} />;
+        }
+      } catch {
+        // fall through
+      }
+      return <OkLine text={flatten(trim(text, 80))} />;
     },
   },
 };
@@ -291,6 +445,25 @@ export function ToolUsePreview({
 
 export function ToolCall({ use, result }: ToolCallProps): React.ReactElement {
   const def = tools[use.name];
+
+  // Single-row layout for summary-only tools (grep / glob): header and result
+  // share one line once the result arrives. Falls back to the standard two-row
+  // layout while the call is still pending.
+  if (def?.inline === true && result !== undefined) {
+    const view: UseView = def.use
+      ? def.use(use.input as Record<string, unknown>)
+      : { header: <GenericUseHeader use={use} /> };
+    const resultNode = def.result
+      ? def.result(result, use.input as Record<string, unknown> | undefined)
+      : <GenericResult result={result} />;
+    return (
+      <Box marginTop={1}>
+        {view.header}
+        <Text>{"  "}</Text>
+        {resultNode}
+      </Box>
+    );
+  }
 
   return (
     <Box flexDirection="column" marginTop={1}>
