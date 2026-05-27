@@ -8,7 +8,7 @@ Nova is a coding agent that lives in your terminal — reads code, runs commands
 
 Under the hood Nova is a loop-centric harness: `@nova/core` exposes a model-agnostic agent loop, and tools, permissions, context management, observability, and orchestration plug in through its hooks and observer. `apps/cli` wires the pieces into the working REPL (the `nova` binary).
 
-Status: **M1 shipped** (base loop + bash/read/write + permissions + transcript). **M2 in progress** — three-layer memory loading and micro/auto compaction are done; prompt cache, hooks, and cost/metrics are next. Full roadmap in `docs/M1-TODO.md` through `docs/M4-TODO.md`.
+Status: **M1 shipped** (base loop + bash/read/write + permissions + transcript). **M2 in progress** — three-layer memory loading and micro/auto compaction are done; prompt cache, hooks, and cost/metrics are next.
 
 ## Quick start
 
@@ -104,7 +104,6 @@ Per-package scripts work via `pnpm --filter @nova/<name> <script>`. Tests are pi
 New collaborators should start here:
 
 - `CLAUDE.md` — project guide written for AI assistants (architecture invariants, loop contract, ESM `.js`-extension convention, zod-at-boundaries rule)
-- `docs/M{current}-TODO.md` — what's actually in scope right now; don't pull later-milestone work in
 - `agent-harness-loop-architecture.html` — architecture diagram and overview
 
 ## License

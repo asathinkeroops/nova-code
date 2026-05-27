@@ -51,9 +51,8 @@ interface InkInstance {
 }
 
 /**
- * Single owner of the terminal UI. Wraps an Ink render at the bottom that
- * keeps the live region (spinner / footer / modals) anchored, while past
- * output flows above via Static.
+ * Single owner of the terminal UI. Wraps an Ink render that owns the full
+ * frame — banner, messages, cards, live region (spinner / footer / modals).
  *
  * All UI output goes through this class. Direct `process.stdout.write`
  * after `mount()` would corrupt Ink's render bookkeeping.

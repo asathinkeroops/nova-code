@@ -2,7 +2,7 @@
 
 ## What this is
 
-A terminal coding agent, deeply tuned for DeepSeek. — a TypeScript/Node LLM agent runtime (model loop, tools, permissions, context management, observability) packaged as a pnpm monorepo. The CLI binary is `nova`. Current milestone scope lives in `docs/M1-TODO.md` … `docs/M4-TODO.md` — read the active milestone before adding a feature so you don't pull future-milestone work into the current one.
+A terminal coding agent, deeply tuned for DeepSeek. — a TypeScript/Node LLM agent runtime (model loop, tools, permissions, context management, observability) packaged as a pnpm monorepo. The CLI binary is `nova`.
 
 ## Commands
 
@@ -20,7 +20,6 @@ Standard `pnpm install / build / typecheck / test / lint / format` also work. No
 - `packages/*` (`@nova/<name>`) — library code. Workspace consumers import from `./src/index.ts` directly (no rebuild needed); published builds switch to `dist/` via `publishConfig`.
 - `apps/cli` — the only active app. `apps/http` and `apps/vscode` are placeholders.
 - `eval/` — replay harness; **excluded from eslint/tsconfig**, don't expect it to build with the rest.
-- `docs/M{1..4}-TODO.md` — authoritative milestone scope.
 
 ## Architecture invariants
 
