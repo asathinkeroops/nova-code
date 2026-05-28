@@ -4,7 +4,7 @@ import type { AskUserRequest, AskUserResponse, MessageParam } from "@nova/core";
 import type { Task, Todo } from "@nova/tools";
 import type { PermissionDecision, PermissionInput } from "@nova/safety";
 import type { BannerProps } from "./banner.js";
-import type { BoxedInputOptions } from "./input-box.js";
+import type { BoxedInputOptions, SlashCommand } from "./input-box.js";
 import type {
   HorizontalPickerOptions,
   PickerOptions,
@@ -100,8 +100,9 @@ export interface AppState {
   spinner: SpinnerSpec | null;
   modal: ModalState | null;
   /**
-   * Active turn interrupt handler. When set and no modal is open, the App
-   * mounts an EscWatcher that calls this on Esc / Ctrl+C.
+   * Active turn interrupt handler, set by the REPL while a turn runs. The
+   * permanent InputBox calls it on Esc / Ctrl+C to abort the turn; when it's
+   * null (idle), Ctrl+C asks the REPL to exit instead.
    */
   escHandler: (() => void) | null;
   /**
@@ -117,6 +118,103 @@ export interface AppState {
    * until setup completes and this returns to null.
    */
   setup: SetupState | null;
+  /**
+   * Current terminal size, kept in sync via a `stdout.on("resize")` listener
+   * wired in `Screen`. Used by the viewport to decide ANSI wrap width and how
+   * many rows it gets.
+   */
+  termCols: number;
+  termRows: number;
+  /**
+   * Scroll position into the viewport's flat line array. 0 = top of history;
+   * grows as the user scrolls down. Clamped against `totalLines - viewportRows`
+   * at slice time, so transient over-scroll never panics the renderer.
+   */
+  scrollOffset: number;
+  /**
+   * When true (default), new content auto-scrolls the viewport to the bottom.
+   * Set to false the moment the user scrolls up; flips back to true when the
+   * user scrolls back to the bottom or hits End (or starts typing — input
+   * activity implies they're done browsing history).
+   */
+  stickToBottom: boolean;
+  /**
+   * Total line count of the most recently rendered viewport. Read-only from
+   * the App's perspective — the viewport writes it back so scroll actions can
+   * compute the bottom-stick offset without re-measuring.
+   */
+  viewportTotalLines: number;
+  /**
+   * Number of visible rows in the viewport from the last render. Same write-
+   * back pattern as `viewportTotalLines`.
+   */
+  viewportRows: number;
+  /**
+   * The ANSI lines the viewport painted this frame, in render order. The
+   * mouse-drag handler reads this to map (terminalRow, terminalCol) back to
+   * the underlying text when copying a selection. Always corresponds to
+   * terminal rows starting at 1 (alt-screen origin).
+   */
+  visibleLines: string[];
+  /**
+   * Transient notice shown at the top-left of the InputBox, e.g. "✓ copied"
+   * after a mouse drag. `setCopyNotice` schedules an auto-clear; the field
+   * stays null when no notice is active.
+   */
+  copyNotice: string | null;
+  /**
+   * Active mouse-drag selection in viewport-line coordinates (0-indexed rows
+   * into `visibleLines`, 0-indexed visual columns). Null when no drag is in
+   * flight. Used by the viewport to paint inverse-video highlight on the
+   * selected range and by Screen to extract the text on release.
+   */
+  selection: SelectionRect | null;
+  /**
+   * Epoch-ms the active session was created. Drives the StatusLine elapsed
+   * clock. Set by `setStatusMeta`; survives `reset()` (session-level state).
+   */
+  sessionStartedAt: number | null;
+  /**
+   * Current git branch of the workspace, or null when not a repo / detached.
+   * Snapshotted by `setStatusMeta`; survives `reset()`.
+   */
+  gitBranch: string | null;
+  /**
+   * Token count of the most recent model request (input + cache + output) — a
+   * proxy for how full the context window is. Reset to 0 on `reset()` (/clear).
+   */
+  contextTokens: number;
+  /**
+   * Configured context-window size in tokens, used as the denominator for the
+   * StatusLine usage meter. Set by `setStatusMeta`; survives `reset()`.
+   */
+  contextWindowTokens: number;
+  /**
+   * Prompts the user submitted while a turn was running, waiting to be consumed
+   * as their own turns once the current one finishes (FIFO). The permanent
+   * InputBox renders these above itself so the user can see what's pending.
+   * Items submitted while the REPL is idle are handed straight to the consumer
+   * and never land here.
+   */
+  inputQueue: string[];
+  /**
+   * Slash commands offered by the permanent InputBox popup. Set once when the
+   * REPL starts; the InputBox is always mounted now, so it can't read these
+   * from a per-prompt modal anymore.
+   */
+  slashCommands: SlashCommand[];
+  /**
+   * Predicted next-input hint shown as the InputBox placeholder when the buffer
+   * is empty. Refreshed by the REPL after each turn.
+   */
+  inputPlaceholder: string;
+}
+
+export interface SelectionRect {
+  startRow: number;
+  startCol: number;
+  endRow: number;
+  endCol: number;
 }
 
 export interface AppActions {
@@ -147,6 +245,41 @@ export interface AppActions {
   openPickModal: <T>(opts: PickerOptions<T>) => Promise<T | null>;
   openPickHorizontalModal: <T>(opts: HorizontalPickerOptions<T>) => Promise<T | null>;
   reset: () => void;
+  setTerminalSize: (cols: number, rows: number) => void;
+  /** Sticky-aware writeback used by the viewport after each measure. */
+  reportViewportMetrics: (totalLines: number, viewportRows: number) => void;
+  /** Scroll by `delta` lines. Negative = up. Disables stickToBottom on up. */
+  scrollBy: (delta: number) => void;
+  scrollToTop: () => void;
+  scrollToBottom: () => void;
+  /** Snapshot of the visible text — written back by the viewport each render. */
+  setVisibleLines: (lines: string[]) => void;
+  /** Show a transient notice; auto-clears after `ttlMs` (default 1000). */
+  setCopyNotice: (text: string, ttlMs?: number) => void;
+  setSelection: (rect: SelectionRect | null) => void;
+  /** Set the session-level StatusLine metadata (clock origin, branch, window). */
+  setStatusMeta: (meta: {
+    sessionStartedAt: number;
+    gitBranch: string | null;
+    contextWindowTokens: number;
+  }) => void;
+  /** Update the latest-request token count shown by the StatusLine meter. */
+  setContextTokens: (tokens: number) => void;
+  /**
+   * Submit a prompt from the InputBox. If the REPL is idle (blocked in
+   * `takeInput`) it's delivered immediately; otherwise it's appended to
+   * `inputQueue` for the next turn.
+   */
+  enqueueInput: (line: string) => void;
+  /**
+   * Consumer side, called by the REPL. Resolves with the next queued prompt,
+   * blocking until one arrives, or `null` when an exit was requested.
+   */
+  takeInput: () => Promise<string | null>;
+  /** Ask the idle REPL to stop (Ctrl+C with no turn running). */
+  requestExit: () => void;
+  setSlashCommands: (commands: SlashCommand[]) => void;
+  setInputPlaceholder: (text: string) => void;
 }
 
 export type AppStoreState = AppState & AppActions;
@@ -165,6 +298,12 @@ interface ModalSlot {
 
 export function createAppStore(): AppStoreApi {
   const slot: ModalSlot = { resolve: null, abortCleanup: null };
+  // Non-reactive consumer slot for the input queue: when the REPL is blocked in
+  // `takeInput`, `waiter` holds its resolver so a submit can hand off directly.
+  const inputSlot: { waiter: ((v: string | null) => void) | null; exitRequested: boolean } = {
+    waiter: null,
+    exitRequested: false,
+  };
   let spinnerCounter = 0;
   let cardCounter = 0;
 
@@ -222,6 +361,22 @@ export function createAppStore(): AppStoreApi {
       escHandler: null,
       thinkingLabel: undefined,
       setup: null,
+      termCols: process.stdout.columns ?? 80,
+      termRows: process.stdout.rows ?? 24,
+      scrollOffset: 0,
+      stickToBottom: true,
+      viewportTotalLines: 0,
+      viewportRows: 0,
+      visibleLines: [],
+      copyNotice: null,
+      selection: null,
+      sessionStartedAt: null,
+      gitBranch: null,
+      contextTokens: 0,
+      contextWindowTokens: 0,
+      inputQueue: [],
+      slashCommands: [],
+      inputPlaceholder: "",
 
       // ===== Actions =====
       pushCard(text, opts = {}) {
@@ -370,10 +525,153 @@ export function createAppStore(): AppStoreApi {
        */
       reset() {
         clearSlot();
-        set({ messages: [], cards: [], spinner: null, modal: null });
-        // banner and thinkingLabel intentionally preserved across reset —
-        // banner tracks process-level state (model/session header),
-        // thinkingLabel tracks user preference, neither is conversation state.
+        set({
+          messages: [],
+          cards: [],
+          spinner: null,
+          modal: null,
+          scrollOffset: 0,
+          stickToBottom: true,
+          viewportTotalLines: 0,
+          viewportRows: 0,
+          contextTokens: 0,
+        });
+        // banner, thinkingLabel, and the session-level status meta
+        // (sessionStartedAt / gitBranch / contextWindowTokens) are intentionally
+        // preserved across reset — they track process/session state, not
+        // conversation history. Only contextTokens resets, since /clear empties
+        // the context window.
+      },
+
+      setTerminalSize(cols, rows) {
+        const s = get();
+        if (s.termCols === cols && s.termRows === rows) return;
+        set({ termCols: cols, termRows: rows });
+      },
+
+      reportViewportMetrics(totalLines, viewportRows) {
+        const s = get();
+        let next: Partial<AppState> | null = null;
+        if (s.viewportTotalLines !== totalLines || s.viewportRows !== viewportRows) {
+          next = { viewportTotalLines: totalLines, viewportRows };
+        }
+        if (s.stickToBottom) {
+          const wantOffset = Math.max(0, totalLines - viewportRows);
+          if (wantOffset !== s.scrollOffset) {
+            next = { ...(next ?? {}), scrollOffset: wantOffset };
+          }
+        }
+        if (next) set(next);
+      },
+
+      scrollBy(delta) {
+        const s = get();
+        if (delta === 0) return;
+        const maxOffset = Math.max(0, s.viewportTotalLines - s.viewportRows);
+        const next = Math.max(0, Math.min(s.scrollOffset + delta, maxOffset));
+        if (next === s.scrollOffset && s.stickToBottom === (next >= maxOffset)) return;
+        set({
+          scrollOffset: next,
+          stickToBottom: next >= maxOffset,
+        });
+      },
+
+      scrollToTop() {
+        const s = get();
+        if (s.scrollOffset === 0 && !s.stickToBottom) return;
+        set({ scrollOffset: 0, stickToBottom: s.viewportTotalLines <= s.viewportRows });
+      },
+
+      scrollToBottom() {
+        const s = get();
+        const maxOffset = Math.max(0, s.viewportTotalLines - s.viewportRows);
+        if (s.scrollOffset === maxOffset && s.stickToBottom) return;
+        set({ scrollOffset: maxOffset, stickToBottom: true });
+      },
+
+      setVisibleLines(lines) {
+        // Reference equality check covers the no-op path; deeper equality
+        // isn't worth it since the array is freshly built each render anyway.
+        if (get().visibleLines === lines) return;
+        set({ visibleLines: lines });
+      },
+
+      setCopyNotice(text, ttlMs = 1000) {
+        set({ copyNotice: text });
+        setTimeout(() => {
+          if (get().copyNotice === text) set({ copyNotice: null });
+        }, ttlMs);
+      },
+
+      setSelection(rect) {
+        if (get().selection === rect) return;
+        set({ selection: rect });
+      },
+
+      setStatusMeta(meta) {
+        const s = get();
+        if (
+          s.sessionStartedAt === meta.sessionStartedAt &&
+          s.gitBranch === meta.gitBranch &&
+          s.contextWindowTokens === meta.contextWindowTokens
+        ) {
+          return;
+        }
+        set({
+          sessionStartedAt: meta.sessionStartedAt,
+          gitBranch: meta.gitBranch,
+          contextWindowTokens: meta.contextWindowTokens,
+        });
+      },
+
+      setContextTokens(tokens) {
+        if (get().contextTokens === tokens) return;
+        set({ contextTokens: tokens });
+      },
+
+      enqueueInput(line) {
+        if (inputSlot.waiter) {
+          const w = inputSlot.waiter;
+          inputSlot.waiter = null;
+          w(line);
+          return;
+        }
+        set((s) => ({ inputQueue: [...s.inputQueue, line] }));
+      },
+
+      takeInput() {
+        const q = get().inputQueue;
+        if (q.length > 0) {
+          const [head, ...rest] = q;
+          set({ inputQueue: rest });
+          return Promise.resolve(head ?? null);
+        }
+        if (inputSlot.exitRequested) {
+          inputSlot.exitRequested = false;
+          return Promise.resolve(null);
+        }
+        return new Promise<string | null>((resolve) => {
+          inputSlot.waiter = resolve;
+        });
+      },
+
+      requestExit() {
+        if (inputSlot.waiter) {
+          const w = inputSlot.waiter;
+          inputSlot.waiter = null;
+          w(null);
+          return;
+        }
+        inputSlot.exitRequested = true;
+      },
+
+      setSlashCommands(commands) {
+        set({ slashCommands: commands });
+      },
+
+      setInputPlaceholder(text) {
+        if (get().inputPlaceholder === text) return;
+        set({ inputPlaceholder: text });
       },
     };
   });

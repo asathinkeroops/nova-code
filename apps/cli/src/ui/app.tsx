@@ -1,64 +1,22 @@
 import React from "react";
-import { Box, Text, useInput } from "ink";
+import { Box } from "ink";
 import { useShallow } from "zustand/react/shallow";
-import { ApprovalPrompt } from "./approval.js";
-import { AskPanel } from "./ask-user.js";
-import { Banner } from "./banner.js";
 import { InputBox } from "./input-box.js";
-import { Messages } from "./messages.js";
-import { PickHorizontal, PickList } from "./picker.js";
+import { userInputHistory } from "./input-history.js";
 import { SetupView } from "./setup-view.js";
-import { Spinner } from "./spinner.js";
-import type { AppStoreApi, ModalState } from "./store.js";
-import { TaskFooter } from "./task-footer.js";
-import { TodoFooter } from "./todo-footer.js";
+import { StatusLine } from "./status-line.js";
+import type { AppStoreApi } from "./store.js";
+import { Viewport } from "./viewport.js";
 
-interface EscWatcherProps {
-  onInterrupt: () => void;
-}
-
-function EscWatcher({ onInterrupt }: EscWatcherProps): null {
-  useInput((input, key) => {
-    if (key.escape || (key.ctrl && input === "c")) {
-      onInterrupt();
-    }
-  });
-  return null;
-}
-
-interface ModalViewProps {
-  modal: ModalState;
-  resolveModal: (value: unknown) => void;
-}
-
-function ModalView({ modal, resolveModal }: ModalViewProps): React.ReactElement | null {
-  switch (modal.kind) {
-    case "input":
-      return (
-        <InputBox
-          options={modal.opts}
-          onSubmit={(value) => resolveModal(value)}
-          onCancel={() => resolveModal(null)}
-        />
-      );
-    case "approval":
-      return (
-        <ApprovalPrompt
-          decision={modal.decision}
-          input={modal.input}
-          {...(modal.onCancel ? { onCancel: modal.onCancel } : {})}
-          onAnswer={(value) => resolveModal(value)}
-        />
-      );
-    case "ask":
-      return <AskPanel req={modal.req} onResolve={(value) => resolveModal(value)} />;
-    case "pick":
-      return <PickList opts={modal.opts} onResolve={(value) => resolveModal(value)} />;
-    case "pickH":
-      return <PickHorizontal opts={modal.opts} onResolve={(value) => resolveModal(value)} />;
-    default:
-      return null;
-  }
+/**
+ * Pinned bottom chrome row count: the always-present StatusLine plus the
+ * InputBox. The InputBox reports its actual height via `onMeasure` (queued
+ * prompts + popup + wrapped buffer + rules), so growing content reserves rows
+ * instead of overlapping the viewport. In-stream modals (approval/ask/pick)
+ * reserve their own rows inside the Viewport.
+ */
+function pinnedBottomRows(inputRows: number): number {
+  return 1 + inputRows;
 }
 
 interface AppProps {
@@ -66,76 +24,84 @@ interface AppProps {
 }
 
 export function App({ store }: AppProps): React.ReactElement {
-  const {
-    setup,
-    banner,
-    messages,
-    cards,
-    thinkingLabel,
-    todos,
-    tasks,
-    spinner,
-    modal,
-    escHandler,
-  } = store(
+  const { setup, modal, slashCommands, inputPlaceholder, inputQueue, termRows } = store(
     useShallow((s) => ({
       setup: s.setup,
-      banner: s.banner,
-      messages: s.messages,
-      cards: s.cards,
-      thinkingLabel: s.thinkingLabel,
-      todos: s.todos,
-      tasks: s.tasks,
-      spinner: s.spinner,
       modal: s.modal,
-      escHandler: s.escHandler,
+      slashCommands: s.slashCommands,
+      inputPlaceholder: s.inputPlaceholder,
+      inputQueue: s.inputQueue,
+      termRows: s.termRows,
     })),
   );
   // Actions are stable across renders — grab them once via getState().
-  const resolveModal = store.getState().resolveModal;
+  const { resolveModal } = store.getState();
+
+  // Ctrl+C: interrupt a running turn if one is active, else ask the idle REPL
+  // to exit. Escape: interrupt only — never exits — and does nothing when idle.
+  const onCtrlC = React.useCallback(() => {
+    const s = store.getState();
+    if (s.escHandler) s.escHandler();
+    else s.requestExit();
+  }, [store]);
+  const onEscape = React.useCallback(() => {
+    const h = store.getState().escHandler;
+    if (h) h();
+  }, [store]);
+  const onSubmitInput = React.useCallback(
+    (value: string) => store.getState().enqueueInput(value),
+    [store],
+  );
+
+  // Default 3 = top rule + 1 input line + bottom rule (no popup, single-line
+  // buffer). InputBox reports its real height via onMeasure as it grows.
+  const [inputRows, setInputRows] = React.useState(3);
+  const onMeasureInput = React.useCallback((rows: number) => setInputRows(rows), []);
 
   // Setup mode commandeers the whole screen — everything else (banner,
   // messages, cards, spinner, footer) is suppressed until the wizard finishes.
+  // It still drives input through the modal prompt rather than the queue.
   if (setup) {
     return (
       <Box flexDirection="column">
         <SetupView state={setup} />
-        {modal ? <ModalView modal={modal} resolveModal={resolveModal} /> : null}
+        {modal?.kind === "input" ? (
+          <InputBox
+            options={modal.opts}
+            onSubmit={(value) => resolveModal(value)}
+            onCancel={() => resolveModal(null)}
+            onMeasure={onMeasureInput}
+          />
+        ) : null}
       </Box>
     );
   }
 
+  // Leave a 1-row safety margin so the layout never sums to exactly termRows.
+  // Some terminals (Warp) push content one row up when the live region fills
+  // the screen edge-to-edge, which would clip the top of the viewport.
+  const viewportRows = Math.max(3, termRows - pinnedBottomRows(inputRows) - 1);
+
+  // The InputBox is a permanent fixture: it stays mounted (and visible) the
+  // whole session so the user can type mid-turn. It only goes inert while an
+  // in-stream modal owns input — passing active=false keeps the buffer intact.
   return (
     <Box flexDirection="column">
-      {banner ? (
-        <>
-          <Banner {...banner} />
-          <Box marginTop={1}>
-            <Text dimColor>REPL ready. Type /help for commands, /exit to quit.</Text>
-          </Box>
-        </>
-      ) : null}
-      <Messages
-        messages={messages}
-        cards={cards}
-        {...(thinkingLabel !== undefined ? { thinkingLabel } : {})}
+      <Viewport store={store} rows={viewportRows} resolveModal={resolveModal} />
+      <InputBox
+        options={{
+          commands: slashCommands,
+          placeholder: inputPlaceholder,
+          history: userInputHistory(store.getState().messages),
+          queued: inputQueue,
+        }}
+        active={modal === null}
+        onSubmit={onSubmitInput}
+        onCancel={onCtrlC}
+        onEscape={onEscape}
+        onMeasure={onMeasureInput}
       />
-      {modal ? (
-        <ModalView modal={modal} resolveModal={resolveModal} />
-      ) : (
-        <Box flexDirection="column">
-          {spinner && todos.length === 0 && tasks.length === 0 ? (
-            <Spinner spec={spinner} />
-          ) : null}
-          {spinner ? (
-            <>
-              <TaskFooter tasks={tasks} />
-              <TodoFooter todos={todos} />
-            </>
-          ) : null}
-          {escHandler ? <EscWatcher onInterrupt={escHandler} /> : null}
-        </Box>
-      )}
+      <StatusLine store={store} />
     </Box>
   );
 }

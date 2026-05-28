@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Box, Text, useInput, useStdout } from "ink";
-import { charDisplayWidth, visibleWidth } from "./width.js";
+import { charDisplayWidth, truncateToWidth, visibleWidth } from "./width.js";
 
 export interface SlashCommand {
   name: string;
@@ -16,6 +16,19 @@ export interface BoxedInputOptions {
   commands?: SlashCommand[];
   /** Render typed characters as `*` (passwords / API keys). */
   mask?: boolean;
+  /**
+   * Previously-submitted user prompts for ↑/↓ recall, oldest first. Pressing ↑
+   * walks backward into older entries (saving the in-progress draft first); ↓
+   * walks forward and restores the draft past the newest entry. Wired by
+   * App.tsx from the canonical message history with injected/tool messages
+   * filtered out.
+   */
+  history?: string[];
+  /**
+   * Prompts queued while a turn is running, oldest first. Rendered dim above
+   * the input so the user can see what will run next; never editable here.
+   */
+  queued?: string[];
 }
 
 interface DisplayLine {
@@ -25,7 +38,8 @@ interface DisplayLine {
 }
 
 const POPUP_MAX_ROWS = 5;
-const RULE_CHAR = "─";
+const QUEUED_MAX_ROWS = 5;
+const RULE_CHAR = "┄";
 const MIN_WIDTH = 20;
 const PROMPT_TEXT = "› ";
 const PROMPT_LEN = visibleWidth(PROMPT_TEXT);
@@ -117,9 +131,34 @@ export interface InputBoxProps {
   options: BoxedInputOptions;
   onSubmit: (value: string) => void;
   onCancel: () => void;
+  /**
+   * Called whenever the InputBox's rendered row count changes (popup grows,
+   * buffer wraps to more lines, etc.) so the parent can reserve enough rows
+   * below the viewport instead of letting the popup overlap history.
+   */
+  onMeasure?: (rows: number) => void;
+  /**
+   * When false the InputBox stays mounted (buffer preserved) but ignores all
+   * keystrokes — used while an in-stream modal (approval/ask/pick) owns input.
+   * Defaults to true.
+   */
+  active?: boolean;
+  /**
+   * Called when Escape is pressed and there is no slash popup to dismiss. The
+   * permanent InputBox wires this to interrupt a running turn; the modal
+   * InputBox leaves it unset (Escape only closes the popup).
+   */
+  onEscape?: () => void;
 }
 
-export function InputBox({ options, onSubmit, onCancel }: InputBoxProps): React.ReactElement {
+export function InputBox({
+  options,
+  onSubmit,
+  onCancel,
+  onMeasure,
+  active = true,
+  onEscape,
+}: InputBoxProps): React.ReactElement {
   const [buffer, setBuffer] = useState("");
   const [cursor, setCursor] = useState(0);
   const [popupCursor, setPopupCursor] = useState(0);
@@ -131,6 +170,14 @@ export function InputBox({ options, onSubmit, onCancel }: InputBoxProps): React.
   const placeholderText = options.placeholder ?? "";
   const commands = options.commands ?? [];
   const mask = options.mask ?? false;
+  const history = options.history ?? [];
+  const queued = options.queued ?? [];
+
+  // Position into `history` for ↑/↓ recall. `history.length` means "not
+  // browsing — the live draft buffer." `draft` preserves the in-progress text
+  // while the user walks backward into older entries.
+  const [historyPos, setHistoryPos] = useState(history.length);
+  const [draft, setDraft] = useState("");
 
   const matches = matchingCommands(buffer, commands, popupDismissed);
   const effectivePopupCursor = popupCursor >= matches.length ? 0 : popupCursor;
@@ -143,6 +190,30 @@ export function InputBox({ options, onSubmit, onCancel }: InputBoxProps): React.
     setPopupDismissed(false);
     setPopupCursor(0);
     setPopupOffset(0);
+    // Any edit exits history-browse mode so the next ↑ starts from the newest.
+    setHistoryPos(history.length);
+  };
+
+  // Drop a recalled history entry into the buffer without disturbing the
+  // browse position. The slash popup stays suppressed so recall never pops it.
+  const recall = (text: string): void => {
+    setBuffer(text);
+    setCursor(text.length);
+    setPopupDismissed(true);
+    setPopupCursor(0);
+    setPopupOffset(0);
+  };
+
+  // Reset to an empty prompt after a submit (the permanent InputBox stays
+  // mounted, so it can't rely on unmount to clear).
+  const clearBuffer = (): void => {
+    setBuffer("");
+    setCursor(0);
+    setPopupDismissed(false);
+    setPopupCursor(0);
+    setPopupOffset(0);
+    setHistoryPos(history.length);
+    setDraft("");
   };
 
   const scrollPopupTo = (next: number): void => {
@@ -165,6 +236,7 @@ export function InputBox({ options, onSubmit, onCancel }: InputBoxProps): React.
       const pick = matches[effectivePopupCursor];
       const out = pick ? pick.name : buffer;
       onSubmit(out);
+      clearBuffer();
       return;
     }
     // Ink 5 maps macOS Backspace (\x7f) to key.delete; treat both as backward delete.
@@ -179,6 +251,14 @@ export function InputBox({ options, onSubmit, onCancel }: InputBoxProps): React.
         const next = (effectivePopupCursor - 1 + matches.length) % matches.length;
         setPopupCursor(next);
         scrollPopupTo(next);
+        return;
+      }
+      // Recall an older prompt. Save the live draft the first time we leave it.
+      if (historyPos > 0) {
+        if (historyPos === history.length) setDraft(buffer);
+        const next = historyPos - 1;
+        setHistoryPos(next);
+        recall(history[next] ?? "");
       }
       return;
     }
@@ -187,6 +267,13 @@ export function InputBox({ options, onSubmit, onCancel }: InputBoxProps): React.
         const next = (effectivePopupCursor + 1) % matches.length;
         setPopupCursor(next);
         scrollPopupTo(next);
+        return;
+      }
+      // Walk back toward newer prompts; past the newest, restore the draft.
+      if (historyPos < history.length) {
+        const next = historyPos + 1;
+        setHistoryPos(next);
+        recall(next === history.length ? draft : history[next] ?? "");
       }
       return;
     }
@@ -206,7 +293,9 @@ export function InputBox({ options, onSubmit, onCancel }: InputBoxProps): React.
         setPopupDismissed(true);
         setPopupCursor(0);
         setPopupOffset(0);
+        return;
       }
+      onEscape?.();
       return;
     }
     if (key.leftArrow) {
@@ -250,12 +339,27 @@ export function InputBox({ options, onSubmit, onCancel }: InputBoxProps): React.
     const text = input.replace(/[\x00-\x1f]/g, "");
     if (text.length === 0) return;
     replaceBuffer(buffer.slice(0, cursor) + text + buffer.slice(cursor), cursor + text.length);
-  });
+  }, { isActive: active });
 
   const rule = RULE_CHAR.repeat(width);
   const isEmpty = buffer.length === 0;
   const lines = wrapBuffer(buffer, width);
   const { row: cursorRow } = isEmpty ? { row: 0 } : findCursorPosition(lines, cursor);
+
+  const popupVisible = Math.min(POPUP_MAX_ROWS, Math.max(0, matches.length - safeOffset));
+  const popupTopMore = matches.length > 0 && safeOffset > 0 ? 1 : 0;
+  const popupBottomMore =
+    matches.length > 0 && safeOffset + POPUP_MAX_ROWS < matches.length ? 1 : 0;
+  const popupRows = popupTopMore + popupVisible + popupBottomMore;
+  const bodyRows = isEmpty ? 1 : lines.length;
+  const queuedShown = queued.slice(0, QUEUED_MAX_ROWS);
+  const queuedMoreRow = queued.length > QUEUED_MAX_ROWS ? 1 : 0;
+  const queuedRows = queuedShown.length + queuedMoreRow;
+  const totalRows = queuedRows + popupRows + 2 + bodyRows;
+
+  useEffect(() => {
+    onMeasure?.(totalRows);
+  }, [onMeasure, totalRows]);
 
   const renderContentLine = (line: DisplayLine, idx: number): React.ReactElement => {
     const isCursorLine = idx === cursorRow;
@@ -280,19 +384,15 @@ export function InputBox({ options, onSubmit, onCancel }: InputBoxProps): React.
   };
 
   return (
-    <Box flexDirection="column" marginTop={1}>
-      <Text dimColor>{rule}</Text>
-      {isEmpty ? (
-        <Box>
-          <Text> </Text>
-          <Text color="cyan">{PROMPT_TEXT}</Text>
-          <Text inverse> </Text>
-          {placeholderText ? <Text dimColor>{placeholderText}</Text> : null}
-        </Box>
-      ) : (
-        lines.map(renderContentLine)
-      )}
-      <Text dimColor>{rule}</Text>
+    <Box flexDirection="column">
+      {queuedShown.map((q, i) => (
+        <Text key={`q${i}`} dimColor>
+          {` ↳ ${i + 1}. ${truncateToWidth(q.replace(/\s+/g, " ").trim(), Math.max(1, width - 6))}`}
+        </Text>
+      ))}
+      {queuedMoreRow ? (
+        <Text dimColor>{` ↳ +${queued.length - QUEUED_MAX_ROWS} more queued`}</Text>
+      ) : null}
       {matches.length > 0 && safeOffset > 0 ? (
         <Text dimColor> ↑ {safeOffset} more</Text>
       ) : null}
@@ -317,6 +417,18 @@ export function InputBox({ options, onSubmit, onCancel }: InputBoxProps): React.
       {matches.length > 0 && safeOffset + POPUP_MAX_ROWS < matches.length ? (
         <Text dimColor> ↓ {matches.length - safeOffset - POPUP_MAX_ROWS} more</Text>
       ) : null}
+      <Text dimColor>{rule}</Text>
+      {isEmpty ? (
+        <Box>
+          <Text> </Text>
+          <Text color="cyan">{PROMPT_TEXT}</Text>
+          <Text inverse> </Text>
+          {placeholderText ? <Text dimColor>{placeholderText}</Text> : null}
+        </Box>
+      ) : (
+        lines.map(renderContentLine)
+      )}
+      <Text dimColor>{rule}</Text>
     </Box>
   );
 }

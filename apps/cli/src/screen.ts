@@ -10,7 +10,10 @@ import type { PermissionDecision, PermissionInput } from "@nova/safety";
 import { App } from "./ui/app.js";
 import { type ApprovalAnswer } from "./ui/approval.js";
 import { type BannerProps } from "./ui/banner.js";
-import { type BoxedInputOptions } from "./ui/input-box.js";
+import { type BoxedInputOptions, type SlashCommand } from "./ui/input-box.js";
+import { copyToClipboard } from "./ui/clipboard.js";
+import { attachFilteredStdin } from "./ui/mouse.js";
+import { extractSelection } from "./ui/selection.js";
 import { type SetupEntry, type SetupState } from "./ui/setup-view.js";
 import {
   type HorizontalPickerOptions,
@@ -66,13 +69,119 @@ export class Screen {
   private store: AppStoreApi = createAppStore();
   private instance: InkInstance | null = null;
   private mounted = false;
+  private detachResize: (() => void) | null = null;
+  private detachMouse: (() => void) | null = null;
+  private detachAltScreen: (() => void) | null = null;
 
   mount(): void {
     if (this.mounted) return;
+
+    // Enter the alternate screen buffer + home the cursor. Same trick `vim`
+    // and `htop` use: we get a private full-screen buffer that doesn't share
+    // scrollback with the shell, so the first frame always starts at row 1
+    // and the user's original shell view is restored verbatim on exit.
+    // Without this, the first frame would write from wherever the shell's
+    // cursor was — pushing the banner top into scrollback on terminals that
+    // don't behave identically to xterm (notably Warp).
+    if (process.stdout.isTTY) {
+      process.stdout.write("\x1b[?1049h\x1b[H");
+    }
+    // Safety net: alt-screen must be exited or the terminal stays blank
+    // after a crash. Mirrors the mouse-mode disable hook in mouse.ts.
+    let altExited = false;
+    const exitAlt = (): void => {
+      if (altExited) return;
+      altExited = true;
+      try {
+        process.stdout.write("\x1b[?1049l");
+      } catch {
+        // ignore
+      }
+    };
+    process.once("exit", exitAlt);
+    this.detachAltScreen = (): void => {
+      process.off("exit", exitAlt);
+      exitAlt();
+    };
+
+    // Install the mouse-filtering stdin proxy BEFORE Ink mounts: Ink reads
+    // from this stream and never sees raw mouse escape sequences (which
+    // would otherwise leak into the input box as `[<64;78;51M` garbage).
+    //
+    // Mouse coords arrive 1-indexed (terminal convention) and reference
+    // absolute terminal rows. The viewport always starts at row 1 (alt
+    // screen), so visibleLines index = row - 1. Selection state lives in
+    // 0-indexed viewport coords for direct use during render.
+    const filtered = attachFilteredStdin({
+      onWheel: ({ delta }) => this.store.getState().scrollBy(delta),
+      onSelectStart: ({ row, col }) => {
+        const r = Math.max(0, row - 1);
+        const c = Math.max(0, col - 1);
+        this.store.getState().setSelection({
+          startRow: r,
+          startCol: c,
+          endRow: r,
+          endCol: c,
+        });
+      },
+      onSelectUpdate: ({ row, col }) => {
+        const cur = this.store.getState().selection;
+        if (!cur) return;
+        this.store.getState().setSelection({
+          ...cur,
+          endRow: Math.max(0, row - 1),
+          endCol: Math.max(0, col - 1),
+        });
+      },
+      onSelectEnd: ({ row, col }, moved) => {
+        const state = this.store.getState();
+        const cur = state.selection;
+        state.setSelection(null);
+        if (!moved || !cur) return;
+        const lines = state.visibleLines;
+        if (lines.length === 0) return;
+        const text = extractSelection(lines, {
+          startRow: cur.startRow,
+          startCol: cur.startCol,
+          endRow: Math.max(0, row - 1),
+          endCol: Math.max(0, col - 1),
+        }).trim();
+        if (text.length === 0) return;
+        if (copyToClipboard(text)) {
+          const lineCount = text.split("\n").length;
+          state.setCopyNotice(
+            `✓ copied ${lineCount} line${lineCount === 1 ? "" : "s"} to clipboard`,
+          );
+        }
+      },
+    });
+    this.detachMouse = filtered.detach;
+
     this.instance = render(React.createElement(App, { store: this.store }), {
+      stdin: filtered.stream,
       exitOnCtrlC: false,
     }) as InkInstance;
     this.mounted = true;
+
+    // Re-show the cursor after Ink's first paint hid it via cli-cursor.
+    // Ink's log-update only hides once (gated by an internal `hasHiddenCursor`
+    // flag), so a one-time re-show is enough — Ink will not re-hide on later
+    // frames. A visible cursor anchors IME composition popups (Chinese / JP /
+    // etc.) to the actual typing row instead of defaulting to row 1 col 1.
+    setImmediate(() => {
+      if (process.stdout.isTTY) process.stdout.write("\x1b[?25h");
+    });
+
+    // Keep the store's view of the terminal size current; the viewport reads
+    // these to compute slice width and row budget.
+    const setSize = (): void => {
+      this.store
+        .getState()
+        .setTerminalSize(process.stdout.columns ?? 80, process.stdout.rows ?? 24);
+    };
+    setSize();
+    process.stdout.on("resize", setSize);
+    this.detachResize = () => process.stdout.off("resize", setSize);
   }
 
   async unmount(): Promise<void> {
@@ -80,6 +189,10 @@ export class Screen {
     const inst = this.instance;
     this.instance = null;
     this.mounted = false;
+    if (this.detachResize) {
+      this.detachResize();
+      this.detachResize = null;
+    }
     // Ink's `unmount()` synchronously calls `this.resolveExitPromise()`, which
     // is only created lazily on the first `waitUntilExit()` call. If we call
     // `unmount()` first, that resolver is undefined and Ink throws — leaving
@@ -95,17 +208,29 @@ export class Screen {
     } catch {
       // ignore
     }
+    // Detach mouse AFTER Ink shuts down so Ink can flush final cursor/setRawMode
+    // state through our proxy before we end it and disable mouse reporting.
+    if (this.detachMouse) {
+      this.detachMouse();
+      this.detachMouse = null;
+    }
+    // Restore the main screen buffer last so the shell sees its previous
+    // state once everything else is cleaned up.
+    if (this.detachAltScreen) {
+      this.detachAltScreen();
+      this.detachAltScreen = null;
+    }
   }
 
   /**
-   * Tear down the Ink tree, clear the terminal, and remount a fresh tree.
-   * Used by /clear and /resume to drop any content the terminal has already
-   * scrolled past, so the loaded history (or empty post-clear state) starts
-   * at the top of a fresh screen.
+   * Tear down the Ink tree and remount a fresh one. Used by /clear and
+   * /resume to drop the rendered history and start over. With the alt-screen
+   * buffer, re-entering already clears the buffer (xterm `?1049h` resets it
+   * on switch), so no extra `\x1b[2J` is needed — and avoiding it keeps us
+   * from blanking the user's main shell screen during the brief unmount gap.
    */
   async reset(): Promise<void> {
     await this.unmount();
-    process.stdout.write("\x1b[2J\x1b[H");
     this.store.getState().reset();
     this.mount();
   }
@@ -126,6 +251,31 @@ export class Screen {
 
   setBanner(banner: BannerProps | null): void {
     this.store.getState().setBanner(banner);
+  }
+
+  setStatusMeta(meta: {
+    sessionStartedAt: number;
+    gitBranch: string | null;
+    contextWindowTokens: number;
+  }): void {
+    this.store.getState().setStatusMeta(meta);
+  }
+
+  setContextTokens(tokens: number): void {
+    this.store.getState().setContextTokens(tokens);
+  }
+
+  /** Consumer side of the input queue — resolves with the next prompt or null on exit. */
+  takeInput(): Promise<string | null> {
+    return this.store.getState().takeInput();
+  }
+
+  setSlashCommands(commands: SlashCommand[]): void {
+    this.store.getState().setSlashCommands(commands);
+  }
+
+  setInputPlaceholder(text: string): void {
+    this.store.getState().setInputPlaceholder(text);
   }
 
   setTodos(todos: Todo[]): void {
@@ -206,3 +356,4 @@ export class Screen {
     return this.store.getState().openPickHorizontalModal(opts);
   }
 }
+

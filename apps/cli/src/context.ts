@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -152,6 +153,20 @@ async function readCliVersion(): Promise<string> {
   }
 }
 
+/** Current branch of the workspace repo, or null when not a repo / detached. */
+function currentGitBranch(cwd: string): string | null {
+  try {
+    const out = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+      cwd,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    return out && out !== "HEAD" ? out : null;
+  } catch {
+    return null;
+  }
+}
+
 export function refreshBanner(ctx: CliContext): void {
   ctx.screen.setBanner({
     version: ctx.version,
@@ -159,6 +174,11 @@ export function refreshBanner(ctx: CliContext): void {
     cwd: ctx.workspace,
     home: homedir(),
     sessionId: ctx.session.id,
+  });
+  ctx.screen.setStatusMeta({
+    sessionStartedAt: ctx.session.createdAt.getTime(),
+    gitBranch: currentGitBranch(ctx.workspace),
+    contextWindowTokens: ctx.settings.contextWindowTokens,
   });
 }
 

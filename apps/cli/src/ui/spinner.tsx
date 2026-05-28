@@ -58,7 +58,7 @@ export function Spinner({ spec }: SpinnerProps): React.ReactElement {
   }
 
   return (
-    <Box marginTop={1} flexDirection="column">
+    <Box marginTop={1} marginBottom={1} flexDirection="column">
       <Text>{line}</Text>
     </Box>
   );

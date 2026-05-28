@@ -75,7 +75,8 @@ function BulletHeader({
 }): React.ReactElement {
   return (
     <Text>
-      <Text color="cyan">▶ {name}</Text>
+      <Text color="gray">●</Text>{" "}
+      <Text color="cyan">{name}</Text>
       {children !== undefined ? <>{"  "}{children}</> : null}
     </Text>
   );
@@ -83,12 +84,16 @@ function BulletHeader({
 
 const tools: Record<string, ToolDef> = {
   bash: {
+    inline: true,
     use: (input) => {
       const cmd = typeof input.command === "string" ? input.command : JSON.stringify(input);
+      // Flatten newlines so heredoc / multi-line scripts stay on one row —
+      // both the stream's header layout and the approval modal's chromeRows
+      // estimate assume the preview is exactly one line tall.
       return {
         header: (
           <BulletHeader name="bash">
-            <Text dimColor>{trim(cmd, 200)}</Text>
+            <Text dimColor>{trim(flatten(cmd), 200)}</Text>
           </BulletHeader>
         ),
       };
@@ -96,9 +101,9 @@ const tools: Record<string, ToolDef> = {
     result: (result) => {
       if (result.is_error) return <ErrLine result={result} />;
       const text = contentToString(result.content);
-      const lines = text.length === 0 ? 0 : text.split("\n").length;
-      const preview = flatten(trim(text, 120));
-      return <OkLine text={`${lines} line(s)${preview ? `  ${preview}` : ""}`} />;
+      if (text.length === 0) return <OkLine text="(no output)" />;
+      const firstLine = text.split("\n", 1)[0] ?? "";
+      return <OkLine text={trim(firstLine, 60)} />;
     },
   },
 
@@ -134,6 +139,7 @@ const tools: Record<string, ToolDef> = {
   },
 
   write: {
+    inline: true,
     use: (input) => {
       const path = typeof input.path === "string" ? input.path : "?";
       const content = typeof input.content === "string" ? input.content : "";
@@ -185,6 +191,7 @@ const tools: Record<string, ToolDef> = {
   },
 
   edit: {
+    inline: true,
     use: (input) => {
       const path = typeof input.path === "string" ? input.path : "?";
       const oldStr = typeof input.old_string === "string" ? input.old_string : "";
@@ -367,7 +374,7 @@ const tools: Record<string, ToolDef> = {
       return {
         header: (
           <BulletHeader name="bg">
-            <Text dimColor>{trim(cmd, 160)}</Text>
+            <Text dimColor>{trim(flatten(cmd), 160)}</Text>
           </BulletHeader>
         ),
       };
@@ -446,21 +453,39 @@ export function ToolUsePreview({
 export function ToolCall({ use, result }: ToolCallProps): React.ReactElement {
   const def = tools[use.name];
 
-  // Single-row layout for summary-only tools (grep / glob): header and result
-  // share one line once the result arrives. Falls back to the standard two-row
-  // layout while the call is still pending.
-  if (def?.inline === true && result !== undefined) {
+  // Single-row layout for inline tools (grep / glob / bash / read / edit /
+  // write): header (and result, once it lands) share one row. Pending
+  // inline calls skip the `⎿ …` placeholder so the approval-time layout
+  // matches the post-result layout. Body (e.g. diff for edit/write) sits
+  // below — full while pending so the user can review what they're about
+  // to approve, compactBody once finished.
+  if (def?.inline === true) {
     const view: UseView = def.use
       ? def.use(use.input as Record<string, unknown>)
       : { header: <GenericUseHeader use={use} /> };
-    const resultNode = def.result
-      ? def.result(result, use.input as Record<string, unknown> | undefined)
-      : <GenericResult result={result} />;
+    const resultNode =
+      result !== undefined
+        ? def.result
+          ? def.result(result, use.input as Record<string, unknown> | undefined)
+          : <GenericResult result={result} />
+        : null;
+    const body = view.body
+      ? result !== undefined
+        ? compactBody(view.body)
+        : view.body
+      : null;
     return (
-      <Box marginTop={1}>
-        {view.header}
-        <Text>{"  "}</Text>
-        {resultNode}
+      <Box flexDirection="column" marginTop={1}>
+        <Box>
+          {view.header}
+          {resultNode ? (
+            <>
+              <Text>{"  "}</Text>
+              {resultNode}
+            </>
+          ) : null}
+        </Box>
+        {body ? <Text>{body}</Text> : null}
       </Box>
     );
   }
@@ -529,7 +554,6 @@ export function ReadBatch({
     </Box>
   );
 }
-
 function BatchRow({
   entry,
   isFirst,

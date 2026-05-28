@@ -31,13 +31,22 @@ export interface ApprovalPromptProps {
   input: PermissionInput;
   onAnswer: (answer: ApprovalAnswer) => void;
   onCancel?: () => void;
+  /**
+   * Scroll the surrounding viewport. Wired by the host so the user can scroll
+   * up through a long pending edit/write diff while the prompt is open —
+   * otherwise the slice clips the top of the diff and there's no way to see
+   * what's actually being approved.
+   */
+  onScroll?: (delta: number) => void;
 }
 
+const SCROLL_PAGE_LINES = 10;
+
 export function ApprovalPrompt({
-  decision,
   input,
   onAnswer,
   onCancel,
+  onScroll,
 }: ApprovalPromptProps): React.ReactElement {
   const [cursor, setCursor] = useState(0);
 
@@ -45,6 +54,14 @@ export function ApprovalPrompt({
     if (key.escape) {
       onCancel?.();
       onAnswer("no");
+      return;
+    }
+    if (key.pageUp) {
+      onScroll?.(-SCROLL_PAGE_LINES);
+      return;
+    }
+    if (key.pageDown) {
+      onScroll?.(SCROLL_PAGE_LINES);
       return;
     }
     if (key.upArrow || char === "k") {
@@ -77,18 +94,7 @@ export function ApprovalPrompt({
 
   return (
     <Box flexDirection="column" padding={1} marginTop={1} marginBottom={1} borderStyle={"round"}>
-      <Text bold color="#FFA500">
-        Permission required
-      </Text>
-
-      <Box flexDirection="column" marginTop={1}>
-        <ToolUsePreview use={use} headerOnly />
-        {decision.reason ? (
-          <Box marginTop={1}>
-            <Text dimColor>Reason: {decision.reason}</Text>
-          </Box>
-        ) : null}
-      </Box>
+      <ToolUsePreview use={use} headerOnly />
 
       <Box flexDirection="column" marginTop={1}>
         {OPTIONS.map((opt, i) => {
@@ -103,7 +109,7 @@ export function ApprovalPrompt({
         })}
       </Box>
       <Box marginTop={1}>
-        <Text dimColor>↑/↓ to navigate · enter to confirm · y/n/a shortcut · esc to cancel</Text>
+        <Text dimColor>↑/↓ option · pgup/pgdn scroll · enter confirm · y/n/a shortcut · esc cancel</Text>
       </Box>
     </Box>
   );

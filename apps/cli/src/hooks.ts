@@ -48,7 +48,7 @@ export function registerUiHooks(ctx: CliContext): void {
     );
   });
 
-  ctx.agent.on("post_request", ({ durationMs, error }) => {
+  ctx.agent.on("post_request", ({ durationMs, error, usage }) => {
     if (error) {
       const seconds = (durationMs / 1000).toFixed(1);
       const word = ctx.spinner?.label() ?? "working";
@@ -59,6 +59,16 @@ export function registerUiHooks(ctx: CliContext): void {
       });
     } else {
       stopSpinner(ctx);
+    }
+    // Snapshot how full the context window is from the request's token usage.
+    // The input side is the full prompt sent; output is appended for next turn.
+    if (usage) {
+      const used =
+        usage.inputTokens +
+        (usage.cacheReadInputTokens ?? 0) +
+        (usage.cacheCreationInputTokens ?? 0) +
+        usage.outputTokens;
+      ctx.screen.setContextTokens(used);
     }
   });
 

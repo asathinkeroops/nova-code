@@ -85,6 +85,11 @@ async function runTurn(ctx: CliContext, input: string): Promise<boolean> {
 }
 
 export async function runRepl(ctx: CliContext, initialPrompt: string): Promise<void> {
+  // The InputBox is a permanent fixture that always enqueues; the REPL is the
+  // single consumer. Prompts typed while a turn runs pile up in the queue and
+  // are drained here one turn at a time.
+  ctx.screen.setSlashCommands(toUiSlashCommands(ctx.registry.list()));
+
   if (initialPrompt) {
     const ok = await runTurn(ctx, initialPrompt);
     if (ok) await refreshPrediction(ctx);
@@ -92,13 +97,11 @@ export async function runRepl(ctx: CliContext, initialPrompt: string): Promise<v
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
-    const placeholder = ctx.nextPlaceholder;
+    ctx.screen.setInputPlaceholder(ctx.nextPlaceholder);
     ctx.nextPlaceholder = "";
-    const raw = await ctx.screen.promptInput({
-      commands: toUiSlashCommands(ctx.registry.list()),
-      ...(placeholder ? { placeholder } : {}),
-    });
-    if (raw === null) break;
+
+    const raw = await ctx.screen.takeInput();
+    if (raw === null) break; // exit requested (Ctrl+C while idle)
     const line = raw.trim();
     if (!line) continue;
 
