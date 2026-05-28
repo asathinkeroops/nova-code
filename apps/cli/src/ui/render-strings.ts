@@ -412,6 +412,20 @@ const tools: Record<string, ToolStr> = {
       return okLine(flatten(trim(text, 80)));
     },
   },
+  createSubAgent: {
+    inline: true,
+    use: (input) => {
+      const description =
+        typeof input.description === "string" ? input.description : "sub-agent";
+      return { header: header("agent", trim(description, 120)) };
+    },
+    result: (result) => {
+      if (result.is_error) return errLine(result);
+      const text = contentToString(result.content);
+      const lines = text.length === 0 ? 0 : text.split("\n").length;
+      return okLine(`${lines} line(s) · ${formatBytes(text.length)}`);
+    },
+  },
 };
 
 function genericUseHeader(use: ToolUseBlock): string {

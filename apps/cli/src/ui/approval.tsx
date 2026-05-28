@@ -1,10 +1,25 @@
 import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
-import type { ToolUseBlock } from "@nova/core";
 import type { PermissionDecision, PermissionInput } from "@nova/safety";
-import { ToolUsePreview } from "./tool-call.js";
 
 export type ApprovalAnswer = "yes" | "no" | "always-allow";
+
+const TOOL_PROMPTS: Record<string, string> = {
+  read: "Allow reading this file?",
+  write: "Allow writing this file?",
+  edit: "Allow editing this file?",
+  bash: "Allow running this command?",
+  glob: "Allow searching for files?",
+  grep: "Allow searching file contents?",
+  webfetch: "Allow fetching this URL?",
+  websearch: "Allow searching the web?",
+  createSubAgent: "Allow spawning a subagent?",
+  runLongRunningCommand: "Allow running this command in the background?",
+};
+
+function promptFor(tool: string): string {
+  return TOOL_PROMPTS[tool] ?? "Allow this operation?";
+}
 
 interface Option {
   value: ApprovalAnswer;
@@ -82,19 +97,9 @@ export function ApprovalPrompt({
     if (match) onAnswer(match.value);
   });
 
-  // Synthesize a ToolUseBlock for the shared preview. The `id` is unused by
-  // ToolUsePreview itself — it only matters in transcripts for pairing with
-  // tool_results — but the type still requires a string.
-  const use: ToolUseBlock = {
-    type: "tool_use",
-    id: "approval-preview",
-    name: input.tool,
-    input: input.input,
-  };
-
   return (
-    <Box flexDirection="column" padding={1} marginTop={1} marginBottom={1} borderStyle={"round"}>
-      <ToolUsePreview use={use} headerOnly />
+    <Box flexDirection="column" marginTop={1} marginBottom={1}>
+      <Text>{promptFor(input.tool)}</Text>
 
       <Box flexDirection="column" marginTop={1}>
         {OPTIONS.map((opt, i) => {
@@ -107,9 +112,6 @@ export function ApprovalPrompt({
             </Text>
           );
         })}
-      </Box>
-      <Box marginTop={1}>
-        <Text dimColor>↑/↓ option · pgup/pgdn scroll · enter confirm · y/n/a shortcut · esc cancel</Text>
       </Box>
     </Box>
   );

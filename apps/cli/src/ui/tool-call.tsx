@@ -393,6 +393,23 @@ const tools: Record<string, ToolDef> = {
       return <OkLine text={flatten(trim(text, 80))} />;
     },
   },
+
+  createSubAgent: {
+    inline: true,
+    use: (input) => {
+      const description =
+        typeof input.description === "string" ? input.description : "sub-agent";
+      return {
+        header: <BulletHeader name="agent">{trim(description, 120)}</BulletHeader>,
+      };
+    },
+    result: (result) => {
+      if (result.is_error) return <ErrLine result={result} />;
+      const text = contentToString(result.content);
+      const lines = text.length === 0 ? 0 : text.split("\n").length;
+      return <OkLine text={`${lines} line(s) · ${formatBytes(text.length)}`} />;
+    },
+  },
 };
 
 function GenericUseHeader({ use }: { use: ToolUseBlock }): React.ReactElement {

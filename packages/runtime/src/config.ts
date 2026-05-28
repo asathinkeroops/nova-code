@@ -110,9 +110,9 @@ export const settingsSchema = z.object({
     .object({
       enabled: z.boolean().default(true),
       timeoutMs: z.number().int().positive().default(8000),
-      maxChars: z.number().int().positive().default(20),
+      maxChars: z.number().int().positive().default(50),
     })
-    .default({ enabled: true, timeoutMs: 8000, maxChars: 20 }),
+    .default({ enabled: true, timeoutMs: 8000, maxChars: 50 }),
   // Custom slash commands loaded from .md templates. Project layer
   // (.nova/commands → .claude/commands → .commands) wins over user layer
   // (~/.nova/commands → ~/.claude/commands); builtins always win on

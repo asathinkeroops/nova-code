@@ -175,9 +175,9 @@ function chromeRowsFor(
     switch (modal.kind) {
       case "approval":
         // Layout breakdown (see approval.tsx):
-        //   chrome:   marginTop(1) + border(1) + padding(1) on each side = 6
-        //   content:  preview(1) + gap(1)+3 options + gap(1)+hint(1) = 7
-        return 13;
+        //   chrome:   marginTop(1) + marginBottom(1) = 2
+        //   content:  prompt(1) + gap(1)+3 options = 5
+        return 7;
       case "ask":
         return 10;
       case "pick":
