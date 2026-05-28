@@ -22,7 +22,7 @@ export interface ModelRequest {
   /**
    * When > 0, enables extended thinking with the given token budget. Anthropic
    * requires `max_tokens > budget_tokens`; if the configured `maxTokens` is
-   * too small the adapter auto-bumps it (budget + 4096) rather than failing.
+   * too small the adapter auto-bumps it (budget + 8192) rather than failing.
    */
   thinkingBudgetTokens?: number;
 }
@@ -84,7 +84,7 @@ export function createAnthropicModel(config: AnthropicModelConfig): ModelClient 
       // budget so there's nothing to outgrow.
       const maxTokens =
         thinkingEnabled && format === "anthropic"
-          ? Math.max(req.maxTokens, budget + 4096)
+          ? Math.max(req.maxTokens, budget + 8192)
           : req.maxTokens;
       let thinkingParams: Record<string, unknown> = {};
       if (thinkingEnabled) {

@@ -11,6 +11,7 @@ export function buildSystemPrompt(
 - Track multi-step plans with createTask / updateTask / getTask / getTaskList / clearTaskList.
 - Run long-lived commands (dev servers, watchers, builds) with runLongRunningCommand; poll with checkLongRunningCommand.
 - Load specialized knowledge with loadSkill.
+- Delegate focused subtasks to parallel sub-agents with createSubAgent.
 
 Act, don't explain.
 

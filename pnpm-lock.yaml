@@ -62,6 +62,9 @@ importers:
       '@nova/safety':
         specifier: workspace:*
         version: link:../../packages/safety
+      '@nova/subagent':
+        specifier: workspace:*
+        version: link:../../packages/subagent
       '@nova/tools':
         specifier: workspace:*
         version: link:../../packages/tools
@@ -169,6 +172,27 @@ importers:
       '@nova/runtime':
         specifier: workspace:*
         version: link:../runtime
+
+  packages/subagent:
+    dependencies:
+      '@nova/agent':
+        specifier: workspace:*
+        version: link:../agent
+      '@nova/context':
+        specifier: workspace:*
+        version: link:../context
+      '@nova/core':
+        specifier: workspace:*
+        version: link:../core
+      '@nova/observability':
+        specifier: workspace:*
+        version: link:../observability
+      '@nova/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
 
   packages/tools:
     dependencies:

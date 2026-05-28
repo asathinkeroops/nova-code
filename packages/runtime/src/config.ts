@@ -20,7 +20,7 @@ export const settingsSchema = z.object({
   model: z.string().default("claude-sonnet-4-5"),
   baseURL: z.string().url().optional(),
   sessionDir: z.string().min(1).optional(),
-  maxTokens: z.number().int().positive().default(4096),
+  maxTokens: z.number().int().positive().default(8192),
   contextWindowTokens: z.number().int().positive().default(256_000),
   maxTurns: z.number().int().positive().default(40),
   // Schema only — concrete tool-name defaults live with the layer that
@@ -138,6 +138,22 @@ export const settingsSchema = z.object({
       maxResponseBytes: z.number().int().positive().default(16_384),
     })
     .default({ enabled: true, maxIndexBytes: 8_192, maxResponseBytes: 16_384 }),
+  // Sub-agents spawned via the createSubAgent tool. They run in-process with a
+  // fresh context and the parent's tool set (minus createSubAgent itself, to
+  // prevent unbounded recursion). `model` defaults to the parent's model.
+  subagent: z
+    .object({
+      enabled: z.boolean().default(true),
+      model: z.string().min(1).optional(),
+      maxTurns: z.number().int().positive().default(30),
+      // Per-response output cap for the sub-agent loop, tunable independently
+      // of the top-level maxTokens. A sub-agent's final message is a single
+      // consolidated report, so a small budget risks the loop's max_tokens
+      // hard-stop. 8192 is the safe ceiling for DeepSeek's Anthropic-compatible
+      // endpoint.
+      maxTokens: z.number().int().positive().default(8192),
+    })
+    .default({ enabled: true, maxTurns: 30, maxTokens: 8192 }),
 });
 
 export type Settings = z.infer<typeof settingsSchema>;

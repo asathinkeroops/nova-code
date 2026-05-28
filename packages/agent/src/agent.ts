@@ -73,6 +73,14 @@ export interface AgentDeps {
 
   /** Returns the canonical pre-turn message buffer (e.g. CLI's screen store). */
   getMessages: () => MessageParam[];
+
+  /**
+   * Optional system-prompt override. When provided, `runTurn` uses its return
+   * value verbatim instead of building one from workspace/memory/skills via
+   * `buildSystemPrompt`. Sub-agents use this to install a task-focused role
+   * prompt; the main agent leaves it undefined.
+   */
+  getSystemPrompt?: () => string;
 }
 
 export interface TurnResult {
@@ -282,12 +290,14 @@ export function createAgent(deps: AgentDeps): Agent {
     try {
       result = await agentLoop({
         model: deps.getModel(),
-        system: buildSystemPrompt(
-          deps.workspace,
-          deps.memory,
-          deps.getSessionId(),
-          deps.skillsBlock,
-        ),
+        system: deps.getSystemPrompt
+          ? deps.getSystemPrompt()
+          : buildSystemPrompt(
+              deps.workspace,
+              deps.memory,
+              deps.getSessionId(),
+              deps.skillsBlock,
+            ),
         tools: deps.getTools(),
         executeTool: deps.dispatch,
         messages: baseMessages,

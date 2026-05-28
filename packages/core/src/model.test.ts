@@ -33,7 +33,7 @@ const baseReq = {
       inputSchema: z.object({}),
     },
   ],
-  maxTokens: 4096,
+  maxTokens: 8192,
 };
 
 describe("detectThinkingFormat", () => {
@@ -61,7 +61,7 @@ describe("createAnthropicModel thinking params", () => {
     expect(params.thinking).toEqual({ type: "enabled", budget_tokens: 16_000 });
     expect(params.output_config).toBeUndefined();
     // Anthropic requires max_tokens > budget_tokens — adapter auto-bumps.
-    expect(params.max_tokens).toBe(16_000 + 4096);
+    expect(params.max_tokens).toBe(16_000 + 8192);
   });
 
   it("sends output_config.effort for deepseek models, no budget_tokens", async () => {
@@ -72,7 +72,7 @@ describe("createAnthropicModel thinking params", () => {
     expect(params.thinking).toEqual({ type: "enabled" });
     expect(params.output_config).toEqual({ effort: "high" });
     // No budget on the DeepSeek path, so no max_tokens bump.
-    expect(params.max_tokens).toBe(4096);
+    expect(params.max_tokens).toBe(8192);
   });
 
   it("rounds max-level budget to effort:max on deepseek", async () => {

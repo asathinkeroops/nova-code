@@ -8,7 +8,7 @@ describe("settingsSchema", () => {
   it("applies defaults when empty input is given", () => {
     const s = parseSettings({});
     expect(s.model).toBe("claude-sonnet-4-5");
-    expect(s.maxTokens).toBe(4096);
+    expect(s.maxTokens).toBe(8192);
     expect(s.maxTurns).toBe(40);
     expect(s.permissions.defaultEffect).toBe("ask");
     expect(s.permissions.rules).toEqual([]);

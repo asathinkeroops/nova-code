@@ -37,6 +37,7 @@ describe("resolvePermissionRules", () => {
         "checkLongRunningCommand",
         "clearTaskList",
         "clearTodoList",
+        "createSubAgent",
         "createTask",
         "createTodo",
         "getTask",

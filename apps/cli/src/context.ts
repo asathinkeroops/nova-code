@@ -14,6 +14,7 @@ import { loadMemory, type MemoryBundle } from "@nova/context";
 import {
   createAnthropicModel,
   resolveBudget,
+  type AskUserFn,
   type FileAccessLedger,
   type MessageParam,
   type ModelClient,
@@ -38,6 +39,7 @@ import {
   type Settings,
 } from "@nova/runtime";
 import { PermissionDeniedError, PermissionEngine } from "@nova/safety";
+import { createSubAgentTool } from "@nova/subagent";
 import {
   InMemoryFileAccessLedger,
   ToolRegistry,
@@ -539,6 +541,12 @@ export async function createContext(
     },
   });
 
+  const askUser: AskUserFn = async (req) => {
+    clearToolSpinner(ctx);
+    const signal = ctx.agent.currentSignal();
+    return await ctx.screen.askUser(req, signal ? { signal } : undefined);
+  };
+
   (ctx as { agent: Agent }).agent = createAgent({
     workspace,
     memory,
@@ -563,13 +571,41 @@ export async function createContext(
     checkPermission: ctx.checkPermission,
     compactor: ctx.compactor,
     fileLedger,
-    askUser: async (req) => {
-      clearToolSpinner(ctx);
-      const signal = ctx.agent.currentSignal();
-      return await ctx.screen.askUser(req, signal ? { signal } : undefined);
-    },
+    askUser,
     getMessages: () => ctx.screen.getMessages(),
   });
+
+  // Sub-agents: register createSubAgent into the same registry so the main
+  // agent can spawn them. They reuse ctx.dispatch (parent tool impls) but see
+  // the tool definitions minus createSubAgent — no recursion. Deps read ctx
+  // lazily, so post-hoc registration is safe.
+  if (settings.subagent.enabled) {
+    const subagentModel = settings.subagent.model
+      ? buildModel(settings.subagent.model)
+      : null;
+    ctx.tools.register(
+      createSubAgentTool({
+        workspace,
+        memory,
+        skillsBlock,
+        getModel: () => subagentModel ?? ctx.model,
+        getToolDefinitions: () => ctx.tools.definitions(),
+        dispatch: (use, c) => ctx.dispatch(use, c),
+        checkPermission: (tool, input) => ctx.checkPermission(tool, input),
+        compactor: (messages) => ctx.compactor(messages),
+        fileLedger,
+        askUser,
+        getLogger: () => ctx.logger,
+        getLogDir: () => join(ctx.session.dir, "subagents"),
+        getSettings: () => ({
+          maxTokens: ctx.settings.subagent.maxTokens,
+          maxTurns: ctx.settings.subagent.maxTurns,
+          noTranscript: ctx.noTranscript,
+        }),
+      }),
+    );
+  }
+
   registerUiHooks(ctx);
   registerInterject(ctx.agent, makeTodoReminder(todoStore));
   registerInterject(ctx.agent, makeTaskReminder(taskStore));

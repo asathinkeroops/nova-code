@@ -28,6 +28,10 @@ export const DEFAULT_PERMISSION_RULES: readonly PermissionRule[] = [
   { tool: "glob", effect: "allow" },
   { tool: "loadSkill", effect: "allow" },
   { tool: "checkLongRunningCommand", effect: "allow" },
+  // Spawning a sub-agent is itself safe to auto-allow: the sub-agent's own tool
+  // calls run through this same PermissionEngine, so its bash/write/edit still
+  // hit `ask`. Allowing the spawn just avoids a prompt for the delegation step.
+  { tool: "createSubAgent", effect: "allow" },
 ];
 
 function escapeRegex(s: string): string {
