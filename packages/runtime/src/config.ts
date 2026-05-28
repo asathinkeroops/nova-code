@@ -67,16 +67,24 @@ export const settingsSchema = z.object({
   // compact overrides — tuning fields are optional and default to the constants
   // in @nova/context/compact.ts (single source of truth). `enabled` is a
   // runtime concern (whether to invoke compact at all) so it defaults here.
+  //
+  // micro defaults OFF: it rewrites older tool_results every turn, which
+  // invalidates the provider's automatic prefix cache (e.g. DeepSeek context
+  // caching) from the rewrite point to the end on each request — and the tokens
+  // it trims would otherwise bill at the cheap cache-read rate, so the net is
+  // marginal-to-negative on cache-friendly providers. auto_compact handles
+  // context-window pressure on its own. Set micro.enabled=true on a provider
+  // with no prompt caching (e.g. Anthropic without cache_control breakpoints).
   compact: z
     .object({
       micro: z
         .object({
-          enabled: z.boolean().default(true),
+          enabled: z.boolean().default(false),
           keepRecent: z.number().int().nonnegative().optional(),
           minContentChars: z.number().int().nonnegative().optional(),
           preserveTools: z.array(z.string().min(1)).optional(),
         })
-        .default({ enabled: true }),
+        .default({ enabled: false }),
       auto: z
         .object({
           enabled: z.boolean().default(true),
@@ -86,7 +94,7 @@ export const settingsSchema = z.object({
         })
         .default({ enabled: true }),
     })
-    .default({ micro: { enabled: true }, auto: { enabled: true } }),
+    .default({ micro: { enabled: false }, auto: { enabled: true } }),
   // Tool invariants (read-before-edit, mtime drift). Enforced by the
   // dispatcher before each read/write/edit.
   invariants: z
