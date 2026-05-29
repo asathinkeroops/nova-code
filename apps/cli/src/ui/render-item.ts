@@ -16,7 +16,6 @@ import type { Card } from "./store.js";
  */
 export type RenderItem =
   | { kind: "banner"; key: string; banner: BannerProps }
-  | { kind: "banner-hint"; key: string; text: string }
   | { kind: "spacer"; key: string }
   | { kind: "user-text"; key: string; text: string }
   | { kind: "assistant-text"; key: string; text: string }
@@ -74,8 +73,6 @@ function buildResultIndex(messages: MessageParam[]): Map<string, ToolResultBlock
 
 export interface BuildOpts {
   banner: BannerProps | null;
-  /** When true, prepend a "REPL ready" hint after the banner. */
-  showBannerHint: boolean;
   messages: MessageParam[];
   cards: Card[];
   thinkingLabel?: string;
@@ -88,20 +85,13 @@ export interface BuildOpts {
  * last. Adjacent `read` tool calls collapse into a single ReadBatch.
  */
 export function buildRenderItems(opts: BuildOpts): RenderItem[] {
-  const { banner, showBannerHint, messages, cards, thinkingLabel } = opts;
+  const { banner, messages, cards, thinkingLabel } = opts;
   const items: RenderItem[] = [];
   let n = 0;
   const nextKey = (prefix: string): string => `${prefix}#${n++}`;
 
   if (banner) {
     items.push({ kind: "banner", key: nextKey("banner"), banner });
-    if (showBannerHint) {
-      items.push({
-        kind: "banner-hint",
-        key: nextKey("banner-hint"),
-        text: "REPL ready. Type /help for commands, /exit to quit.",
-      });
-    }
   }
 
   const cardsByAnchor = new Map<number, Card[]>();

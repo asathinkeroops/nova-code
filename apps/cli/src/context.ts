@@ -458,7 +458,6 @@ export async function createContext(
       apiKey,
       model: id,
       ...(settings.baseURL ? { baseURL: settings.baseURL } : {}),
-      ...(settings.thinking.format ? { thinkingFormat: settings.thinking.format } : {}),
     });
 
   const ctx: CliContext = {

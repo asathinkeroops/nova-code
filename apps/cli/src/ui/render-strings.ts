@@ -508,8 +508,6 @@ export function renderItemToString(item: RenderItem, width: number): string {
   switch (item.kind) {
     case "banner":
       return renderBanner(item.banner, width);
-    case "banner-hint":
-      return dim(item.text);
     case "spacer":
       return "";
     case "user-text":

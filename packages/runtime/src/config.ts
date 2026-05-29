@@ -21,7 +21,7 @@ export const settingsSchema = z.object({
   baseURL: z.string().url().optional(),
   sessionDir: z.string().min(1).optional(),
   maxTokens: z.number().int().positive().default(8192),
-  contextWindowTokens: z.number().int().positive().default(256_000),
+  contextWindowTokens: z.number().int().positive().default(1_000_000),
   maxTurns: z.number().int().positive().default(40),
   // Max tool executions to run concurrently within a single turn. Calls beyond
   // this cap queue and start as slots free up. 1 = fully sequential.
@@ -52,9 +52,6 @@ export const settingsSchema = z.object({
       // Explicit override wins over the level mapping when set; lets users
       // dial in an exact `budget_tokens` without inventing a new level.
       budgetTokens: z.number().int().positive().optional(),
-      // Wire format for the thinking parameter. Omit to auto-detect from the
-      // model id (DeepSeek uses output_config.effort, not budget_tokens).
-      format: z.enum(["anthropic", "deepseek"]).optional(),
     })
     .default({ level: "off" }),
   memory: z

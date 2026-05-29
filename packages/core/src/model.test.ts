@@ -83,20 +83,6 @@ describe("createAnthropicModel thinking params", () => {
     expect(params.output_config).toEqual({ effort: "max" });
   });
 
-  it("honors explicit thinkingFormat override", async () => {
-    mockCreate.mockResolvedValueOnce(okResponse());
-    // Claude-named model, but caller forces deepseek format (custom proxy etc).
-    const m = createAnthropicModel({
-      apiKey: "x",
-      model: "claude-sonnet-4-5",
-      thinkingFormat: "deepseek",
-    });
-    await m.call({ ...baseReq, thinkingBudgetTokens: 8_000 });
-    const params = mockCreate.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(params.thinking).toEqual({ type: "enabled" });
-    expect(params.output_config).toEqual({ effort: "high" });
-  });
-
   it("sends explicit thinking: disabled and no output_config when budget is 0", async () => {
     mockCreate.mockResolvedValueOnce(okResponse());
     const m = createAnthropicModel({ apiKey: "x", model: "deepseek-chat" });

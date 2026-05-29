@@ -6,7 +6,9 @@
 
 Nova is a coding agent that lives in your terminal — reads code, runs commands, edits files, and drives a task to done through tool use. It speaks the Anthropic message shape internally, but the model layer is built around **DeepSeek**: thinking is wired to DeepSeek's `output_config.effort` (not Anthropic's `budget_tokens`), the wire format is auto-detected from the model id, and the default prompts/permissions are tuned for DeepSeek's behavior. Other Anthropic-compatible endpoints still work — DeepSeek is the path that gets first-class care.
 
-Under the hood Nova is a loop-centric harness: `@nova/core` exposes a model-agnostic agent loop and a single `HookRegistry` extension point; tools, permissions, context, observability, skills, and slash commands all attach through it. `@nova/agent` packages the loop into a per-turn `createAgent` with persistence and transcript wiring, and `apps/cli` is what you actually run — the `nova` binary, an Ink/React REPL.
+Under the hood Nova is a loop-centric harness: `@nova/core` exposes a model-agnostic agent loop and a single `HookRegistry` extension point; tools, permissions, context, observability, skills, and slash commands all attach through it. `@nova/agent` packages the loop into a per-turn `createAgent` with persistence and transcript wiring, and `apps/cli` is what you actually run — the `nova` binary, a full-screen Ink/React REPL with mouse scroll/selection and a live status line.
+
+The loop runs tool calls with **bounded concurrency** (default 3 per turn), and the model can spawn **sub-agents** via the `createSubAgent` tool — fresh-context workers (`explore` / `plan` / `general-purpose`) that run in-process and report a single final message back, so large investigations stay out of the main context.
 
 ## Quick start
 
@@ -23,15 +25,17 @@ First launch drops you into an interactive setup that writes `~/.nova/nova.confi
 ### CLI flags
 
 ```bash
-pnpm dev [prompt...]                # send one turn directly
-  --model <name>                    # override model for this run
-  --think off|low|medium|high|max   # extended-thinking budget
-  --resume <session-id>             # resume a specific session
-  --continue                        # resume the most recent session
-  --list-sessions                   # list saved sessions
+pnpm dev [prompt...]                # run an initial prompt, then stay in the REPL
+  -p, --prompt <text>               # initial prompt (alternative to positional)
+  -m, --model <name>                # override model for this run
+  -t, --think off|low|medium|high|max   # extended-thinking level (or integer budget)
+  --cwd <dir>                       # working directory for tools
+  --resume <id>                     # resume a specific session
+  -c, --continue                    # resume the most recent session
+  --list-sessions                   # list saved sessions and exit
   --max-turns <n>                   # cap loop iterations
   --no-transcript                   # skip transcript writing
-  --no-pretty                       # disable pino-pretty
+  --no-pretty                       # disable pretty logging
 ```
 
 ### Slash commands (inside the REPL)
@@ -42,6 +46,7 @@ pnpm dev [prompt...]                # send one turn directly
 /think [<level>]     show or change extended-thinking level
 /clear               clear conversation history (keeps session)
 /compact [focus…]    summarize history into a single message
+/plan <goal>         delegate investigation to a read-only plan sub-agent, then present a plan
 /resume [<id>]       switch to a saved session (no arg = pick from list)
 /predict [on|off]    show or toggle next-input prediction placeholder
 /commands [reload]   list registered slash commands; `reload` rescans files
@@ -65,6 +70,24 @@ injects the name/description index into the system prompt, and exposes a
 `loadSkill` tool the model can call to pull the full body on demand. `/skills`
 shows what was found and where each one was loaded from.
 
+### Sub-agents
+
+The model can delegate work with the `createSubAgent` tool. A sub-agent runs
+in-process with a **fresh context** (it never sees the parent conversation) and
+the parent's tool set minus `createSubAgent` itself — so it can't recurse. Three
+types:
+
+- `explore` — read-only retrieval (no write/edit/bash); locates code and reports paths/usages.
+- `plan` — read-only planning; investigates a task and returns a step-by-step plan.
+- `general-purpose` — full tool access for work that changes files or runs commands.
+
+Multiple `createSubAgent` calls in one turn run concurrently (bounded by
+`toolConcurrency`). The parent receives only each sub-agent's final message.
+Configure via `settings.subagent` (`enabled`, `model`, `maxTurns`, `maxTokens`);
+the `/plan` slash command is a thin wrapper that asks the agent to spawn a `plan`
+sub-agent. Per-sub-agent transcripts land under
+`~/.nova/sessions/{id}/subagents/`.
+
 ## Repository layout
 
 ```
@@ -77,7 +100,8 @@ packages/
                    webfetch · websearch · askUserQuestion
                    todo (todoCreate/Update/Get/Clear) · task (taskCreate/Update/Get/List/Clear)
                    runLongRunningCommand / checkLongRunningCommand · loadSkill
-  context        3-layer memory (NOVA.md > CLAUDE.md > AGENTS.md) · micro/auto compact
+  subagent       createSubAgent tool · sub-agent system prompt (explore/plan/general-purpose)
+  context        3-layer memory (NOVA.md > CLAUDE.md > AGENTS.md) · auto compact (micro off by default)
   safety         PermissionEngine · approval prompts (rules + cwd-scoped read)
   external       SlashRegistry · .md slash command loader (MCP/transport stubs reserved)
   observability  Transcript (JSONL)
@@ -100,6 +124,7 @@ Inside the workspace, `@nova/*` packages import each other directly from `./src/
 | Sessions | `~/.nova/sessions/{id}/` |
 | Transcript (observer event stream) | `~/.nova/sessions/{id}/transcript.jsonl` |
 | Replayable message history | `~/.nova/sessions/{id}/messages.jsonl` |
+| Sub-agent transcripts/messages | `~/.nova/sessions/{id}/subagents/` |
 | Session log | `~/.nova/sessions/{id}/session.log` |
 | Memory (project layer) | Walks up from cwd; at each directory picks the highest-priority of `NOVA.md` > `CLAUDE.md` > `AGENTS.md` (no merging within a directory) |
 | Memory (user layer) | `~/.nova/NOVA.md` → `~/.claude/CLAUDE.md` → `~/.config/agents/AGENTS.md` (first existing wins) |

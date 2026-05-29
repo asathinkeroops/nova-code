@@ -76,7 +76,6 @@ export function Viewport({ store, rows, resolveModal }: ViewportProps): React.Re
     () =>
       buildRenderItems({
         banner,
-        showBannerHint: banner !== null,
         messages,
         cards,
         ...(thinkingLabel !== undefined ? { thinkingLabel } : {}),

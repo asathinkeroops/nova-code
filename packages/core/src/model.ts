@@ -41,11 +41,6 @@ export interface AnthropicModelConfig {
   apiKey: string;
   model: string;
   baseURL?: string;
-  /**
-   * Override the thinking wire format. Defaults to auto-detect from the model
-   * id (anything containing "deepseek" → `deepseek`, else `anthropic`).
-   */
-  thinkingFormat?: ThinkingFormat;
 }
 
 export function detectThinkingFormat(model: string): ThinkingFormat {
@@ -65,7 +60,7 @@ export function createAnthropicModel(config: AnthropicModelConfig): ModelClient 
     apiKey: config.apiKey,
     ...(config.baseURL ? { baseURL: config.baseURL } : {}),
   });
-  const format = config.thinkingFormat ?? detectThinkingFormat(config.model);
+  const format = detectThinkingFormat(config.model);
 
   return {
     async call(req: ModelRequest): Promise<AssistantTurn> {
