@@ -7,11 +7,11 @@ export function buildSystemPrompt(
   skillsBlock = "",
 ): string {
   const base = `You are a coding agent at ${workspace}. Use tools to solve tasks.
-- Track short checklists with createTodo / updateTodo / getTodoList / clearTodoList.
-- Track multi-step plans with createTask / updateTask / getTask / getTaskList / clearTaskList.
+- Track short checklists with createTodo / updateTodo / getTodoList / clearTodoList. Marked in_progress when start, Marked completed if done.
+- Track multi-step plans with createTask / updateTask / getTask / getTaskList / clearTaskList. Marked in_progress when start, Marked completed if done.
 - Run long-lived commands (dev servers, watchers, builds) with runLongRunningCommand; poll with checkLongRunningCommand.
 - Load specialized knowledge with loadSkill.
-- Delegate focused subtasks to parallel sub-agents with createSubAgent.
+- Delegate focused subtasks to parallel sub-agents with createSubAgent (type: explore = read-only retrieval, plan = read-only planning, general-purpose = full tools).
 
 Act, don't explain.
 

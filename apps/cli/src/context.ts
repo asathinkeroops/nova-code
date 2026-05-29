@@ -58,6 +58,7 @@ import {
   handleCompact,
   handleHelp,
   handleModel,
+  handlePlan,
   handlePredict,
   handleResume,
   handleSkills,
@@ -304,6 +305,13 @@ function registerBuiltinSlashCommands(ctx: CliContext): void {
       await handleResume(ctx, args.trim());
       return handled;
     },
+  });
+  ctx.registry.register({
+    name: "plan",
+    description: "plan a task via a read-only plan sub-agent (no implementation)",
+    argHint: "<task goal>",
+    source: { kind: "builtin" },
+    run: (_c, args) => handlePlan(args),
   });
   ctx.registry.register({
     name: "predict",
@@ -565,6 +573,7 @@ export async function createContext(
       maxTokens: ctx.settings.maxTokens,
       maxTurns: ctx.settings.maxTurns,
       noTranscript: ctx.noTranscript,
+      toolConcurrency: ctx.settings.toolConcurrency,
     }),
     getTools: () => ctx.tools.definitions(),
     dispatch: ctx.dispatch,
@@ -601,6 +610,7 @@ export async function createContext(
           maxTokens: ctx.settings.subagent.maxTokens,
           maxTurns: ctx.settings.subagent.maxTurns,
           noTranscript: ctx.noTranscript,
+          toolConcurrency: ctx.settings.toolConcurrency,
         }),
       }),
     );

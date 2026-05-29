@@ -23,6 +23,9 @@ export const settingsSchema = z.object({
   maxTokens: z.number().int().positive().default(8192),
   contextWindowTokens: z.number().int().positive().default(256_000),
   maxTurns: z.number().int().positive().default(40),
+  // Max tool executions to run concurrently within a single turn. Calls beyond
+  // this cap queue and start as slots free up. 1 = fully sequential.
+  toolConcurrency: z.number().int().positive().default(3),
   // Schema only — concrete tool-name defaults live with the layer that
   // registers those tools (apps/cli/src/permissions.ts). @nova/runtime must
   // not know about specific tool identifiers.

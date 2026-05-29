@@ -120,6 +120,123 @@ function highlightCode(code: string, lang: string | undefined): string {
   }
 }
 
+/**
+ * Source-faithful inline highlighting: unlike `renderInline`, this KEEPS the
+ * literal markdown markers (`**`, backticks, `[]()`, …) and only colorizes
+ * them, so the result still reads as raw source. Used for the file-content /
+ * diff preview where we show source, not rendered output.
+ */
+function highlightInlineSource(text: string): string {
+  const tokens: string[] = [];
+  const stash = (s: string): string => {
+    tokens.push(s);
+    return `\x00${tokens.length - 1}\x00`;
+  };
+
+  let s = text;
+
+  s = s.replace(/`([^`\n]+)`/g, (_m, code: string) => stash(yellow(`\`${code}\``)));
+
+  s = s.replace(
+    /\[([^\]]+)\]\(([^)]+)\)/g,
+    (_m, label: string, url: string) => stash(`${cyan(`[${label}]`)}${dim(`(${url})`)}`),
+  );
+
+  s = s.replace(/\*\*([^*\n]+)\*\*/g, (_m, t: string) => stash(bold(`**${t}**`)));
+  s = s.replace(/__([^_\n]+)__/g, (_m, t: string) => stash(bold(`__${t}__`)));
+
+  s = s.replace(
+    /(^|[^*])\*([^*\n]+)\*(?!\*)/g,
+    (_m, pre: string, t: string) => `${pre}${stash(italic(`*${t}*`))}`,
+  );
+  s = s.replace(
+    /(^|[^_\w])_([^_\n]+)_(?!\w)/g,
+    (_m, pre: string, t: string) => `${pre}${stash(italic(`_${t}_`))}`,
+  );
+
+  s = s.replace(/~~([^~\n]+)~~/g, (_m, t: string) => stash(strike(`~~${t}~~`)));
+
+  // eslint-disable-next-line no-control-regex
+  s = s.replace(/\x00(\d+)\x00/g, (_m, i: string) => tokens[Number(i)] ?? "");
+  return s;
+}
+
+/** Colorize one non-fenced markdown source line, preserving its raw text. */
+function highlightMarkdownLine(line: string): string {
+  const atx = /^(\s*)(#{1,6})(\s.*)$/.exec(line);
+  if (atx) {
+    const indent = atx[1] ?? "";
+    const hashes = atx[2] ?? "";
+    const rest = atx[3] ?? "";
+    const level = hashes.length;
+    const body = `${hashes}${rest}`;
+    if (level === 1) return `${indent}${bold(magenta(body))}`;
+    if (level === 2) return `${indent}${bold(cyan(body))}`;
+    return `${indent}${bold(body)}`;
+  }
+
+  if (/^\s{0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/.test(line)) return dim(line);
+
+  const quote = /^(\s*>+\s?)(.*)$/.exec(line);
+  if (quote) return `${dim(quote[1] ?? "")}${highlightInlineSource(quote[2] ?? "")}`;
+
+  const ul = /^(\s*)([-*+])(\s+)(.*)$/.exec(line);
+  if (ul) {
+    return `${ul[1] ?? ""}${cyan(ul[2] ?? "")}${ul[3] ?? ""}${highlightInlineSource(ul[4] ?? "")}`;
+  }
+
+  const ol = /^(\s*)(\d+[.)])(\s+)(.*)$/.exec(line);
+  if (ol) {
+    return `${ol[1] ?? ""}${cyan(ol[2] ?? "")}${ol[3] ?? ""}${highlightInlineSource(ol[4] ?? "")}`;
+  }
+
+  return highlightInlineSource(line);
+}
+
+/**
+ * Highlight markdown SOURCE (keeping all markers) for the file-content / diff
+ * preview. `cli-highlight`'s markdown grammar emits no colors, so we do it
+ * ourselves. Line count is preserved 1:1 so callers can split on "\n" and map
+ * each line to a gutter / diff marker. Fenced code blocks are syntax-
+ * highlighted via `cli-highlight` using the fence's language.
+ */
+export function highlightMarkdownSource(content: string): string {
+  const lines = content.split("\n");
+  const out: string[] = [];
+  let inFence = false;
+  let fenceLang: string | undefined;
+  let fenceBuf: string[] = [];
+
+  const flushFence = (): void => {
+    if (fenceBuf.length === 0) return;
+    out.push(...highlightCode(fenceBuf.join("\n"), fenceLang).split("\n"));
+    fenceBuf = [];
+  };
+
+  for (const line of lines) {
+    const fence = /^(\s*)```(\w+)?\s*$/.exec(line);
+    if (fence) {
+      if (inFence) {
+        flushFence();
+        inFence = false;
+        fenceLang = undefined;
+      } else {
+        inFence = true;
+        fenceLang = fence[2];
+      }
+      out.push(dim(line));
+      continue;
+    }
+    if (inFence) {
+      fenceBuf.push(line);
+      continue;
+    }
+    out.push(highlightMarkdownLine(line));
+  }
+  if (inFence) flushFence();
+  return out.join("\n");
+}
+
 function renderInline(text: string): string {
   const tokens: string[] = [];
   const stash = (s: string): string => {

@@ -29,10 +29,26 @@ const echoTool: ToolDefinition = {
   inputSchema: z.object({ msg: z.string() }),
 };
 
+const writeDef: ToolDefinition = {
+  name: "write",
+  description: "write a file",
+  inputSchema: z.object({ path: z.string(), content: z.string() }),
+};
+const editDef: ToolDefinition = {
+  name: "edit",
+  description: "edit a file",
+  inputSchema: z.object({ path: z.string() }),
+};
+const bashDef: ToolDefinition = {
+  name: "bash",
+  description: "run a command",
+  inputSchema: z.object({ command: z.string() }),
+};
+
 const subagentDef: ToolDefinition = {
   name: SUBAGENT_TOOL_NAME,
   description: "spawn a sub-agent",
-  inputSchema: z.object({ description: z.string(), prompt: z.string() }),
+  inputSchema: z.object({ description: z.string(), prompt: z.string(), type: z.string() }),
 };
 
 function echoExecutor(): ToolExecutor {
@@ -79,7 +95,7 @@ function makeDeps(
     memory: { system: "", sources: [] },
     skillsBlock: "",
     getModel: () => model,
-    getToolDefinitions: () => [echoTool, subagentDef],
+    getToolDefinitions: () => [echoTool, writeDef, editDef, bashDef, subagentDef],
     dispatch: echoExecutor(),
     checkPermission: async () => ({ granted: true }),
     compactor: async (m) => m,
@@ -113,7 +129,7 @@ describe("createSubAgentTool", () => {
     const tool = createSubAgentTool(makeDeps(model, tmp));
 
     const result = await tool.run(
-      { description: "do thing", prompt: "investigate X" },
+      { description: "do thing", prompt: "investigate X", type: "general-purpose" },
       { cwd: tmp },
     );
 
@@ -126,12 +142,73 @@ describe("createSubAgentTool", () => {
     const model = recordingModel([textTurn("ok")], seen);
     const tool = createSubAgentTool(makeDeps(model, tmp));
 
-    await tool.run({ description: "x", prompt: "y" }, { cwd: tmp });
+    await tool.run({ description: "x", prompt: "y", type: "general-purpose" }, { cwd: tmp });
 
     expect(seen).toHaveLength(1);
     const names = seen[0]!.map((d) => d.name);
     expect(names).toContain("echo");
     expect(names).not.toContain(SUBAGENT_TOOL_NAME);
+  });
+
+  it("general-purpose keeps write/edit/bash in the child's tool list", async () => {
+    const seen: ToolDefinition[][] = [];
+    const model = recordingModel([textTurn("ok")], seen);
+    const tool = createSubAgentTool(makeDeps(model, tmp));
+
+    await tool.run({ description: "x", prompt: "y", type: "general-purpose" }, { cwd: tmp });
+
+    const names = seen[0]!.map((d) => d.name);
+    expect(names).toEqual(expect.arrayContaining(["write", "edit", "bash"]));
+  });
+
+  it.each(["explore", "plan"] as const)(
+    "%s strips write/edit/bash but keeps read-only tools",
+    async (type) => {
+      const seen: ToolDefinition[][] = [];
+      const model = recordingModel([textTurn("ok")], seen);
+      const tool = createSubAgentTool(makeDeps(model, tmp));
+
+      await tool.run({ description: "x", prompt: "y", type }, { cwd: tmp });
+
+      const names = seen[0]!.map((d) => d.name);
+      expect(names).toContain("echo");
+      expect(names).not.toContain("write");
+      expect(names).not.toContain("edit");
+      expect(names).not.toContain("bash");
+      expect(names).not.toContain(SUBAGENT_TOOL_NAME);
+    },
+  );
+
+  it("read-only sub-agent denies a mutating tool at the permission layer", async () => {
+    const seen: ToolDefinition[][] = [];
+    const model = recordingModel(
+      [
+        {
+          content: [
+            { type: "tool_use", id: "w1", name: "write", input: { path: "f", content: "c" } },
+          ],
+          stopReason: "tool_use",
+          usage: { inputTokens: 1, outputTokens: 1 },
+        },
+        textTurn("done"),
+      ],
+      seen,
+    );
+    const dispatch = vi.fn(echoExecutor());
+    const checkPermission = vi.fn(async () => ({ granted: true }));
+    const tool = createSubAgentTool(
+      makeDeps(model, tmp, { dispatch, checkPermission }),
+    );
+
+    const result = await tool.run(
+      { description: "x", prompt: "write a file", type: "explore" },
+      { cwd: tmp },
+    );
+
+    expect(result.isError).toBeFalsy();
+    // The wrapper denies `write` before it reaches the shared dispatch / parent check.
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(checkPermission).not.toHaveBeenCalledWith("write", expect.anything());
   });
 
   it("runs the parent dispatcher for tool calls and returns the closing text", async () => {
@@ -149,7 +226,10 @@ describe("createSubAgentTool", () => {
     );
     const tool = createSubAgentTool(makeDeps(model, tmp));
 
-    const result = await tool.run({ description: "x", prompt: "echo hi" }, { cwd: tmp });
+    const result = await tool.run(
+      { description: "x", prompt: "echo hi", type: "general-purpose" },
+      { cwd: tmp },
+    );
 
     expect(result.isError).toBeFalsy();
     expect(result.output).toBe("echoed hi");
@@ -163,7 +243,10 @@ describe("createSubAgentTool", () => {
     ac.abort();
 
     const ctx: ToolContext = { cwd: tmp, signal: ac.signal };
-    const result = await tool.run({ description: "x", prompt: "y" }, ctx);
+    const result = await tool.run(
+      { description: "x", prompt: "y", type: "general-purpose" },
+      ctx,
+    );
 
     expect(result.isError).toBe(true);
     expect(result.output).toMatch(/interrupted/i);

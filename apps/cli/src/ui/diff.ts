@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { highlight, supportsLanguage } from "cli-highlight";
 import { dim, useColor } from "../colors.js";
+import { highlightMarkdownSource } from "./markdown.js";
 
 const MAX_CONTENT_LINES = 300;
 const COMPACT_MAX_LINES = 7;
@@ -73,6 +74,9 @@ function languageFromPath(path: string | undefined): string | undefined {
 
 function highlightContent(content: string, path: string | undefined): string {
   const language = languageFromPath(path);
+  // cli-highlight's markdown grammar emits no colors; use our own source
+  // highlighter (line-count preserving, so diff/gutter mapping still aligns).
+  if (language === "markdown") return highlightMarkdownSource(content);
   try {
     return highlight(
       content,

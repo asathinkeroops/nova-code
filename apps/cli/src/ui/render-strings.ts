@@ -417,7 +417,9 @@ const tools: Record<string, ToolStr> = {
     use: (input) => {
       const description =
         typeof input.description === "string" ? input.description : "sub-agent";
-      return { header: header("agent", trim(description, 120)) };
+      const type = typeof input.type === "string" ? input.type : "";
+      const label = type ? `${type} · ${description}` : description;
+      return { header: header("agent", trim(label, 120)) };
     },
     result: (result) => {
       if (result.is_error) return errLine(result);

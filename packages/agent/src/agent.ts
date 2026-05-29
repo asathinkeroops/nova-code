@@ -28,6 +28,11 @@ export interface AgentSettingsSlice {
   maxTurns: number;
   /** When true, skips transcript.append for every advisory hook. */
   noTranscript: boolean;
+  /**
+   * Max tool executions to run concurrently within a turn. Omit (or `<= 0`)
+   * for unbounded. Forwarded to `agentLoop`.
+   */
+  toolConcurrency?: number;
 }
 
 /**
@@ -311,6 +316,9 @@ export function createAgent(deps: AgentDeps): Agent {
         },
         hooks,
         ...(budget > 0 ? { thinkingBudgetTokens: budget } : {}),
+        ...(settings.toolConcurrency !== undefined
+          ? { toolConcurrency: settings.toolConcurrency }
+          : {}),
       });
     } catch (err) {
       error = err instanceof Error ? err : new Error(String(err));

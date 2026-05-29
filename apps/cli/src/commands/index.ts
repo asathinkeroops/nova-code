@@ -3,6 +3,7 @@ export { handleCommands } from "./commands.js";
 export { handleCompact } from "./compact.js";
 export { handleHelp } from "./help.js";
 export { handleModel } from "./model.js";
+export { handlePlan } from "./plan.js";
 export { handlePredict } from "./predict.js";
 export { handleResume } from "./resume.js";
 export { handleSkills } from "./skills.js";

@@ -18,9 +18,16 @@ import {
 } from "@nova/core";
 import { Transcript } from "@nova/observability";
 import type { Logger } from "@nova/runtime";
-import { buildSubAgentSystemPrompt } from "./system-prompt.js";
+import { buildSubAgentSystemPrompt, type SubAgentType } from "./system-prompt.js";
 
 export const SUBAGENT_TOOL_NAME = "createSubAgent";
+
+/**
+ * Workspace-mutating tools. Withheld from `explore` / `plan` sub-agents both at
+ * the tool-list level (the child never sees them) and at the permission level
+ * (defense-in-depth, in case they reach dispatch another way).
+ */
+const MUTATING_TOOLS: ReadonlySet<string> = new Set(["write", "edit", "bash"]);
 
 const inputSchema = z
   .object({
@@ -36,16 +43,25 @@ const inputSchema = z
           "shares NONE of this conversation. State the goal, relevant file paths, " +
           "and exactly what to report back.",
       ),
+    type: z
+      .enum(["explore", "plan", "general-purpose"])
+      .describe(
+        "Which kind of sub-agent to spawn:\n" +
+          '- "explore": read-only retrieval. Locates code/files/usages and reports findings. Has NO write/edit/bash tools.\n' +
+          '- "plan": read-only planning. Investigates a task and returns a step-by-step implementation plan. Has NO write/edit/bash tools.\n' +
+          '- "general-purpose": full tool access (read, write, edit, bash, …) for tasks that must change files or run commands.',
+      ),
   })
   .strict();
 
 const TOOL_DESCRIPTION =
   "Spawn an autonomous sub-agent to complete a focused, self-contained task and " +
   "return its final report. The sub-agent runs with its own fresh context (it does " +
-  "NOT see this conversation) and the same tools you have, except it cannot spawn " +
-  "further sub-agents. Use it to parallelize independent work — emit multiple " +
-  "createSubAgent calls in a single turn and they run concurrently — or to keep a " +
-  "large, noisy investigation out of your own context. You receive ONLY the " +
+  "NOT see this conversation) and a tool set determined by `type` — `explore` and " +
+  "`plan` are read-only (no write/edit/bash), `general-purpose` has your full tool " +
+  "set. It cannot spawn further sub-agents. Use it to parallelize independent work — " +
+  "emit multiple createSubAgent calls in a single turn and they run concurrently — or " +
+  "to keep a large, noisy investigation out of your own context. You receive ONLY the " +
   "sub-agent's final message, so make the prompt fully self-contained and tell it " +
   "what to report back. Don't use it for trivial one-step actions you can do directly.";
 
@@ -93,10 +109,28 @@ export function createSubAgentTool(deps: SubAgentDeps): ToolHandler {
       const logDir = deps.getLogDir();
       await mkdir(logDir, { recursive: true }).catch(() => {});
 
+      const readOnly = input.type !== "general-purpose";
+
       // Sub-agent tool set = parent tools minus createSubAgent (no recursion).
+      // Read-only types (explore/plan) additionally drop workspace-mutating tools.
       const childTools = deps
         .getToolDefinitions()
-        .filter((d) => d.name !== SUBAGENT_TOOL_NAME);
+        .filter(
+          (d) =>
+            d.name !== SUBAGENT_TOOL_NAME && !(readOnly && MUTATING_TOOLS.has(d.name)),
+        );
+
+      // Defense-in-depth: even though mutating tools are absent from childTools,
+      // deny them at the permission layer for read-only sub-agents.
+      const checkPermission: SubAgentDeps["checkPermission"] = readOnly
+        ? async (tool, toolInput) =>
+            MUTATING_TOOLS.has(tool)
+              ? {
+                  granted: false,
+                  reason: `${input.type} sub-agent is read-only; ${tool} is not permitted`,
+                }
+              : deps.checkPermission(tool, toolInput)
+        : deps.checkPermission;
 
       let cursor = emptyCursor;
       const transcript = new Transcript(join(logDir, `${id}.transcript.jsonl`));
@@ -118,13 +152,18 @@ export function createSubAgentTool(deps: SubAgentDeps): ToolHandler {
         getSettings: deps.getSettings,
         getTools: () => childTools,
         dispatch: deps.dispatch,
-        checkPermission: deps.checkPermission,
+        checkPermission,
         compactor: deps.compactor,
         fileLedger: deps.fileLedger,
         askUser: deps.askUser,
         getMessages: () => [],
         getSystemPrompt: () =>
-          buildSubAgentSystemPrompt(deps.workspace, deps.memory, deps.skillsBlock),
+          buildSubAgentSystemPrompt(
+            deps.workspace,
+            deps.memory,
+            deps.skillsBlock,
+            input.type,
+          ),
       });
 
       const result = await agent.runTurn(

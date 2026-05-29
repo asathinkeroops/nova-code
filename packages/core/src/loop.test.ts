@@ -175,6 +175,83 @@ describe("agentLoop · stop_reason state machine", () => {
     }
   });
 
+  it("caps concurrent tool executions at toolConcurrency, preserving result order", async () => {
+    const { hooks } = makeHooks();
+    const ids = ["a", "b", "c", "d", "e"];
+    const model = mockModel([
+      {
+        content: ids.map((id) => ({
+          type: "tool_use" as const,
+          id,
+          name: "echo",
+          input: { msg: id },
+        })),
+        stopReason: "tool_use",
+      },
+      { content: [{ type: "text", text: "ok" }], stopReason: "end_turn" },
+    ]);
+
+    let active = 0;
+    let maxActive = 0;
+    const exec: ToolExecutor = async (use) => {
+      active++;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((r) => setTimeout(r, 5));
+      active--;
+      return { type: "tool_result", tool_use_id: use.id, content: `done:${use.id}` };
+    };
+
+    const result = await agentLoop({
+      ...baseOpts(hooks),
+      model,
+      executeTool: exec,
+      toolConcurrency: 2,
+    });
+
+    expect(maxActive).toBe(2);
+    const userMsg = result.messages[2];
+    const got = Array.isArray(userMsg?.content)
+      ? userMsg.content.map((b) => (b.type === "tool_result" ? b.tool_use_id : null))
+      : [];
+    expect(got).toEqual(ids); // index order preserved despite bounded pool
+  });
+
+  it("runs tools sequentially when toolConcurrency is 1", async () => {
+    const { hooks } = makeHooks();
+    const ids = ["a", "b", "c"];
+    const model = mockModel([
+      {
+        content: ids.map((id) => ({
+          type: "tool_use" as const,
+          id,
+          name: "echo",
+          input: { msg: id },
+        })),
+        stopReason: "tool_use",
+      },
+      { content: [{ type: "text", text: "ok" }], stopReason: "end_turn" },
+    ]);
+
+    let active = 0;
+    let maxActive = 0;
+    const exec: ToolExecutor = async (use) => {
+      active++;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((r) => setTimeout(r, 2));
+      active--;
+      return { type: "tool_result", tool_use_id: use.id, content: `done:${use.id}` };
+    };
+
+    await agentLoop({
+      ...baseOpts(hooks),
+      model,
+      executeTool: exec,
+      toolConcurrency: 1,
+    });
+
+    expect(maxActive).toBe(1);
+  });
+
   it("reveals tool_use blocks one-at-a-time, paired with their permission gate", async () => {
     const log: { kind: string; visibleUses: string[] }[] = [];
     const snapshotVisible = (messages: MessageParam[]): string[] => {

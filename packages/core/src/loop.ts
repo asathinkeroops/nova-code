@@ -45,6 +45,13 @@ export interface AgentLoopOptions {
    * `pre_request` hook overrides it.
    */
   thinkingBudgetTokens?: number;
+  /**
+   * Max number of tool executions to run concurrently within a single turn.
+   * Granted tool calls beyond this cap queue and start as slots free up.
+   * `undefined` or `<= 0` means unbounded (all granted calls run at once).
+   * The product default (3) is supplied by the caller; core stays policy-free.
+   */
+  toolConcurrency?: number;
 }
 
 export interface LoopResult {
@@ -222,8 +229,10 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
     messages = appendMessage(messages, userToolResults([]));
     await hooks.runAdvisory("post_messages", { messages });
 
-    const settlements = await Promise.allSettled(
-      slots.map(async (slot, idx) => {
+    const settlements = await settleWithConcurrency(
+      slots,
+      opts.toolConcurrency,
+      async (slot, idx) => {
         let result: ToolResultBlock;
         if (slot.status === "cancelled") {
           result = errorToolResult(slot.use.id, "Tool execution cancelled");
@@ -250,7 +259,7 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
         messages = [...messages];
         messages[userMsgIdx] = userToolResults(filled);
         await hooks.runAdvisory("post_messages", { messages });
-      }),
+      },
     );
 
     // Defense in depth: ensure every tool_use ends up paired with a result.
@@ -290,6 +299,43 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
 
 function errorToolResult(toolUseId: string, content: string): ToolResultBlock {
   return { type: "tool_result", tool_use_id: toolUseId, content, is_error: true };
+}
+
+/**
+ * Run `fn` over every item with at most `limit` in flight at once, returning
+ * `PromiseSettledResult`s in INPUT order (like `Promise.allSettled`) so callers
+ * can index settlements by slot. A pool of `limit` workers each pulls the next
+ * unclaimed index until the queue drains. `limit` undefined / `<= 0` means
+ * unbounded (one worker per item — identical to `Promise.allSettled`).
+ */
+async function settleWithConcurrency<T>(
+  items: T[],
+  limit: number | undefined,
+  fn: (item: T, idx: number) => Promise<void>,
+): Promise<PromiseSettledResult<void>[]> {
+  const settlements: PromiseSettledResult<void>[] = new Array(items.length);
+  if (items.length === 0) return settlements;
+
+  const bounded = limit !== undefined && limit > 0;
+  const workers = bounded ? Math.min(limit, items.length) : items.length;
+
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const idx = next++;
+      if (idx >= items.length) return;
+      try {
+        await fn(items[idx]!, idx);
+        settlements[idx] = { status: "fulfilled", value: undefined };
+      } catch (reason) {
+        settlements[idx] = { status: "rejected", reason };
+      }
+    }
+  };
+
+  await Promise.all(Array.from({ length: workers }, () => worker()));
+  return settlements;
 }
 
 export class LoopTerminatedError extends Error {
