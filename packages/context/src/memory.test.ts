@@ -57,26 +57,30 @@ describe("loadMemory", () => {
     expect(bundle.system.indexOf("inner")).toBeGreaterThan(bundle.system.indexOf("outer"));
   });
 
+  // bundle.system embeds each file's PATH alongside its body, and the tmp root
+  // can contain words like "nova"/"claude" (e.g. TMPDIR under /tmp/claude-…).
+  // Use distinctive body sentinels that can't appear in a path so the
+  // "which file's content loaded" assertions don't collide with the path.
   it("prefers NOVA.md over CLAUDE.md in the same directory", async () => {
-    await writeFile(join(root, "NOVA.md"), "nova", "utf8");
-    await writeFile(join(root, "CLAUDE.md"), "claude", "utf8");
+    await writeFile(join(root, "NOVA.md"), "NOVA_BODY", "utf8");
+    await writeFile(join(root, "CLAUDE.md"), "CLAUDE_BODY", "utf8");
 
     const bundle = await loadMemory(root, { home });
     expect(bundle.sources).toHaveLength(1);
     expect(bundle.sources[0]?.filename).toBe("NOVA.md");
-    expect(bundle.system).toContain("nova");
-    expect(bundle.system).not.toContain("claude");
+    expect(bundle.system).toContain("NOVA_BODY");
+    expect(bundle.system).not.toContain("CLAUDE_BODY");
   });
 
   it("prefers CLAUDE.md over AGENTS.md in the same directory", async () => {
-    await writeFile(join(root, "CLAUDE.md"), "claude", "utf8");
-    await writeFile(join(root, "AGENTS.md"), "agents", "utf8");
+    await writeFile(join(root, "CLAUDE.md"), "CLAUDE_BODY", "utf8");
+    await writeFile(join(root, "AGENTS.md"), "AGENTS_BODY", "utf8");
 
     const bundle = await loadMemory(root, { home });
     expect(bundle.sources).toHaveLength(1);
     expect(bundle.sources[0]?.filename).toBe("CLAUDE.md");
-    expect(bundle.system).toContain("claude");
-    expect(bundle.system).not.toContain("agents");
+    expect(bundle.system).toContain("CLAUDE_BODY");
+    expect(bundle.system).not.toContain("AGENTS_BODY");
   });
 
   it("falls back to AGENTS.md when it is the only memory file", async () => {
