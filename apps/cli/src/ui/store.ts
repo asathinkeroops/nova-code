@@ -31,6 +31,14 @@ export interface SpinnerSpec {
   inputTokens?: number;
 }
 
+/** Accumulated streaming assistant content for the in-flight request. */
+export interface LiveDraft {
+  /** Visible answer text streamed so far. */
+  text: string;
+  /** Reasoning text streamed so far (rendered dimmed, like a thinking block). */
+  thinking: string;
+}
+
 export type ApprovalAnswer = "yes" | "no" | "always-allow";
 
 export type CardKind = "info" | "warn" | "error";
@@ -102,6 +110,13 @@ export interface AppState {
   todos: Todo[];
   tasks: Task[];
   spinner: SpinnerSpec | null;
+  /**
+   * In-progress assistant content for the active request, streamed token by
+   * token. Rendered as the last transcript item (below the latest message,
+   * above the spinner) and cleared the instant the final message lands via
+   * `post_messages`. Null when no request is streaming.
+   */
+  liveDraft: LiveDraft | null;
   modal: ModalState | null;
   /**
    * Active turn interrupt handler, set by the REPL while a turn runs. The
@@ -232,6 +247,12 @@ export interface AppActions {
   startSpinner: (label: SpinnerLabel, hint?: string) => SpinnerHandle;
   /** Update the active spinner's live token counts (no-op if none). */
   setSpinnerTokens: (progress: { inputTokens?: number; outputTokens: number }) => void;
+  /** Set/clear the active spinner's trailing hint (no-op if none). */
+  setSpinnerHint: (hint: string | undefined) => void;
+  /** Append streamed assistant deltas to the live draft (starts one if none). */
+  appendLiveDraft: (delta: { text?: string; thinking?: string }) => void;
+  /** Drop the live draft — called when the final message replaces it. */
+  clearLiveDraft: () => void;
   setEscHandler: (fn: (() => void) | null) => void;
   beginSetup: (state: SetupState) => void;
   setSetupPrompt: (prompt: { label: string; hint: string } | null) => void;
@@ -363,6 +384,7 @@ export function createAppStore(): AppStoreApi {
       todos: [],
       tasks: [],
       spinner: null,
+      liveDraft: null,
       modal: null,
       escHandler: null,
       thinkingLabel: undefined,
@@ -459,6 +481,32 @@ export function createAppStore(): AppStoreApi {
         set({ spinner: { ...cur, tokens: outputTokens, inputTokens } });
       },
 
+      setSpinnerHint(hint) {
+        const cur = get().spinner;
+        if (!cur) return;
+        if (cur.hint === hint) return;
+        const next: SpinnerSpec = { ...cur };
+        if (hint === undefined) delete next.hint;
+        else next.hint = hint;
+        set({ spinner: next });
+      },
+
+      appendLiveDraft({ text, thinking }) {
+        if (!text && !thinking) return;
+        const cur = get().liveDraft;
+        set({
+          liveDraft: {
+            text: (cur?.text ?? "") + (text ?? ""),
+            thinking: (cur?.thinking ?? "") + (thinking ?? ""),
+          },
+        });
+      },
+
+      clearLiveDraft() {
+        if (get().liveDraft === null) return;
+        set({ liveDraft: null });
+      },
+
       setEscHandler(fn) {
         set({ escHandler: fn });
       },
@@ -542,6 +590,7 @@ export function createAppStore(): AppStoreApi {
           messages: [],
           cards: [],
           spinner: null,
+          liveDraft: null,
           modal: null,
           scrollOffset: 0,
           stickToBottom: true,

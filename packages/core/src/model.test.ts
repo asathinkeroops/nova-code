@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import { DeepSeekApiError } from "./deepseek-errors.js";
 import { createAnthropicModel, detectThinkingFormat } from "./model.js";
 
 // Stub the Anthropic SDK so we can inspect the params our adapter sends
@@ -156,5 +157,106 @@ describe("createAnthropicModel thinking params", () => {
     const params = mockCreate.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(params.thinking).toEqual({ type: "disabled" });
     expect(params.output_config).toBeUndefined();
+  });
+});
+
+function apiError(status: number): Error & { status: number } {
+  return Object.assign(new Error(`${status} boom`), { status, headers: new Headers() });
+}
+
+describe("createAnthropicModel deepseek error handling", () => {
+  beforeEach(() => {
+    mockCreate.mockReset();
+    streamEvents = [];
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("retries a transient (429) error and then succeeds", async () => {
+    vi.useFakeTimers();
+    mockCreate.mockRejectedValueOnce(apiError(429)).mockResolvedValueOnce(okResponse());
+    const retries: { attempt: number; status: number }[] = [];
+    const m = createAnthropicModel({
+      apiKey: "x",
+      model: "deepseek-chat",
+      onRetry: (i) => retries.push(i),
+    });
+    const p = m.call({ ...baseReq });
+    await vi.advanceTimersByTimeAsync(1_000);
+    const res = await p;
+    expect(res.content).toEqual([{ type: "text", text: "ok" }]);
+    expect(mockCreate).toHaveBeenCalledTimes(2);
+    expect(retries).toEqual([{ attempt: 1, maxAttempts: 4, delayMs: 1_000, status: 429 }]);
+  });
+
+  it("gives up after max attempts and throws a translated DeepSeekApiError", async () => {
+    vi.useFakeTimers();
+    mockCreate.mockRejectedValue(apiError(503));
+    const m = createAnthropicModel({ apiKey: "x", model: "deepseek-chat" });
+    const caught = m.call({ ...baseReq }).catch((e: unknown) => e);
+    // Exhaust all backoffs: 1s + 2s + 4s.
+    await vi.advanceTimersByTimeAsync(10_000);
+    const err = await caught;
+    expect(err).toBeInstanceOf(DeepSeekApiError);
+    expect((err as DeepSeekApiError).status).toBe(503);
+    expect(mockCreate).toHaveBeenCalledTimes(4); // 1 + 3 retries
+  });
+
+  it("throws a translated error for non-retryable (402) without retrying", async () => {
+    mockCreate.mockRejectedValueOnce(apiError(402));
+    const m = createAnthropicModel({ apiKey: "x", model: "deepseek-chat" });
+    const err = await m.call({ ...baseReq }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(DeepSeekApiError);
+    expect((err as DeepSeekApiError).status).toBe(402);
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not translate or retry errors for non-deepseek models", async () => {
+    const orig = apiError(429);
+    mockCreate.mockRejectedValue(orig);
+    const m = createAnthropicModel({ apiKey: "x", model: "claude-sonnet-4-5" });
+    const err = await m.call({ ...baseReq }).catch((e: unknown) => e);
+    expect(err).toBe(orig); // untouched
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("createAnthropicModel onStreamText", () => {
+  beforeEach(() => {
+    mockCreate.mockReset();
+    streamEvents = [];
+  });
+
+  it("streams text and thinking deltas, but not tool-call json", async () => {
+    mockCreate.mockResolvedValueOnce(okResponse());
+    streamEvents = [
+      { type: "content_block_delta", delta: { type: "thinking_delta", thinking: "hmm" } },
+      { type: "content_block_delta", delta: { type: "text_delta", text: "hello" } },
+      { type: "content_block_delta", delta: { type: "input_json_delta", partial_json: '{"a":1}' } },
+    ];
+    const seen: { text?: string; thinking?: string }[] = [];
+    const m = createAnthropicModel({
+      apiKey: "x",
+      model: "deepseek-chat",
+      onStreamText: (d) => seen.push(d),
+    });
+    await m.call({ ...baseReq });
+    // thinking + text are emitted as readable deltas; partial_json (tool args)
+    // is skipped — it isn't prose and lands in the final message anyway.
+    expect(seen).toEqual([{ thinking: "hmm" }, { text: "hello" }]);
+  });
+
+  it("works without onStreamProgress set", async () => {
+    mockCreate.mockResolvedValueOnce(okResponse());
+    streamEvents = [{ type: "content_block_delta", delta: { type: "text_delta", text: "hi" } }];
+    const seen: { text?: string }[] = [];
+    const m = createAnthropicModel({
+      apiKey: "x",
+      model: "deepseek-chat",
+      onStreamText: (d) => seen.push(d),
+    });
+    await m.call({ ...baseReq });
+    expect(seen).toEqual([{ text: "hi" }]);
   });
 });

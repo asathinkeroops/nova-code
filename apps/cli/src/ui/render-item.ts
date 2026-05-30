@@ -134,6 +134,34 @@ export function buildRenderItems(opts: BuildOpts): RenderItem[] {
   return items;
 }
 
+/**
+ * Render items for the in-flight streaming draft — the reasoning (if any) then
+ * the visible answer, using the same `thinking` / `assistant-text` kinds as a
+ * committed message so the swap to the final message is seamless. Returned as a
+ * separate list (not folded into `buildRenderItems`) so the transcript's
+ * measure-cache stays warm while only the draft re-renders each token.
+ */
+export function buildLiveDraftItems(
+  draft: { text: string; thinking: string },
+  thinkingLabel?: string,
+): RenderItem[] {
+  const items: RenderItem[] = [];
+  if (draft.thinking.trim().length > 0) {
+    items.push({ kind: "spacer", key: "live-th-sp" });
+    items.push({
+      kind: "thinking",
+      key: "live-th",
+      thinking: draft.thinking,
+      ...(thinkingLabel !== undefined ? { label: thinkingLabel } : {}),
+    });
+  }
+  if (draft.text.trim().length > 0) {
+    items.push({ kind: "spacer", key: "live-at-sp" });
+    items.push({ kind: "assistant-text", key: "live-at", text: draft.text });
+  }
+  return items;
+}
+
 function appendUserItems(
   items: RenderItem[],
   msg: MessageParam,

@@ -11,7 +11,7 @@ import {
   PickHorizontal,
   PickList,
 } from "./picker.js";
-import { buildRenderItems } from "./render-item.js";
+import { buildLiveDraftItems, buildRenderItems } from "./render-item.js";
 import { blinkPendingOff, hasPendingDot } from "./render-strings.js";
 import { Spinner } from "./spinner.js";
 import type { AppStoreApi, ModalState } from "./store.js";
@@ -49,6 +49,7 @@ export function Viewport({ store, rows, resolveModal }: ViewportProps): React.Re
     scrollOffset,
     stickToBottom,
     spinner,
+    liveDraft,
     modal,
     todos,
     tasks,
@@ -63,6 +64,7 @@ export function Viewport({ store, rows, resolveModal }: ViewportProps): React.Re
       scrollOffset: s.scrollOffset,
       stickToBottom: s.stickToBottom,
       spinner: s.spinner,
+      liveDraft: s.liveDraft,
       modal: s.modal,
       todos: s.todos,
       tasks: s.tasks,
@@ -72,7 +74,7 @@ export function Viewport({ store, rows, resolveModal }: ViewportProps): React.Re
   const reportViewportMetrics = store.getState().reportViewportMetrics;
   const scrollBy = store.getState().scrollBy;
 
-  const items = React.useMemo(
+  const baseItems = React.useMemo(
     () =>
       buildRenderItems({
         banner,
@@ -81,6 +83,18 @@ export function Viewport({ store, rows, resolveModal }: ViewportProps): React.Re
         ...(thinkingLabel !== undefined ? { thinkingLabel } : {}),
       }),
     [banner, messages, cards, thinkingLabel],
+  );
+  // Streaming draft items are built separately and appended, so the transcript's
+  // measure-cache (keyed by item identity) stays warm while only the draft
+  // re-renders per token. Memoized on the draft reference so the spinner's
+  // animation tick doesn't rebuild it.
+  const liveItems = React.useMemo(
+    () => (liveDraft ? buildLiveDraftItems(liveDraft, thinkingLabel) : []),
+    [liveDraft, thinkingLabel],
+  );
+  const items = React.useMemo(
+    () => (liveItems.length > 0 ? [...baseItems, ...liveItems] : baseItems),
+    [baseItems, liveItems],
   );
 
   // Reserve rows for in-stream chrome (spinner / modal / footers) that

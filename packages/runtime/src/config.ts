@@ -131,6 +131,15 @@ export const settingsSchema = z.object({
       mtimeCheck: z.boolean().default(true),
     })
     .default({ enabled: true, readBeforeEdit: true, mtimeCheck: true }),
+  // Live token streaming: render the assistant's text/reasoning in the TUI as
+  // it streams, instead of revealing it all at once when the turn lands. When
+  // off, the spinner stays bare until the final message (token counts still
+  // tick). Toggle at runtime with /stream.
+  stream: z
+    .object({
+      enabled: z.boolean().default(true),
+    })
+    .default({ enabled: true }),
   // Next-user-input prediction shown as the input box placeholder. The CLI
   // runs this once after each successful agent turn using the main model.
   predict: z

@@ -1,5 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { zodToJsonSchema } from "zod-to-json-schema";
+import {
+  DEEPSEEK_RETRY,
+  DeepSeekApiError,
+  deepSeekRetryDelayMs,
+  translateDeepSeekError,
+} from "./deepseek-errors.js";
 import { THINKING_BUDGETS } from "./thinking.js";
 import type {
   AssistantTurn,
@@ -47,6 +53,38 @@ export interface AnthropicModelConfig {
    * in the returned usage once the turn completes.
    */
   onStreamProgress?: (progress: StreamProgress) => void;
+  /**
+   * Live assistant content as it streams, delta by delta — `text` for the
+   * visible answer, `thinking` for reasoning. High-frequency and best-effort;
+   * callers should accumulate and throttle their own rendering. Emitted only
+   * for this request and superseded by the final message once the turn lands.
+   */
+  onStreamText?: (delta: StreamTextDelta) => void;
+  /**
+   * Notified before each automatic retry of a transient DeepSeek failure
+   * (429/500/503). Best-effort and DeepSeek-only — other models never retry
+   * internally. Lets the UI show "retrying (2/4)…" without coupling the adapter
+   * to a logger.
+   */
+  onRetry?: (info: RetryNotice) => void;
+}
+
+export interface RetryNotice {
+  /** 1-based number of the attempt that just failed. */
+  attempt: number;
+  /** Total attempts the adapter will make before giving up. */
+  maxAttempts: number;
+  /** Milliseconds the adapter will wait before the next attempt. */
+  delayMs: number;
+  /** The DeepSeek HTTP status that triggered the retry. */
+  status: number;
+}
+
+export interface StreamTextDelta {
+  /** Incremental visible answer text, if this chunk carried any. */
+  text?: string;
+  /** Incremental reasoning text, if this chunk carried any. */
+  thinking?: string;
 }
 
 export interface StreamProgress {
@@ -74,6 +112,26 @@ export function detectThinkingFormat(model: string): ThinkingFormat {
 // rewritten to high on their side.
 function budgetToEffort(budget: number): "high" | "max" {
   return budget >= THINKING_BUDGETS.max ? "max" : "high";
+}
+
+/**
+ * Wait `ms`, but bail out early if `signal` aborts — rejecting with the abort
+ * reason so an interrupt during a retry backoff propagates as a cancellation
+ * rather than silently sleeping it out.
+ */
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.reject(signal.reason);
+  return new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = (): void => {
+      clearTimeout(timer);
+      reject(signal?.reason);
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 export function createAnthropicModel(config: AnthropicModelConfig): ModelClient {
@@ -126,63 +184,120 @@ export function createAnthropicModel(config: AnthropicModelConfig): ModelClient 
       // and proxies love to reset mid-body (read ECONNRESET while decompressing
       // the gzip payload). Streaming keeps the socket active and lets the SDK
       // accumulate the same final Message via `finalMessage()`.
-      const stream = client.messages.stream(
-        {
-          model: config.model,
-          max_tokens: maxTokens,
-          system: req.system,
-          messages: req.messages as Anthropic.MessageParam[],
-          tools: tools as Anthropic.Tool[],
-          ...thinkingParams,
-        } as Anthropic.MessageStreamParams,
-        req.signal ? { signal: req.signal } : undefined,
-      );
-      if (config.onStreamProgress) {
+      //
+      // One attempt = build the stream, wire live-progress listeners (fresh
+      // per attempt so token counters don't carry over a retry), await the
+      // final message.
+      const streamOnce = (): Promise<Anthropic.Message> => {
+        const stream = client.messages.stream(
+          {
+            model: config.model,
+            max_tokens: maxTokens,
+            system: req.system,
+            messages: req.messages as Anthropic.MessageParam[],
+            tools: tools as Anthropic.Tool[],
+            ...thinkingParams,
+          } as Anthropic.MessageStreamParams,
+          req.signal ? { signal: req.signal } : undefined,
+        );
         const onProgress = config.onStreamProgress;
-        // Uploaded prompt tokens are a real count carried by `message_start`;
-        // captured once and replayed with every subsequent update.
-        //
-        // Output tokens, by contrast, only arrive (for real) in the final
-        // message_delta — DeepSeek and Anthropic both withhold them mid-stream —
-        // so a *live* counter estimates from the text as it streams in: ~4
-        // chars/token for latin, ~0.6 token/char for CJK. Accumulated
-        // incrementally from each delta so it stays O(total chars), not O(n²).
-        let inputTokens: number | undefined;
-        let cjk = 0;
-        let other = 0;
-        stream.on("streamEvent", (event) => {
-          if (event.type === "message_start") {
-            const u = event.message.usage as {
-              input_tokens?: number;
-              cache_read_input_tokens?: number | null;
-              cache_creation_input_tokens?: number | null;
-            };
-            inputTokens =
-              (u.input_tokens ?? 0) +
-              (u.cache_read_input_tokens ?? 0) +
-              (u.cache_creation_input_tokens ?? 0);
-            onProgress({ inputTokens, outputTokens: 0 });
-            return;
-          }
-          if (event.type !== "content_block_delta") return;
-          const delta = event.delta as { text?: string; partial_json?: string; thinking?: string };
-          const chunk = delta.text ?? delta.partial_json ?? delta.thinking ?? "";
-          for (const ch of chunk) {
-            const c = ch.codePointAt(0) ?? 0;
-            if (
-              (c >= 0x4e00 && c <= 0x9fff) || // CJK ideographs
-              (c >= 0x3040 && c <= 0x30ff) || // kana
-              (c >= 0xac00 && c <= 0xd7a3) // hangul
-            ) {
-              cjk++;
-            } else {
-              other++;
+        const onText = config.onStreamText;
+        if (onProgress || onText) {
+          // Uploaded prompt tokens are a real count carried by `message_start`;
+          // captured once and replayed with every subsequent update.
+          //
+          // Output tokens, by contrast, only arrive (for real) in the final
+          // message_delta — DeepSeek and Anthropic both withhold them mid-stream —
+          // so a *live* counter estimates from the text as it streams in: ~4
+          // chars/token for latin, ~0.6 token/char for CJK. Accumulated
+          // incrementally from each delta so it stays O(total chars), not O(n²).
+          let inputTokens: number | undefined;
+          let cjk = 0;
+          let other = 0;
+          stream.on("streamEvent", (event) => {
+            if (event.type === "message_start") {
+              if (!onProgress) return;
+              const u = event.message.usage as {
+                input_tokens?: number;
+                cache_read_input_tokens?: number | null;
+                cache_creation_input_tokens?: number | null;
+              };
+              inputTokens =
+                (u.input_tokens ?? 0) +
+                (u.cache_read_input_tokens ?? 0) +
+                (u.cache_creation_input_tokens ?? 0);
+              onProgress({ inputTokens, outputTokens: 0 });
+              return;
             }
+            if (event.type !== "content_block_delta") return;
+            const delta = event.delta as {
+              text?: string;
+              partial_json?: string;
+              thinking?: string;
+            };
+            // Stream the visible answer / reasoning to the UI as it arrives.
+            // `partial_json` (tool-call arguments) is deliberately excluded —
+            // it isn't readable prose and lands in the final message anyway.
+            if (onText && (delta.text !== undefined || delta.thinking !== undefined)) {
+              onText({
+                ...(delta.text !== undefined ? { text: delta.text } : {}),
+                ...(delta.thinking !== undefined ? { thinking: delta.thinking } : {}),
+              });
+            }
+            if (!onProgress) return;
+            const chunk = delta.text ?? delta.partial_json ?? delta.thinking ?? "";
+            for (const ch of chunk) {
+              const c = ch.codePointAt(0) ?? 0;
+              if (
+                (c >= 0x4e00 && c <= 0x9fff) || // CJK ideographs
+                (c >= 0x3040 && c <= 0x30ff) || // kana
+                (c >= 0xac00 && c <= 0xd7a3) // hangul
+              ) {
+                cjk++;
+              } else {
+                other++;
+              }
+            }
+            onProgress({ inputTokens, outputTokens: Math.ceil(cjk * 0.6 + other / 4) });
+          });
+        }
+        return stream.finalMessage();
+      };
+
+      // DeepSeek's documented HTTP errors arrive here as SDK APIErrors. The
+      // transient ones (429 rate limit, 500/503 server) are retried internally
+      // with backoff; the rest (400/401/402/422) and all non-DeepSeek errors
+      // are re-thrown — translated into actionable guidance for DeepSeek.
+      const maxAttempts =
+        format === "deepseek" ? DEEPSEEK_RETRY.maxAttempts : 1;
+      let res: Anthropic.Message;
+      let attempt = 0;
+      for (;;) {
+        attempt++;
+        try {
+          res = await streamOnce();
+          break;
+        } catch (err) {
+          const translated = translateDeepSeekError(err, config.model);
+          if (
+            translated instanceof DeepSeekApiError &&
+            translated.retryable &&
+            attempt < maxAttempts &&
+            !req.signal?.aborted
+          ) {
+            const delayMs = deepSeekRetryDelayMs(attempt, translated.retryAfterSeconds);
+            config.onRetry?.({
+              attempt,
+              maxAttempts,
+              delayMs,
+              status: translated.status,
+            });
+            await sleep(delayMs, req.signal);
+            continue;
           }
-          onProgress({ inputTokens, outputTokens: Math.ceil(cjk * 0.6 + other / 4) });
-        });
+          throw translated;
+        }
       }
-      const res = await stream.finalMessage();
 
       const content = res.content as ContentBlock[];
       const stopReason = (res.stop_reason ?? "end_turn") as StopReason;

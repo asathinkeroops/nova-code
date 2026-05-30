@@ -3,6 +3,7 @@ import { WORKING_WORDS } from "./constants.js";
 import {
   armToolSpinner,
   clearToolSpinner,
+  INTERRUPT_HINT,
   refreshTaskFooter,
   refreshTodoFooter,
   stopSpinner,
@@ -20,6 +21,10 @@ import {
 export function registerUiHooks(ctx: CliContext): void {
   ctx.agent.on("post_messages", ({ messages }) => {
     ctx.screen.setMessages(messages);
+    // The committed messages now contain whatever was streaming, so drop the
+    // live draft in the same tick — React batches both into one frame, so the
+    // streamed text is replaced by the final render with no flicker.
+    ctx.resetLiveStream();
     ctx.screen.setThinkingLabel(thinkingLevelLabel(ctx));
     refreshTodoFooter(ctx);
     void refreshTaskFooter(ctx);
@@ -44,7 +49,7 @@ export function registerUiHooks(ctx: CliContext): void {
   ctx.agent.on("pre_request", () => {
     ctx.spinner = ctx.screen.startSpinner(
       { words: WORKING_WORDS, tint: MAGENTA_RGB, colorize: magenta },
-      "esc to interrupt",
+      INTERRUPT_HINT,
     );
   });
 
@@ -53,6 +58,9 @@ export function registerUiHooks(ctx: CliContext): void {
       const seconds = (durationMs / 1000).toFixed(1);
       const word = ctx.spinner?.label() ?? "working";
       stopSpinner(ctx);
+      // No post_messages follows a failed/aborted request, so drop the partial
+      // draft here — otherwise half-streamed text would hang under the error.
+      ctx.resetLiveStream();
       ctx.screen.card(`${word} · ${seconds}s · ${error}`, {
         kind: "error",
         title: "request failed",

@@ -269,6 +269,18 @@ export class Screen {
     this.store.getState().setSpinnerTokens(progress);
   }
 
+  setSpinnerHint(hint: string | undefined): void {
+    this.store.getState().setSpinnerHint(hint);
+  }
+
+  appendLiveDraft(delta: { text?: string; thinking?: string }): void {
+    this.store.getState().appendLiveDraft(delta);
+  }
+
+  clearLiveDraft(): void {
+    this.store.getState().clearLiveDraft();
+  }
+
   /** Consumer side of the input queue — resolves with the next prompt or null on exit. */
   takeInput(): Promise<string | null> {
     return this.store.getState().takeInput();

@@ -131,6 +131,12 @@ export interface CliContext {
   readonly noTranscript: boolean;
   readonly noPretty: boolean;
   readonly screen: Screen;
+  /**
+   * Drop the in-flight streaming draft AND cancel any pending throttled flush,
+   * so a late timer can't resurrect a draft the final message already replaced.
+   * Called at each turn handoff (post_messages) and on request error/abort.
+   */
+  readonly resetLiveStream: () => void;
   readonly todoStore: TodoStore;
   readonly taskStore: TaskStore;
   readonly longRunningManager: LongRunningCommandManager;
@@ -210,6 +216,9 @@ function registerInterject(agent: Agent, fn: InterjectFn): void {
   });
 }
 
+/** Default spinner hint shown while a turn / tool is running. */
+export const INTERRUPT_HINT = "esc to interrupt";
+
 export function stopSpinner(ctx: CliContext): void {
   if (ctx.spinner) {
     ctx.spinner.stop();
@@ -228,7 +237,7 @@ export function armToolSpinner(ctx: CliContext): void {
     ctx.toolSpinnerTimer = null;
     ctx.spinner = ctx.screen.startSpinner(
       { words: WORKING_WORDS, tint: CYAN_RGB, colorize: cyan },
-      "esc to interrupt",
+      INTERRUPT_HINT,
     );
   }, TOOL_SPINNER_DELAY_MS);
 }
@@ -529,21 +538,79 @@ export async function createContext(
   // output) into the active spinner. streamEvent fires per chunk, so throttle
   // to keep re-renders sane.
   let lastTokenPush = 0;
+  // True while a DeepSeek retry hint is parked on the spinner. Cleared once the
+  // retried request actually starts streaming output again (see below).
+  let retryHintShown = false;
   const pushSpinnerTokens = (progress: {
     inputTokens?: number;
     outputTokens: number;
   }): void => {
+    // Output flowing again means we're past the retry backoff — restore the
+    // default interrupt hint so a stale "retry n/max" doesn't linger on the
+    // (now succeeding) request.
+    if (retryHintShown && progress.outputTokens > 0) {
+      retryHintShown = false;
+      screen.setSpinnerHint(INTERRUPT_HINT);
+    }
     const now = Date.now();
     if (now - lastTokenPush < 80) return;
     lastTokenPush = now;
     screen.setSpinnerTokens(progress);
   };
+  // DeepSeek's transient errors (429/500/503) are retried inside the model
+  // adapter; surface each retry in the live spinner (n/max) so a stalled turn
+  // isn't a silent freeze.
+  const onRetry = (info: {
+    attempt: number;
+    maxAttempts: number;
+    delayMs: number;
+    status: number;
+  }): void => {
+    logger.warn(info, "deepseek retry");
+    retryHintShown = true;
+    const secs = Math.round(info.delayMs / 100) / 10;
+    screen.setSpinnerHint(
+      `retry ${info.attempt}/${info.maxAttempts - 1} (${info.status}, ${secs}s)`,
+    );
+  };
+
+  // Stream assistant text/thinking into the live draft. Deltas arrive token by
+  // token; batch them on a ~50ms timer (one store write per frame, no dropped
+  // text) so a fast stream doesn't thrash Ink. `resetLiveStream` cancels the
+  // timer and drops the buffer so a late flush can't resurrect a cleared draft.
+  let liveBuf: { text: string; thinking: string } = { text: "", thinking: "" };
+  let liveTimer: NodeJS.Timeout | null = null;
+  const flushLive = (): void => {
+    liveTimer = null;
+    if (!liveBuf.text && !liveBuf.thinking) return;
+    screen.appendLiveDraft(liveBuf);
+    liveBuf = { text: "", thinking: "" };
+  };
+  const pushLiveText = (delta: { text?: string; thinking?: string }): void => {
+    // Honors the stream toggle (settings.stream.enabled). When off, deltas are
+    // dropped and the TUI reveals the answer only when the final message lands.
+    if (!settings.stream.enabled) return;
+    if (delta.text) liveBuf.text += delta.text;
+    if (delta.thinking) liveBuf.thinking += delta.thinking;
+    if (!liveTimer) liveTimer = setTimeout(flushLive, 50);
+  };
+  const resetLiveStream = (): void => {
+    if (liveTimer) {
+      clearTimeout(liveTimer);
+      liveTimer = null;
+    }
+    liveBuf = { text: "", thinking: "" };
+    screen.clearLiveDraft();
+  };
+
   const buildModel = (id: string, trackTokens = true): ModelClient =>
     createAnthropicModel({
       apiKey,
       model: id,
       ...(settings.baseURL ? { baseURL: settings.baseURL } : {}),
-      ...(trackTokens ? { onStreamProgress: pushSpinnerTokens } : {}),
+      ...(trackTokens
+        ? { onStreamProgress: pushSpinnerTokens, onStreamText: pushLiveText, onRetry }
+        : {}),
     });
 
   const ctx: CliContext = {
@@ -570,6 +637,7 @@ export async function createContext(
     noTranscript,
     noPretty,
     screen,
+    resetLiveStream,
     todoStore,
     taskStore,
     longRunningManager,

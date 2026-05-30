@@ -23,8 +23,19 @@ export {
   type ModelClient,
   type ModelRequest,
   type AnthropicModelConfig,
+  type RetryNotice,
+  type StreamTextDelta,
   type ThinkingFormat,
 } from "./model.js";
+export {
+  DEEPSEEK_DOCS_URL,
+  DEEPSEEK_RETRY,
+  DeepSeekApiError,
+  deepSeekRetryDelayMs,
+  describeDeepSeekStatus,
+  translateDeepSeekError,
+  type DeepSeekErrorInfo,
+} from "./deepseek-errors.js";
 export {
   agentLoop,
   LoopTerminatedError,
