@@ -10,6 +10,24 @@ Under the hood Nova is a loop-centric harness: `@nova/core` exposes a model-agno
 
 The loop runs tool calls with **bounded concurrency** (default 3 per turn), and the model can spawn **sub-agents** via the `createSubAgent` tool — fresh-context workers (`explore` / `plan` / `general-purpose`) that run in-process and report a single final message back, so large investigations stay out of the main context.
 
+## Core capabilities
+
+- **DeepSeek deep customization** *(headline feature)* — thinking mapped to DeepSeek's `output_config.effort` (not `budget_tokens`), wire-format auto-detection from the model id, a byte-stable request shape that keeps DeepSeek's automatic context cache hitting, and DeepSeek error-code translation (400/401/402/422/429/500/503) with internal retry of the transient ones. Other Anthropic-compatible endpoints still work.
+- **Agentic coding loop** — reads code, edits files, runs commands, and drives a task to done through tool use; independent tool calls in a turn run with bounded concurrency (default 3).
+- **Code & system tools** — file read / write / edit, `glob` + `grep` search, `bash` and long-running commands, web fetch / search, notebook edit, and ask-user prompts.
+- **Extended thinking** — `off` / `low` / `medium` / `high` / `max`, or an explicit token budget.
+- **Plan mode** — `/plan` delegates a read-only investigation and returns a step-by-step plan before touching anything.
+- **Sub-agents** — fresh-context `explore` / `plan` / `general-purpose` workers that keep large investigations out of the main context.
+- **Memory** — CLAUDE.md-style project & user memory, per directory `NOVA.md` > `CLAUDE.md` > `AGENTS.md` (highest wins, no merging).
+- **Context management** — append-only history with auto-compaction under context-window pressure.
+- **Permissions** — rule-based gating, default **ask**, cwd-scoped read access, surfaced as interactive approvals.
+- **Skills** — `SKILL.md` files discovered on startup, indexed into the prompt, and pulled in full on demand via `loadSkill`.
+- **Slash commands** — builtins plus custom `.md` commands auto-loaded from project / user dirs.
+- **MCP** — connect external [MCP](https://modelcontextprotocol.io) servers (stdio / http / sse) and bridge their tools to the model, gated by permissions.
+- **Hooks** — a single extension point everything attaches through: permissions, compaction, transcript writing, UI updates, streaming.
+- **Sessions & checkpointing** — resumable sessions (`--resume` / `--continue`) with append-only persistence; `/rewind` to an earlier point.
+- **Interactive TUI** — a full-screen REPL with live streaming output, mouse scroll & selection, a live status line, and next-input prediction.
+
 ## Quick start
 
 Requires **Node ≥ 20** (see `.nvmrc`) and **pnpm 10.28.2**.
