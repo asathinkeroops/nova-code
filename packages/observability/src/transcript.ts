@@ -3,7 +3,7 @@ import { appendFile, readFile } from "node:fs/promises";
 /**
  * Kinds that appear in `transcript.jsonl`. Mirrors what the agent actually
  * writes — bootstrap records (`session_start`, `memory_loaded`,
- * `skills_loaded`, `user_prompt`, `error`) plus the advisory hook points the
+ * `skills_loaded`, `mcp_loaded`, `user_prompt`, `error`) plus the advisory hook points the
  * agent forwards on every turn.
  *
  * Older sessions on disk may contain pre-rename kinds (`request_end`,
@@ -16,6 +16,7 @@ export type TranscriptKind =
   | "session_start"
   | "memory_loaded"
   | "skills_loaded"
+  | "mcp_loaded"
   | "user_prompt"
   | "pre_permission"
   | "post_permission"

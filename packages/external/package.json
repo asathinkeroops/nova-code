@@ -28,6 +28,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@nova/core": "workspace:*",
     "@nova/runtime": "workspace:*",
     "zod": "^3.23.0"

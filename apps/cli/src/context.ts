@@ -21,7 +21,7 @@ import {
   type ThinkingLevel,
   type ToolExecutor,
 } from "@nova/core";
-import { SlashRegistry } from "@nova/external";
+import { SlashRegistry, type McpManager } from "@nova/external";
 import { Transcript } from "@nova/observability";
 import {
   LongRunningCommandManager,
@@ -51,12 +51,14 @@ import {
 } from "@nova/tools";
 import { CYAN_RGB, cyan, dim } from "./colors.js";
 import { buildCompactor } from "./compactor.js";
+import { buildMcpManager } from "./mcp.js";
 import { resolvePermissionRules } from "./permissions.js";
 import {
   handleClear,
   handleCommands,
   handleCompact,
   handleHelp,
+  handleMcp,
   handleModel,
   handlePlan,
   handlePredict,
@@ -134,6 +136,8 @@ export interface CliContext {
   readonly longRunningManager: LongRunningCommandManager;
   readonly registry: SlashRegistry;
   readonly tools: ToolRegistry;
+  /** Connected MCP servers (tools already bridged into `tools`), or null when disabled/none. */
+  readonly mcp: McpManager | null;
   readonly dispatch: ToolExecutor;
   readonly fileLedger: FileAccessLedger;
   readonly permission: PermissionEngine;
@@ -357,6 +361,16 @@ function registerBuiltinSlashCommands(ctx: CliContext): void {
     },
   });
   ctx.registry.register({
+    name: "mcp",
+    description: "show MCP server status; `tools` to list bridged tools",
+    argHint: "[tools]",
+    source: { kind: "builtin" },
+    run: (_c, args) => {
+      handleMcp(ctx, args);
+      return handled;
+    },
+  });
+  ctx.registry.register({
     name: "exit",
     description: "leave the REPL",
     source: { kind: "builtin" },
@@ -453,6 +467,35 @@ export async function createContext(
   const tools = new ToolRegistry().registerAll(
     builtinTools(todoStore, skillsOpts, taskStore, longRunningManager),
   );
+
+  // MCP: connect configured servers and bridge their tools into the registry
+  // before the agent reads `tools.definitions()`. A server that fails to connect
+  // is logged and skipped — it never blocks startup.
+  const mcp = buildMcpManager(settings, logger);
+  if (mcp) {
+    await mcp.connectAll();
+    for (const handler of mcp.handlers()) tools.register(handler);
+    const failed = mcp.status().filter((s) => s.state === "failed");
+    await transcript.append({
+      kind: "mcp_loaded",
+      data: {
+        servers: mcp.serverCount,
+        connected: mcp.connectedCount,
+        tools: mcp.handlers().length,
+        failed: failed.map((s) => s.name),
+      },
+    });
+    if (mcp.connectedCount > 0) {
+      logger.info(
+        { connected: mcp.connectedCount, tools: mcp.handlers().length },
+        "mcp servers connected",
+      );
+    }
+    if (failed.length > 0) {
+      logger.warn({ failed: failed.map((s) => s.name) }, "mcp servers failed to connect");
+    }
+  }
+
   const fileLedger = new InMemoryFileAccessLedger();
   const invariants = settings.invariants.enabled
     ? createInvariants({
@@ -532,6 +575,7 @@ export async function createContext(
     longRunningManager,
     registry,
     tools,
+    mcp,
     dispatch,
     fileLedger,
     permission: null as unknown as PermissionEngine,

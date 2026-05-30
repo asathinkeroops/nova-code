@@ -13,6 +13,33 @@ export const permissionRuleSchema = z.object({
 
 export type PermissionRule = z.infer<typeof permissionRuleSchema>;
 
+// MCP (Model Context Protocol) servers. Each entry is keyed by a short server
+// name; the tools it exposes are surfaced to the model as `mcp__<name>__<tool>`.
+// Two transports: a local subprocess speaking stdio, or a remote http/sse
+// endpoint. `type` defaults to "stdio", so the common `{ command, args }` form
+// needs no discriminator.
+export const mcpStdioServerSchema = z.object({
+  type: z.literal("stdio").default("stdio"),
+  command: z.string().min(1),
+  args: z.array(z.string()).default([]),
+  env: z.record(z.string()).optional(),
+  cwd: z.string().min(1).optional(),
+  enabled: z.boolean().default(true),
+});
+
+export const mcpHttpServerSchema = z.object({
+  type: z.enum(["http", "sse"]),
+  url: z.string().url(),
+  headers: z.record(z.string()).optional(),
+  enabled: z.boolean().default(true),
+});
+
+export const mcpServerSchema = z.union([mcpStdioServerSchema, mcpHttpServerSchema]);
+
+export type McpStdioServerConfig = z.infer<typeof mcpStdioServerSchema>;
+export type McpHttpServerConfig = z.infer<typeof mcpHttpServerSchema>;
+export type McpServerConfig = z.infer<typeof mcpServerSchema>;
+
 export const DEFAULT_MEMORY_FILENAMES = ["NOVA.md", "CLAUDE.md", "AGENTS.md"] as const;
 
 export const settingsSchema = z.object({
@@ -154,6 +181,19 @@ export const settingsSchema = z.object({
       maxTokens: z.number().int().positive().default(8192),
     })
     .default({ enabled: true, maxTurns: 30, maxTokens: 8192 }),
+  // MCP servers connected at startup. Each server's tools are bridged into the
+  // registry as `mcp__<server>__<tool>` and gated by the normal permission
+  // engine (default-ask). A server that fails to connect is logged and skipped
+  // — it never blocks startup. Disable a single server with `enabled: false`,
+  // or the whole subsystem with `mcp.enabled: false`.
+  mcp: z
+    .object({
+      enabled: z.boolean().default(true),
+      servers: z.record(mcpServerSchema).default({}),
+      // Per-tool-call timeout in milliseconds.
+      timeoutMs: z.number().int().positive().default(60_000),
+    })
+    .default({ enabled: true, servers: {}, timeoutMs: 60_000 }),
 });
 
 export type Settings = z.infer<typeof settingsSchema>;

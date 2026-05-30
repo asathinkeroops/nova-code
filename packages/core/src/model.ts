@@ -88,10 +88,11 @@ export function createAnthropicModel(config: AnthropicModelConfig): ModelClient 
       const tools = req.tools.map((t) => ({
         name: t.name,
         description: t.description,
-        input_schema: zodToJsonSchema(t.inputSchema, {
-          target: "jsonSchema7",
-          $refStrategy: "none",
-        }) as Record<string, unknown>,
+        input_schema: (t.inputJsonSchema ??
+          zodToJsonSchema(t.inputSchema, {
+            target: "jsonSchema7",
+            $refStrategy: "none",
+          })) as Record<string, unknown>,
       }));
 
       const budget = req.thinkingBudgetTokens ?? 0;

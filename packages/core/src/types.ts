@@ -80,6 +80,16 @@ export interface ToolDefinition {
   name: string;
   description: string;
   inputSchema: z.ZodTypeAny;
+  /**
+   * Pre-built JSON Schema for the tool's input, used verbatim as the wire
+   * `input_schema` sent to the model instead of deriving one from `inputSchema`
+   * via zod-to-json-schema. Tools that originate outside the type system —
+   * notably MCP servers, which publish native JSON Schema — set this so their
+   * schema reaches the model losslessly; `inputSchema` then only needs to be a
+   * permissive validator (server-side validation is authoritative). Plain data,
+   * so core stays model-agnostic.
+   */
+  inputJsonSchema?: Record<string, unknown>;
 }
 
 export interface AskUserQuestionSpec {

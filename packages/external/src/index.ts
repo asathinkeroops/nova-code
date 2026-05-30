@@ -15,3 +15,23 @@ export {
   type SlashParseError,
   type SlashRunCtx,
 } from "./slash.js";
+
+export {
+  McpManager,
+  transportForSpec,
+  createStdioTransport,
+  createHttpTransport,
+  mcpToolToHandler,
+  mcpToolName,
+  parseMcpToolName,
+  MCP_TOOL_PREFIX,
+  type McpManagerOptions,
+  type McpToolCaller,
+  type McpToolDescriptor,
+  type McpServerSpec,
+  type McpStdioServerSpec,
+  type McpHttpServerSpec,
+  type McpLogger,
+  type McpServerStatus,
+  type McpServerState,
+} from "./mcp/index.js";
