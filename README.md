@@ -51,6 +51,7 @@ pnpm dev [prompt...]                # run an initial prompt, then stay in the RE
 /predict [on|off]    show or toggle next-input prediction placeholder
 /commands [reload]   list registered slash commands; `reload` rescans files
 /skills              list discovered SKILL.md files
+/mcp [tools]         show MCP server status; `tools` lists every bridged tool
 /exit, /quit         leave the REPL
 ```
 
@@ -88,6 +89,44 @@ the `/plan` slash command is a thin wrapper that asks the agent to spawn a `plan
 sub-agent. Per-sub-agent transcripts land under
 `~/.nova/sessions/{id}/subagents/`.
 
+### MCP (Model Context Protocol)
+
+Nova can connect to external [MCP](https://modelcontextprotocol.io) servers at
+startup and surface their tools to the model as `mcp__<server>__<tool>`, gated by
+the normal permission engine (default-**ask**). A server's native JSON Schema is
+sent to the model verbatim, so tools keep their exact contract. Two transports
+are supported: a local subprocess over **stdio**, or a remote **http**/**sse**
+endpoint.
+
+Configure servers under `mcp.servers` in `~/.nova/nova.config.json`:
+
+```jsonc
+{
+  "mcp": {
+    "enabled": true,          // master switch (default true)
+    "timeoutMs": 60000,       // per-tool-call timeout
+    "servers": {
+      "filesystem": {         // stdio (type defaults to "stdio")
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/dir"],
+        "env": { "FOO": "bar" }   // optional; merged over a safe default env
+      },
+      "remote": {             // http / sse
+        "type": "http",
+        "url": "https://example.com/mcp",
+        "headers": { "authorization": "Bearer …" }
+      },
+      "scratch": { "command": "…", "enabled": false }   // skip one server
+    }
+  }
+}
+```
+
+Connections are established in parallel; a server that fails to connect is logged
+and skipped — it never blocks startup or affects the others. Use **`/mcp`** to
+see each server's state and tool count, and **`/mcp tools`** to list every
+bridged tool name.
+
 ## Repository layout
 
 ```
@@ -103,7 +142,7 @@ packages/
   subagent       createSubAgent tool · sub-agent system prompt (explore/plan/general-purpose)
   context        3-layer memory (NOVA.md > CLAUDE.md > AGENTS.md) · auto compact (micro off by default)
   safety         PermissionEngine · approval prompts (rules + cwd-scoped read)
-  external       SlashRegistry · .md slash command loader (MCP/transport stubs reserved)
+  external       SlashRegistry · .md slash command loader · MCP client (stdio/http transports, tool bridge)
   observability  Transcript (JSONL)
   multi-agent, isolation, sdk
                  reserved package slots

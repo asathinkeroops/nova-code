@@ -51,6 +51,7 @@ pnpm dev [prompt...]                # 先跑一轮初始 prompt，再留在 REPL
 /predict [on|off]    查看 / 切换下一条输入预测占位
 /commands [reload]   列出已注册的 slash 命令；`reload` 重新扫盘
 /skills              列出已发现的 SKILL.md
+/mcp [tools]         查看 MCP 服务器状态；`tools` 列出所有桥接的工具
 /exit, /quit         退出
 ```
 
@@ -83,6 +84,40 @@ builtin 命令永远优先；在此之上，`.nova/commands` / `~/.nova/commands
 `maxTurns`、`maxTokens`）；`/plan` slash 命令就是一层薄封装，让 agent 去派生一个 `plan`
 子 agent。每个子 agent 的 transcript 落在 `~/.nova/sessions/{id}/subagents/`。
 
+### MCP（Model Context Protocol）
+
+Nova 可以在启动时连接外部 [MCP](https://modelcontextprotocol.io) 服务器，把它们的
+工具以 `mcp__<服务器>__<工具>` 的形式暴露给模型，并走正常的权限引擎（默认 **ask**）。
+服务器原生的 JSON Schema 会原样发给模型，工具契约保持不变。支持两种传输：本地子进程
+走 **stdio**，或远程 **http**/**sse** 端点。
+
+在 `~/.nova/nova.config.json` 的 `mcp.servers` 下配置：
+
+```jsonc
+{
+  "mcp": {
+    "enabled": true,          // 总开关（默认 true）
+    "timeoutMs": 60000,       // 单次工具调用超时
+    "servers": {
+      "filesystem": {         // stdio（type 默认 "stdio"）
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/dir"],
+        "env": { "FOO": "bar" }   // 可选；会合并到一份安全的默认环境之上
+      },
+      "remote": {             // http / sse
+        "type": "http",
+        "url": "https://example.com/mcp",
+        "headers": { "authorization": "Bearer …" }
+      },
+      "scratch": { "command": "…", "enabled": false }   // 单独跳过某个服务器
+    }
+  }
+}
+```
+
+各服务器并行连接；某个连不上只会记日志并跳过 —— 既不会阻塞启动，也不影响其他服务器。
+用 **`/mcp`** 查看每个服务器的状态和工具数，**`/mcp tools`** 列出所有桥接的工具名。
+
 ## 仓库结构
 
 ```
@@ -98,7 +133,7 @@ packages/
   subagent       createSubAgent 工具 · 子 agent system prompt（explore/plan/general-purpose）
   context        三层记忆（NOVA.md > CLAUDE.md > AGENTS.md）· auto compact（micro 默认关闭）
   safety         PermissionEngine · approval 提示（规则匹配 + read 限定在 cwd）
-  external       SlashRegistry · .md slash 命令加载（MCP / transport 仍是占位）
+  external       SlashRegistry · .md slash 命令加载 · MCP 客户端（stdio/http 传输、工具桥接）
   observability  Transcript (JSONL)
   multi-agent, isolation, sdk
                  预留位
