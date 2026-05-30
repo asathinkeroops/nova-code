@@ -1,233 +1,219 @@
 # Nova
 
-![Nova screenshot](snapshots/screen.png)
+![Nova 截图](snapshots/screen.png)
 
-> A terminal coding agent, deeply tuned for DeepSeek.
+> 一个跑在终端里的 coding agent，深度适配 DeepSeek。
 
-Nova is a coding agent that lives in your terminal — reads code, runs commands, edits files, and drives a task to done through tool use. It speaks the Anthropic message shape internally, but the model layer is built around **DeepSeek**: thinking is wired to DeepSeek's `output_config.effort` (not Anthropic's `budget_tokens`), the wire format is auto-detected from the model id, the request shape and context-management defaults are kept **cache-friendly** so DeepSeek's automatic context cache keeps hitting, and the default prompts/permissions are tuned for DeepSeek's behavior. Other Anthropic-compatible endpoints still work — DeepSeek is the path that gets first-class care.
+Nova 是一个终端里的编码 agent —— 读代码、跑命令、改文件，通过工具调用把一项任务推到完成。内部消息走的是 Anthropic 的格式，但模型层是围绕 **DeepSeek** 做的：thinking 接到 DeepSeek 的 `output_config.effort`（而不是 Anthropic 的 `budget_tokens`），wire format 会根据模型 id 自动判断，请求结构和上下文管理的默认值都做得**对缓存友好**，让 DeepSeek 的自动上下文缓存持续命中，默认 prompt 和权限规则也按 DeepSeek 的表现调过。其他 Anthropic 兼容端点也能跑，只是 DeepSeek 是第一优先级。
 
-Under the hood Nova is a loop-centric harness: `@nova/core` exposes a model-agnostic agent loop and a single `HookRegistry` extension point; tools, permissions, context, observability, skills, and slash commands all attach through it. `@nova/agent` packages the loop into a per-turn `createAgent` with persistence and transcript wiring, and `apps/cli` is what you actually run — the `nova` binary, a full-screen Ink/React REPL with mouse scroll/selection and a live status line.
+底层上 Nova 是一个 loop-centric 的 harness：`@nova/core` 提供模型无关的 agent loop 和统一的 `HookRegistry` 扩展点，工具、权限、上下文、可观测性、skills、slash 命令都从这里接入；`@nova/agent` 把 loop 封成按 turn 跑的 `createAgent`，自带持久化和 transcript 写入；`apps/cli` 是真正在跑的入口 —— `nova` 二进制，一个全屏 Ink/React REPL，支持鼠标滚动/选区和实时状态行。
 
-The loop runs tool calls with **bounded concurrency** (default 3 per turn), and the model can spawn **sub-agents** via the `createSubAgent` tool — fresh-context workers (`explore` / `plan` / `general-purpose`) that run in-process and report a single final message back, so large investigations stay out of the main context.
+loop 以**有界并发**跑工具调用（每轮默认 3 个），模型还能通过 `createSubAgent` 工具派生**子 agent** —— 全新上下文的 worker（`explore` / `plan` / `general-purpose`），在进程内运行、只把一条最终消息汇报回来，从而把庞大的调查过程挡在主上下文之外。
 
-## Core capabilities
+## 核心能力
 
-- **DeepSeek deep customization** *(headline feature)* — thinking mapped to DeepSeek's `output_config.effort` (not `budget_tokens`), wire-format auto-detection from the model id, a byte-stable request shape that keeps DeepSeek's automatic context cache hitting, and DeepSeek error-code translation (400/401/402/422/429/500/503) with internal retry of the transient ones. Other Anthropic-compatible endpoints still work.
-- **Agentic coding loop** — reads code, edits files, runs commands, and drives a task to done through tool use; independent tool calls in a turn run with bounded concurrency (default 3).
-- **Code & system tools** — file read / write / edit, `glob` + `grep` search, `bash` and long-running commands, web fetch / search, notebook edit, and ask-user prompts.
-- **Extended thinking** — `off` / `low` / `medium` / `high` / `max`, or an explicit token budget.
-- **Plan mode** — `/plan` delegates a read-only investigation and returns a step-by-step plan before touching anything.
-- **Sub-agents** — fresh-context `explore` / `plan` / `general-purpose` workers that keep large investigations out of the main context.
-- **Memory** — CLAUDE.md-style project & user memory, per directory `NOVA.md` > `CLAUDE.md` > `AGENTS.md` (highest wins, no merging).
-- **Context management** — append-only history with auto-compaction under context-window pressure.
-- **Permissions** — rule-based gating, default **ask**, cwd-scoped read access, surfaced as interactive approvals.
-- **Skills** — `SKILL.md` files discovered on startup, indexed into the prompt, and pulled in full on demand via `loadSkill`.
-- **Slash commands** — builtins plus custom `.md` commands auto-loaded from project / user dirs.
-- **MCP** — connect external [MCP](https://modelcontextprotocol.io) servers (stdio / http / sse) and bridge their tools to the model, gated by permissions.
-- **Hooks** — a single extension point everything attaches through: permissions, compaction, transcript writing, UI updates, streaming.
-- **Sessions & checkpointing** — resumable sessions (`--resume` / `--continue`) with append-only persistence; `/rewind` to an earlier point.
-- **Interactive TUI** — a full-screen REPL with live streaming output, mouse scroll & selection, a live status line, and next-input prediction.
+- **DeepSeek 深度定制** *(头号特性)* —— thinking 映射到 DeepSeek 的 `output_config.effort`（而非 `budget_tokens`），wire format 按模型 id 自动判断，请求结构保持逐字节稳定以持续命中 DeepSeek 的自动上下文缓存，以及 DeepSeek 错误码翻译（400/401/402/422/429/500/503）并对瞬时错误内部重试。其他 Anthropic 兼容端点也能跑。
+- **Agentic 编码循环** —— 读代码、改文件、跑命令，通过工具调用把任务推到完成；一轮内相互独立的工具调用以有界并发运行（默认 3 个）。
+- **代码与系统工具** —— 文件 read / write / edit、`glob` + `grep` 搜索、`bash` 与长时命令、web fetch / search、notebook 编辑、ask-user 询问。
+- **扩展 thinking** —— `off` / `low` / `medium` / `high` / `max`，或显式的 token 预算。
+- **Plan 模式** —— `/plan` 委派一次只读调查，在动手改动前返回分步计划。
+- **子 agent** —— 全新上下文的 `explore` / `plan` / `general-purpose` worker，把庞大的调查过程挡在主上下文之外。
+- **Memory** —— CLAUDE.md 式的项目与用户 memory，每个目录按 `NOVA.md` > `CLAUDE.md` > `AGENTS.md`（最高者胜，不合并）。
+- **上下文管理** —— append-only 历史，上下文窗口压力下自动压缩。
+- **权限** —— 基于规则的拦截，默认 **ask**，read 按 cwd 作用域放行，以交互式审批呈现。
+- **Skills** —— 启动时扫描 `SKILL.md`，把索引注入 prompt，并通过 `loadSkill` 按需拉取全文。
+- **Slash 命令** —— 内置命令，外加从项目 / 用户目录自动加载的自定义 `.md` 命令。
+- **MCP** —— 连接外部 [MCP](https://modelcontextprotocol.io) 服务器（stdio / http / sse），把工具桥接给模型，并受权限管控。
+- **Hooks** —— 一切都从单一扩展点接入：权限、压缩、transcript 写入、UI 更新、流式输出。
+- **会话与检查点** —— 可恢复的会话（`--resume` / `--continue`）配合 append-only 持久化；`/rewind` 回到更早的节点。
+- **交互式 TUI** —— 全屏 REPL，带实时流式输出、鼠标滚动与选区、实时状态行，以及下一步输入预测。
 
-## Quick start
+## 快速开始
 
-Requires **Node ≥ 20** (see `.nvmrc`) and **pnpm 10.28.2**.
+环境要求：**Node ≥ 20**（见 `.nvmrc`），**pnpm 10.28.2**。
 
 ```bash
 pnpm install
-pnpm dev                                   # launch the REPL (tsx runs apps/cli/src/index.ts)
-pnpm dev "add unit tests for this function" # one-shot prompt
+pnpm dev                                # 启动 REPL（tsx 运行 apps/cli/src/index.ts）
+pnpm dev "帮我把这个函数加单测"          # 先跑一轮 prompt，再进入 REPL
 ```
 
-First launch drops you into an interactive setup that writes `~/.nova/nova.config.json` (API key, model, session dir, …). You can also edit that file by hand.
+首次启动会进入交互式配置向导写入 `~/.nova/nova.config.json`（API key、模型、session 目录等）。也可以手动编辑。
 
-### CLI flags
+### CLI 常用参数
 
 ```bash
-pnpm dev [prompt...]                # run an initial prompt, then stay in the REPL
-  -p, --prompt <text>               # initial prompt (alternative to positional)
-  -m, --model <name>                # override model for this run
-  -t, --think off|low|medium|high|max   # extended-thinking level (or integer budget)
-  --cwd <dir>                       # working directory for tools
-  --resume <id>                     # resume a specific session
-  -c, --continue                    # resume the most recent session
-  --list-sessions                   # list saved sessions and exit
-  --max-turns <n>                   # cap loop iterations
-  --no-transcript                   # skip transcript writing
-  --no-pretty                       # disable pretty logging
+pnpm dev [prompt...]                # 先跑一轮初始 prompt，再留在 REPL
+  -p, --prompt <text>               # 初始 prompt（位置参数的替代写法）
+  -m, --model <name>                # 临时覆盖模型
+  -t, --think off|low|medium|high|max   # extended thinking 等级（或整数预算）
+  --cwd <dir>                       # 工具的工作目录
+  --resume <id>                     # 恢复指定 session
+  -c, --continue                    # 恢复最近一个 session
+  --list-sessions                   # 列出历史 session 后退出
+  --max-turns <n>                   # 单轮最大循环次数
+  --no-transcript                   # 不写 transcript
+  --no-pretty                       # 关闭 pretty 日志
 ```
 
-### Slash commands (inside the REPL)
+### REPL 内置 slash 命令
 
 ```
-/help                this help
-/model [<name>]      show or change the active model
-/think [<level>]     show or change extended-thinking level
-/clear               clear conversation history (keeps session)
-/compact [focus…]    summarize history into a single message
-/plan <goal>         delegate investigation to a read-only plan sub-agent, then present a plan
-/resume [<id>]       switch to a saved session (no arg = pick from list)
-/predict [on|off]    show or toggle next-input prediction placeholder
-/commands [reload]   list registered slash commands; `reload` rescans files
-/skills              list discovered SKILL.md files
-/mcp [tools]         show MCP server status; `tools` lists every bridged tool
-/exit, /quit         leave the REPL
+/help                帮助
+/model [<name>]      查看 / 切换模型
+/think [<level>]     查看 / 切换 thinking 等级
+/clear               清空会话历史（保留 session）
+/compact [focus…]    把历史压缩成单条摘要消息
+/plan <goal>         把调查交给只读 plan 子 agent，再给出实现计划
+/resume [<id>]       切到指定 session（不带参数则从列表选）
+/predict [on|off]    查看 / 切换下一条输入预测占位
+/commands [reload]   列出已注册的 slash 命令；`reload` 重新扫盘
+/skills              列出已发现的 SKILL.md
+/mcp [tools]         查看 MCP 服务器状态；`tools` 列出所有桥接的工具
+/exit, /quit         退出
 ```
 
-Builtins always win on name collisions; on top of them, any `*.md` file in
-`.nova/commands` (project) or `~/.nova/commands` (user) — also `.claude/commands`
-and `~/.claude/commands` — is auto-registered as a slash command. The front
-matter declares the description, arg hint, and arg spec; the body is sent as the
-next prompt with placeholders expanded.
+builtin 命令永远优先；在此之上，`.nova/commands` / `~/.nova/commands`（也兼容
+`.claude/commands` / `~/.claude/commands`）下任意 `*.md` 都会被自动注册为 slash
+命令 —— 前置 frontmatter 声明 description / arg hint / 参数，正文做占位符替换
+后作为下一轮 prompt 发出去。
 
-`Ctrl+D` also exits; `Esc` interrupts the current turn.
+按 `Ctrl+D` 也能退出，按 `Esc` 中断当前回合。
 
 ### Skills
 
-Drop a `SKILL.md` under `.nova/skills/<name>/` (project) or `~/.nova/skills/<name>/`
-(user) — also `.claude/skills` / `~/.claude/skills`. Nova scans them on startup,
-injects the name/description index into the system prompt, and exposes a
-`loadSkill` tool the model can call to pull the full body on demand. `/skills`
-shows what was found and where each one was loaded from.
+把 `SKILL.md` 放在 `.nova/skills/<name>/`（项目层）或 `~/.nova/skills/<name>/`
+（用户层）下（也兼容 `.claude/skills` / `~/.claude/skills`）。Nova 启动时扫描，
+将 name/description 索引注入 system prompt，并暴露 `loadSkill` 工具供模型按需
+拉取完整正文。`/skills` 可以查看找到了哪些、各自来自哪里。
 
-### Sub-agents
+### 子 agent
 
-The model can delegate work with the `createSubAgent` tool. A sub-agent runs
-in-process with a **fresh context** (it never sees the parent conversation) and
-the parent's tool set minus `createSubAgent` itself — so it can't recurse. Three
-types:
+模型可以用 `createSubAgent` 工具把活儿派出去。子 agent 在进程内运行，带**全新上下文**
+（永远看不到父对话），工具集是父 agent 的工具减去 `createSubAgent` 本身 —— 所以不会
+递归。三种类型：
 
-- `explore` — read-only retrieval (no write/edit/bash); locates code and reports paths/usages.
-- `plan` — read-only planning; investigates a task and returns a step-by-step plan.
-- `general-purpose` — full tool access for work that changes files or runs commands.
+- `explore` —— 只读检索（没有 write/edit/bash），定位代码并汇报路径/调用点。
+- `plan` —— 只读规划，调查任务后给出分步实现计划。
+- `general-purpose` —— 完整工具权限，用于需要改文件或跑命令的活儿。
 
-Multiple `createSubAgent` calls in one turn run concurrently (bounded by
-`toolConcurrency`). The parent receives only each sub-agent's final message.
-Configure via `settings.subagent` (`enabled`, `model`, `maxTurns`, `maxTokens`);
-the `/plan` slash command is a thin wrapper that asks the agent to spawn a `plan`
-sub-agent. Per-sub-agent transcripts land under
-`~/.nova/sessions/{id}/subagents/`.
+同一轮里的多个 `createSubAgent` 调用会并发执行（受 `toolConcurrency` 限制）。父 agent
+只会收到每个子 agent 的最终消息。通过 `settings.subagent` 配置（`enabled`、`model`、
+`maxTurns`、`maxTokens`）；`/plan` slash 命令就是一层薄封装，让 agent 去派生一个 `plan`
+子 agent。每个子 agent 的 transcript 落在 `~/.nova/sessions/{id}/subagents/`。
 
-### MCP (Model Context Protocol)
+### MCP（Model Context Protocol）
 
-Nova can connect to external [MCP](https://modelcontextprotocol.io) servers at
-startup and surface their tools to the model as `mcp__<server>__<tool>`, gated by
-the normal permission engine (default-**ask**). A server's native JSON Schema is
-sent to the model verbatim, so tools keep their exact contract. Two transports
-are supported: a local subprocess over **stdio**, or a remote **http**/**sse**
-endpoint.
+Nova 可以在启动时连接外部 [MCP](https://modelcontextprotocol.io) 服务器，把它们的
+工具以 `mcp__<服务器>__<工具>` 的形式暴露给模型，并走正常的权限引擎（默认 **ask**）。
+服务器原生的 JSON Schema 会原样发给模型，工具契约保持不变。支持两种传输：本地子进程
+走 **stdio**，或远程 **http**/**sse** 端点。
 
-Configure servers under `mcp.servers` in `~/.nova/nova.config.json`:
+在 `~/.nova/nova.config.json` 的 `mcp.servers` 下配置：
 
 ```jsonc
 {
   "mcp": {
-    "enabled": true,          // master switch (default true)
-    "timeoutMs": 60000,       // per-tool-call timeout
+    "enabled": true,          // 总开关（默认 true）
+    "timeoutMs": 60000,       // 单次工具调用超时
     "servers": {
-      "filesystem": {         // stdio (type defaults to "stdio")
+      "filesystem": {         // stdio（type 默认 "stdio"）
         "command": "npx",
         "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/dir"],
-        "env": { "FOO": "bar" }   // optional; merged over a safe default env
+        "env": { "FOO": "bar" }   // 可选；会合并到一份安全的默认环境之上
       },
       "remote": {             // http / sse
         "type": "http",
         "url": "https://example.com/mcp",
         "headers": { "authorization": "Bearer …" }
       },
-      "scratch": { "command": "…", "enabled": false }   // skip one server
+      "scratch": { "command": "…", "enabled": false }   // 单独跳过某个服务器
     }
   }
 }
 ```
 
-Connections are established in parallel; a server that fails to connect is logged
-and skipped — it never blocks startup or affects the others. Use **`/mcp`** to
-see each server's state and tool count, and **`/mcp tools`** to list every
-bridged tool name.
+各服务器并行连接；某个连不上只会记日志并跳过 —— 既不会阻塞启动，也不影响其他服务器。
+用 **`/mcp`** 查看每个服务器的状态和工具数，**`/mcp tools`** 列出所有桥接的工具名。
 
-### Prompt caching (DeepSeek)
+### 上下文缓存（DeepSeek）
 
-DeepSeek's Anthropic-compatible endpoint does automatic, server-side **context
-caching**: any request whose prefix exactly matches an earlier one reads the
-shared tokens straight from cache (billed at a fraction of the normal input
-rate) instead of reprocessing them. There is no `cache_control` to set — the
-only thing that matters is that the message prefix stays byte-stable from one
-turn to the next. Nova is built around keeping it stable:
+DeepSeek 的 Anthropic 兼容端点会做自动的、服务端的**上下文缓存**：只要某个请求的
+前缀和之前的某个请求完全一致，重复的那部分 token 就直接从缓存里读出来（按远低于
+正常输入的价格计费），而不是重新算一遍。这里没有 `cache_control` 之类的开关要设 ——
+唯一要紧的是消息前缀在一轮一轮之间保持逐字节稳定。Nova 整个就是围绕「保持前缀稳定」
+来设计的：
 
-- **Append-only history.** Each turn appends new messages and never rewrites
-  earlier ones, so the cached prefix survives. Persistence mirrors this —
-  `messages.jsonl` is written append-only as long as the on-disk prefix is
-  intact, and only rewritten from the first point that actually diverged.
-- **Micro-compaction is OFF by default.** It would rewrite older `tool_result`s
-  every turn, invalidating the cache from the rewrite point to the end — and the
-  tokens it trims would otherwise bill at the cheap cache-read rate, so on
-  DeepSeek the net is marginal-to-negative. Auto-compaction stays on: it only
-  fires under context-window pressure, as a single deliberate prefix reset. Flip
-  `compact.micro.enabled = true` only on a provider with no prefix caching.
-- **Cache accounting.** Each response's `cache_read_input_tokens` /
-  `cache_creation_input_tokens` are surfaced and rolled into the per-session
-  usage totals, so you can see how much of each turn actually hit the cache.
+- **历史只追加。** 每轮只往后追加新消息，从不改写更早的内容，所以缓存前缀能存活。
+  持久化也是同样逻辑 —— 只要磁盘上的前缀没变，`messages.jsonl` 就只做追加写，
+  只有真正出现分叉时才从分叉点开始重写。
+- **micro 压缩默认关闭。** 它每轮都会改写更早的 `tool_result`，会把从改写点到结尾的
+  缓存全部失效 —— 而它裁掉的那些 token 本来就按便宜的缓存读取价计费，所以在 DeepSeek 上
+  净收益是「微弱到负」。auto 压缩仍然开着：它只在上下文窗口吃紧时触发，作为一次有意为之的
+  前缀重置。只有在没有前缀缓存的 provider 上才建议把 `compact.micro.enabled` 设为 `true`。
+- **缓存计量。** 每个响应的 `cache_read_input_tokens` / `cache_creation_input_tokens`
+  都会被读出来并累加进本 session 的用量统计，所以你能看到每一轮里到底有多少命中了缓存。
 
-## Repository layout
+## 仓库结构
 
 ```
 packages/
-  core           agent loop · model client · HookRegistry · message/stop-reason types
-  agent          createAgent: per-turn driver + persistence + transcript wiring
-  runtime        settings (zod) · pino logger · session storage
-  tools          ToolRegistry · dispatcher · built-ins
+  core           agent loop · model client · HookRegistry · message/stop-reason 类型
+  agent          createAgent：按 turn 跑的驱动 + 持久化 + transcript 接线
+  runtime        settings (zod) · pino logger · session 存储
+  tools          ToolRegistry · dispatcher · 内置工具
                    bash · read · write · edit · glob · grep · notebook-edit
                    webfetch · websearch · askUserQuestion
                    todo (todoCreate/Update/Get/Clear) · task (taskCreate/Update/Get/List/Clear)
                    runLongRunningCommand / checkLongRunningCommand · loadSkill
-  subagent       createSubAgent tool · sub-agent system prompt (explore/plan/general-purpose)
-  context        3-layer memory (NOVA.md > CLAUDE.md > AGENTS.md) · auto compact (micro off by default)
-  safety         PermissionEngine · approval prompts (rules + cwd-scoped read)
-  external       SlashRegistry · .md slash command loader · MCP client (stdio/http transports, tool bridge)
+  subagent       createSubAgent 工具 · 子 agent system prompt（explore/plan/general-purpose）
+  context        三层记忆（NOVA.md > CLAUDE.md > AGENTS.md）· auto compact（micro 默认关闭）
+  safety         PermissionEngine · approval 提示（规则匹配 + read 限定在 cwd）
+  external       SlashRegistry · .md slash 命令加载 · MCP 客户端（stdio/http 传输、工具桥接）
   observability  Transcript (JSONL)
   multi-agent, isolation, sdk
-                 reserved package slots
+                 预留位
 apps/
-  cli            the nova binary (Ink/React REPL, only active app)
-  http, vscode   placeholders, not implemented
-eval/            replay harness + golden cases (excluded from main build / eslint / tsconfig)
-docs/            design notes (skills, ask-user)
+  cli            nova 二进制入口（Ink/React REPL，唯一在跑的 app）
+  http, vscode   占位，未实现
+eval/            replay harness + 黄金 case（不走主构建，eslint/tsconfig 已排除）
+docs/            设计笔记（skills、ask-user）
 ```
 
-Inside the workspace, `@nova/*` packages import each other directly from `./src/index.ts`; on publish, `publishConfig` switches that to `dist/`.
+`@nova/*` package 在 workspace 内通过 `./src/index.ts` 直接互相 import；发布时通过 `publishConfig` 切到 `dist/`。
 
-## Where things live on disk
+## 数据落在哪
 
-| Item | Path |
+| 内容 | 路径 |
 |------|------|
-| Global config | `~/.nova/nova.config.json` |
-| Sessions | `~/.nova/sessions/{id}/` |
-| Transcript (observer event stream) | `~/.nova/sessions/{id}/transcript.jsonl` |
-| Replayable message history | `~/.nova/sessions/{id}/messages.jsonl` |
-| Sub-agent transcripts/messages | `~/.nova/sessions/{id}/subagents/` |
-| Session log | `~/.nova/sessions/{id}/session.log` |
-| Memory (project layer) | Walks up from cwd; at each directory picks the highest-priority of `NOVA.md` > `CLAUDE.md` > `AGENTS.md` (no merging within a directory) |
-| Memory (user layer) | `~/.nova/NOVA.md` → `~/.claude/CLAUDE.md` → `~/.config/agents/AGENTS.md` (first existing wins) |
+| 全局配置 | `~/.nova/nova.config.json` |
+| 历史 session | `~/.nova/sessions/{id}/` |
+| transcript (observer 事件流) | `~/.nova/sessions/{id}/transcript.jsonl` |
+| 可重放 message 历史 | `~/.nova/sessions/{id}/messages.jsonl` |
+| 子 agent transcript/message | `~/.nova/sessions/{id}/subagents/` |
+| session 日志 | `~/.nova/sessions/{id}/session.log` |
+| 记忆文件（项目层） | 从 cwd 向上递归，每层按 `NOVA.md` > `CLAUDE.md` > `AGENTS.md` 取最优先的一个（同目录不合并） |
+| 记忆文件（用户层） | `~/.nova/NOVA.md` → `~/.claude/CLAUDE.md` → `~/.config/agents/AGENTS.md`（按顺序取第一个存在的） |
 
-## Development
+## 开发
 
 ```bash
-pnpm build                 # build all packages and apps (tsup, recursive)
-pnpm typecheck             # tsc --noEmit across the workspace
-pnpm test                  # vitest run
+pnpm build                # 全量构建（tsup，递归）
+pnpm typecheck            # tsc --noEmit
+pnpm test                 # vitest run
 pnpm test:watch
-pnpm vitest run path/to/file.test.ts   # single file
-pnpm vitest run -t "name"              # filter by test name
+pnpm vitest run path/to/file.test.ts   # 跑单个测试文件
+pnpm vitest run -t "name"              # 按名字过滤
 pnpm lint / pnpm lint:fix
 pnpm format / pnpm format:check
 ```
 
-Per-package scripts work via `pnpm --filter @nova/<name> <script>`. Tests are picked up from `packages/*/src/**/*.test.ts(x)` (co-located with source).
+单包脚本可通过 `pnpm --filter @nova/<name> <script>` 调用。测试文件按 `packages/*/src/**/*.test.ts(x)` 收集，和源码并排放。
 
-New collaborators should start here:
+新加协作者请先读：
 
-- `CLAUDE.md` — project guide written for AI assistants (architecture invariants, loop contract, ESM `.js`-extension convention, zod-at-boundaries rule)
-- `agent-harness-loop-architecture.html` — architecture diagram and overview
+- `CLAUDE.md` — 给 AI assistant 看的项目导览（架构约定、loop 契约、ESM `.js` 后缀、zod 边界等）
+- `agent-harness-loop-architecture.html` — 架构总图
 
 ## License
 

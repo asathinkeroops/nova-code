@@ -1,0 +1,234 @@
+# Nova
+
+![Nova screenshot](snapshots/screen.png)
+
+> A terminal coding agent, deeply tuned for DeepSeek.
+
+Nova is a coding agent that lives in your terminal — reads code, runs commands, edits files, and drives a task to done through tool use. It speaks the Anthropic message shape internally, but the model layer is built around **DeepSeek**: thinking is wired to DeepSeek's `output_config.effort` (not Anthropic's `budget_tokens`), the wire format is auto-detected from the model id, the request shape and context-management defaults are kept **cache-friendly** so DeepSeek's automatic context cache keeps hitting, and the default prompts/permissions are tuned for DeepSeek's behavior. Other Anthropic-compatible endpoints still work — DeepSeek is the path that gets first-class care.
+
+Under the hood Nova is a loop-centric harness: `@nova/core` exposes a model-agnostic agent loop and a single `HookRegistry` extension point; tools, permissions, context, observability, skills, and slash commands all attach through it. `@nova/agent` packages the loop into a per-turn `createAgent` with persistence and transcript wiring, and `apps/cli` is what you actually run — the `nova` binary, a full-screen Ink/React REPL with mouse scroll/selection and a live status line.
+
+The loop runs tool calls with **bounded concurrency** (default 3 per turn), and the model can spawn **sub-agents** via the `createSubAgent` tool — fresh-context workers (`explore` / `plan` / `general-purpose`) that run in-process and report a single final message back, so large investigations stay out of the main context.
+
+## Core capabilities
+
+- **DeepSeek deep customization** *(headline feature)* — thinking mapped to DeepSeek's `output_config.effort` (not `budget_tokens`), wire-format auto-detection from the model id, a byte-stable request shape that keeps DeepSeek's automatic context cache hitting, and DeepSeek error-code translation (400/401/402/422/429/500/503) with internal retry of the transient ones. Other Anthropic-compatible endpoints still work.
+- **Agentic coding loop** — reads code, edits files, runs commands, and drives a task to done through tool use; independent tool calls in a turn run with bounded concurrency (default 3).
+- **Code & system tools** — file read / write / edit, `glob` + `grep` search, `bash` and long-running commands, web fetch / search, notebook edit, and ask-user prompts.
+- **Extended thinking** — `off` / `low` / `medium` / `high` / `max`, or an explicit token budget.
+- **Plan mode** — `/plan` delegates a read-only investigation and returns a step-by-step plan before touching anything.
+- **Sub-agents** — fresh-context `explore` / `plan` / `general-purpose` workers that keep large investigations out of the main context.
+- **Memory** — CLAUDE.md-style project & user memory, per directory `NOVA.md` > `CLAUDE.md` > `AGENTS.md` (highest wins, no merging).
+- **Context management** — append-only history with auto-compaction under context-window pressure.
+- **Permissions** — rule-based gating, default **ask**, cwd-scoped read access, surfaced as interactive approvals.
+- **Skills** — `SKILL.md` files discovered on startup, indexed into the prompt, and pulled in full on demand via `loadSkill`.
+- **Slash commands** — builtins plus custom `.md` commands auto-loaded from project / user dirs.
+- **MCP** — connect external [MCP](https://modelcontextprotocol.io) servers (stdio / http / sse) and bridge their tools to the model, gated by permissions.
+- **Hooks** — a single extension point everything attaches through: permissions, compaction, transcript writing, UI updates, streaming.
+- **Sessions & checkpointing** — resumable sessions (`--resume` / `--continue`) with append-only persistence; `/rewind` to an earlier point.
+- **Interactive TUI** — a full-screen REPL with live streaming output, mouse scroll & selection, a live status line, and next-input prediction.
+
+## Quick start
+
+Requires **Node ≥ 20** (see `.nvmrc`) and **pnpm 10.28.2**.
+
+```bash
+pnpm install
+pnpm dev                                   # launch the REPL (tsx runs apps/cli/src/index.ts)
+pnpm dev "add unit tests for this function" # one-shot prompt
+```
+
+First launch drops you into an interactive setup that writes `~/.nova/nova.config.json` (API key, model, session dir, …). You can also edit that file by hand.
+
+### CLI flags
+
+```bash
+pnpm dev [prompt...]                # run an initial prompt, then stay in the REPL
+  -p, --prompt <text>               # initial prompt (alternative to positional)
+  -m, --model <name>                # override model for this run
+  -t, --think off|low|medium|high|max   # extended-thinking level (or integer budget)
+  --cwd <dir>                       # working directory for tools
+  --resume <id>                     # resume a specific session
+  -c, --continue                    # resume the most recent session
+  --list-sessions                   # list saved sessions and exit
+  --max-turns <n>                   # cap loop iterations
+  --no-transcript                   # skip transcript writing
+  --no-pretty                       # disable pretty logging
+```
+
+### Slash commands (inside the REPL)
+
+```
+/help                this help
+/model [<name>]      show or change the active model
+/think [<level>]     show or change extended-thinking level
+/clear               clear conversation history (keeps session)
+/compact [focus…]    summarize history into a single message
+/plan <goal>         delegate investigation to a read-only plan sub-agent, then present a plan
+/resume [<id>]       switch to a saved session (no arg = pick from list)
+/predict [on|off]    show or toggle next-input prediction placeholder
+/commands [reload]   list registered slash commands; `reload` rescans files
+/skills              list discovered SKILL.md files
+/mcp [tools]         show MCP server status; `tools` lists every bridged tool
+/exit, /quit         leave the REPL
+```
+
+Builtins always win on name collisions; on top of them, any `*.md` file in
+`.nova/commands` (project) or `~/.nova/commands` (user) — also `.claude/commands`
+and `~/.claude/commands` — is auto-registered as a slash command. The front
+matter declares the description, arg hint, and arg spec; the body is sent as the
+next prompt with placeholders expanded.
+
+`Ctrl+D` also exits; `Esc` interrupts the current turn.
+
+### Skills
+
+Drop a `SKILL.md` under `.nova/skills/<name>/` (project) or `~/.nova/skills/<name>/`
+(user) — also `.claude/skills` / `~/.claude/skills`. Nova scans them on startup,
+injects the name/description index into the system prompt, and exposes a
+`loadSkill` tool the model can call to pull the full body on demand. `/skills`
+shows what was found and where each one was loaded from.
+
+### Sub-agents
+
+The model can delegate work with the `createSubAgent` tool. A sub-agent runs
+in-process with a **fresh context** (it never sees the parent conversation) and
+the parent's tool set minus `createSubAgent` itself — so it can't recurse. Three
+types:
+
+- `explore` — read-only retrieval (no write/edit/bash); locates code and reports paths/usages.
+- `plan` — read-only planning; investigates a task and returns a step-by-step plan.
+- `general-purpose` — full tool access for work that changes files or runs commands.
+
+Multiple `createSubAgent` calls in one turn run concurrently (bounded by
+`toolConcurrency`). The parent receives only each sub-agent's final message.
+Configure via `settings.subagent` (`enabled`, `model`, `maxTurns`, `maxTokens`);
+the `/plan` slash command is a thin wrapper that asks the agent to spawn a `plan`
+sub-agent. Per-sub-agent transcripts land under
+`~/.nova/sessions/{id}/subagents/`.
+
+### MCP (Model Context Protocol)
+
+Nova can connect to external [MCP](https://modelcontextprotocol.io) servers at
+startup and surface their tools to the model as `mcp__<server>__<tool>`, gated by
+the normal permission engine (default-**ask**). A server's native JSON Schema is
+sent to the model verbatim, so tools keep their exact contract. Two transports
+are supported: a local subprocess over **stdio**, or a remote **http**/**sse**
+endpoint.
+
+Configure servers under `mcp.servers` in `~/.nova/nova.config.json`:
+
+```jsonc
+{
+  "mcp": {
+    "enabled": true,          // master switch (default true)
+    "timeoutMs": 60000,       // per-tool-call timeout
+    "servers": {
+      "filesystem": {         // stdio (type defaults to "stdio")
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/dir"],
+        "env": { "FOO": "bar" }   // optional; merged over a safe default env
+      },
+      "remote": {             // http / sse
+        "type": "http",
+        "url": "https://example.com/mcp",
+        "headers": { "authorization": "Bearer …" }
+      },
+      "scratch": { "command": "…", "enabled": false }   // skip one server
+    }
+  }
+}
+```
+
+Connections are established in parallel; a server that fails to connect is logged
+and skipped — it never blocks startup or affects the others. Use **`/mcp`** to
+see each server's state and tool count, and **`/mcp tools`** to list every
+bridged tool name.
+
+### Prompt caching (DeepSeek)
+
+DeepSeek's Anthropic-compatible endpoint does automatic, server-side **context
+caching**: any request whose prefix exactly matches an earlier one reads the
+shared tokens straight from cache (billed at a fraction of the normal input
+rate) instead of reprocessing them. There is no `cache_control` to set — the
+only thing that matters is that the message prefix stays byte-stable from one
+turn to the next. Nova is built around keeping it stable:
+
+- **Append-only history.** Each turn appends new messages and never rewrites
+  earlier ones, so the cached prefix survives. Persistence mirrors this —
+  `messages.jsonl` is written append-only as long as the on-disk prefix is
+  intact, and only rewritten from the first point that actually diverged.
+- **Micro-compaction is OFF by default.** It would rewrite older `tool_result`s
+  every turn, invalidating the cache from the rewrite point to the end — and the
+  tokens it trims would otherwise bill at the cheap cache-read rate, so on
+  DeepSeek the net is marginal-to-negative. Auto-compaction stays on: it only
+  fires under context-window pressure, as a single deliberate prefix reset. Flip
+  `compact.micro.enabled = true` only on a provider with no prefix caching.
+- **Cache accounting.** Each response's `cache_read_input_tokens` /
+  `cache_creation_input_tokens` are surfaced and rolled into the per-session
+  usage totals, so you can see how much of each turn actually hit the cache.
+
+## Repository layout
+
+```
+packages/
+  core           agent loop · model client · HookRegistry · message/stop-reason types
+  agent          createAgent: per-turn driver + persistence + transcript wiring
+  runtime        settings (zod) · pino logger · session storage
+  tools          ToolRegistry · dispatcher · built-ins
+                   bash · read · write · edit · glob · grep · notebook-edit
+                   webfetch · websearch · askUserQuestion
+                   todo (todoCreate/Update/Get/Clear) · task (taskCreate/Update/Get/List/Clear)
+                   runLongRunningCommand / checkLongRunningCommand · loadSkill
+  subagent       createSubAgent tool · sub-agent system prompt (explore/plan/general-purpose)
+  context        3-layer memory (NOVA.md > CLAUDE.md > AGENTS.md) · auto compact (micro off by default)
+  safety         PermissionEngine · approval prompts (rules + cwd-scoped read)
+  external       SlashRegistry · .md slash command loader · MCP client (stdio/http transports, tool bridge)
+  observability  Transcript (JSONL)
+  multi-agent, isolation, sdk
+                 reserved package slots
+apps/
+  cli            the nova binary (Ink/React REPL, only active app)
+  http, vscode   placeholders, not implemented
+eval/            replay harness + golden cases (excluded from main build / eslint / tsconfig)
+docs/            design notes (skills, ask-user)
+```
+
+Inside the workspace, `@nova/*` packages import each other directly from `./src/index.ts`; on publish, `publishConfig` switches that to `dist/`.
+
+## Where things live on disk
+
+| Item | Path |
+|------|------|
+| Global config | `~/.nova/nova.config.json` |
+| Sessions | `~/.nova/sessions/{id}/` |
+| Transcript (observer event stream) | `~/.nova/sessions/{id}/transcript.jsonl` |
+| Replayable message history | `~/.nova/sessions/{id}/messages.jsonl` |
+| Sub-agent transcripts/messages | `~/.nova/sessions/{id}/subagents/` |
+| Session log | `~/.nova/sessions/{id}/session.log` |
+| Memory (project layer) | Walks up from cwd; at each directory picks the highest-priority of `NOVA.md` > `CLAUDE.md` > `AGENTS.md` (no merging within a directory) |
+| Memory (user layer) | `~/.nova/NOVA.md` → `~/.claude/CLAUDE.md` → `~/.config/agents/AGENTS.md` (first existing wins) |
+
+## Development
+
+```bash
+pnpm build                 # build all packages and apps (tsup, recursive)
+pnpm typecheck             # tsc --noEmit across the workspace
+pnpm test                  # vitest run
+pnpm test:watch
+pnpm vitest run path/to/file.test.ts   # single file
+pnpm vitest run -t "name"              # filter by test name
+pnpm lint / pnpm lint:fix
+pnpm format / pnpm format:check
+```
+
+Per-package scripts work via `pnpm --filter @nova/<name> <script>`. Tests are picked up from `packages/*/src/**/*.test.ts(x)` (co-located with source).
+
+New collaborators should start here:
+
+- `CLAUDE.md` — project guide written for AI assistants (architecture invariants, loop contract, ESM `.js`-extension convention, zod-at-boundaries rule)
+- `agent-harness-loop-architecture.html` — architecture diagram and overview
+
+## License
+
+[MIT](LICENSE) © Nova contributors.
