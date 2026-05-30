@@ -28,6 +28,15 @@ function wrapToLines(s: string, width: number): string[] {
 }
 
 /**
+ * Count the visual rows a string occupies when hard-wrapped to `width`,
+ * including any embedded newlines. Used to reserve accurate row budgets for
+ * in-stream chrome (e.g. picker headers/footers that wrap).
+ */
+export function countWrappedLines(s: string, width: number): number {
+  return wrapToLines(s, width).length;
+}
+
+/**
  * Measure one item to its line array at the given width. Cached by item
  * identity; recomputed if the cached entry was for a different width.
  */

@@ -3,7 +3,7 @@ import { Box, Text } from "ink";
 import { useShallow } from "zustand/react/shallow";
 import { ApprovalPrompt } from "./approval.js";
 import { AskPanel } from "./ask-user.js";
-import { sliceLines } from "./measure.js";
+import { countWrappedLines, sliceLines } from "./measure.js";
 import { highlightLines } from "./selection.js";
 import {
   type HorizontalPickerOptions,
@@ -89,9 +89,13 @@ export function Viewport({ store, rows, resolveModal }: ViewportProps): React.Re
   // row or two of padding above the text; under-reservation pushes content
   // up by 1-2 rows (terminal scroll) which alt-screen absorbs cleanly.
   const inStreamModal = modal && modal.kind !== "input" ? modal : null;
-  const chromeRows = chromeRowsFor(spinner, inStreamModal, todos.length, tasks.length);
-
   const usable = Math.max(MIN_ROWS, rows);
+  // Clamp to usable-1 so the text region keeps at least one row; a modal taller
+  // than the viewport (very short terminal) is the only case this bites.
+  const chromeRows = Math.min(
+    usable - 1,
+    chromeRowsFor(spinner, inStreamModal, todos.length, tasks.length, termCols),
+  );
   const textRows = Math.max(1, usable - chromeRows);
   const effectiveOffset = stickToBottom ? Number.MAX_SAFE_INTEGER : scrollOffset;
   const slice = sliceLines(items, termCols, effectiveOffset, textRows);
@@ -140,14 +144,23 @@ export function Viewport({ store, rows, resolveModal }: ViewportProps): React.Re
   // existing rows from jumping up when a new message lands (since the new
   // line just appends at the bottom of the text), and still anchors chrome
   // (spinner / modal / footers) immediately below the latest message.
+  // A modal pins to the bottom of the viewport (right above the input box)
+  // while the history stays top-aligned exactly where it already is — the
+  // flex-grow box sits *between* them, so opening a modal doesn't shift the
+  // existing content down; the modal just claims the empty space below it.
+  if (inStreamModal) {
+    return (
+      <Box flexDirection="column" height={usable}>
+        {displayLines.length > 0 ? <Text>{displayLines.join("\n")}</Text> : null}
+        <Box flexGrow={1} />
+        <InStreamModal modal={inStreamModal} resolveModal={resolveModal} onScroll={scrollBy} />
+      </Box>
+    );
+  }
   return (
     <Box flexDirection="column" height={usable}>
       {displayLines.length > 0 ? <Text>{displayLines.join("\n")}</Text> : null}
-      {inStreamModal ? (
-        <InStreamModal modal={inStreamModal} resolveModal={resolveModal} onScroll={scrollBy} />
-      ) : spinner && todos.length === 0 && tasks.length === 0 ? (
-        <Spinner spec={spinner} />
-      ) : null}
+      {spinner && todos.length === 0 && tasks.length === 0 ? <Spinner spec={spinner} /> : null}
       {spinner && (todos.length > 0 || tasks.length > 0) ? (
         <>
           <TaskFooter tasks={tasks} />
@@ -169,6 +182,7 @@ function chromeRowsFor(
   modal: ModalState | null,
   todos: number,
   tasks: number,
+  cols: number,
 ): number {
   if (modal) {
     switch (modal.kind) {
@@ -180,9 +194,9 @@ function chromeRowsFor(
       case "ask":
         return 10;
       case "pick":
-        return Math.min(12, Math.max(3, modal.opts.items.length + 2));
+        return pickListRows(modal.opts as PickerOptions<unknown>, cols);
       case "pickH":
-        return 3;
+        return pickHorizontalRows(modal.opts as HorizontalPickerOptions<unknown>, cols);
       default:
         return 0;
     }
@@ -195,6 +209,41 @@ function chromeRowsFor(
     n += todos === 0 && tasks === 0 ? 3 : 2;
   }
   if (todos > 0 || tasks > 0) n += todos + tasks;
+  return n;
+}
+
+/**
+ * Exact render height of `PickList` (picker.tsx): a round-bordered box with
+ * top/bottom margins, wrapping an optional header, up to `pageSize` item rows,
+ * an optional "(n/m)" indicator, and an optional footer. Header/footer/items
+ * are measured for wrapping so a long header never gets under-reserved (which
+ * would let the message text region paint over the picker).
+ */
+export function pickListRows(opts: PickerOptions<unknown>, cols: number): number {
+  const pageSize = Math.max(1, opts.pageSize ?? 10);
+  const visible = opts.items.slice(0, Math.min(opts.items.length, pageSize));
+  const bordered = opts.border ?? true;
+  const inner = Math.max(1, bordered ? cols - 2 : cols); // round border eats 2 columns
+  // marginTop(1) + marginBottom(1), plus borderTop+borderBottom when bordered.
+  let n = bordered ? 4 : 2;
+  if (opts.header) n += countWrappedLines(opts.header, inner);
+  for (const it of visible) n += countWrappedLines(opts.render(it, false), inner);
+  if (opts.items.length > pageSize) n += 1; // indicator line
+  if (opts.footer) n += countWrappedLines(opts.footer, inner);
+  return n;
+}
+
+/**
+ * Exact render height of `PickHorizontal` (picker.tsx): a round-bordered,
+ * padded box with top/bottom margins, an optional header, a blank spacer, the
+ * single row of buttons, another blank spacer, and an optional footer.
+ */
+export function pickHorizontalRows(opts: HorizontalPickerOptions<unknown>, cols: number): number {
+  const inner = Math.max(1, cols - 4); // border(2) + padding(2) columns
+  let n = 6; // border(2) + margin(2) + vertical padding(2)
+  if (opts.header) n += countWrappedLines(opts.header, inner);
+  n += 1 + 1 + 1; // blank spacer + buttons row + blank spacer
+  if (opts.footer) n += countWrappedLines(opts.footer, inner);
   return n;
 }
 

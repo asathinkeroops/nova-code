@@ -9,6 +9,7 @@ import {
 import { Transcript } from "@nova/observability";
 import { dim, red } from "./colors.js";
 import { refreshBanner, type CliContext } from "./context.js";
+import { SnapshotStore } from "./snapshots.js";
 import { loadMessages, emptyCursor } from "@nova/agent";
 
 export function formatTimestamp(d: Date): string {
@@ -104,6 +105,8 @@ export async function switchToSession(ctx: CliContext, newSession: Session): Pro
   ctx.logPath = join(newSession.dir, "session.log");
   ctx.logger = ctx.buildLogger(ctx.logPath);
   ctx.transcript = new Transcript(newSession.transcriptPath);
+  ctx.snapshots = new SnapshotStore(join(newSession.dir, "snapshots"));
+  await ctx.snapshots.load();
   ctx.persistCursor =
     newMessages.length === 0
       ? emptyCursor

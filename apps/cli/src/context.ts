@@ -61,11 +61,13 @@ import {
   handlePlan,
   handlePredict,
   handleResume,
+  handleRewind,
   handleSkills,
   handleThink,
 } from "./commands/index.js";
 import { TOOL_SPINNER_DELAY_MS, WORKING_WORDS } from "./constants.js";
 import { registerUiHooks } from "./hooks.js";
+import { SnapshotStore } from "./snapshots.js";
 import { renderSkillsBlock } from "./skills-render.js";
 import { loadFileCommandsInto } from "./slash.js";
 import { resolveSession } from "./session.js";
@@ -92,6 +94,8 @@ export interface CliContext {
   transcript: Transcript;
   persistCursor: PersistCursor;
   resumed: boolean;
+  /** Per-session file snapshotter backing `/rewind`. Rebuilt on /resume. */
+  snapshots: SnapshotStore;
 
   // ===== Mutable: changes on /model, /think, /predict =====
   settings: Settings;
@@ -307,6 +311,16 @@ function registerBuiltinSlashCommands(ctx: CliContext): void {
     },
   });
   ctx.registry.register({
+    name: "rewind",
+    description: "rewind history to a previous message (history after it is discarded)",
+    argHint: "[<n>]",
+    source: { kind: "builtin" },
+    run: async (_c, args) => {
+      await handleRewind(ctx, args.trim());
+      return handled;
+    },
+  });
+  ctx.registry.register({
     name: "plan",
     description: "plan a task via a read-only plan sub-agent (no implementation)",
     argHint: "<task goal>",
@@ -446,18 +460,47 @@ export async function createContext(
         mtimeCheck: settings.invariants.mtimeCheck,
       })
     : undefined;
-  const dispatch = createDispatcher({
+  const rawDispatch = createDispatcher({
     registry: tools,
     logger,
     ...(invariants ? { invariants } : {}),
   });
+  // Snapshot the prior content of any file a write/edit is about to mutate,
+  // for /rewind. Capturing here in the dispatcher — rather than on the main
+  // agent's pre_tool_use hook — means sub-agent tool calls, which reuse this
+  // same `dispatch`, are captured too, under the current main turn's epoch.
+  // Permission is gated by a pre_tool_use hook upstream of executeTool, so a
+  // denied write never reaches here.
+  const dispatch: ToolExecutor = async (use, toolCtx) => {
+    if (use.name === "write" || use.name === "edit") {
+      const raw = (use.input as { path?: unknown }).path;
+      if (typeof raw === "string" && raw.length > 0) {
+        await ctx.snapshots.capture(resolve(workspace, raw));
+      }
+    }
+    return rawDispatch(use, toolCtx);
+  };
   const registry = new SlashRegistry();
 
-  const buildModel = (id: string): ModelClient =>
+  // Forward the model's live token progress (uploaded prompt + estimated
+  // output) into the active spinner. streamEvent fires per chunk, so throttle
+  // to keep re-renders sane.
+  let lastTokenPush = 0;
+  const pushSpinnerTokens = (progress: {
+    inputTokens?: number;
+    outputTokens: number;
+  }): void => {
+    const now = Date.now();
+    if (now - lastTokenPush < 80) return;
+    lastTokenPush = now;
+    screen.setSpinnerTokens(progress);
+  };
+  const buildModel = (id: string, trackTokens = true): ModelClient =>
     createAnthropicModel({
       apiKey,
       model: id,
       ...(settings.baseURL ? { baseURL: settings.baseURL } : {}),
+      ...(trackTokens ? { onStreamProgress: pushSpinnerTokens } : {}),
     });
 
   const ctx: CliContext = {
@@ -467,6 +510,7 @@ export async function createContext(
     transcript,
     persistCursor: emptyCursor,
     resumed,
+    snapshots: new SnapshotStore(join(session.dir, "snapshots")),
     settings,
     model: buildModel(settings.model),
     thinkingLevel: settings.thinking.level,
@@ -588,15 +632,31 @@ export async function createContext(
   // the tool definitions minus createSubAgent — no recursion. Deps read ctx
   // lazily, so post-hoc registration is safe.
   if (settings.subagent.enabled) {
-    const subagentModel = settings.subagent.model
-      ? buildModel(settings.subagent.model)
+    // Sub-agents must NOT drive the parent's live spinner token counter. Several
+    // run concurrently and each onStreamProgress callback reports that agent's
+    // own running total (not a sum), so sharing the tracked model would make the
+    // parent spinner's "↓ ~N tok" flicker between agents and read as garbage.
+    // They therefore always run on a non-tracked model: a fixed one if
+    // configured, otherwise the current main model mirrored with tracking off
+    // (rebuilt when /model changes so the subagent follows the active model).
+    const fixedSubagentModel = settings.subagent.model
+      ? buildModel(settings.subagent.model, false)
       : null;
+    let subagentFallback: { id: string; model: ModelClient } | null = null;
+    const getSubagentModel = (): ModelClient => {
+      if (fixedSubagentModel) return fixedSubagentModel;
+      const id = ctx.settings.model;
+      if (!subagentFallback || subagentFallback.id !== id) {
+        subagentFallback = { id, model: buildModel(id, false) };
+      }
+      return subagentFallback.model;
+    };
     ctx.tools.register(
       createSubAgentTool({
         workspace,
         memory,
         skillsBlock,
-        getModel: () => subagentModel ?? ctx.model,
+        getModel: getSubagentModel,
         getToolDefinitions: () => ctx.tools.definitions(),
         dispatch: (use, c) => ctx.dispatch(use, c),
         checkPermission: (tool, input) => ctx.checkPermission(tool, input),
@@ -619,6 +679,14 @@ export async function createContext(
   registerInterject(ctx.agent, makeTodoReminder(todoStore));
   registerInterject(ctx.agent, makeTaskReminder(taskStore));
   ctx.agent.on("pre_request", makeLongRunningNotifier(longRunningManager));
+
+  // /rewind: tag each user turn with the message index its prompt lands at —
+  // the same point /rewind truncates to, and the epoch the dispatcher's
+  // capture (see `dispatch` above) stamps onto each snapshot.
+  ctx.agent.on("pre_user_prompt", () => {
+    ctx.snapshots.setEpoch(ctx.screen.getMessages().length);
+    return undefined;
+  });
   void refreshTaskFooter(ctx);
 
   registerBuiltinSlashCommands(ctx);
@@ -646,6 +714,7 @@ export async function createContext(
   }
 
   if (resumed) {
+    await ctx.snapshots.load();
     try {
       const msgs = await loadMessages(session.messagesPath);
       ctx.persistCursor =

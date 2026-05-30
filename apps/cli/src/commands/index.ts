@@ -6,5 +6,6 @@ export { handleModel } from "./model.js";
 export { handlePlan } from "./plan.js";
 export { handlePredict } from "./predict.js";
 export { handleResume } from "./resume.js";
+export { handleRewind } from "./rewind.js";
 export { handleSkills } from "./skills.js";
 export { handleThink } from "./think.js";

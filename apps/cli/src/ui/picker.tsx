@@ -14,6 +14,8 @@ export interface PickerOptions<T> {
   pageSize?: number;
   /** Initial highlighted index (defaults to 0). */
   initialIndex?: number;
+  /** Draw the round border around the list. Defaults to true. */
+  border?: boolean;
 }
 
 interface PickListProps<T> {
@@ -77,8 +79,14 @@ export function PickList<T>({ opts, onResolve }: PickListProps<T>): React.ReactE
         : `  (${selected + 1}/${items.length})`
       : null;
 
+  const bordered = opts.border ?? true;
   return (
-    <Box flexDirection="column" marginTop={1} marginBottom={1} borderStyle={'round'}>
+    <Box
+      flexDirection="column"
+      marginTop={1}
+      marginBottom={1}
+      {...(bordered ? { borderStyle: "round" as const } : {})}
+    >
       {opts.header ? <Text>{opts.header}</Text> : null}
       {rows}
       {indicator ? <Text>{indicator}</Text> : null}
