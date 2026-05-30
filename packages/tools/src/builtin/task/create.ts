@@ -18,6 +18,8 @@ export function createTaskTool(store: TaskStore): ToolHandler {
       description:
         "Create a new task (status=pending, blockedBy=[]) in the workspace's plan. " +
         "Tasks persist to `.tasks/{id}.json` in the workspace and survive across sessions. " +
+        "Reserve for larger, genuinely multi-step plans worth persisting — do not create a task " +
+        "for a single-step or trivial request, or for work a todo already covers; just do it. " +
         "Returns the new task as JSON. description is immutable; status and blockedBy " +
         "are mutated via updateTask. blockedBy always starts empty — add dependencies later " +
         "with updateTask({ addBlockedBy: [...] }).",

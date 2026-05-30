@@ -7,8 +7,8 @@ export function buildSystemPrompt(
   skillsBlock = "",
 ): string {
   const base = `You are a coding agent at ${workspace}. Use tools to solve tasks.
-- Track short checklists with createTodo / updateTodo / getTodoList / clearTodoList. Marked in_progress when start, Marked completed if done.
-- Track multi-step plans with createTask / updateTask / getTask / getTaskList / clearTaskList. Marked in_progress when start, Marked completed if done.
+- For non-trivial work spanning several steps, track a short checklist with createTodo / updateTodo / getTodoList / clearTodoList — mark an item in_progress when you start it, completed when it's done. Skip this for single-step or trivial requests; just do them directly.
+- For larger multi-step plans worth persisting across sessions, track them with createTask / updateTask / getTask / getTaskList / clearTaskList — same in_progress/completed discipline. Don't create a task for a single step or for work a todo already covers.
 - Run long-lived commands (dev servers, watchers, builds) with runLongRunningCommand; poll with checkLongRunningCommand.
 - Load specialized knowledge with loadSkill.
 - Delegate focused subtasks to parallel sub-agents with createSubAgent (type: explore = read-only retrieval, plan = read-only planning, general-purpose = full tools).

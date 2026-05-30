@@ -18,6 +18,7 @@ export function createTodoTool(store: TodoStore): ToolHandler {
       description:
         "Append a new todo (status=pending) to the current session's checklist. " +
         "Use to externalize a multi-step plan so it survives context shifts within this session. " +
+        "Only for genuinely multi-step work — do not create todos for a single-step or trivial request; just do it. " +
         "Returns the generated id; the description is immutable after creation. " +
         "Todos are in-memory only — they do not persist across sessions. " +
         "For cross-session work tracking, use the Task Store instead.",
