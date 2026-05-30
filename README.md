@@ -4,7 +4,7 @@
 
 > A terminal coding agent, deeply tuned for DeepSeek.
 
-Nova is a coding agent that lives in your terminal — reads code, runs commands, edits files, and drives a task to done through tool use. It speaks the Anthropic message shape internally, but the model layer is built around **DeepSeek**: thinking is wired to DeepSeek's `output_config.effort` (not Anthropic's `budget_tokens`), the wire format is auto-detected from the model id, and the default prompts/permissions are tuned for DeepSeek's behavior. Other Anthropic-compatible endpoints still work — DeepSeek is the path that gets first-class care.
+Nova is a coding agent that lives in your terminal — reads code, runs commands, edits files, and drives a task to done through tool use. It speaks the Anthropic message shape internally, but the model layer is built around **DeepSeek**: thinking is wired to DeepSeek's `output_config.effort` (not Anthropic's `budget_tokens`), the wire format is auto-detected from the model id, the request shape and context-management defaults are kept **cache-friendly** so DeepSeek's automatic context cache keeps hitting, and the default prompts/permissions are tuned for DeepSeek's behavior. Other Anthropic-compatible endpoints still work — DeepSeek is the path that gets first-class care.
 
 Under the hood Nova is a loop-centric harness: `@nova/core` exposes a model-agnostic agent loop and a single `HookRegistry` extension point; tools, permissions, context, observability, skills, and slash commands all attach through it. `@nova/agent` packages the loop into a per-turn `createAgent` with persistence and transcript wiring, and `apps/cli` is what you actually run — the `nova` binary, a full-screen Ink/React REPL with mouse scroll/selection and a live status line.
 
@@ -126,6 +126,29 @@ Connections are established in parallel; a server that fails to connect is logge
 and skipped — it never blocks startup or affects the others. Use **`/mcp`** to
 see each server's state and tool count, and **`/mcp tools`** to list every
 bridged tool name.
+
+### Prompt caching (DeepSeek)
+
+DeepSeek's Anthropic-compatible endpoint does automatic, server-side **context
+caching**: any request whose prefix exactly matches an earlier one reads the
+shared tokens straight from cache (billed at a fraction of the normal input
+rate) instead of reprocessing them. There is no `cache_control` to set — the
+only thing that matters is that the message prefix stays byte-stable from one
+turn to the next. Nova is built around keeping it stable:
+
+- **Append-only history.** Each turn appends new messages and never rewrites
+  earlier ones, so the cached prefix survives. Persistence mirrors this —
+  `messages.jsonl` is written append-only as long as the on-disk prefix is
+  intact, and only rewritten from the first point that actually diverged.
+- **Micro-compaction is OFF by default.** It would rewrite older `tool_result`s
+  every turn, invalidating the cache from the rewrite point to the end — and the
+  tokens it trims would otherwise bill at the cheap cache-read rate, so on
+  DeepSeek the net is marginal-to-negative. Auto-compaction stays on: it only
+  fires under context-window pressure, as a single deliberate prefix reset. Flip
+  `compact.micro.enabled = true` only on a provider with no prefix caching.
+- **Cache accounting.** Each response's `cache_read_input_tokens` /
+  `cache_creation_input_tokens` are surfaced and rolled into the per-session
+  usage totals, so you can see how much of each turn actually hit the cache.
 
 ## Repository layout
 
