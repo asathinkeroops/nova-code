@@ -19,6 +19,9 @@ function pinnedBottomRows(inputRows: number): number {
   return 1 + inputRows;
 }
 
+/** Floor for the pinned frame height so a tiny terminal still renders. */
+const MIN_FRAME_ROWS = 4;
+
 interface AppProps {
   store: AppStoreApi;
 }
@@ -85,23 +88,35 @@ export function App({ store }: AppProps): React.ReactElement {
   // The InputBox is a permanent fixture: it stays mounted (and visible) the
   // whole session so the user can type mid-turn. It only goes inert while an
   // in-stream modal owns input — passing active=false keeps the buffer intact.
+  // Pin the whole frame to a fixed height and let only the Viewport flex. When
+  // the slash popup grows the InputBox, it steals rows from the Viewport in the
+  // same layout pass instead of overflowing the alt-screen for a frame (which
+  // scrolls the terminal and reads as jitter). The pinned chrome keeps its
+  // natural height via flexShrink={0}; overflowY clips any one-frame slack
+  // while the measured `viewportRows` catches up. Height stays one row short of
+  // the terminal so the live region never fills edge-to-edge (Warp pushes
+  // content up otherwise).
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" height={Math.max(MIN_FRAME_ROWS, termRows - 1)} overflowY="hidden">
       <Viewport store={store} rows={viewportRows} resolveModal={resolveModal} />
-      <InputBox
-        options={{
-          commands: slashCommands,
-          placeholder: inputPlaceholder,
-          history: userInputHistory(store.getState().messages),
-          queued: inputQueue,
-        }}
-        active={modal === null}
-        onSubmit={onSubmitInput}
-        onCancel={onCtrlC}
-        onEscape={onEscape}
-        onMeasure={onMeasureInput}
-      />
-      <StatusLine store={store} />
+      <Box flexShrink={0} flexDirection="column">
+        <InputBox
+          options={{
+            commands: slashCommands,
+            placeholder: inputPlaceholder,
+            history: userInputHistory(store.getState().messages),
+            queued: inputQueue,
+          }}
+          active={modal === null}
+          onSubmit={onSubmitInput}
+          onCancel={onCtrlC}
+          onEscape={onEscape}
+          onMeasure={onMeasureInput}
+        />
+      </Box>
+      <Box flexShrink={0}>
+        <StatusLine store={store} />
+      </Box>
     </Box>
   );
 }

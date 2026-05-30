@@ -150,7 +150,7 @@ export function Viewport({ store, rows, resolveModal }: ViewportProps): React.Re
   // existing content down; the modal just claims the empty space below it.
   if (inStreamModal) {
     return (
-      <Box flexDirection="column" height={usable}>
+      <Box flexDirection="column" flexGrow={1} flexShrink={1} overflowY="hidden">
         {displayLines.length > 0 ? <Text>{displayLines.join("\n")}</Text> : null}
         <Box flexGrow={1} />
         <InStreamModal modal={inStreamModal} resolveModal={resolveModal} onScroll={scrollBy} />
@@ -158,7 +158,7 @@ export function Viewport({ store, rows, resolveModal }: ViewportProps): React.Re
     );
   }
   return (
-    <Box flexDirection="column" height={usable}>
+    <Box flexDirection="column" flexGrow={1} flexShrink={1} overflowY="hidden">
       {displayLines.length > 0 ? <Text>{displayLines.join("\n")}</Text> : null}
       {spinner && todos.length === 0 && tasks.length === 0 ? <Spinner spec={spinner} /> : null}
       {spinner && (todos.length > 0 || tasks.length > 0) ? (
