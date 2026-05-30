@@ -91,14 +91,43 @@ describe("makeTaskReminder", () => {
     expect(await call(remind, [use("bash")])).toBeUndefined();
   });
 
-  it("does not inject when all tasks are completed", async () => {
+  it("nudges clearTaskList immediately when all tasks are completed", async () => {
     const store = new TaskStore(workspace, "test-session");
     const t = await store.create("done already");
     await store.update(t.id, { status: "completed" });
     const remind = makeTaskReminder(store);
 
-    await call(remind, [use("bash")]);
-    await call(remind, [use("bash")]);
+    expect(await call(remind, [use("bash")])).toEqual([
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: "<reminder>All tasks are completed — call clearTaskList to clear the list.</reminder>",
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("fires the clear nudge even on the turn that completed the last task", async () => {
+    const store = new TaskStore(workspace, "test-session");
+    const t = await store.create("x");
+    await store.update(t.id, { status: "completed" });
+    const remind = makeTaskReminder(store);
+
+    const out = await call(remind, [use("updateTask")]);
+    expect(out).toBeDefined();
+  });
+
+  it("stops nudging once the list is cleared", async () => {
+    const store = new TaskStore(workspace, "test-session");
+    const t = await store.create("x");
+    await store.update(t.id, { status: "completed" });
+    const remind = makeTaskReminder(store);
+
+    expect(await call(remind, [use("bash")])).toBeDefined();
+    await store.clear();
     expect(await call(remind, [use("bash")])).toBeUndefined();
   });
 

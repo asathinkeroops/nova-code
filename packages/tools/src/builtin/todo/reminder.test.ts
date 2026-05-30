@@ -75,14 +75,45 @@ describe("makeTodoReminder", () => {
     expect(await call(remind, [use("bash")])).toBeUndefined();
   });
 
-  it("does not inject when all todos are completed", async () => {
+  it("nudges clearTodoList immediately when all todos are completed", async () => {
     const store = new TodoStore();
     const t = store.create("done already");
     store.update(t.id, "completed");
     const remind = makeTodoReminder(store);
 
-    await call(remind, [use("bash")]);
-    await call(remind, [use("bash")]);
+    // No streak buildup needed: a fully-completed list nudges a clear at once.
+    expect(await call(remind, [use("bash")])).toEqual([
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: "<reminder>All todos are completed — call clearTodoList to clear the list.</reminder>",
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("fires the clear nudge even on the turn that completed the last todo", async () => {
+    const store = new TodoStore();
+    const t = store.create("x");
+    store.update(t.id, "completed");
+    const remind = makeTodoReminder(store);
+
+    // updateTodo in the turn would normally reset/suppress — the clear nudge wins.
+    const out = await call(remind, [use("updateTodo")]);
+    expect(out).toBeDefined();
+  });
+
+  it("stops nudging once the list is cleared", async () => {
+    const store = new TodoStore();
+    const t = store.create("x");
+    store.update(t.id, "completed");
+    const remind = makeTodoReminder(store);
+
+    expect(await call(remind, [use("bash")])).toBeDefined();
+    store.clear();
     expect(await call(remind, [use("bash")])).toBeUndefined();
   });
 
