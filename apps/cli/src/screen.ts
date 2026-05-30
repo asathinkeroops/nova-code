@@ -265,6 +265,10 @@ export class Screen {
     this.store.getState().setContextTokens(tokens);
   }
 
+  setSpinnerTokens(progress: { inputTokens?: number; outputTokens: number }): void {
+    this.store.getState().setSpinnerTokens(progress);
+  }
+
   /** Consumer side of the input queue — resolves with the next prompt or null on exit. */
   takeInput(): Promise<string | null> {
     return this.store.getState().takeInput();

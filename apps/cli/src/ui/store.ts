@@ -25,6 +25,10 @@ export interface SpinnerSpec {
   hint?: string;
   startedAt: number;
   activeWord: string;
+  /** Live estimate of output tokens streamed so far this request, if tracked. */
+  tokens?: number;
+  /** Real uploaded prompt tokens for this request, if tracked. */
+  inputTokens?: number;
 }
 
 export type ApprovalAnswer = "yes" | "no" | "always-allow";
@@ -226,6 +230,8 @@ export interface AppActions {
   setTodos: (todos: Todo[]) => void;
   setTasks: (tasks: Task[]) => void;
   startSpinner: (label: SpinnerLabel, hint?: string) => SpinnerHandle;
+  /** Update the active spinner's live token counts (no-op if none). */
+  setSpinnerTokens: (progress: { inputTokens?: number; outputTokens: number }) => void;
   setEscHandler: (fn: (() => void) | null) => void;
   beginSetup: (state: SetupState) => void;
   setSetupPrompt: (prompt: { label: string; hint: string } | null) => void;
@@ -444,6 +450,13 @@ export function createAppStore(): AppStoreApi {
             return cur?.id === id ? cur.activeWord : activeWord;
           },
         };
+      },
+
+      setSpinnerTokens({ inputTokens, outputTokens }) {
+        const cur = get().spinner;
+        if (!cur) return;
+        if (cur.tokens === outputTokens && cur.inputTokens === inputTokens) return;
+        set({ spinner: { ...cur, tokens: outputTokens, inputTokens } });
       },
 
       setEscHandler(fn) {

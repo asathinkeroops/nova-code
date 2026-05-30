@@ -32,6 +32,10 @@ describe("formatTokenCount", () => {
     expect(formatTokenCount(256_000)).toBe("256K");
     expect(formatTokenCount(200_000)).toBe("200K");
   });
+  it("shows a decimal for fractional thousands", () => {
+    expect(formatTokenCount(1_234)).toBe("1.2K");
+    expect(formatTokenCount(12_345)).toBe("12.3K");
+  });
   it("leaves small counts as-is", () => {
     expect(formatTokenCount(512)).toBe("512");
   });

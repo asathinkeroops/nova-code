@@ -11,13 +11,16 @@ export function formatDuration(ms: number): string {
   return `${s}s`;
 }
 
-/** Compact token magnitude: 1_000_000 → "1M", 256_000 → "256K", 512 → "512". */
+/** Compact token magnitude: 1_500_000 → "1.5M", 1_234 → "1.2K", 512 → "512". */
 export function formatTokenCount(tokens: number): string {
   if (tokens >= 1_000_000) {
     const m = tokens / 1_000_000;
     return `${Number.isInteger(m) ? m : Number(m.toFixed(1))}M`;
   }
-  if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}K`;
+  if (tokens >= 1_000) {
+    const k = tokens / 1_000;
+    return `${Number.isInteger(k) ? k : Number(k.toFixed(1))}K`;
+  }
   return `${Math.max(0, Math.floor(tokens))}`;
 }
 

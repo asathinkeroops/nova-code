@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Box, Text } from "ink";
 import { bold, type Rgb, useTruecolor } from "../colors.js";
+import { formatTokenCount } from "./status-format.js";
 import type { SpinnerSpec } from "./store.js";
 
 const FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -44,17 +45,21 @@ export function Spinner({ spec }: SpinnerProps): React.ReactElement {
 
   const elapsed = ((Date.now() - spec.startedAt) / 1000).toFixed(1);
   const frameChar = FRAMES[frame % FRAMES.length] ?? "";
+  const upStr =
+    spec.inputTokens != null ? ` · ↑ ${formatTokenCount(spec.inputTokens)} tok` : "";
+  const downStr = spec.tokens != null ? ` · ↓ ~${formatTokenCount(spec.tokens)} tok` : "";
+  const tokenStr = `${upStr}${downStr}`;
   const hintStr = spec.hint ? ` · ${spec.hint}` : "";
 
   let line: string;
   if (canShimmer && tint) {
     const head = shimmer(frameChar, frame + 1, tint);
     const word = shimmer(spec.activeWord, frame, tint);
-    line = `${head} ${word} · ${elapsed}s${hintStr}`;
+    line = `${head} ${word} · ${elapsed}s${tokenStr}${hintStr}`;
   } else {
     const renderedFrame = isStatic ? frameChar : bold(colorize(frameChar));
     const word = isStatic ? spec.activeWord : bold(colorize(spec.activeWord));
-    line = `${renderedFrame} ${word} · ${elapsed}s${hintStr}`;
+    line = `${renderedFrame} ${word} · ${elapsed}s${tokenStr}${hintStr}`;
   }
 
   return (

@@ -3,17 +3,36 @@ import { z } from "zod";
 import { createAnthropicModel, detectThinkingFormat } from "./model.js";
 
 // Stub the Anthropic SDK so we can inspect the params our adapter sends
-// without making a network call.
+// without making a network call. The adapter streams, so `stream(...)` returns
+// a handle exposing `.on("streamEvent", …)` and `finalMessage()`. Tests can
+// queue `streamEvents` to be replayed to listeners when finalMessage resolves.
 const mockCreate = vi.fn();
+let streamEvents: unknown[] = [];
 vi.mock("@anthropic-ai/sdk", () => {
   return {
     default: class {
       messages = {
-        create: (...args: unknown[]) => mockCreate(...args),
+        stream: (...args: unknown[]) => {
+          const listeners: ((event: unknown) => void)[] = [];
+          return {
+            on(event: string, fn: (event: unknown) => void) {
+              if (event === "streamEvent") listeners.push(fn);
+              return this;
+            },
+            finalMessage() {
+              for (const e of streamEvents) for (const fn of listeners) fn(e);
+              return mockCreate(...args);
+            },
+          };
+        },
       };
     },
   };
 });
+
+function delta(text: string) {
+  return { type: "content_block_delta", delta: { type: "text_delta", text } };
+}
 
 function okResponse() {
   return {
@@ -51,6 +70,7 @@ describe("detectThinkingFormat", () => {
 describe("createAnthropicModel thinking params", () => {
   beforeEach(() => {
     mockCreate.mockReset();
+    streamEvents = [];
   });
 
   it("sends budget_tokens for anthropic models", async () => {
@@ -81,6 +101,52 @@ describe("createAnthropicModel thinking params", () => {
     await m.call({ ...baseReq, thinkingBudgetTokens: 32_000 });
     const params = mockCreate.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(params.output_config).toEqual({ effort: "max" });
+  });
+
+  it("estimates live output tokens from streamed deltas (not end-of-stream usage)", async () => {
+    mockCreate.mockResolvedValueOnce(okResponse());
+    // 8 latin chars (~2 tok) + 4 CJK chars (~2.4 tok) → ceil = 5, and crucially
+    // > 0 even though usage.output_tokens only lands in the final message.
+    streamEvents = [delta("hello wo"), delta("世界你好")];
+    const seen: number[] = [];
+    const m = createAnthropicModel({
+      apiKey: "x",
+      model: "deepseek-chat",
+      onStreamProgress: (p) => seen.push(p.outputTokens),
+    });
+    await m.call({ ...baseReq });
+    expect(seen.length).toBe(2);
+    expect(seen[0]).toBeGreaterThan(0);
+    expect(seen.at(-1)).toBe(Math.ceil(4 * 0.6 + 8 / 4));
+  });
+
+  it("reports real uploaded prompt tokens from message_start", async () => {
+    mockCreate.mockResolvedValueOnce(okResponse());
+    streamEvents = [
+      {
+        type: "message_start",
+        message: {
+          usage: {
+            input_tokens: 100,
+            cache_read_input_tokens: 20,
+            cache_creation_input_tokens: 5,
+          },
+        },
+      },
+      delta("hi"),
+    ];
+    const seen: { inputTokens?: number; outputTokens: number }[] = [];
+    const m = createAnthropicModel({
+      apiKey: "x",
+      model: "deepseek-chat",
+      onStreamProgress: (p) => seen.push(p),
+    });
+    await m.call({ ...baseReq });
+    // message_start → 125 uploaded (input + cache read + cache creation), output 0.
+    expect(seen[0]).toEqual({ inputTokens: 125, outputTokens: 0 });
+    // The uploaded count rides along with every later output update.
+    expect(seen.at(-1)?.inputTokens).toBe(125);
+    expect(seen.at(-1)?.outputTokens).toBeGreaterThan(0);
   });
 
   it("sends explicit thinking: disabled and no output_config when budget is 0", async () => {
