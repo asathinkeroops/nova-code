@@ -60,8 +60,14 @@ export const settingsSchema = z.object({
     .object({
       defaultEffect: z.enum(["allow", "deny", "ask"]).default("ask"),
       rules: z.array(permissionRuleSchema).default([]),
+      // Extra directories (beyond the workspace cwd) that file tools may touch
+      // without a per-call prompt. Mirrors Claude Code's `--add-dir`. Relative
+      // entries resolve against the workspace; each is canonicalized (realpath)
+      // at startup so the containment check compares real on-disk paths. The
+      // workspace cwd is always an allowed root and need not be listed here.
+      additionalDirectories: z.array(z.string().min(1)).default([]),
     })
-    .default({ defaultEffect: "ask", rules: [] }),
+    .default({ defaultEffect: "ask", rules: [], additionalDirectories: [] }),
   transcript: z
     .object({
       enabled: z.boolean().default(true),

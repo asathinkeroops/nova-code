@@ -15,7 +15,7 @@ async function refreshPrediction(ctx: CliContext): Promise<void> {
   const t0 = Date.now();
   try {
     const result = await predictNextInput({
-      model: ctx.model,
+      model: ctx.predictModel,
       messages,
       maxChars: ctx.settings.predict.maxChars,
       timeoutMs: ctx.settings.predict.timeoutMs,

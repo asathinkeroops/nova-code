@@ -11,6 +11,7 @@ export async function handleModel(ctx: CliContext, arg: string): Promise<void> {
   }
   ctx.settings.model = arg;
   ctx.model = ctx.buildModel(arg);
+  ctx.predictModel = ctx.buildModel(arg, false);
   refreshBanner(ctx);
   try {
     await saveSettings({ model: arg });

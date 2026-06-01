@@ -1,15 +1,17 @@
 import { stat } from "node:fs/promises";
-import { resolve } from "node:path";
 import type { FileAccessLedger, ToolContext, ToolUseBlock } from "@nova/core";
+import { canonicalizePath } from "@nova/runtime";
 
 /**
  * In-memory file access ledger. One instance per session — the CLI constructs
  * it and threads it through ToolContext so the invariants layer can record
  * reads (with mtime) and consult them on subsequent edits/writes.
  *
- * Keys are absolute, posix-normalized paths. We do NOT realpath() symlinks
- * here: the dispatcher already resolves the absolute path that hits the disk,
- * and storing the same string the tool reads/writes keeps lookup trivial.
+ * Keys are absolute, symlink-resolved paths (canonicalizePath from
+ * @nova/runtime — the same canonicalization the permission gate uses). This
+ * makes read and edit/write agree on a single key even when one call reaches a
+ * file through a symlink or path alias and another through its real path, so
+ * read-before-edit and mtime-drift compare like for like.
  */
 export class InMemoryFileAccessLedger implements FileAccessLedger {
   private readonly entries = new Map<string, { lastReadMtimeMs: number }>();
@@ -55,24 +57,26 @@ interface PathAccess {
 }
 
 /**
- * Map a `tool_use` to the file path(s) it's about to touch. Returns null for
- * tools we don't gate (everything except read/write/edit in M2).
+ * Map a `tool_use` to the file path it's about to touch, canonicalized to its
+ * real (symlink-resolved) absolute path so the ledger key matches the bytes the
+ * tool reads/writes. Returns null for tools we don't gate (everything except
+ * read/write/edit).
  */
-function extractAccess(use: ToolUseBlock, ctx: ToolContext): PathAccess | null {
-  const input = use.input as Record<string, unknown>;
-  const rawPath = typeof input.path === "string" ? input.path : null;
-  if (!rawPath) return null;
-  const abs = resolve(ctx.cwd, rawPath);
+async function extractAccess(use: ToolUseBlock, ctx: ToolContext): Promise<PathAccess | null> {
+  let kind: PathAccess["kind"];
   switch (use.name) {
     case "read":
-      return { abs, kind: "read" };
     case "write":
-      return { abs, kind: "write" };
     case "edit":
-      return { abs, kind: "edit" };
+      kind = use.name;
+      break;
     default:
       return null;
   }
+  const input = use.input as Record<string, unknown>;
+  const rawPath = typeof input.path === "string" ? input.path : null;
+  if (!rawPath) return null;
+  return { abs: await canonicalizePath(ctx.cwd, rawPath), kind };
 }
 
 async function statMtimeMs(abs: string): Promise<number | null> {
@@ -88,7 +92,7 @@ async function statMtimeMs(abs: string): Promise<number | null> {
 export function createInvariants(opts: InvariantsOptions): InvariantsCheck {
   return {
     async preCheck(use, ctx) {
-      const access = extractAccess(use, ctx);
+      const access = await extractAccess(use, ctx);
       if (!access) return { ok: true };
 
       const ledger = ctx.fileLedger;
@@ -139,7 +143,7 @@ export function createInvariants(opts: InvariantsOptions): InvariantsCheck {
 
     async postCommit(use, ctx, isError) {
       if (isError) return;
-      const access = extractAccess(use, ctx);
+      const access = await extractAccess(use, ctx);
       if (!access) return;
       const ledger = ctx.fileLedger;
       if (!ledger) return;

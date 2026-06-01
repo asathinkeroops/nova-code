@@ -1,4 +1,14 @@
-import { mkdtemp, rm, stat, utimes, writeFile, unlink, mkdir } from "node:fs/promises";
+import {
+  mkdtemp,
+  realpath,
+  rm,
+  stat,
+  symlink,
+  utimes,
+  writeFile,
+  unlink,
+  mkdir,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -14,7 +24,10 @@ let ledger: InMemoryFileAccessLedger;
 let ctx: ToolContext;
 
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), "nova-invariants-"));
+  // realpath the tmp root: on macOS mkdtemp lands under /var → /private/var, and
+  // the ledger now keys on canonical (realpath'd) paths, so join(dir, …) lookups
+  // must use the resolved root to match.
+  dir = await realpath(await mkdtemp(join(tmpdir(), "nova-invariants-")));
   ledger = new InMemoryFileAccessLedger();
   ctx = { cwd: dir, fileLedger: ledger };
 });
@@ -55,20 +68,14 @@ describe("invariants · read-before-edit", () => {
 
   it("allows write to a brand-new file with no prior read", async () => {
     const inv = createInvariants(baseOpts);
-    const r = await inv.preCheck(
-      use("write", { path: "fresh.txt", content: "hi" }),
-      ctx,
-    );
+    const r = await inv.preCheck(use("write", { path: "fresh.txt", content: "hi" }), ctx);
     expect(r).toEqual({ ok: true });
   });
 
   it("rejects write that overwrites an existing un-read file", async () => {
     await writeFile(join(dir, "data.json"), "{}");
     const inv = createInvariants(baseOpts);
-    const r = await inv.preCheck(
-      use("write", { path: "data.json", content: "{}" }),
-      ctx,
-    );
+    const r = await inv.preCheck(use("write", { path: "data.json", content: "{}" }), ctx);
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.message).toMatch(/must be read first before overwriting/);
   });
@@ -196,12 +203,35 @@ describe("invariants · postCommit error suppression", () => {
 describe("invariants · gating scope", () => {
   it("ignores unrelated tools (grep, glob, bash, ...)", async () => {
     const inv = createInvariants(baseOpts);
-    expect(
-      await inv.preCheck(use("grep", { pattern: "foo", path: "/etc" }), ctx),
-    ).toEqual({ ok: true });
-    expect(
-      await inv.preCheck(use("bash", { command: "echo hi" }), ctx),
-    ).toEqual({ ok: true });
+    expect(await inv.preCheck(use("grep", { pattern: "foo", path: "/etc" }), ctx)).toEqual({
+      ok: true,
+    });
+    expect(await inv.preCheck(use("bash", { command: "echo hi" }), ctx)).toEqual({ ok: true });
+  });
+});
+
+describe("invariants · symlink alias canonicalization", () => {
+  it("treats a read via symlink and an edit via the real path as the same file", async () => {
+    // dir/link -> dir/real. Read reaches the file through the symlink; the edit
+    // reaches it through the real path. Canonical (realpath'd) ledger keys make
+    // both resolve to dir/real/f.ts, so read-before-edit is satisfied.
+    await mkdir(join(dir, "real"));
+    await writeFile(join(dir, "real", "f.ts"), "x = 1");
+    await symlink(join(dir, "real"), join(dir, "link"));
+
+    const inv = createInvariants(baseOpts);
+    const readUse = use("read", { path: "link/f.ts" });
+    expect(await inv.preCheck(readUse, ctx)).toEqual({ ok: true });
+    await inv.postCommit(readUse, ctx, false);
+
+    // Ledger keyed on the real path, not the symlinked alias.
+    expect(ledger.get(join(dir, "real", "f.ts"))).toBeDefined();
+
+    const r = await inv.preCheck(
+      use("edit", { path: "real/f.ts", old_string: "x", new_string: "y" }),
+      ctx,
+    );
+    expect(r).toEqual({ ok: true });
   });
 });
 

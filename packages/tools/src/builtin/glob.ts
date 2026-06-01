@@ -103,6 +103,16 @@ export const globTool: ToolHandler = {
       return { output: `glob failed: ${msg}`, isError: true };
     }
 
+    // Containment: never return paths outside `base` (the permission-approved
+    // search root). fast-glob yields base-relative paths for in-tree matches,
+    // but an absolute pattern (`/etc/**`) or one with `..` escapes the root —
+    // the permission gate only vets the `path` input, not the pattern, so drop
+    // any match that resolves outside base here.
+    matches = matches.filter((rel) => {
+      const fromBase = relative(base, resolve(base, rel));
+      return fromBase !== "" && !fromBase.startsWith("..") && !isAbsolute(fromBase);
+    });
+
     if (input.respect_gitignore) {
       const repoRoot = await findRepoRoot(base);
       const root = repoRoot ?? base;

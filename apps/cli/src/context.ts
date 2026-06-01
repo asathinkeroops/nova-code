@@ -32,12 +32,7 @@ import {
   makeTodoReminder,
   type InterjectFn,
 } from "@nova/tools";
-import {
-  createLogger,
-  type Logger,
-  type Session,
-  type Settings,
-} from "@nova/runtime";
+import { createLogger, type Logger, type Session, type Settings } from "@nova/runtime";
 import { PermissionDeniedError, PermissionEngine } from "@nova/safety";
 import { createSubAgentTool } from "@nova/subagent";
 import {
@@ -52,6 +47,7 @@ import {
 import { CYAN_RGB, cyan, dim } from "./colors.js";
 import { buildCompactor } from "./compactor.js";
 import { buildMcpManager } from "./mcp.js";
+import { canonicalizePath, canonicalizeRoots, PATH_INPUT_TOOLS } from "./path-safety.js";
 import { resolvePermissionRules } from "./permissions.js";
 import {
   handleClear,
@@ -102,6 +98,14 @@ export interface CliContext {
   // ===== Mutable: changes on /model, /think, /predict =====
   settings: Settings;
   model: ModelClient;
+  /**
+   * Non-tracked mirror of `model` used by next-input prediction. Predict is a
+   * silent background call; it must NOT carry the live-stream / spinner-token
+   * callbacks (`onStreamText` et al.), or its predicted task text leaks into the
+   * message feed as a phantom assistant draft. Same reasoning as sub-agents
+   * (see the `buildModel(id, false)` usage below). Rebuilt on /model.
+   */
+  predictModel: ModelClient;
   thinkingLevel: ThinkingLevel;
   thinkingBudgetOverride: number | undefined;
 
@@ -155,7 +159,7 @@ export interface CliContext {
 
   // ===== Factory closures (close over apiKey / settings, etc.) =====
   readonly buildLogger: (destination: string) => Logger;
-  readonly buildModel: (id: string) => ModelClient;
+  readonly buildModel: (id: string, trackTokens?: boolean) => ModelClient;
 }
 
 async function readCliVersion(): Promise<string> {
@@ -541,10 +545,7 @@ export async function createContext(
   // True while a DeepSeek retry hint is parked on the spinner. Cleared once the
   // retried request actually starts streaming output again (see below).
   let retryHintShown = false;
-  const pushSpinnerTokens = (progress: {
-    inputTokens?: number;
-    outputTokens: number;
-  }): void => {
+  const pushSpinnerTokens = (progress: { inputTokens?: number; outputTokens: number }): void => {
     // Output flowing again means we're past the retry backoff — restore the
     // default interrupt hint so a stale "retry n/max" doesn't linger on the
     // (now succeeding) request.
@@ -623,6 +624,7 @@ export async function createContext(
     snapshots: new SnapshotStore(join(session.dir, "snapshots")),
     settings,
     model: buildModel(settings.model),
+    predictModel: buildModel(settings.model, false),
     thinkingLevel: settings.thinking.level,
     thinkingBudgetOverride: settings.thinking.budgetTokens,
     spinner: null,
@@ -668,9 +670,16 @@ export async function createContext(
     return await ctx.screen.promptApproval(decision, input, promptOpts);
   };
 
+  // The workspace cwd is always an allowed root; users widen the set via
+  // permissions.additionalDirectories. Canonicalized once here so the engine's
+  // `within` matcher compares real on-disk paths (a symlinked cwd still matches).
+  const allowedRoots = await canonicalizeRoots(
+    [workspace, ...settings.permissions.additionalDirectories],
+    workspace,
+  );
   const permission = new PermissionEngine({
     defaultEffect: settings.permissions.defaultEffect,
-    rules: resolvePermissionRules(settings, workspace),
+    rules: resolvePermissionRules(settings, allowedRoots),
     ask: askWithSignal,
   });
   (ctx as { permission: PermissionEngine }).permission = permission;
@@ -679,8 +688,24 @@ export async function createContext(
     tool,
     input,
   ) => {
+    // Canonicalize path-bearing inputs (resolve + realpath) BEFORE the engine
+    // sees them, so the decision is made on the file actually touched — not the
+    // raw string. This closes `..` traversal and symlink escape, and makes both
+    // workspace and user-defined rules match canonical absolute paths. We never
+    // mutate the caller's input (the tool still runs on its own copy); the
+    // canonical path is used for evaluation only.
+    let evalInput = input as Record<string, unknown>;
+    if (PATH_INPUT_TOOLS.has(tool)) {
+      const raw = evalInput.path;
+      // glob/grep treat an absent/empty `path` as the cwd; gate against the
+      // canonical workspace root in that case so the `within` rule allows it
+      // (a path-less glob/grep is the common in-workspace search) instead of
+      // missing on `undefined` and falling through to ask.
+      const target = typeof raw === "string" && raw.length > 0 ? raw : ".";
+      evalInput = { ...evalInput, path: await canonicalizePath(workspace, target) };
+    }
     try {
-      await permission.check({ tool, input: input as Record<string, unknown> });
+      await permission.check({ tool, input: evalInput });
       return { granted: true };
     } catch (err) {
       if (err instanceof PermissionDeniedError) {

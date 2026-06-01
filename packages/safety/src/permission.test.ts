@@ -1,9 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  PermissionDeniedError,
-  PermissionEngine,
-  type AskCallback,
-} from "./permission.js";
+import { PermissionDeniedError, PermissionEngine, type AskCallback } from "./permission.js";
 
 describe("PermissionEngine.evaluate", () => {
   it("falls back to defaultEffect when no rule matches", () => {
@@ -43,6 +39,27 @@ describe("PermissionEngine.evaluate", () => {
       rules: [{ tool: "*", effect: "allow" }],
     });
     expect(eng.evaluate({ tool: "write", input: { path: "/x" } }).effect).toBe("allow");
+  });
+
+  it("matches a `within` path-containment matcher against canonical absolute paths", () => {
+    const eng = new PermissionEngine({
+      defaultEffect: "ask",
+      rules: [
+        { tool: "read", effect: "allow", match: { path: { within: ["/ws/proj", "/extra"] } } },
+      ],
+    });
+    // Inside a root (the root itself, and nested under it) → allow.
+    expect(eng.evaluate({ tool: "read", input: { path: "/ws/proj" } }).effect).toBe("allow");
+    expect(eng.evaluate({ tool: "read", input: { path: "/ws/proj/src/a.ts" } }).effect).toBe(
+      "allow",
+    );
+    expect(eng.evaluate({ tool: "read", input: { path: "/extra/x" } }).effect).toBe("allow");
+    // Sibling dir that merely shares a string prefix → not within → ask.
+    expect(eng.evaluate({ tool: "read", input: { path: "/ws/proj-other/x" } }).effect).toBe("ask");
+    // Outside every root → ask.
+    expect(eng.evaluate({ tool: "read", input: { path: "/etc/passwd" } }).effect).toBe("ask");
+    // Relative / non-absolute actual never matches a `within` rule.
+    expect(eng.evaluate({ tool: "read", input: { path: "src/a.ts" } }).effect).toBe("ask");
   });
 
   it("falls back to ask when input access throws during match evaluation", () => {

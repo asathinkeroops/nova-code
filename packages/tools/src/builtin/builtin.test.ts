@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -76,23 +76,14 @@ describe("editTool", () => {
   });
 
   it("fails when old_string is ambiguous and replace_all is false", async () => {
-    await writeTool.run(
-      { path: "a.txt", content: "x\nx\n", create_dirs: true },
-      { cwd: dir },
-    );
-    const r = await editTool.run(
-      { path: "a.txt", old_string: "x", new_string: "y" },
-      { cwd: dir },
-    );
+    await writeTool.run({ path: "a.txt", content: "x\nx\n", create_dirs: true }, { cwd: dir });
+    const r = await editTool.run({ path: "a.txt", old_string: "x", new_string: "y" }, { cwd: dir });
     expect(r.isError).toBe(true);
     expect(String(r.output)).toContain("occurs 2 times");
   });
 
   it("replaces every occurrence when replace_all is true", async () => {
-    await writeTool.run(
-      { path: "a.txt", content: "x\nx\nx\n", create_dirs: true },
-      { cwd: dir },
-    );
+    await writeTool.run({ path: "a.txt", content: "x\nx\nx\n", create_dirs: true }, { cwd: dir });
     const r = await editTool.run(
       { path: "a.txt", old_string: "x", new_string: "y", replace_all: true },
       { cwd: dir },
@@ -103,10 +94,7 @@ describe("editTool", () => {
   });
 
   it("fails when old_string is not found", async () => {
-    await writeTool.run(
-      { path: "a.txt", content: "hello\n", create_dirs: true },
-      { cwd: dir },
-    );
+    await writeTool.run({ path: "a.txt", content: "hello\n", create_dirs: true }, { cwd: dir });
     const r = await editTool.run(
       { path: "a.txt", old_string: "missing", new_string: "x" },
       { cwd: dir },
@@ -116,10 +104,7 @@ describe("editTool", () => {
   });
 
   it("rejects identical old_string and new_string", async () => {
-    await writeTool.run(
-      { path: "a.txt", content: "same\n", create_dirs: true },
-      { cwd: dir },
-    );
+    await writeTool.run({ path: "a.txt", content: "same\n", create_dirs: true }, { cwd: dir });
     const r = await editTool.run(
       { path: "a.txt", old_string: "same", new_string: "same" },
       { cwd: dir },
@@ -165,10 +150,7 @@ describe("globTool", () => {
     await mkdir(join(dir, ".git"));
     await writeFile(join(dir, ".gitignore"), "ignored.ts\n");
     await writeFile(join(dir, "ignored.ts"), "x");
-    const r = await globTool.run(
-      { pattern: "*.ts", respect_gitignore: false },
-      { cwd: dir },
-    );
+    const r = await globTool.run({ pattern: "*.ts", respect_gitignore: false }, { cwd: dir });
     expect(String(r.output)).toContain("ignored.ts");
   });
 
@@ -186,6 +168,19 @@ describe("globTool", () => {
     const r = await globTool.run({ pattern: "*.nope" }, { cwd: dir });
     expect(r.isError).toBeUndefined();
     expect(String(r.output)).toContain("no matches");
+  });
+
+  it("never returns matches outside the search base (absolute-pattern containment)", async () => {
+    // A file outside the base. An absolute pattern matching it must be dropped
+    // — the permission gate only vets `path`, so glob enforces containment too.
+    const outside = await mkdtemp(join(tmpdir(), "nova-tools-outside-"));
+    try {
+      await writeFile(join(outside, "secret.ts"), "x");
+      const r = await globTool.run({ pattern: `${outside}/*.ts` }, { cwd: dir });
+      expect(String(r.output)).not.toContain("secret.ts");
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
   });
 });
 
@@ -211,10 +206,7 @@ describe("grepTool", () => {
 
   it("respects case_insensitive", async () => {
     await writeFile(join(dir, "a.ts"), "Needle\n");
-    const r = await grepTool.run(
-      { pattern: "needle", case_insensitive: true },
-      { cwd: dir },
-    );
+    const r = await grepTool.run({ pattern: "needle", case_insensitive: true }, { cwd: dir });
     expect(String(r.output)).toContain("Needle");
   });
 
@@ -233,10 +225,7 @@ describe("grepTool", () => {
   it("supports files_with_matches", async () => {
     await writeFile(join(dir, "hit.ts"), "needle\n");
     await writeFile(join(dir, "miss.ts"), "nope\n");
-    const r = await grepTool.run(
-      { pattern: "needle", files_with_matches: true },
-      { cwd: dir },
-    );
+    const r = await grepTool.run({ pattern: "needle", files_with_matches: true }, { cwd: dir });
     const out = String(r.output);
     expect(out).toContain("hit.ts");
     expect(out).not.toContain("miss.ts");
@@ -263,10 +252,7 @@ describe("askUserQuestionTool", () => {
       {
         question: "Edge border?",
         header: "Edge",
-        options: [
-          { label: "Keep" },
-          { label: "Drop", description: "lighter look" },
-        ],
+        options: [{ label: "Keep" }, { label: "Drop", description: "lighter look" }],
         multi_select: false,
       },
       {
@@ -285,9 +271,11 @@ describe("askUserQuestionTool", () => {
   });
 
   it("formats answers from the askUser callback", async () => {
-    const askUser = vi.fn(async (_req: AskUserRequest): Promise<AskUserResponse> => ({
-      answers: [{ selected: ["Drop"] }, { selected: ["A", "B"] }],
-    }));
+    const askUser = vi.fn(
+      async (_req: AskUserRequest): Promise<AskUserResponse> => ({
+        answers: [{ selected: ["Drop"] }, { selected: ["A", "B"] }],
+      }),
+    );
     const r = await askUserQuestionTool.run(sampleInput, { cwd: dir, askUser });
     expect(r.isError).toBeUndefined();
     expect(askUser).toHaveBeenCalledOnce();
@@ -296,29 +284,32 @@ describe("askUserQuestionTool", () => {
   });
 
   it("includes freeform text when Other is selected", async () => {
-    const askUser = vi.fn(async (): Promise<AskUserResponse> => ({
-      answers: [{ selected: ["Other"], freeform: "custom border" }, { selected: ["A"] }],
-    }));
+    const askUser = vi.fn(
+      async (): Promise<AskUserResponse> => ({
+        answers: [{ selected: ["Other"], freeform: "custom border" }, { selected: ["A"] }],
+      }),
+    );
     const r = await askUserQuestionTool.run(sampleInput, { cwd: dir, askUser });
     expect(r.isError).toBeUndefined();
     expect(String(r.output)).toContain("Other → custom border");
   });
 
   it("propagates cancellation as isError", async () => {
-    const askUser = vi.fn(async (): Promise<AskUserResponse> => ({
-      answers: [],
-      cancelled: true,
-    }));
+    const askUser = vi.fn(
+      async (): Promise<AskUserResponse> => ({
+        answers: [],
+        cancelled: true,
+      }),
+    );
     const r = await askUserQuestionTool.run(sampleInput, { cwd: dir, askUser });
     expect(r.isError).toBe(true);
     expect(String(r.output)).toContain("cancelled");
   });
 
   it("rejects empty questions list via schema", async () => {
-    const r = await askUserQuestionTool.run(
-      { questions: [] },
-      { cwd: dir, askUser: vi.fn() },
-    ).catch((e) => ({ output: String(e), isError: true }));
+    const r = await askUserQuestionTool
+      .run({ questions: [] }, { cwd: dir, askUser: vi.fn() })
+      .catch((e) => ({ output: String(e), isError: true }));
     expect(r.isError).toBe(true);
   });
 
@@ -359,7 +350,7 @@ describe("webfetchTool", () => {
     const fetcher = vi.fn(async (url: string) => {
       if (url.endsWith("/robots.txt")) return new Response("", { status: 404 });
       return mkResponse(
-        "<html><head><title>Hello World</title></head><body><h1>Heading</h1><p>This is <a href=\"https://example.com/x\">a link</a>.</p><script>alert(1)</script></body></html>",
+        '<html><head><title>Hello World</title></head><body><h1>Heading</h1><p>This is <a href="https://example.com/x">a link</a>.</p><script>alert(1)</script></body></html>',
       );
     });
     vi.stubGlobal("fetch", fetcher);
@@ -565,7 +556,8 @@ describe("websearchTool", () => {
   it("reports provider HTTP errors", async () => {
     process.env.BRAVE_SEARCH_API_KEY = "k";
     const fetcher = vi.fn(
-      async () => new Response("bad key", { status: 401, headers: { "content-type": "text/plain" } }),
+      async () =>
+        new Response("bad key", { status: 401, headers: { "content-type": "text/plain" } }),
     );
     vi.stubGlobal("fetch", fetcher);
 

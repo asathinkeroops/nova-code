@@ -1,3 +1,4 @@
+import { isAbsolute, relative } from "node:path";
 import type { PermissionRule } from "@nova/runtime";
 import { isDangerousBash } from "@nova/runtime";
 
@@ -35,8 +36,33 @@ export class PermissionDeniedError extends Error {
   }
 }
 
+/** True when `child` is `parent` itself or nested under it. Both must be
+ *  absolute, normalized paths — `relative` then yields "" or a non-".." rel. */
+function isWithin(parent: string, child: string): boolean {
+  if (!isAbsolute(parent) || !isAbsolute(child)) return false;
+  const rel = relative(parent, child);
+  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+}
+
+/** Structured path-containment matcher: `{ within: ["/abs/root", ...] }`.
+ *  Used by workspace rules in place of a regex. The matched value must be a
+ *  pre-canonicalized absolute path (the CLI canonicalizes path-bearing tool
+ *  inputs before evaluation), so containment compares real on-disk locations
+ *  rather than the raw string the model supplied. */
+function isWithinMatcher(v: unknown): v is { within: string[] } {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    Array.isArray((v as { within?: unknown }).within) &&
+    (v as { within: unknown[] }).within.every((x) => typeof x === "string")
+  );
+}
+
 function matchValue(expected: unknown, actual: unknown): boolean {
   if (expected === actual) return true;
+  if (isWithinMatcher(expected)) {
+    return typeof actual === "string" && expected.within.some((root) => isWithin(root, actual));
+  }
   if (typeof expected === "string" && typeof actual === "string") {
     if (expected.startsWith("/") && expected.endsWith("/") && expected.length > 2) {
       try {

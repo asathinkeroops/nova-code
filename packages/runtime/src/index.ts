@@ -19,9 +19,6 @@ export {
 
 export { createLogger, type Logger, type LoggerConfig } from "./logging.js";
 
-export {
-  createSession,
-  listSessions,
-  getSession,
-  type Session,
-} from "./session.js";
+export { canonicalizePath, canonicalizeRoots } from "./path-safety.js";
+
+export { createSession, listSessions, getSession, type Session } from "./session.js";

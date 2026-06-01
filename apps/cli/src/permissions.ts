@@ -5,10 +5,12 @@ import type { PermissionRule, Settings } from "@nova/runtime";
  * handlers registered by `builtinTools()` in @nova/tools; if you add a new
  * read-only/safe builtin tool, add it here too.
  *
- * `read` is NOT here — it gets workspace-scoped rules from
- * `workspaceReadRules(cwd)` so reads inside the project allow, but reads
- * pointing outside (absolute paths off-cwd, or relative paths that traverse
- * via `..`) fall through to `ask`.
+ * `read`, `glob`, and `grep` are NOT here — they get workspace-scoped rules
+ * from `workspaceReadRules(roots)` so a call whose canonical (resolved +
+ * realpath'd) path lands inside the workspace allows, while one pointing
+ * outside (off-cwd absolutes, `..` traversal, or symlink escape) falls through
+ * to `ask`. glob/grep used to be flat `allow`, which let the model enumerate or
+ * search arbitrary out-of-tree files; fencing their search root closes that.
  *
  * @nova/runtime ships a schema-only default of `rules: []` so the runtime
  * package stays free of tool-identifier knowledge.
@@ -24,8 +26,6 @@ export const DEFAULT_PERMISSION_RULES: readonly PermissionRule[] = [
   { tool: "getTask", effect: "allow" },
   { tool: "getTaskList", effect: "allow" },
   { tool: "clearTaskList", effect: "allow" },
-  { tool: "grep", effect: "allow" },
-  { tool: "glob", effect: "allow" },
   { tool: "loadSkill", effect: "allow" },
   { tool: "checkLongRunningCommand", effect: "allow" },
   // Spawning a sub-agent is itself safe to auto-allow: the sub-agent's own tool
@@ -34,32 +34,33 @@ export const DEFAULT_PERMISSION_RULES: readonly PermissionRule[] = [
   { tool: "createSubAgent", effect: "allow" },
 ];
 
-function escapeRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
+// Read-only tools fenced to the workspace by `path` containment. All take a
+// `path` (glob/grep optional, defaulting to cwd — checkPermission injects the
+// canonical cwd when it is omitted so the `within` rule still matches).
+const WORKSPACE_READ_TOOLS = ["read", "glob", "grep"] as const;
 
 /**
- * Workspace-scoped allowance for `read`: a path is auto-allowed if it is
- * either (a) a cwd-relative path with no `..` segment, or (b) an absolute
- * path under cwd. Anything else falls through to the engine's `ask`.
+ * Workspace-scoped allowance for the read-only tools (read/glob/grep): a call
+ * is auto-allowed when its `path` resolves inside one of `roots` (the workspace
+ * cwd plus any configured `additionalDirectories`). Containment is evaluated by
+ * the engine's `within` matcher on the *canonical* path — the CLI's
+ * `checkPermission` resolves and realpath()s the input first (see
+ * path-safety.ts), so `..` traversal and symlink escape both reduce to "is the
+ * real target inside a root?".
+ *
+ * write/edit deliberately get NO allow rule here: they fall through to the
+ * engine's default `ask` everywhere (matching Claude Code's prompt-on-write
+ * default). They are still canonicalized before evaluation, so a write whose
+ * real target lands outside the workspace is correctly seen as out-of-tree by
+ * any user-defined rule rather than slipping through on the raw string.
  */
-export function workspaceReadRules(cwd: string): PermissionRule[] {
-  const escaped = escapeRegex(cwd);
-  return [
-    // Relative path: not starting with `/`, no `..` path segment anywhere.
-    {
-      tool: "read",
-      effect: "allow",
-      match: { path: "/^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$/" },
-    },
-    // Absolute path under cwd (boundary is `/` or end of string to avoid
-    // matching sibling dirs like `/cwd-other/...`).
-    {
-      tool: "read",
-      effect: "allow",
-      match: { path: `/^${escaped}(/|$)/` },
-    },
-  ];
+export function workspaceReadRules(roots: readonly string[]): PermissionRule[] {
+  const within = [...roots];
+  return WORKSPACE_READ_TOOLS.map((tool) => ({
+    tool,
+    effect: "allow" as const,
+    match: { path: { within } },
+  }));
 }
 
 /**
@@ -67,12 +68,11 @@ export function workspaceReadRules(cwd: string): PermissionRule[] {
  * PermissionEngine's first-match evaluation lets users override a default
  * (e.g. force `read` back to `ask`). Workspace-scoped read rules sit between
  * user rules and other defaults so a global `read → ask` user override still
- * wins.
+ * wins. `roots` must already be canonicalized (see canonicalizeRoots).
  */
-export function resolvePermissionRules(settings: Settings, cwd: string): PermissionRule[] {
-  return [
-    ...settings.permissions.rules,
-    ...workspaceReadRules(cwd),
-    ...DEFAULT_PERMISSION_RULES,
-  ];
+export function resolvePermissionRules(
+  settings: Settings,
+  roots: readonly string[],
+): PermissionRule[] {
+  return [...settings.permissions.rules, ...workspaceReadRules(roots), ...DEFAULT_PERMISSION_RULES];
 }
