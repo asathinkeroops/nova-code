@@ -22,6 +22,7 @@
     "@nova/context": "workspace:*",
     "@nova/core": "workspace:*",
     "@nova/external": "workspace:*",
+    "@nova/lsp": "workspace:*",
     "@nova/observability": "workspace:*",
     "@nova/runtime": "workspace:*",
     "@nova/safety": "workspace:*",

@@ -4,7 +4,7 @@
 
 ## 一句话定位
 
-- **Claude Code** — Anthropic 官方出品,生态成熟(MCP、IDE 插件、桌面/Web 全平台),为 Claude 调校到极致的**成品**。
+- **Claude Code** — Anthropic 官方出品,生态成熟(IDE 插件、桌面/Web 全平台),为 Claude 调校到极致的**成品**。
 - **Nova** — **开源、可改、为 DeepSeek 量身定制**的终端编码代理。内核是一套干净的「无策略循环 + 单一钩子扩展点」**运行时范本**:既能开箱用,也能拆开当地基。
 
 > 想要开箱即用的全家桶 → Claude Code;想要一个能跑 DeepSeek、还能自己改的内核 → Nova。
@@ -24,12 +24,14 @@
 | 技能(SKILL.md 按需加载) | ✅ | ✅ |
 | 分层记忆 | ✅ 三层 + 优先级择一 | ✅ CLAUDE.md 层级 |
 | 上下文自动压缩 | ✅ 双层 micro + auto | ✅ |
-| 权限规则引擎 | ✅ allow / deny / ask | ✅ |
-| 会话恢复 / 回放 | ✅ 双 JSONL | ✅ |
+| 权限规则引擎 | ✅ allow / deny / ask + 路径规范化 | ✅ |
+| **OS 级命令沙箱** | ✅ 默认开(macOS Seatbelt / Linux bubblewrap) | ✅ |
+| 实时流式输出 | ✅ 可开关 | ✅ |
+| 会话恢复 / 回放 / 回退 | ✅ 双 JSONL + `/rewind` | ✅ |
 | 扩展思考分档 | ✅ 5 档 | ✅ |
-| **DeepSeek 一等公民** | ✅ `effort` 自动适配 | ❌ 主打 Claude |
+| **MCP 服务器** | ✅ stdio + HTTP,工具桥接 + 权限门控 | ✅ 成熟 |
+| **DeepSeek 一等公民** | ✅ `effort` 自动适配 + 错误码诊断 | ❌ 主打 Claude |
 | **钩子化无策略内核(可库化复用)** | ✅ | ⚠️ 闭源黑盒 |
-| MCP 服务器 | ⚠️ 目录占位,**未实现** | ✅ 成熟 |
 | 用户级 shell 钩子(settings) | ❌ | ✅ |
 | IDE 插件 / 桌面 / Web | ❌(vscode 仅占位) | ✅ 全平台 |
 | 开源可改 | ✅ MIT | ❌ |
@@ -39,7 +41,7 @@
 ## Nova 当前支持的核心功能详解
 
 ### 🔧 内置工具
-一线干活的工具集:`bash` · `read` · `write` · `edit` · `glob` · `grep` · `notebook-edit` · `webfetch` · `websearch` · `ask-user`(向用户反问) · `todo`(待办清单) · `task`(任务流) · 长时命令(后台 `run` / `check`) · `load-skill`(按需拉取技能正文)。
+一线干活的工具集:`bash` · `read` · `write` · `edit` · `glob` · `grep` · `notebook-edit` · `webfetch` · `websearch` · `ask-user`(向用户反问) · `todo`(待办清单) · `task`(任务流) · 长时命令(后台 `run` / `check`) · `load-skill`(按需拉取技能正文) · `createSubAgent`(派生子代理)。
 
 ### 🧬 子代理(Sub-agents)
 通过 `createSubAgent` 工具派生子代理,三种角色:
@@ -58,6 +60,12 @@
 
 加新能力 = 挂个钩子,内核一行不动。
 
+### 🔌 MCP 服务器
+启动时接入 Model Context Protocol 服务器(`@nova/external`),支持 **stdio** 与 **HTTP** 两种传输。每个服务器的工具以 `mcp__<server>__<tool>` 命名空间桥接进工具注册表,走和内置工具一致的**权限引擎门控**(默认 `ask`)。连接失败的服务器只记日志并跳过,**绝不阻塞启动**;`/mcp` 查看服务器状态,`/mcp tools` 列出已桥接的工具。可按服务器或整体 `enabled: false` 关闭。
+
+### 🛡 OS 级命令沙箱
+**默认开启**的操作系统级沙箱(`@anthropic-ai/sandbox-runtime`),为派生子进程的工具(`bash`、长时命令)套一层平台沙箱——**macOS** 用 Seatbelt(`sandbox-exec`)、**Linux** 用 bubblewrap——把文件**写入**限制在工作区根目录(与权限引擎同一套允许根)加少量系统默认路径。读取保持开放、网络不受限,是叠在权限引擎之上的**纵深防御**而非替代品。不支持的平台(Windows)或缺依赖时**静默降级**为无沙箱,因此默认开也能安全发布;常见包管理器缓存(npm/pnpm/cargo/go…)已预置进可写白名单。`sandbox.enabled: false` 可整体关闭。
+
 ### 🧠 三层记忆
 全局 → 用户 → 项目。每个目录内按 `NOVA.md > CLAUDE.md > AGENTS.md` 取最高优先级(**不合并**),文件名可配置。
 
@@ -68,16 +76,19 @@
 `off / low / medium / high / max`——给 DeepSeek 发 `output_config.effort`,给 Anthropic 发 `budget_tokens`,**按模型名自动切换线缆格式**(可手动覆写)。
 
 ### 🔐 权限引擎
-`allow / deny / ask` 规则 + 通配匹配 + 运行时「永远允许」+ cwd 作用域只读豁免。规则解析出错时降级为 `ask`(绝不静默放行)。
+`allow / deny / ask` 规则 + 通配匹配 + 运行时「永远允许」+ cwd 作用域只读豁免。工具路径在匹配前**规范化(realpath)**,避免软链 / 相对路径绕过;规则解析出错时降级为 `ask`(绝不静默放行)。
 
-### 💾 会话持久化
-`/resume`、`--continue` 恢复会话;`transcript.jsonl`(事件流)+ `messages.jsonl`(可重放历史),全程可回放。
+### 🩺 DeepSeek 错误码诊断
+DeepSeek API 在线上与 Anthropic 兼容,失败会以 `APIError` 携带 HTTP `status` 抛出。Nova 把文档化的状态码(余额不足、鉴权失败、限流、服务端故障…)翻译成**可操作的中文指引**,并标注该错误**原样重试**是否可能成功,而不是丢出晦涩的 `"402 {…}"` 原始响应体。
+
+### 💾 会话持久化 & 回退
+`/resume`、`--continue` 恢复会话;`transcript.jsonl`(事件流)+ `messages.jsonl`(可重放历史),全程可回放;`/rewind` 回退到此前某条消息(其后的历史被丢弃)。
 
 ### ⚡ 斜杠命令 & 技能
-内置 `/help` `/model` `/think` `/clear` `/compact` `/resume` `/predict` `/commands` `/skills`;任意 `.nova/commands` 或 `.claude/commands` 下的 `.md` 自动注册为命令;`SKILL.md` 启动时扫描、按需加载。
+内置 `/help` `/model` `/think` `/clear` `/compact` `/resume` `/rewind` `/plan` `/predict` `/commands` `/skills` `/mcp`(`/exit` `/quit` 退出);任意 `.nova/commands` 或 `.claude/commands` 下的 `.md` 自动注册为命令;`SKILL.md` 启动时扫描、按需加载。
 
 ### 🚀 体验
-Ink/React 终端 REPL · 首次启动引导式配置(`~/.nova/nova.config.json`)· 有界工具并发(默认 3)· 下一句输入预测占位。
+Ink/React 终端 REPL · 实时流式渲染(可 `stream.enabled` 开关)· 首次启动引导式配置(`~/.nova/nova.config.json`)· 有界工具并发(默认 3)· 下一句输入预测占位 · `ask-user` 多问卷反问(末尾固定一个 Submit / Cancel 确认页)。
 
 ---
 
@@ -85,7 +96,7 @@ Ink/React 终端 REPL · 首次启动引导式配置(`~/.nova/nova.config.json`)
 
 | 你的诉求 | 推荐 |
 |----------|------|
-| 开箱即用、要 MCP / IDE / 全平台 | **Claude Code** |
+| 开箱即用、要 IDE / 桌面 / Web 全平台 | **Claude Code** |
 | 主力跑 DeepSeek,要为它调到最优 | **Nova** |
 | 想读懂 / 改造 Agent 运行时本身 | **Nova**(开源 MIT) |
 | 团队要可审计、可自托管的内核 | **Nova** |

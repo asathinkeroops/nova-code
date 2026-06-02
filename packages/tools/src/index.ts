@@ -1,9 +1,11 @@
 import type { ToolHandler } from "@nova/core";
+import type { LspManager } from "@nova/lsp";
 import { askUserQuestionTool } from "./builtin/ask-user.js";
 import { bashTool } from "./builtin/bash.js";
 import { editTool } from "./builtin/edit.js";
 import { globTool } from "./builtin/glob.js";
 import { grepTool } from "./builtin/grep.js";
+import { createLspTool } from "./builtin/lsp.js";
 import { createLoadSkillTool } from "./builtin/load-skill.js";
 import { readTool } from "./builtin/read.js";
 import { getSkill, getSkillList, type SkillsOptions } from "./builtin/skills.js";
@@ -90,6 +92,7 @@ export {
   type SkillsOptions,
 } from "./builtin/skills.js";
 export { createLoadSkillTool, type GetSkillFn } from "./builtin/load-skill.js";
+export { createLspTool } from "./builtin/lsp.js";
 
 /**
  * Build the default set of builtin tools.
@@ -104,6 +107,7 @@ export function builtinTools(
   skills?: SkillsOptions,
   taskStore?: TaskStore,
   longRunningManager?: LongRunningCommandManager,
+  lspManager?: LspManager,
 ): ToolHandler[] {
   const tools: ToolHandler[] = [
     bashTool,
@@ -122,6 +126,9 @@ export function builtinTools(
   }
   if (longRunningManager) {
     tools.push(...createLongRunningCommandTools(longRunningManager));
+  }
+  if (lspManager) {
+    tools.push(createLspTool(lspManager));
   }
   if (skills && getSkillList(skills).length > 0) {
     tools.push(

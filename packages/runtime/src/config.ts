@@ -277,6 +277,42 @@ export const settingsSchema = z.object({
         allowGitConfig: true,
       },
     }),
+  // LSP code intelligence. When enabled, the `lsp` tool talks to language
+  // servers (over JSON-RPC/stdio) for definition, references, hover,
+  // diagnostics, and symbol search. Servers are NOT installed by Nova — they
+  // must already be on PATH (typescript-language-server, pyright-langserver,
+  // gopls, rust-analyzer are auto-detected by default). `servers` overrides or
+  // extends that built-in table, keyed by languageId; a server whose binary is
+  // missing degrades silently to a normal "not installed" tool result. The tool
+  // is read-only and auto-allowed by the permission engine.
+  lsp: z
+    .object({
+      enabled: z.boolean().default(true),
+      // Handshake (initialize) timeout per server, in ms.
+      initTimeoutMs: z.number().int().positive().default(15_000),
+      // Per-request timeout (definition, references, …), in ms.
+      requestTimeoutMs: z.number().int().positive().default(15_000),
+      // How long to wait for publishDiagnostics after opening a file, in ms.
+      diagnosticsTimeoutMs: z.number().int().positive().default(3_000),
+      // Override/extend the built-in server table. Each entry replaces the
+      // default with the same languageId; unknown ones are appended.
+      servers: z
+        .array(
+          z.object({
+            languageId: z.string().min(1),
+            command: z.string().min(1),
+            args: z.array(z.string()).default([]),
+            extensions: z.array(z.string().min(1)).min(1),
+          }),
+        )
+        .optional(),
+    })
+    .default({
+      enabled: true,
+      initTimeoutMs: 15_000,
+      requestTimeoutMs: 15_000,
+      diagnosticsTimeoutMs: 3_000,
+    }),
   // MCP servers connected at startup. Each server's tools are bridged into the
   // registry as `mcp__<server>__<tool>` and gated by the normal permission
   // engine (default-ask). A server that fails to connect is logged and skipped

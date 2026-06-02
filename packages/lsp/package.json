@@ -1,5 +1,5 @@
 {
-  "name": "@nova/tools",
+  "name": "@nova/lsp",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -21,22 +21,13 @@
       }
     }
   },
-  "files": [
-    "dist"
-  ],
+  "files": ["dist"],
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts --clean",
     "dev": "tsup src/index.ts --format esm --dts --watch",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@nova/core": "workspace:*",
-    "@nova/lsp": "workspace:*",
-    "@nova/runtime": "workspace:*",
-    "@vscode/ripgrep": "^1.18.0",
-    "execa": "^9.0.0",
-    "fast-glob": "^3.3.3",
-    "ignore": "^5.3.2",
-    "zod": "^3.23.0"
+    "@nova/core": "workspace:*"
   }
 }

@@ -259,6 +259,7 @@ const tools: Record<string, ToolStr> = {
     },
   },
   askUserQuestion: {
+    inline: true,
     use: (input) => {
       const qs = Array.isArray(input.questions) ? input.questions : [];
       const headers = qs
@@ -269,7 +270,7 @@ const tools: Record<string, ToolStr> = {
         )
         .filter((h) => h.length > 0)
         .join(", ");
-      return { header: header("ask_user", dim(headers || `${qs.length} question(s)`)) };
+      return { header: header("ask", dim(headers || `${qs.length} question(s)`)) };
     },
     result: (result) => {
       if (result.is_error) return errLine(result);

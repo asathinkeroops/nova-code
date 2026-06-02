@@ -70,7 +70,13 @@ export const askUserQuestionTool: ToolHandler = {
     }));
     const res = await ctx.askUser({ questions: specs });
     if (res.cancelled) {
-      return { output: "user cancelled", isError: true };
+      return {
+        output:
+          "The user dismissed the question without answering. " +
+          "Do not retry the question or guess a default. Stop the current line of " +
+          "work and ask the user in plain text how they would like to proceed.",
+        isError: true,
+      };
     }
     return { output: formatAnswers(input.questions, res.answers) };
   },

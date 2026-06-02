@@ -22,6 +22,7 @@ import {
   type ToolExecutor,
 } from "@nova/core";
 import { SlashRegistry, type McpManager } from "@nova/external";
+import { LspManager, resolveServers } from "@nova/lsp";
 import { Transcript } from "@nova/observability";
 import {
   LongRunningCommandManager,
@@ -55,6 +56,7 @@ import {
   handleCommands,
   handleCompact,
   handleHelp,
+  handleLsp,
   handleMcp,
   handleModel,
   handlePlan,
@@ -145,6 +147,8 @@ export interface CliContext {
   readonly todoStore: TodoStore;
   readonly taskStore: TaskStore;
   readonly longRunningManager: LongRunningCommandManager;
+  /** LSP code-intelligence manager. Undefined when settings.lsp.enabled is false. */
+  readonly lspManager: LspManager | undefined;
   /** OS command sandbox handle. Inactive (bridge undefined) unless opted in via settings.sandbox. */
   readonly sandbox: SandboxControl;
   readonly registry: SlashRegistry;
@@ -387,6 +391,15 @@ function registerBuiltinSlashCommands(ctx: CliContext): void {
     },
   });
   ctx.registry.register({
+    name: "lsp",
+    description: "show configured language servers and their status",
+    source: { kind: "builtin" },
+    run: () => {
+      handleLsp(ctx);
+      return handled;
+    },
+  });
+  ctx.registry.register({
     name: "exit",
     description: "leave the REPL",
     source: { kind: "builtin" },
@@ -480,8 +493,20 @@ export async function createContext(
   const todoStore = new TodoStore();
   const taskStore = new TaskStore(workspace, session.id);
   const longRunningManager = new LongRunningCommandManager();
+  // LSP code intelligence: one manager per session, rooted at the workspace.
+  // Servers are started lazily on first `lsp` tool call and disposed at exit.
+  const lspManager = settings.lsp.enabled
+    ? new LspManager({
+        root: workspace,
+        servers: resolveServers(settings.lsp.servers),
+        initTimeoutMs: settings.lsp.initTimeoutMs,
+        requestTimeoutMs: settings.lsp.requestTimeoutMs,
+        diagnosticsTimeoutMs: settings.lsp.diagnosticsTimeoutMs,
+        logger,
+      })
+    : undefined;
   const tools = new ToolRegistry().registerAll(
-    builtinTools(todoStore, skillsOpts, taskStore, longRunningManager),
+    builtinTools(todoStore, skillsOpts, taskStore, longRunningManager, lspManager),
   );
 
   // MCP: connect configured servers and bridge their tools into the registry
@@ -654,6 +679,7 @@ export async function createContext(
     todoStore,
     taskStore,
     longRunningManager,
+    lspManager,
     sandbox: null as unknown as SandboxControl,
     registry,
     tools,

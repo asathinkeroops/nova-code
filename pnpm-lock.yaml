@@ -53,6 +53,9 @@ importers:
       '@nova/external':
         specifier: workspace:*
         version: link:../../packages/external
+      '@nova/lsp':
+        specifier: workspace:*
+        version: link:../../packages/lsp
       '@nova/observability':
         specifier: workspace:*
         version: link:../../packages/observability
@@ -155,6 +158,12 @@ importers:
         specifier: ^3.23.0
         version: 3.25.76
 
+  packages/lsp:
+    dependencies:
+      '@nova/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/observability:
     dependencies:
       '@nova/runtime':
@@ -214,6 +223,9 @@ importers:
       '@nova/core':
         specifier: workspace:*
         version: link:../core
+      '@nova/lsp':
+        specifier: workspace:*
+        version: link:../lsp
       '@nova/runtime':
         specifier: workspace:*
         version: link:../runtime

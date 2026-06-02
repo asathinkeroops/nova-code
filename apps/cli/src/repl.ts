@@ -115,6 +115,7 @@ export async function runRepl(ctx: CliContext, initialPrompt: string): Promise<v
 
   await ctx.transcript.flush();
   await ctx.longRunningManager.disposeAll();
+  if (ctx.lspManager) await ctx.lspManager.disposeAll();
   await ctx.sandbox.dispose();
   if (ctx.mcp) await ctx.mcp.close();
   await ctx.screen.unmount();
