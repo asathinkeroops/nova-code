@@ -145,6 +145,53 @@ and skipped — it never blocks startup or affects the others. Use **`/mcp`** to
 see each server's state and tool count, and **`/mcp tools`** to list every
 bridged tool name.
 
+### Command sandbox (optional, OS-level isolation)
+
+Run the subprocess-spawning tools (`bash`, `runLongRunningCommand`) inside an
+OS-level sandbox that confines filesystem **writes** to the workspace roots (the
+same allowed roots the permission engine uses). Built on
+[`@anthropic-ai/sandbox-runtime`](https://github.com/anthropic-experimental/sandbox-runtime):
+macOS Seatbelt (`sandbox-exec`), Linux bubblewrap. It is **defense-in-depth**
+layered on top of the permission engine, not a replacement.
+
+On by default (opt-out). Reads stay open and the **network is unrestricted**
+(filesystem only). Unsupported platforms / missing deps degrade to no
+sandboxing, so default-on is safe; set `"enabled": false` to turn it off
+entirely. In `~/.nova/nova.config.json`:
+
+```jsonc
+{
+  "sandbox": {
+    "enabled": true,            // master switch (default true; set false to disable)
+    "monitorViolations": true,  // annotate blocked writes onto output (macOS: a `log` watcher)
+    "filesystem": {
+      // workspace roots (cwd + permissions.additionalDirectories) are always
+      // writable. allowWrite defaults to a set of common caches (~/.npm
+      // ~/.cache ~/Library/Caches ~/.cargo ~/.rustup ~/go ~/.local/share/pnpm
+      // ~/Library/pnpm ~/.yarn) so npm/pnpm/cargo/go work out of the box;
+      // setting it explicitly REPLACES that list.
+      "allowWrite": ["~/.npm", "~/.cargo", "/some/extra/dir"],
+      "denyWrite": [".env"],       // deny writes even within an allowed root
+      "denyRead": ["~/.ssh"],      // reads are otherwise open
+      "allowGitConfig": true       // allow writing .git/config (default true)
+    }
+  }
+}
+```
+
+- **macOS / Linux only**; unsupported platforms or missing host deps (macOS needs
+  `ripgrep`; Linux also `bubblewrap`/`socat`) **degrade silently** to no
+  sandboxing and the agent keeps running.
+- Common package-manager caches are allowed by default (above); if a command is
+  blocked writing somewhere else outside the workspace, add that path to
+  `filesystem.allowWrite`.
+- **A set of dangerous paths is force-protected by the SDK even inside the
+  workspace**: `.git/hooks`, `.git/config`, `.vscode/`, `.idea/`,
+  `.claude/{commands,agents}`, and dotfiles like `.gitconfig`/`.zshrc`/`.mcp.json`.
+  This is hardcoded SDK policy — only `.git/config` can be re-opened via
+  `allowGitConfig` (default true); `.git/hooks` is always blocked. To write the
+  other protected paths, disable the sandbox (`enabled: false`).
+
 ### Prompt caching (DeepSeek)
 
 DeepSeek's Anthropic-compatible endpoint does automatic, server-side **context
@@ -183,6 +230,7 @@ packages/
   subagent       createSubAgent tool · sub-agent system prompt (explore/plan/general-purpose)
   context        3-layer memory (NOVA.md > CLAUDE.md > AGENTS.md) · auto compact (micro off by default)
   safety         PermissionEngine · approval prompts (rules + cwd-scoped read)
+  sandbox        OS-level command sandbox (@anthropic-ai/sandbox-runtime): bash/long-running write isolation
   external       SlashRegistry · .md slash command loader · MCP client (stdio/http transports, tool bridge)
   observability  Transcript (JSONL)
   multi-agent, isolation, sdk

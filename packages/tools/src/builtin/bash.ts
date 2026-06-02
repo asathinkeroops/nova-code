@@ -37,8 +37,20 @@ export const bashTool: ToolHandler = {
   },
   async run(rawInput, ctx) {
     const input = inputSchema.parse(rawInput);
+    // When an OS sandbox is wired in (ctx.sandbox), confine the command before
+    // spawning. wrapCommand returns the command unchanged when sandboxing is
+    // inactive, so the no-sandbox path is unaffected. We still execa with
+    // shell:/bin/bash — the wrapped string carries its own sandbox-exec/bwrap
+    // invocation around an inner `/bin/bash -c`.
+    const command = ctx.sandbox
+      ? await ctx.sandbox.wrapCommand(input.command, ctx.signal)
+      : input.command;
+    // Annotate against the ORIGINAL command — the sandbox keys violations by the
+    // unwrapped command string. No-op when there are no violations.
+    const annotate = (s: string): string =>
+      ctx.sandbox ? ctx.sandbox.annotateOutput(input.command, s) : s;
     try {
-      const result = await execa(input.command, {
+      const result = await execa(command, {
         shell: "/bin/bash",
         cwd: input.cwd ?? ctx.cwd,
         timeout: input.timeout_ms,
@@ -46,7 +58,7 @@ export const bashTool: ToolHandler = {
         reject: false,
         ...(ctx.signal ? { cancelSignal: ctx.signal } : {}),
       });
-      const out = truncate(result.all ?? "");
+      const out = truncate(annotate(result.all ?? ""));
       if (result.failed || (result.exitCode ?? 0) !== 0) {
         return {
           output: `exit=${result.exitCode ?? "?"} ${result.signal ? `signal=${result.signal} ` : ""}\n${out}`,
@@ -57,9 +69,11 @@ export const bashTool: ToolHandler = {
     } catch (err) {
       const e = err as ExecaError;
       return {
-        output: `bash failed: ${e.shortMessage ?? e.message ?? String(err)}\n${e.all ?? ""}`,
+        output: `bash failed: ${e.shortMessage ?? e.message ?? String(err)}\n${annotate(typeof e.all === "string" ? e.all : "")}`,
         isError: true,
       };
+    } finally {
+      ctx.sandbox?.afterCommand();
     }
   },
 };

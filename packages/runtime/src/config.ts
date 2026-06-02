@@ -42,6 +42,25 @@ export type McpServerConfig = z.infer<typeof mcpServerSchema>;
 
 export const DEFAULT_MEMORY_FILENAMES = ["NOVA.md", "CLAUDE.md", "AGENTS.md"] as const;
 
+// Common package-manager / toolchain cache dirs that live OUTSIDE the
+// workspace. Seeded into the sandbox write-allowlist so the default-ON sandbox
+// doesn't break the everyday commands an agent runs — npm/pnpm/yarn, cargo +
+// rustup, go, pip, etc. `~` is expanded by the sandbox SDK; entries that don't
+// exist on a given platform simply never match (macOS Library/* vs Linux
+// XDG paths are both listed). Setting `sandbox.filesystem.allowWrite`
+// explicitly replaces this list.
+export const DEFAULT_SANDBOX_ALLOW_WRITE = [
+  "~/.npm", // npm cache + config
+  "~/.cache", // XDG cache (pip, yarn, go-build, pnpm, … on Linux)
+  "~/Library/Caches", // macOS cache (pip, go-build, …)
+  "~/.cargo", // Rust crates / registry / bin
+  "~/.rustup", // Rust toolchains
+  "~/go", // Go GOPATH (modules + bin)
+  "~/.local/share/pnpm", // pnpm store/bin (Linux)
+  "~/Library/pnpm", // pnpm store/bin (macOS)
+  "~/.yarn", // yarn global
+] as const;
+
 export const settingsSchema = z.object({
   apiKey: z.string().min(1).optional(),
   model: z.string().default("claude-sonnet-4-5"),
@@ -196,6 +215,68 @@ export const settingsSchema = z.object({
       maxTokens: z.number().int().positive().default(8192),
     })
     .default({ enabled: true, maxTurns: 30, maxTokens: 8192 }),
+  // OS-level command sandbox (@anthropic-ai/sandbox-runtime). Opt-out
+  // (default ON). When enabled, tools that spawn a subprocess (bash,
+  // runLongRunningCommand) run inside a platform sandbox — macOS Seatbelt via
+  // sandbox-exec, Linux bubblewrap — that confines filesystem *writes* to the
+  // workspace roots (the same allowed roots the permission engine uses) plus a
+  // few system defaults. Reads stay open and the network is left UNRESTRICTED
+  // (only the filesystem is enforced). This is defense-in-depth layered on top
+  // of the permission engine, not a replacement for it. Unsupported platforms
+  // (Windows) or missing host deps (ripgrep; Linux also bubblewrap/socat)
+  // degrade silently to no sandboxing, so default-ON is safe to ship. Common
+  // out-of-workspace caches (npm/pnpm/cargo/go/…) are seeded into
+  // filesystem.allowWrite by default (see DEFAULT_SANDBOX_ALLOW_WRITE) so the
+  // usual commands work; add more paths there for anything else, or set
+  // `enabled: false` to turn the sandbox off entirely.
+  sandbox: z
+    .object({
+      enabled: z.boolean().default(true),
+      // Capture sandbox violations (macOS: a `log stream` watcher) so blocked
+      // writes are annotated onto a command's output. Harmless no-op when the
+      // sandbox is inactive. Turn off to skip the watcher subprocess.
+      monitorViolations: z.boolean().default(true),
+      filesystem: z
+        .object({
+          // Paths the sandbox may write to, beyond the workspace roots (which
+          // are always writable). Defaults to DEFAULT_SANDBOX_ALLOW_WRITE
+          // (common package-manager caches); setting this REPLACES that list.
+          // `~` is expanded by the SDK; macOS accepts globs, Linux needs
+          // literal paths.
+          allowWrite: z.array(z.string().min(1)).default([...DEFAULT_SANDBOX_ALLOW_WRITE]),
+          // Paths to deny writes to even within an allowed root (e.g. ".env").
+          denyWrite: z.array(z.string().min(1)).default([]),
+          // Paths to deny reads from (reads are otherwise unrestricted).
+          denyRead: z.array(z.string().min(1)).default([]),
+          // The sandbox SDK ALWAYS force-denies a fixed set of dangerous paths
+          // inside the workspace, even though the workspace root is writable:
+          // `.git/hooks`, `.git/config`, `.vscode/`, `.idea/`,
+          // `.claude/{commands,agents}`, and shell-rc / `.mcp.json` dotfiles.
+          // These are baked into the SDK and not otherwise configurable — only
+          // `.git/config` can be re-opened, via this flag (needed for
+          // `git config --local`, `git remote set-url`, …). `.git/hooks` stays
+          // blocked regardless. Default true so ordinary git workflows work;
+          // set false to match the SDK's stricter default. To allow writing the
+          // other protected paths, turn the sandbox off (`enabled: false`).
+          allowGitConfig: z.boolean().default(true),
+        })
+        .default({
+          allowWrite: [...DEFAULT_SANDBOX_ALLOW_WRITE],
+          denyWrite: [],
+          denyRead: [],
+          allowGitConfig: true,
+        }),
+    })
+    .default({
+      enabled: true,
+      monitorViolations: true,
+      filesystem: {
+        allowWrite: [...DEFAULT_SANDBOX_ALLOW_WRITE],
+        denyWrite: [],
+        denyRead: [],
+        allowGitConfig: true,
+      },
+    }),
   // MCP servers connected at startup. Each server's tools are bridged into the
   // registry as `mcp__<server>__<tool>` and gated by the normal permission
   // engine (default-ask). A server that fails to connect is logged and skipped

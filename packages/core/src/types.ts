@@ -127,11 +127,42 @@ export interface FileAccessLedger {
   get(absPath: string): { lastReadMtimeMs: number } | undefined;
 }
 
+/**
+ * Optional OS-level sandbox bridge. When present on a ToolContext, tools that
+ * spawn a subprocess (bash, runLongRunningCommand) route their command through
+ * `wrapCommand` before spawning, so it executes inside the platform sandbox
+ * (macOS Seatbelt / Linux bubblewrap). Injected by the CLI; @nova/core and
+ * @nova/tools never import the sandbox SDK directly, keeping those layers
+ * model/SDK-agnostic. The bridge fails open: when sandboxing is inactive
+ * (disabled, unsupported platform, missing host deps), `wrapCommand` returns
+ * the command unchanged.
+ */
+export interface SandboxBridge {
+  /** Wrap a shell command so it runs inside the sandbox, or return it unchanged when inactive. */
+  wrapCommand(command: string, signal?: AbortSignal): Promise<string>;
+  /**
+   * Signal that a wrapped command has finished, so the sandbox can release any
+   * per-command resources (Linux bubblewrap mount points; a no-op on macOS).
+   * Call once after a command spawned via `wrapCommand` completes. Reference-
+   * counted, so it is safe to call while other sandboxed commands are still
+   * running. Detached/long-running commands may skip it — `dispose()` force-
+   * cleans everything at session end.
+   */
+  afterCommand(): void;
+  /**
+   * Append any sandbox-violation context recorded for `command` to its output,
+   * so a denied write surfaces as a readable reason rather than a bare EPERM.
+   * Returns `output` unchanged when there are no violations / monitoring is off.
+   */
+  annotateOutput(command: string, output: string): string;
+}
+
 export interface ToolContext {
   cwd: string;
   signal?: AbortSignal;
   askUser?: AskUserFn;
   fileLedger?: FileAccessLedger;
+  sandbox?: SandboxBridge;
 }
 
 export interface ToolHandler {

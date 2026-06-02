@@ -2,7 +2,13 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { isDangerousBash, loadSettings, parseSettings, settingsSchema } from "./config.js";
+import {
+  DEFAULT_SANDBOX_ALLOW_WRITE,
+  isDangerousBash,
+  loadSettings,
+  parseSettings,
+  settingsSchema,
+} from "./config.js";
 
 describe("settingsSchema", () => {
   it("applies defaults when empty input is given", () => {
@@ -13,6 +19,10 @@ describe("settingsSchema", () => {
     expect(s.permissions.defaultEffect).toBe("ask");
     expect(s.permissions.rules).toEqual([]);
     expect(s.transcript.enabled).toBe(true);
+    expect(s.sandbox.enabled).toBe(true);
+    expect(s.sandbox.monitorViolations).toBe(true);
+    expect(s.sandbox.filesystem.allowWrite).toEqual([...DEFAULT_SANDBOX_ALLOW_WRITE]);
+    expect(s.sandbox.filesystem.allowGitConfig).toBe(true);
     expect(s.slash.enabled).toBe(true);
     expect(s.slash.projectDirs).toBeUndefined();
     expect(s.slash.userPaths).toBeUndefined();

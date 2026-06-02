@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Nova · 包依赖关系图</title>
+<style>
+  :root{
+    --bg:#f7f8fa; --panel:#ffffff; --panel2:#f0f2f5; --line:#e6e9ee;
+    --txt:#1f2328; --muted:#57606a; --dim:#9aa0a6;
+    --leaf:#0d9488; --d1:#2563eb; --agent:#7c3aed; --subagent:#db2777; --cli:#d97706;
+    --dep:#ea580c; --consumer:#2563eb;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",Helvetica,Arial,sans-serif;
+    line-height:1.6;padding:32px 24px 80px}
+  .wrap{max-width:1280px;margin:0 auto}
+  h1{font-size:26px;margin:0 0 6px;letter-spacing:.3px}
+  h1 .v{color:var(--leaf)}
+  .sub{color:var(--muted);margin:0 0 24px;font-size:14px}
+  .sub code{background:var(--panel2);padding:1px 6px;border-radius:5px;color:var(--txt);font-size:12px}
+  .grid{display:grid;grid-template-columns:1fr 320px;gap:20px;align-items:start}
+  @media(max-width:980px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;
+    box-shadow:0 1px 2px rgba(16,24,40,.04),0 1px 3px rgba(16,24,40,.03)}
+  .diagram-card{padding:10px 6px 6px}
+  svg{width:100%;height:auto;display:block;user-select:none}
+  .node rect{transition:opacity .15s,stroke .15s,filter .15s;cursor:pointer;
+    filter:drop-shadow(0 1px 1.5px rgba(16,24,40,.10))}
+  .node text{pointer-events:none;font-weight:600;font-size:15px;fill:#1f2328}
+  .node .pkg-sub{font-weight:500;font-size:10.5px;fill:rgba(31,35,40,.58)}
+  .edge{fill:none;transition:opacity .15s,stroke-width .15s;pointer-events:none}
+  .legend{display:flex;flex-wrap:wrap;gap:14px 20px;margin:6px 4px 2px;font-size:12.5px;color:var(--muted)}
+  .legend .it{display:flex;align-items:center;gap:7px}
+  .sw{width:13px;height:13px;border-radius:4px;display:inline-block}
+  .sw.line{height:0;width:22px;border-radius:0;border-top:3px solid}
+  /* info panel */
+  .info h2{margin:0 0 2px;font-size:18px}
+  .info h2 .ns{color:var(--dim);font-weight:500}
+  .info .role{color:var(--muted);font-size:13.5px;margin:0 0 14px}
+  .info .files{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;
+    color:var(--leaf);background:var(--bg);border:1px solid var(--line);border-radius:8px;
+    padding:9px 11px;margin:0 0 14px;word-break:break-word;line-height:1.7}
+  .info .block{margin:0 0 12px}
+  .info .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);margin:0 0 6px}
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{font-size:12px;padding:3px 9px;border-radius:20px;border:1px solid var(--line);
+    background:var(--panel2);cursor:pointer;transition:.12s}
+  .chip:hover{border-color:var(--d1)}
+  .chip.dep{border-color:var(--dep);color:var(--dep)}
+  .chip.consumer{border-color:var(--consumer);color:var(--consumer)}
+  .chip.none{color:var(--dim);border-style:dashed;cursor:default}
+  .note{font-size:12px;color:#9a6700;background:#fff8e6;
+    border:1px solid #f3e2b3;border-radius:8px;padding:8px 11px;margin-top:4px}
+  .hint{color:var(--dim);font-size:12px;text-align:center;margin:8px 0 2px}
+  /* discrepancy section */
+  .findings{margin-top:24px}
+  .findings h3{font-size:15px;margin:0 0 12px;color:var(--txt)}
+  .finding{display:flex;gap:11px;padding:11px 0;border-top:1px solid var(--line);font-size:13.5px}
+  .finding:first-of-type{border-top:0}
+  .finding .ic{flex:0 0 auto;width:22px;height:22px;border-radius:6px;display:grid;place-items:center;
+    font-size:13px;font-weight:700;margin-top:1px}
+  .ic.fix{background:#ffeef0;color:#d1242f}
+  .ic.add{background:#e6f4ea;color:#1a7f37}
+  .ic.info{background:#e7effd;color:#2563eb}
+  .finding code{background:var(--panel2);padding:1px 6px;border-radius:5px;font-size:12px}
+  .foot{color:var(--dim);font-size:12px;margin-top:26px;text-align:center}
+  /* module table */
+  .tbl-card{margin-top:24px;overflow-x:auto}
+  .tbl-card h3{font-size:15px;margin:0 0 14px}
+  table.mod{width:100%;border-collapse:collapse;font-size:13px;min-width:760px}
+  table.mod th,table.mod td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  table.mod th{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--dim);font-weight:600}
+  table.mod tbody tr:hover td{background:#f7f9fb}
+  .mname{font-weight:700;white-space:nowrap;font-size:13.5px}
+  .lbadge{display:inline-block;font-size:10px;padding:2px 8px;border-radius:20px;font-weight:700;color:#fff;white-space:nowrap}
+  table.mod .api{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--leaf);line-height:1.8;word-break:break-word}
+  table.mod .files{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--muted);line-height:1.7}
+  table.mod td.role{min-width:200px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1><span class="v">Nova</span> · 包依赖关系图</h1>
+  <p class="sub">按 <strong>真实源码 import</strong> 绘制（非 <code>package.json</code> 声明）。共 10 个真实包 + 3 个空占位目录。悬停任意节点查看「依赖谁 / 被谁依赖」。</p>
+
+  <div class="grid">
+    <div class="card diagram-card">
+      <div class="legend">
+        <span class="it"><span class="sw" style="background:var(--leaf)"></span>叶子层（无 @nova 依赖）</span>
+        <span class="it"><span class="sw" style="background:var(--d1)"></span>L1</span>
+        <span class="it"><span class="sw" style="background:var(--agent)"></span>agent</span>
+        <span class="it"><span class="sw" style="background:var(--subagent)"></span>subagent</span>
+        <span class="it"><span class="sw" style="background:var(--cli)"></span>cli</span>
+        <span class="it"><span class="sw line" style="border-color:var(--dep)"></span>依赖（指向）</span>
+        <span class="it"><span class="sw line" style="border-color:var(--consumer)"></span>被依赖</span>
+      </div>
+      <svg id="svg" viewBox="0 0 1240 660" role="img" aria-label="Nova package dependency graph"></svg>
+      <p class="hint">↓ 箭头方向 = 「依赖」。悬停高亮，移开复位。</p>
+    </div>
+
+    <div class="card info" id="info">
+      <!-- filled by JS -->
+    </div>
+  </div>
+
+  <div class="card tbl-card">
+    <h3>各模块核心功能详表</h3>
+    <table class="mod">
+      <thead>
+        <tr><th>模块</th><th>层</th><th>核心职责</th><th>关键导出 / API</th><th>关键文件</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="mname" style="color:var(--leaf)">runtime</span></td>
+          <td><span class="lbadge" style="background:var(--leaf)">叶子 L0</span></td>
+          <td class="role">运行时地基：settings 加载/校验、会话存储、结构化日志、路径规范化与越权防护。所有可配置项的 zod schema 单一来源。</td>
+          <td class="api">settingsSchema · loadSettings/parseSettings/saveSettings · isDangerousBash · canonicalizePath/canonicalizeRoots · createSession/listSessions/getSession · createLogger · mcpServerSchema</td>
+          <td class="files">config.ts · session.ts · path-safety.ts · logging.ts</td>
+        </tr>
+        <tr>
+          <td><span class="mname" style="color:var(--leaf)">core</span></td>
+          <td><span class="lbadge" style="background:var(--leaf)">叶子 L0</span></td>
+          <td class="role">与模型无关的 agent 主循环 + hook 体系 + 模型客户端抽象。唯一扩展点是 HookRegistry；含 DeepSeek 专属错误翻译/重试与 thinking 预算。</td>
+          <td class="api">agentLoop/LoopResult/LoopTerminatedError · HookRegistry/HookPoint/HookDecision · createAnthropicModel/ModelClient/ModelRequest · resolveBudget/THINKING_BUDGETS · decide(StopDecision) · translateDeepSeekError/DeepSeekApiError</td>
+          <td class="files">loop.ts · hooks.ts · model.ts · messages.ts · thinking.ts · stop-reason.ts · deepseek-errors.ts</td>
+        </tr>
+        <tr>
+          <td><span class="mname" style="color:var(--leaf)">observability</span></td>
+          <td><span class="lbadge" style="background:var(--leaf)">叶子 L0</span></td>
+          <td class="role">旁路观测：把 hook 事件与历史落盘成 transcript（JSONL），并提供指标、成本核算、eval 回放支撑。不参与决策。</td>
+          <td class="api">Transcript · TranscriptKind · TranscriptRecord</td>
+          <td class="files">transcript.ts · metrics.ts · cost.ts · eval.ts</td>
+        </tr>
+        <tr>
+          <td><span class="mname" style="color:var(--d1)">safety</span></td>
+          <td><span class="lbadge" style="background:var(--d1)">L1</span></td>
+          <td class="role">权限引擎：对每次工具调用做 allow / deny / ask 决策，配合沙箱 FS 守卫。作为 hook 挂到 loop 的 pre_tool_use。</td>
+          <td class="api">PermissionEngine · PermissionDecision/PermissionEffect/PermissionInput · AskCallback · PermissionDeniedError</td>
+          <td class="files">permission.ts · sandbox-fs.ts · hooks.ts</td>
+        </tr>
+        <tr>
+          <td><span class="mname" style="color:var(--d1)">context</span></td>
+          <td><span class="lbadge" style="background:var(--d1)">L1</span></td>
+          <td class="role">上下文窗口管理：记忆 bundle 加载（NOVA.md&gt;CLAUDE.md&gt;AGENTS.md，不合并）、token 估算、阈值判断、自动压缩与微压缩。</td>
+          <td class="api">loadMemory/MemoryBundle · estimateTokens/computeThreshold · shouldAutoCompact/autoCompact · microCompact · COMPACT_MARKER</td>
+          <td class="files">memory.ts · compact.ts · cache.ts</td>
+        </tr>
+        <tr>
+          <td><span class="mname" style="color:var(--d1)">tools</span></td>
+          <td><span class="lbadge" style="background:var(--d1)">L1</span></td>
+          <td class="role">内置工具集 + 注册表 + 派发器 + 不变量校验。dispatcher 用 zod 预校验输入，parse 错误转成 is_error 结果；invariants 保证每个 tool_use 必有配对 tool_result。</td>
+          <td class="api">ToolRegistry · createDispatcher · createInvariants/InMemoryFileAccessLedger · bash/read/edit/write/glob/grep/webfetch/websearch/ask-user · todo·task 工具组 · long-running 命令管理 · skills/load-skill</td>
+          <td class="files">dispatcher.ts · registry.ts · invariants.ts · builtin/*</td>
+        </tr>
+        <tr>
+          <td><span class="mname" style="color:var(--d1)">sandbox</span></td>
+          <td><span class="lbadge" style="background:var(--d1)">L1</span></td>
+          <td class="role">真沙箱执行后端：封装 @anthropic-ai/sandbox-runtime（macOS Seatbelt / Linux bubblewrap）。core/tools 不直接碰沙箱 SDK，由 CLI 注入。</td>
+          <td class="api">createSandbox · SandboxControl · CreateSandboxOptions · SandboxLogger</td>
+          <td class="files">sandbox.ts</td>
+        </tr>
+        <tr>
+          <td><span class="mname" style="color:var(--d1)">external</span></td>
+          <td><span class="lbadge" style="background:var(--d1)">L1</span></td>
+          <td class="role">对外集成层：MCP 服务接入（stdio/http 传输、工具名前缀映射）、slash 命令系统（文件命令加载、占位符展开）、REPL/IDE/HTTP transport。</td>
+          <td class="api">McpManager/transportForSpec/mcpToolToHandler/MCP_TOOL_PREFIX · SlashRegistry/loadFileCommands/expandPlaceholders · transport/{repl,ide,http}</td>
+          <td class="files">mcp/* · slash.ts · transport/*</td>
+        </tr>
+        <tr>
+          <td><span class="mname" style="color:var(--agent)">agent</span></td>
+          <td><span class="lbadge" style="background:var(--agent)">L2</span></td>
+          <td class="role">把 core loop 与默认 hooks（权限、压缩、transcript、持久化）组装成可用 agent；构建系统提示词；按游标增量持久化 messages.jsonl。</td>
+          <td class="api">createAgent/Agent/agent.on(point,fn) · TurnResult · buildSystemPrompt · persistMessages/loadMessages/emptyCursor</td>
+          <td class="files">agent.ts · system-prompt.ts · persistence.ts</td>
+        </tr>
+        <tr>
+          <td><span class="mname" style="color:var(--subagent)">subagent</span></td>
+          <td><span class="lbadge" style="background:var(--subagent)">L3</span></td>
+          <td class="role">把「派生子 agent」能力封装成一个可被主循环调用的工具，并为子 agent 构建专属系统提示词（按 SubAgentType 分型）。</td>
+          <td class="api">createSubAgentTool · SUBAGENT_TOOL_NAME · buildSubAgentSystemPrompt/SubAgentType</td>
+          <td class="files">subagent.ts · system-prompt.ts</td>
+        </tr>
+        <tr>
+          <td><span class="mname" style="color:var(--cli)">cli</span></td>
+          <td><span class="lbadge" style="background:var(--cli)">App</span></td>
+          <td class="role">唯一 active app：终端 REPL，组装全部 10 个包，把 model/tools/permissions/transport/hooks 全部连线，是 nova 二进制入口。</td>
+          <td class="api">repl 主循环 · context 装配 · 命令/快捷键 · 流式渲染</td>
+          <td class="files">apps/cli/src/repl.ts · context.ts</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card findings">
+    <h3>梳理时发现的「文档 vs 代码」偏差（已回写进 CLAUDE.md）</h3>
+    <div class="finding"><div class="ic fix">✕</div><div><code>observability</code> 原标注 <code>──► core + runtime</code>，实测源码<strong>零 @nova 引用</strong>，是叶子层。<code>package.json</code> 声明的 <code>@nova/runtime</code> 未被 import。</div></div>
+    <div class="finding"><div class="ic fix">✕</div><div><code>safety</code> 原标注 <code>──► core + runtime</code>，实测<strong>只依赖 runtime</strong>（用了 <code>PermissionRule</code> 类型与 <code>isDangerousBash</code>），不碰 core。</div></div>
+    <div class="finding"><div class="ic info">i</div><div><code>core</code> 也<strong>没有任何 @nova 源码 import</strong>（仅注释提及），<code>package.json</code> 的 <code>@nova/runtime</code> 同样未使用 → 与 runtime、observability 同属叶子层。</div></div>
+    <div class="finding"><div class="ic add">+</div><div><code>sandbox</code> / <code>external</code> / <code>subagent</code> 三个包原依赖图<strong>完全没提</strong>。<code>external</code> 对 <code>core</code> 仅 <em>type-only</em> import。</div></div>
+    <div class="finding"><div class="ic info">i</div><div><code>isolation</code> / <code>multi-agent</code> / <code>sdk</code> 是<strong>空脚手架</strong>：<code>src/</code> 下全是 0 字节文件、无 <code>package.json</code>、未被任何包引用。</div></div>
+  </div>
+
+  <p class="foot">生成自仓库源码静态分析 · 单文件离线可用</p>
+</div>
+
+<script>
+const BOX_W = 138, BOX_H = 48;
+
+// 真实源码 import（出边 = 该包依赖谁）
+const PKG = {
+  cli:           {x:620, y:70,  color:'cli',      ns:'apps/', role:'终端应用，把 10 个包组装成 nova CLI（唯一 active app）', files:'apps/cli/src/* · repl · context', deps:['agent','context','core','external','observability','runtime','safety','sandbox','subagent','tools']},
+  subagent:      {x:620, y:190, color:'subagent', ns:'@nova/', role:'在默认 agent 之上派生子 agent', files:'subagent.ts · system-prompt.ts', deps:['agent','context','core','observability','runtime']},
+  agent:         {x:620, y:310, color:'agent',    ns:'@nova/', role:'把 core+context+observability 组装成默认 agent', files:'agent.ts (createAgent) · system-prompt.ts · persistence.ts', deps:['core','runtime','context','observability']},
+  safety:        {x:220, y:445, color:'d1',       ns:'@nova/', role:'权限闸 + 沙箱 FS hook', files:'permission.ts · sandbox-fs.ts · hooks.ts', deps:['runtime'], note:'仅用 runtime 的 PermissionRule / isDangerousBash，不依赖 core'},
+  context:       {x:420, y:445, color:'d1',       ns:'@nova/', role:'上下文管理：压缩 / 缓存 / 记忆', files:'compact.ts · cache.ts · memory.ts', deps:['core','runtime']},
+  tools:         {x:620, y:445, color:'d1',       ns:'@nova/', role:'内置工具集 + 派发器', files:'dispatcher.ts · registry.ts · invariants.ts · builtin/*', deps:['core','runtime']},
+  sandbox:       {x:820, y:445, color:'d1',       ns:'@nova/', role:'真沙箱执行后端', files:'封装 @anthropic-ai/sandbox-runtime', deps:['core']},
+  external:      {x:1020,y:445, color:'d1',       ns:'@nova/', role:'对外集成：MCP / slash / transport', files:'mcp/* · slash.ts · transport/*', deps:['core'], note:'对 core 仅 type-only import（ToolHandler）'},
+  runtime:       {x:360, y:600, color:'leaf',     ns:'@nova/', role:'地基：配置 / 会话 / 日志 / 路径安全', files:'config.ts · session.ts · path-safety.ts · logging.ts', deps:[]},
+  core:          {x:620, y:600, color:'leaf',     ns:'@nova/', role:'模型循环本体（model-agnostic）', files:'loop.ts · hooks.ts · model.ts · messages.ts · thinking.ts · deepseek-errors.ts', deps:[], note:'package.json 声明 @nova/runtime，但源码并未 import'},
+  observability: {x:880, y:600, color:'leaf',     ns:'@nova/', role:'旁路观测：transcript / 指标 / 成本 / eval', files:'transcript.ts · metrics.ts · cost.ts · eval.ts', deps:[], note:'源码零 @nova 依赖'},
+};
+const COLORS = {leaf:'#0d9488', d1:'#2563eb', agent:'#7c3aed', subagent:'#db2777', cli:'#d97706'};
+const TINT   = {leaf:'#d3f3ee', d1:'#dbe7fd', agent:'#ebe1fb', subagent:'#fbdcec', cli:'#fceccf'};
+
+// 反向：被谁依赖
+const consumers = {};
+Object.keys(PKG).forEach(k => consumers[k] = []);
+Object.entries(PKG).forEach(([k,v]) => v.deps.forEach(d => consumers[d].push(k)));
+
+const svg = document.getElementById('svg');
+const SVGNS = 'http://www.w3.org/2000/svg';
+function el(tag, attrs){const e=document.createElementNS(SVGNS,tag);for(const a in attrs)e.setAttribute(a,attrs[a]);return e;}
+
+// defs: 箭头
+const defs = el('defs',{});
+[['arr-default','#c4ccd6'],['arr-dep','#ea580c'],['arr-consumer','#2563eb']].forEach(([id,c])=>{
+  const m=el('marker',{id,viewBox:'0 0 10 10',refX:'8',refY:'5',markerWidth:'7',markerHeight:'7',orient:'auto-start-reverse'});
+  m.appendChild(el('path',{d:'M0,0 L10,5 L0,10 z',fill:c}));
+  defs.appendChild(m);
+});
+svg.appendChild(defs);
+
+// edges
+const edgeLayer = el('g',{}); svg.appendChild(edgeLayer);
+const edges = [];
+Object.entries(PKG).forEach(([from,v])=>{
+  v.deps.forEach(to=>{
+    const a=PKG[from], b=PKG[to];
+    const sx=a.x, sy=a.y+BOX_H/2, tx=b.x, ty=b.y-BOX_H/2;
+    const dy=(ty-sy);
+    const d=`M${sx},${sy} C${sx},${sy+dy*0.45} ${tx},${ty-dy*0.45} ${tx},${ty}`;
+    const p=el('path',{class:'edge',d,stroke:'#c4ccd6','stroke-width':'1.4',opacity:'0.85','marker-end':'url(#arr-default)'});
+    p.dataset.from=from; p.dataset.to=to;
+    edgeLayer.appendChild(p); edges.push(p);
+  });
+});
+
+// nodes
+const nodeLayer = el('g',{}); svg.appendChild(nodeLayer);
+Object.entries(PKG).forEach(([k,v])=>{
+  const g=el('g',{class:'node'}); g.dataset.key=k;
+  g.appendChild(el('rect',{x:v.x-BOX_W/2,y:v.y-BOX_H/2,width:BOX_W,height:BOX_H,rx:12,
+    fill:TINT[v.color],stroke:COLORS[v.color],'stroke-width':'1.8'}));
+  const t=el('text',{x:v.x,y:v.y-3,'text-anchor':'middle'}); t.textContent=k; g.appendChild(t);
+  const s=el('text',{x:v.x,y:v.y+13,'text-anchor':'middle',class:'pkg-sub'});
+  s.textContent = k==='cli' ? 'apps/cli' : '@nova/'+k; g.appendChild(s);
+  g.addEventListener('mouseenter',()=>focus(k));
+  g.addEventListener('mouseleave',reset);
+  g.addEventListener('click',()=>{select(k); g.dispatchEvent(new Event('mouseenter'));});
+  nodeLayer.appendChild(g);
+});
+
+function focus(k){
+  const v=PKG[k];
+  const deps=new Set(v.deps), cons=new Set(consumers[k]);
+  edges.forEach(p=>{
+    const f=p.dataset.from,t=p.dataset.to;
+    if(f===k){p.setAttribute('stroke','#ea580c');p.setAttribute('stroke-width','2.4');p.setAttribute('opacity','.95');p.setAttribute('marker-end','url(#arr-dep)');}
+    else if(t===k){p.setAttribute('stroke','#2563eb');p.setAttribute('stroke-width','2.4');p.setAttribute('opacity','.95');p.setAttribute('marker-end','url(#arr-consumer)');}
+    else {p.setAttribute('opacity','.1');}
+  });
+  nodeLayer.querySelectorAll('.node').forEach(g=>{
+    const nk=g.dataset.key;
+    g.querySelector('rect').setAttribute('opacity', (nk===k||deps.has(nk)||cons.has(nk))?'1':'.32');
+  });
+}
+function reset(){
+  edges.forEach(p=>{p.setAttribute('stroke','#c4ccd6');p.setAttribute('stroke-width','1.4');p.setAttribute('opacity','.85');p.setAttribute('marker-end','url(#arr-default)');});
+  nodeLayer.querySelectorAll('.node rect').forEach(r=>r.setAttribute('opacity','1'));
+}
+
+// info panel
+const info=document.getElementById('info');
+function chipRow(list,cls){
+  if(!list.length) return '<span class="chip none">无</span>';
+  return list.map(n=>`<span class="chip ${cls}" data-k="${n}">${n}</span>`).join('');
+}
+function select(k){
+  const v=PKG[k];
+  info.innerHTML=`
+    <h2>${k} <span class="ns">${k==='cli'?'apps/cli':'@nova/'+k}</span></h2>
+    <p class="role">${v.role}</p>
+    <div class="files">${v.files}</div>
+    <div class="block"><div class="lbl">依赖（出边 → ${v.deps.length}）</div><div class="chips">${chipRow(v.deps,'dep')}</div></div>
+    <div class="block"><div class="lbl">被依赖（入边 ← ${consumers[k].length}）</div><div class="chips">${chipRow(consumers[k],'consumer')}</div></div>
+    ${v.note?`<div class="note">⚠︎ ${v.note}</div>`:''}
+  `;
+  info.querySelectorAll('.chip[data-k]').forEach(c=>{
+    c.addEventListener('mouseenter',()=>focus(c.dataset.k));
+    c.addEventListener('mouseleave',reset);
+    c.addEventListener('click',()=>select(c.dataset.k));
+  });
+}
+select('core');
+</script>
+</body>
+</html>

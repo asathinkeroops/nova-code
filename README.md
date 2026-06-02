@@ -136,6 +136,47 @@ Nova 可以在启动时连接外部 [MCP](https://modelcontextprotocol.io) 服�
 各服务器并行连接；某个连不上只会记日志并跳过 —— 既不会阻塞启动，也不影响其他服务器。
 用 **`/mcp`** 查看每个服务器的状态和工具数，**`/mcp tools`** 列出所有桥接的工具名。
 
+### 命令沙箱（可选，OS 级隔离）
+
+把会起子进程的工具（`bash`、`runLongRunningCommand`）放进操作系统级沙箱里跑，
+把**文件写入**限制在工作区根目录内（与权限引擎用的允许根一致）。底层是
+[`@anthropic-ai/sandbox-runtime`](https://github.com/anthropic-experimental/sandbox-runtime)：
+macOS 用 Seatbelt（`sandbox-exec`），Linux 用 bubblewrap。这是叠在权限引擎之上的
+**纵深防御**，不是替代品。
+
+默认**开启**（opt-out）。读放行、**网络不限制**（只管文件系统）。不支持的平台或缺依赖会
+自动降级为不沙箱，所以默认开是安全的。要彻底关掉设 `"enabled": false`。
+在 `~/.nova/nova.config.json`：
+
+```jsonc
+{
+  "sandbox": {
+    "enabled": true,            // 总开关（默认 true；设 false 彻底关闭）
+    "monitorViolations": true,  // 捕获越权写并标注到命令输出（macOS 起一个 log 监听）
+    "filesystem": {
+      // 工作区根（cwd + permissions.additionalDirectories）始终可写。
+      // allowWrite 默认已预置一组常见缓存（~/.npm ~/.cache ~/Library/Caches
+      // ~/.cargo ~/.rustup ~/go ~/.local/share/pnpm ~/Library/pnpm ~/.yarn），
+      // 让 npm/pnpm/cargo/go 开箱即用；显式设置会**替换**这组默认值。
+      "allowWrite": ["~/.npm", "~/.cargo", "/some/extra/dir"],
+      "denyWrite": [".env"],      // 即使在允许根内也拒绝写
+      "denyRead": ["~/.ssh"],     // 读默认放行，这里单独拒绝
+      "allowGitConfig": true      // 放行 .git/config 写（默认 true）
+    }
+  }
+}
+```
+
+- 仅 **macOS / Linux**；不支持的平台或缺依赖（macOS 需 `ripgrep`；Linux 还需
+  `bubblewrap`/`socat`）会**静默降级**为不沙箱，agent 照常运行。
+- 常见包管理器缓存默认已放行（见上）；如果某个命令要写到别处（工作区外）被拦，
+  把对应路径加进 `filesystem.allowWrite` 即可。
+- **工作区内有一组危险路径被 SDK 强制保护、即使在工作区里也写不了**：`.git/hooks`、
+  `.git/config`、`.vscode/`、`.idea/`、`.claude/{commands,agents}`，以及
+  `.gitconfig`/`.zshrc`/`.mcp.json` 等 dotfile。这些是 SDK 写死的安全策略，只有
+  `.git/config` 能通过 `allowGitConfig`（默认 true）放行，`.git/hooks` 始终拦。
+  要写其它被保护路径，只能整个关掉沙箱（`enabled: false`）。
+
 ### 上下文缓存（DeepSeek）
 
 DeepSeek 的 Anthropic 兼容端点会做自动的、服务端的**上下文缓存**：只要某个请求的
@@ -169,6 +210,7 @@ packages/
   subagent       createSubAgent 工具 · 子 agent system prompt（explore/plan/general-purpose）
   context        三层记忆（NOVA.md > CLAUDE.md > AGENTS.md）· auto compact（micro 默认关闭）
   safety         PermissionEngine · approval 提示（规则匹配 + read 限定在 cwd）
+  sandbox        OS 级命令沙箱（@anthropic-ai/sandbox-runtime）：bash/长任务的文件写入隔离
   external       SlashRegistry · .md slash 命令加载 · MCP 客户端（stdio/http 传输、工具桥接）
   observability  Transcript (JSONL)
   multi-agent, isolation, sdk

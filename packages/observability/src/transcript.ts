@@ -17,6 +17,7 @@ export type TranscriptKind =
   | "memory_loaded"
   | "skills_loaded"
   | "mcp_loaded"
+  | "sandbox_init"
   | "user_prompt"
   | "pre_permission"
   | "post_permission"

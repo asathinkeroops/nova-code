@@ -18,6 +18,7 @@ Standard `pnpm install / build / typecheck / test / lint / format` also work. No
 ## Workspace layout
 
 - `packages/*` (`@nova/<name>`) — library code. Workspace consumers import from `./src/index.ts` directly (no rebuild needed); published builds switch to `dist/` via `publishConfig`.
+- `packages/{isolation,multi-agent,sdk}` — empty scaffolding (zero-byte `src/` files, no `package.json`); not wired into anything yet. Skip them.
 - `apps/cli` — the only active app. `apps/http` and `apps/vscode` are placeholders.
 - `eval/` — replay harness; **excluded from eslint/tsconfig**, don't expect it to build with the rest.
 
@@ -25,13 +26,16 @@ Standard `pnpm install / build / typecheck / test / lint / format` also work. No
 
 `@nova/core` is the model-agnostic loop and never imports a model SDK, tool implementation, or UI — callers wire those in.
 
-**Dependency direction** (do not reverse):
+**Dependency direction** (do not reverse) — by actual source imports; some `package.json`s declare a superset (e.g. `core` and `observability` list `@nova/runtime` but never import it):
 
 ```
-core, runtime ──► (no @nova/* deps)
-context, observability, safety, tools ──► core + runtime
-agent ──► core + runtime + context + observability
-cli ──► everything
+runtime, core, observability  ──► (no @nova/* source imports — leaf layer)
+safety                        ──► runtime
+context, tools                ──► core + runtime
+sandbox, external             ──► core            (external imports core type-only)
+agent                         ──► core + runtime + context + observability
+subagent                      ──► agent + context + core + observability + runtime
+cli (apps/cli)                ──► every package above
 ```
 
 **Loop contracts** (`packages/core/src/loop.ts`) — load-bearing, read before changing:

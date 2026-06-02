@@ -34,6 +34,7 @@ import {
 } from "@nova/tools";
 import { createLogger, type Logger, type Session, type Settings } from "@nova/runtime";
 import { PermissionDeniedError, PermissionEngine } from "@nova/safety";
+import { createSandbox, type SandboxControl } from "@nova/sandbox";
 import { createSubAgentTool } from "@nova/subagent";
 import {
   InMemoryFileAccessLedger,
@@ -144,6 +145,8 @@ export interface CliContext {
   readonly todoStore: TodoStore;
   readonly taskStore: TaskStore;
   readonly longRunningManager: LongRunningCommandManager;
+  /** OS command sandbox handle. Inactive (bridge undefined) unless opted in via settings.sandbox. */
+  readonly sandbox: SandboxControl;
   readonly registry: SlashRegistry;
   readonly tools: ToolRegistry;
   /** Connected MCP servers (tools already bridged into `tools`), or null when disabled/none. */
@@ -526,7 +529,10 @@ export async function createContext(
   // agent's pre_tool_use hook — means sub-agent tool calls, which reuse this
   // same `dispatch`, are captured too, under the current main turn's epoch.
   // Permission is gated by a pre_tool_use hook upstream of executeTool, so a
-  // denied write never reaches here.
+  // denied write never reaches here. This is also where the OS sandbox bridge
+  // is threaded onto the ToolContext, so subprocess tools (bash,
+  // runLongRunningCommand) — and the sub-agent calls that reuse this dispatch —
+  // wrap their commands before spawning.
   const dispatch: ToolExecutor = async (use, toolCtx) => {
     if (use.name === "write" || use.name === "edit") {
       const raw = (use.input as { path?: unknown }).path;
@@ -534,7 +540,12 @@ export async function createContext(
         await ctx.snapshots.capture(resolve(workspace, raw));
       }
     }
-    return rawDispatch(use, toolCtx);
+    // ctx.sandbox is assigned after allowedRoots below; its bridge is undefined
+    // when sandboxing is inactive. Read lazily — dispatch only runs during a
+    // turn, long after ctx.sandbox is set.
+    const bridge = ctx.sandbox?.bridge;
+    const execCtx = bridge ? { ...toolCtx, sandbox: bridge } : toolCtx;
+    return rawDispatch(use, execCtx);
   };
   const registry = new SlashRegistry();
 
@@ -643,6 +654,7 @@ export async function createContext(
     todoStore,
     taskStore,
     longRunningManager,
+    sandbox: null as unknown as SandboxControl,
     registry,
     tools,
     mcp,
@@ -683,6 +695,30 @@ export async function createContext(
     ask: askWithSignal,
   });
   (ctx as { permission: PermissionEngine }).permission = permission;
+
+  // OS command sandbox (opt-in). Confines subprocess writes to the same
+  // allowedRoots the permission engine uses; network stays open. createSandbox
+  // never throws — on an unsupported platform / missing deps / disabled it
+  // returns an inactive control and tools run unsandboxed. The bridge is read
+  // by the dispatch closure above via the `sandboxBridge` variable.
+  const sandboxControl = await createSandbox({
+    enabled: settings.sandbox.enabled,
+    writeRoots: allowedRoots,
+    extraAllowWrite: settings.sandbox.filesystem.allowWrite,
+    denyWrite: settings.sandbox.filesystem.denyWrite,
+    denyRead: settings.sandbox.filesystem.denyRead,
+    allowGitConfig: settings.sandbox.filesystem.allowGitConfig,
+    monitorViolations: settings.sandbox.monitorViolations,
+    logger,
+  });
+  (ctx as { sandbox: SandboxControl }).sandbox = sandboxControl;
+  await transcript.append({
+    kind: "sandbox_init",
+    data: { active: sandboxControl.active, ...(sandboxControl.reason ? { reason: sandboxControl.reason } : {}) },
+  });
+  if (settings.sandbox.enabled && !sandboxControl.active) {
+    logger.warn({ reason: sandboxControl.reason }, "sandbox requested but inactive");
+  }
 
   (ctx as { checkPermission: CliContext["checkPermission"] }).checkPermission = async (
     tool,

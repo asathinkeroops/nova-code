@@ -35,8 +35,16 @@ export function runLongRunningCommandTool(
     async run(rawInput, ctx) {
       const input = inputSchema.parse(rawInput);
       try {
+        // Confine background commands too when a sandbox is wired in. Unlike
+        // bash, the child outlives this call, so per-command cleanup
+        // (afterCommand) is left to session-end dispose — the sandbox's
+        // mount-point cleanup is reference-counted and won't disturb a still-
+        // running child. wrapCommand is a passthrough when sandboxing is off.
+        const command = ctx.sandbox
+          ? await ctx.sandbox.wrapCommand(input.command, ctx.signal)
+          : input.command;
         const { id } = manager.start({
-          command: input.command,
+          command,
           cwd: input.cwd ?? ctx.cwd,
           ...(input.env ? { env: input.env } : {}),
         });
