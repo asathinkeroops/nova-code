@@ -30,6 +30,7 @@
 | 会话恢复 / 回放 / 回退 | ✅ 双 JSONL + `/rewind` | ✅ |
 | 扩展思考分档 | ✅ 5 档 | ✅ |
 | **MCP 服务器** | ✅ stdio + HTTP,工具桥接 + 权限门控 | ✅ 成熟 |
+| **LSP 代码智能** | ✅ 定义/引用/hover/诊断/符号(TS/Py/Go/Rust 自动识别) | ✅ |
 | **DeepSeek 一等公民** | ✅ `effort` 自动适配 + 错误码诊断 | ❌ 主打 Claude |
 | **钩子化无策略内核(可库化复用)** | ✅ | ⚠️ 闭源黑盒 |
 | 用户级 shell 钩子(settings) | ❌ | ✅ |
@@ -41,7 +42,7 @@
 ## Nova 当前支持的核心功能详解
 
 ### 🔧 内置工具
-一线干活的工具集:`bash` · `read` · `write` · `edit` · `glob` · `grep` · `notebook-edit` · `webfetch` · `websearch` · `ask-user`(向用户反问) · `todo`(待办清单) · `task`(任务流) · 长时命令(后台 `run` / `check`) · `load-skill`(按需拉取技能正文) · `createSubAgent`(派生子代理)。
+一线干活的工具集:`bash` · `read` · `write` · `edit` · `glob` · `grep` · `notebook-edit` · `webfetch` · `websearch` · `ask-user`(向用户反问) · `lsp`(语言服务器代码智能) · `todo`(待办清单) · `task`(任务流) · 长时命令(后台 `run` / `check`) · `load-skill`(按需拉取技能正文) · `createSubAgent`(派生子代理)。
 
 ### 🧬 子代理(Sub-agents)
 通过 `createSubAgent` 工具派生子代理,三种角色:
@@ -62,6 +63,9 @@
 
 ### 🔌 MCP 服务器
 启动时接入 Model Context Protocol 服务器(`@nova/external`),支持 **stdio** 与 **HTTP** 两种传输。每个服务器的工具以 `mcp__<server>__<tool>` 命名空间桥接进工具注册表,走和内置工具一致的**权限引擎门控**(默认 `ask`)。连接失败的服务器只记日志并跳过,**绝不阻塞启动**;`/mcp` 查看服务器状态,`/mcp tools` 列出已桥接的工具。可按服务器或整体 `enabled: false` 关闭。
+
+### 🔌 LSP 代码智能
+`lsp` 工具(`@nova/lsp`)直连**语言服务器**(JSON-RPC over stdio),提供 `definition` / `references` / `hover` / `diagnostics` / `document_symbols` / `workspace_symbol` 六个 action——懂作用域和类型,比 grep 精确得多。**只读、默认放行**,语言服务器在首次调用时**懒启动**。内置自动识别 TypeScript / Python / Go / Rust(`typescript-language-server` / `pyright-langserver` / `gopls` / `rust-analyzer`),**Nova 不负责安装**——二进制需已在 PATH,缺失则静默降级为「未安装」提示。`/lsp` 查看各语言状态,`settings.lsp.servers` 可覆盖/扩展服务器表。
 
 ### 🛡 OS 级命令沙箱
 **默认开启**的操作系统级沙箱(`@anthropic-ai/sandbox-runtime`),为派生子进程的工具(`bash`、长时命令)套一层平台沙箱——**macOS** 用 Seatbelt(`sandbox-exec`)、**Linux** 用 bubblewrap——把文件**写入**限制在工作区根目录(与权限引擎同一套允许根)加少量系统默认路径。读取保持开放、网络不受限,是叠在权限引擎之上的**纵深防御**而非替代品。不支持的平台(Windows)或缺依赖时**静默降级**为无沙箱,因此默认开也能安全发布;常见包管理器缓存(npm/pnpm/cargo/go…)已预置进可写白名单。`sandbox.enabled: false` 可整体关闭。
@@ -85,7 +89,7 @@ DeepSeek API 在线上与 Anthropic 兼容,失败会以 `APIError` 携带 HTTP `
 `/resume`、`--continue` 恢复会话;`transcript.jsonl`(事件流)+ `messages.jsonl`(可重放历史),全程可回放;`/rewind` 回退到此前某条消息(其后的历史被丢弃)。
 
 ### ⚡ 斜杠命令 & 技能
-内置 `/help` `/model` `/think` `/clear` `/compact` `/resume` `/rewind` `/plan` `/predict` `/commands` `/skills` `/mcp`(`/exit` `/quit` 退出);任意 `.nova/commands` 或 `.claude/commands` 下的 `.md` 自动注册为命令;`SKILL.md` 启动时扫描、按需加载。
+内置 `/help` `/model` `/think` `/clear` `/compact` `/resume` `/rewind` `/plan` `/predict` `/commands` `/skills` `/mcp` `/lsp`(`/exit` `/quit` 退出);任意 `.nova/commands` 或 `.claude/commands` 下的 `.md` 自动注册为命令;`SKILL.md` 启动时扫描、按需加载。
 
 ### 🚀 体验
 Ink/React 终端 REPL · 实时流式渲染(可 `stream.enabled` 开关)· 首次启动引导式配置(`~/.nova/nova.config.json`)· 有界工具并发(默认 3)· 下一句输入预测占位 · `ask-user` 多问卷反问(末尾固定一个 Submit / Cancel 确认页)。

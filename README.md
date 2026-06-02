@@ -15,6 +15,7 @@ loop 以**有界并发**跑工具调用（每轮默认 3 个），模型还能�
 - **DeepSeek 深度定制** *(头号特性)* —— thinking 映射到 DeepSeek 的 `output_config.effort`（而非 `budget_tokens`），wire format 按模型 id 自动判断，请求结构保持逐字节稳定以持续命中 DeepSeek 的自动上下文缓存，以及 DeepSeek 错误码翻译（400/401/402/422/429/500/503）并对瞬时错误内部重试。其他 Anthropic 兼容端点也能跑。
 - **Agentic 编码循环** —— 读代码、改文件、跑命令，通过工具调用把任务推到完成；一轮内相互独立的工具调用以有界并发运行（默认 3 个）。
 - **代码与系统工具** —— 文件 read / write / edit、`glob` + `grep` 搜索、`bash` 与长时命令、web fetch / search、notebook 编辑、ask-user 询问。
+- **LSP 代码智能** —— `lsp` 工具直连语言服务器（JSON-RPC/stdio），提供 go-to-definition、find-references、hover、diagnostics 和符号搜索，比 grep 更懂作用域与类型；只读、默认放行，按需懒启动。
 - **扩展 thinking** —— `off` / `low` / `medium` / `high` / `max`，或显式的 token 预算。
 - **Plan 模式** —— `/plan` 委派一次只读调查，在动手改动前返回分步计划。
 - **子 agent** —— 全新上下文的 `explore` / `plan` / `general-purpose` worker，把庞大的调查过程挡在主上下文之外。
@@ -64,12 +65,14 @@ pnpm dev [prompt...]                # 先跑一轮初始 prompt，再留在 REPL
 /think [<level>]     查看 / 切换 thinking 等级
 /clear               清空会话历史（保留 session）
 /compact [focus…]    把历史压缩成单条摘要消息
-/plan <goal>         把调查交给只读 plan 子 agent，再给出实现计划
 /resume [<id>]       切到指定 session（不带参数则从列表选）
+/rewind [<n>]        回退到此前某条消息（其后的历史与文件改动被丢弃）
+/plan <goal>         把调查交给只读 plan 子 agent，再给出实现计划
 /predict [on|off]    查看 / 切换下一条输入预测占位
 /commands [reload]   列出已注册的 slash 命令；`reload` 重新扫盘
 /skills              列出已发现的 SKILL.md
 /mcp [tools]         查看 MCP 服务器状态；`tools` 列出所有桥接的工具
+/lsp                 查看已配置的语言服务器（是否在 PATH、是否已启动）
 /exit, /quit         退出
 ```
 
@@ -135,6 +138,53 @@ Nova 可以在启动时连接外部 [MCP](https://modelcontextprotocol.io) 服�
 
 各服务器并行连接；某个连不上只会记日志并跳过 —— 既不会阻塞启动，也不影响其他服务器。
 用 **`/mcp`** 查看每个服务器的状态和工具数，**`/mcp tools`** 列出所有桥接的工具名。
+
+### LSP 代码智能
+
+`lsp` 工具让模型直连**语言服务器**（走 JSON-RPC over stdio），拿到比 grep 精确得多的导航能力 —— 它懂作用域和类型。一个工具，六个 action：
+
+- `definition` —— 跳转到定义
+- `references` —— 找所有引用
+- `hover` —— 某个位置的类型/文档
+- `diagnostics` —— 某个文件的错误/警告
+- `document_symbols` —— 单个文件的符号大纲
+- `workspace_symbol` —— 按名字跨项目搜符号
+
+位置坐标对模型是 **1-based**（行、列），内部自动转成 LSP 的 0-based。工具是**只读**的，权限引擎默认放行。
+
+**Nova 不安装语言服务器** —— 它们必须已经在 PATH 上。内置自动识别四种（缺失则该语言的工具调用静默降级为「未安装」提示）：
+
+| languageId | 命令 | 扩展名 |
+|------------|------|--------|
+| `typescript` | `typescript-language-server --stdio` | ts/tsx/mts/cts/js/jsx/mjs/cjs |
+| `python` | `pyright-langserver --stdio` | py/pyi |
+| `go` | `gopls` | go |
+| `rust` | `rust-analyzer` | rs |
+
+语言服务器在**首次 `lsp` 调用时按需懒启动**，所以「已安装但未启动」是用之前的正常状态。用 **`/lsp`** 查看每种语言：二进制是否在 PATH（● running / ○ installed / ● not installed）以及本 session 是否已起。
+
+在 `~/.nova/nova.config.json` 的 `lsp` 下配置：
+
+```jsonc
+{
+  "lsp": {
+    "enabled": true,            // 总开关（默认 true）
+    "initTimeoutMs": 15000,     // 每个 server 的握手（initialize）超时
+    "requestTimeoutMs": 15000,  // 单次请求（definition/references…）超时
+    "diagnosticsTimeoutMs": 3000, // 打开文件后等 publishDiagnostics 的时长
+    "servers": [                // 覆盖/扩展内置表，按 languageId 匹配
+      {
+        "languageId": "typescript",
+        "command": "typescript-language-server",
+        "args": ["--stdio"],
+        "extensions": ["ts", "tsx"]
+      }
+    ]
+  }
+}
+```
+
+`servers` 里 languageId 与内置同名的条目会**整条替换**默认值，未知的则**追加**。
 
 ### 命令沙箱（可选，OS 级隔离）
 
@@ -204,13 +254,14 @@ packages/
   runtime        settings (zod) · pino logger · session 存储
   tools          ToolRegistry · dispatcher · 内置工具
                    bash · read · write · edit · glob · grep · notebook-edit
-                   webfetch · websearch · askUserQuestion
+                   webfetch · websearch · askUserQuestion · lsp
                    todo (todoCreate/Update/Get/Clear) · task (taskCreate/Update/Get/List/Clear)
                    runLongRunningCommand / checkLongRunningCommand · loadSkill
   subagent       createSubAgent 工具 · 子 agent system prompt（explore/plan/general-purpose）
   context        三层记忆（NOVA.md > CLAUDE.md > AGENTS.md）· auto compact（micro 默认关闭）
   safety         PermissionEngine · approval 提示（规则匹配 + read 限定在 cwd）
   sandbox        OS 级命令沙箱（@anthropic-ai/sandbox-runtime）：bash/长任务的文件写入隔离
+  lsp            LSP 客户端/管理器（JSON-RPC over stdio）· 语言服务器解析（lazy 启动）
   external       SlashRegistry · .md slash 命令加载 · MCP 客户端（stdio/http 传输、工具桥接）
   observability  Transcript (JSONL)
   multi-agent, isolation, sdk

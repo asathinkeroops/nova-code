@@ -15,6 +15,7 @@ The loop runs tool calls with **bounded concurrency** (default 3 per turn), and 
 - **DeepSeek deep customization** *(headline feature)* — thinking mapped to DeepSeek's `output_config.effort` (not `budget_tokens`), wire-format auto-detection from the model id, a byte-stable request shape that keeps DeepSeek's automatic context cache hitting, and DeepSeek error-code translation (400/401/402/422/429/500/503) with internal retry of the transient ones. Other Anthropic-compatible endpoints still work.
 - **Agentic coding loop** — reads code, edits files, runs commands, and drives a task to done through tool use; independent tool calls in a turn run with bounded concurrency (default 3).
 - **Code & system tools** — file read / write / edit, `glob` + `grep` search, `bash` and long-running commands, web fetch / search, notebook edit, and ask-user prompts.
+- **LSP code intelligence** — an `lsp` tool that talks straight to language servers (JSON-RPC/stdio) for go-to-definition, find-references, hover, diagnostics, and symbol search — scope- and type-aware, far more precise than grep; read-only, auto-allowed, lazily started.
 - **Extended thinking** — `off` / `low` / `medium` / `high` / `max`, or an explicit token budget.
 - **Plan mode** — `/plan` delegates a read-only investigation and returns a step-by-step plan before touching anything.
 - **Sub-agents** — fresh-context `explore` / `plan` / `general-purpose` workers that keep large investigations out of the main context.
@@ -64,12 +65,14 @@ pnpm dev [prompt...]                # run an initial prompt, then stay in the RE
 /think [<level>]     show or change extended-thinking level
 /clear               clear conversation history (keeps session)
 /compact [focus…]    summarize history into a single message
-/plan <goal>         delegate investigation to a read-only plan sub-agent, then present a plan
 /resume [<id>]       switch to a saved session (no arg = pick from list)
+/rewind [<n>]        rewind to an earlier message (history and file edits after it are discarded)
+/plan <goal>         delegate investigation to a read-only plan sub-agent, then present a plan
 /predict [on|off]    show or toggle next-input prediction placeholder
 /commands [reload]   list registered slash commands; `reload` rescans files
 /skills              list discovered SKILL.md files
 /mcp [tools]         show MCP server status; `tools` lists every bridged tool
+/lsp                 show configured language servers (on PATH? started this session?)
 /exit, /quit         leave the REPL
 ```
 
@@ -144,6 +147,63 @@ Connections are established in parallel; a server that fails to connect is logge
 and skipped — it never blocks startup or affects the others. Use **`/mcp`** to
 see each server's state and tool count, and **`/mcp tools`** to list every
 bridged tool name.
+
+### LSP code intelligence
+
+The `lsp` tool lets the model talk straight to **language servers** (JSON-RPC
+over stdio) for navigation that's far more precise than grep — it understands
+scopes and types. One tool, six actions:
+
+- `definition` — go to definition
+- `references` — find all usages
+- `hover` — type/docs at a position
+- `diagnostics` — errors/warnings for a file
+- `document_symbols` — outline of a single file
+- `workspace_symbol` — find a symbol by name across the project
+
+Positions are **1-based** (line, column) to the model and converted to LSP's
+0-based internally. The tool is **read-only** and auto-allowed by the permission
+engine.
+
+**Nova does not install language servers** — they must already be on PATH. Four
+are auto-detected out of the box (a missing binary degrades silently to a
+"not installed" tool result for that language):
+
+| languageId | command | extensions |
+|------------|---------|------------|
+| `typescript` | `typescript-language-server --stdio` | ts/tsx/mts/cts/js/jsx/mjs/cjs |
+| `python` | `pyright-langserver --stdio` | py/pyi |
+| `go` | `gopls` | go |
+| `rust` | `rust-analyzer` | rs |
+
+Servers start **lazily on the first `lsp` call**, so "installed but idle" is the
+normal pre-use state. Use **`/lsp`** to see, per language, whether the binary is
+on PATH (● running / ○ installed / ● not installed) and whether it has been
+started this session.
+
+Configure under `lsp` in `~/.nova/nova.config.json`:
+
+```jsonc
+{
+  "lsp": {
+    "enabled": true,              // master switch (default true)
+    "initTimeoutMs": 15000,       // handshake (initialize) timeout per server
+    "requestTimeoutMs": 15000,    // per-request timeout (definition/references/…)
+    "diagnosticsTimeoutMs": 3000, // how long to wait for publishDiagnostics after opening a file
+    "servers": [                  // override/extend the built-in table, keyed by languageId
+      {
+        "languageId": "typescript",
+        "command": "typescript-language-server",
+        "args": ["--stdio"],
+        "extensions": ["ts", "tsx"]
+      }
+    ]
+  }
+}
+```
+
+In `servers`, an entry whose languageId matches a built-in **replaces** it
+entirely; unknown ones are **appended**.
 
 ### Command sandbox (optional, OS-level isolation)
 
@@ -224,13 +284,14 @@ packages/
   runtime        settings (zod) · pino logger · session storage
   tools          ToolRegistry · dispatcher · built-ins
                    bash · read · write · edit · glob · grep · notebook-edit
-                   webfetch · websearch · askUserQuestion
+                   webfetch · websearch · askUserQuestion · lsp
                    todo (todoCreate/Update/Get/Clear) · task (taskCreate/Update/Get/List/Clear)
                    runLongRunningCommand / checkLongRunningCommand · loadSkill
   subagent       createSubAgent tool · sub-agent system prompt (explore/plan/general-purpose)
   context        3-layer memory (NOVA.md > CLAUDE.md > AGENTS.md) · auto compact (micro off by default)
   safety         PermissionEngine · approval prompts (rules + cwd-scoped read)
   sandbox        OS-level command sandbox (@anthropic-ai/sandbox-runtime): bash/long-running write isolation
+  lsp            LSP client/manager (JSON-RPC over stdio) · language-server resolution (lazy start)
   external       SlashRegistry · .md slash command loader · MCP client (stdio/http transports, tool bridge)
   observability  Transcript (JSONL)
   multi-agent, isolation, sdk
