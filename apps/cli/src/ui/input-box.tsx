@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Box, Text, useInput, useStdout } from "ink";
+import { ACCENT_HEX } from "../colors.js";
 import { charDisplayWidth, truncateToWidth, visibleWidth } from "./width.js";
 
 export interface SlashCommand {
@@ -106,6 +107,88 @@ function matchingCommands(
   return out;
 }
 
+/**
+ * Buffer-coordinate range `[start, end)` of the leading `/command` token to
+ * highlight in the input line, or null when there's nothing to highlight.
+ *
+ * Highlights the first whitespace-delimited token (e.g. `/agent` in
+ * `/agent trace foo`) iff that token — minus its leading slash — is a prefix
+ * of, or exactly equals, at least one registered command name. So a recognized
+ * command (even mid-type, like `/ag`) lights up, while a typo (`/agentt`) or a
+ * plain path (`/usr/bin`) stays unstyled, signalling "not a command".
+ */
+export function commandTokenRange(
+  buffer: string,
+  commands: SlashCommand[],
+): [number, number] | null {
+  if (commands.length === 0 || !buffer.startsWith("/")) return null;
+  const word = /^\/(\S*)/.exec(buffer)?.[1] ?? "";
+  if (word.length === 0) return null;
+  const lc = word.toLowerCase();
+  for (const c of commands) {
+    const tail = c.name.startsWith("/") ? c.name.slice(1) : c.name;
+    if (tail.toLowerCase().startsWith(lc)) return [0, 1 + word.length];
+  }
+  return null;
+}
+
+/**
+ * Render one display line as styled spans: the `/command` token (when within
+ * `hl`) in the flame accent, the cursor cell inverted, everything else plain.
+ * Walks character by character and coalesces runs that share styling so we
+ * emit as few `<Text>` nodes as possible.
+ */
+function styledSpans(
+  content: string,
+  lineBufStart: number,
+  cursorCol: number | null,
+  showCursorAtEnd: boolean,
+  hl: [number, number] | null,
+): React.ReactNode[] {
+  const nodes: React.ReactNode[] = [];
+  let key = 0;
+  let segStart = 0;
+  let segHl = false;
+  const flush = (end: number): void => {
+    if (end <= segStart) return;
+    const slice = content.slice(segStart, end);
+    nodes.push(
+      <Text key={key++} color={segHl ? ACCENT_HEX : undefined}>
+        {slice}
+      </Text>,
+    );
+    segStart = end;
+  };
+  for (let k = 0; k < content.length; k++) {
+    const bufIdx = lineBufStart + k;
+    const inHl = hl ? bufIdx >= hl[0] && bufIdx < hl[1] : false;
+    if (cursorCol !== null && k === cursorCol) {
+      flush(k);
+      nodes.push(
+        <Text key={key++} inverse>
+          {content[k] ?? " "}
+        </Text>,
+      );
+      segStart = k + 1;
+      segHl = inHl;
+      continue;
+    }
+    if (inHl !== segHl) {
+      flush(k);
+      segHl = inHl;
+    }
+  }
+  flush(content.length);
+  if (showCursorAtEnd) {
+    nodes.push(
+      <Text key={key++} inverse>
+        {" "}
+      </Text>,
+    );
+  }
+  return nodes;
+}
+
 interface LineSlice {
   content: string;
   cursorCol: number | null;
@@ -180,6 +263,9 @@ export function InputBox({
   const [draft, setDraft] = useState("");
 
   const matches = matchingCommands(buffer, commands, popupDismissed);
+  // Highlight range for the leading `/command` token in the input line. Skipped
+  // under mask (passwords) — we never colour asterisked input.
+  const cmdRange = mask ? null : commandTokenRange(buffer, commands);
   const effectivePopupCursor = popupCursor >= matches.length ? 0 : popupCursor;
   const maxOffset = Math.max(0, matches.length - POPUP_MAX_ROWS);
   const safeOffset = Math.max(0, Math.min(popupOffset, maxOffset));
@@ -368,17 +454,8 @@ export function InputBox({
     return (
       <Box key={idx}>
         <Text>{" "}</Text>
-        {idx === 0 ? <Text color="cyan">{PROMPT_TEXT}</Text> : null}
-        {slice.cursorCol === null ? (
-          <Text>{content}</Text>
-        ) : (
-          <>
-            <Text>{content.slice(0, slice.cursorCol)}</Text>
-            <Text inverse>{content[slice.cursorCol] ?? " "}</Text>
-            <Text>{content.slice(slice.cursorCol + 1)}</Text>
-          </>
-        )}
-        {slice.showCursorAtEnd ? <Text inverse> </Text> : null}
+        {idx === 0 ? <Text color={ACCENT_HEX}>{PROMPT_TEXT}</Text> : null}
+        {styledSpans(content, line.bufStart, slice.cursorCol, slice.showCursorAtEnd, cmdRange)}
       </Box>
     );
   };
@@ -406,7 +483,7 @@ export function InputBox({
         );
         const pad = " ".repeat(Math.max(1, nameWidth + 2 - visibleWidth(m.name)));
         return (
-          <Text key={m.name} color={isSel ? "cyan" : undefined} dimColor={!isSel}>
+          <Text key={m.name} color={isSel ? ACCENT_HEX : undefined} dimColor={!isSel}>
             {arrow}
             {m.name}
             {pad}
@@ -421,7 +498,7 @@ export function InputBox({
       {isEmpty ? (
         <Box>
           <Text> </Text>
-          <Text color="cyan">{PROMPT_TEXT}</Text>
+          <Text color={ACCENT_HEX}>{PROMPT_TEXT}</Text>
           <Text inverse> </Text>
           {placeholderText ? <Text dimColor>{placeholderText}</Text> : null}
         </Box>

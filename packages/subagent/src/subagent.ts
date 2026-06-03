@@ -18,13 +18,14 @@ import {
 } from "@nova/core";
 import { Transcript } from "@nova/observability";
 import type { Logger } from "@nova/runtime";
-import { buildSubAgentSystemPrompt, type SubAgentType } from "./system-prompt.js";
+import type { AgentDefinition, AgentRegistry } from "./definitions.js";
+import { buildSubAgentSystemPrompt } from "./system-prompt.js";
 
 export const SUBAGENT_TOOL_NAME = "createSubAgent";
 
 /**
- * Workspace-mutating tools. Withheld from `explore` / `plan` sub-agents both at
- * the tool-list level (the child never sees them) and at the permission level
+ * Workspace-mutating tools. Withheld from read-only sub-agents both at the
+ * tool-list level (the child never sees them) and at the permission level
  * (defense-in-depth, in case they reach dispatch another way).
  */
 const MUTATING_TOOLS: ReadonlySet<string> = new Set(["write", "edit", "bash"]);
@@ -43,35 +44,52 @@ const inputSchema = z
           "shares NONE of this conversation. State the goal, relevant file paths, " +
           "and exactly what to report back.",
       ),
+    // Validated as a free string here (the available set is dynamic — built-ins
+    // plus user-defined agents); `run` resolves it against the live registry and
+    // returns an error result listing the valid types on a miss.
     type: z
-      .enum(["explore", "plan", "general-purpose"])
+      .string()
+      .min(1)
       .describe(
-        "Which kind of sub-agent to spawn:\n" +
-          '- "explore": read-only retrieval. Locates code/files/usages and reports findings. Has NO write/edit/bash tools.\n' +
-          '- "plan": read-only planning. Investigates a task and returns a step-by-step implementation plan. Has NO write/edit/bash tools.\n' +
-          '- "general-purpose": full tool access (read, write, edit, bash, …) for tasks that must change files or run commands.',
+        "Which kind of sub-agent to spawn. Must be one of the available types " +
+          "listed in this tool's description (see `Available types`).",
       ),
   })
   .strict();
 
-const TOOL_DESCRIPTION =
+const TOOL_DESCRIPTION_HEAD =
   "Spawn an autonomous sub-agent to complete a focused, self-contained task and " +
   "return its final report. The sub-agent runs with its own fresh context (it does " +
-  "NOT see this conversation) and a tool set determined by `type` — `explore` and " +
-  "`plan` are read-only (no write/edit/bash), `general-purpose` has your full tool " +
-  "set. It cannot spawn further sub-agents. Use it to parallelize independent work — " +
-  "emit multiple createSubAgent calls in a single turn and they run concurrently — or " +
-  "to keep a large, noisy investigation out of your own context. You receive ONLY the " +
+  "NOT see this conversation) and a tool set determined by its `type`. It cannot " +
+  "spawn further sub-agents. Use it to parallelize independent work — emit multiple " +
+  "createSubAgent calls in a single turn and they run concurrently — or to keep a " +
+  "large, noisy investigation out of your own context. You receive ONLY the " +
   "sub-agent's final message, so make the prompt fully self-contained and tell it " +
   "what to report back. Don't use it for trivial one-step actions you can do directly.";
+
+/** Render the tool description, enumerating the currently-registered types. */
+function buildToolDescription(defs: AgentDefinition[]): string {
+  const lines = defs.map((d) => `- "${d.name}": ${d.description}`).join("\n");
+  return `${TOOL_DESCRIPTION_HEAD}\n\nAvailable types:\n${lines}`;
+}
 
 export interface SubAgentDeps {
   workspace: string;
   memory: MemoryBundle;
   /** Skills index block embedded in the sub-agent's system prompt. */
   skillsBlock: string;
-  /** Model the sub-agent runs on; read per-invocation so /model is honored. */
-  getModel: () => ModelClient;
+  /**
+   * Registry of available sub-agent definitions (built-ins + custom). Read
+   * per-invocation so `/agents reload` is honored on the next spawn.
+   */
+  getAgentRegistry: () => AgentRegistry;
+  /**
+   * Resolve the model the sub-agent runs on. `modelId` is the definition's
+   * optional model override; pass undefined for the default. Read
+   * per-invocation so the active model is honored. The host is expected to
+   * cache by id.
+   */
+  getModel: (modelId?: string) => ModelClient;
   /**
    * Parent tool definitions. The sub-agent gets these MINUS createSubAgent
    * (filtered here) to prevent unbounded recursion. Read per-invocation so the
@@ -100,37 +118,62 @@ export function createSubAgentTool(deps: SubAgentDeps): ToolHandler {
   return {
     definition: {
       name: SUBAGENT_TOOL_NAME,
-      description: TOOL_DESCRIPTION,
+      description: buildToolDescription(deps.getAgentRegistry().list()),
       inputSchema,
     },
     async run(rawInput, ctx) {
       const input = inputSchema.parse(rawInput);
+
+      const registry = deps.getAgentRegistry();
+      const def = registry.get(input.type);
+      if (!def) {
+        return {
+          output:
+            `Unknown sub-agent type "${input.type}". ` +
+            `Available types: ${registry.names().join(", ")}.`,
+          isError: true,
+        };
+      }
+
       const id = `sub-${randomUUID().slice(0, 8)}`;
       const logDir = deps.getLogDir();
       await mkdir(logDir, { recursive: true }).catch(() => {});
 
-      const readOnly = input.type !== "general-purpose";
-
       // Sub-agent tool set = parent tools minus createSubAgent (no recursion).
-      // Read-only types (explore/plan) additionally drop workspace-mutating tools.
+      // `readOnly` drops the workspace-mutating tools; an `allowTools` list
+      // (when present) intersects the set down further.
+      const allow = def.allowTools ? new Set(def.allowTools) : null;
       const childTools = deps
         .getToolDefinitions()
         .filter(
           (d) =>
-            d.name !== SUBAGENT_TOOL_NAME && !(readOnly && MUTATING_TOOLS.has(d.name)),
+            d.name !== SUBAGENT_TOOL_NAME &&
+            !(def.readOnly && MUTATING_TOOLS.has(d.name)) &&
+            (!allow || allow.has(d.name)),
         );
 
-      // Defense-in-depth: even though mutating tools are absent from childTools,
-      // deny them at the permission layer for read-only sub-agents.
-      const checkPermission: SubAgentDeps["checkPermission"] = readOnly
-        ? async (tool, toolInput) =>
-            MUTATING_TOOLS.has(tool)
-              ? {
-                  granted: false,
-                  reason: `${input.type} sub-agent is read-only; ${tool} is not permitted`,
-                }
-              : deps.checkPermission(tool, toolInput)
-        : deps.checkPermission;
+      // Defense-in-depth: even though out-of-set tools are absent from
+      // childTools, deny anything outside the resolved set at the permission
+      // layer too (covers read-only mutating tools, non-allow-listed tools, and
+      // createSubAgent in case any reach dispatch another way).
+      const allowedNames = new Set(childTools.map((d) => d.name));
+      const checkPermission: SubAgentDeps["checkPermission"] = async (tool, toolInput) =>
+        allowedNames.has(tool)
+          ? deps.checkPermission(tool, toolInput)
+          : {
+              granted: false,
+              reason: `"${def.name}" sub-agent is not permitted to use ${tool}`,
+            };
+
+      // Per-definition loop-limit overrides on top of the host's settings slice.
+      const getSettings: SubAgentDeps["getSettings"] = () => {
+        const base = deps.getSettings();
+        return {
+          ...base,
+          ...(def.maxTurns ? { maxTurns: def.maxTurns } : {}),
+          ...(def.maxTokens ? { maxTokens: def.maxTokens } : {}),
+        };
+      };
 
       let cursor = emptyCursor;
       const transcript = new Transcript(join(logDir, `${id}.transcript.jsonl`));
@@ -147,9 +190,9 @@ export function createSubAgentTool(deps: SubAgentDeps): ToolHandler {
         setPersistCursor: (c) => {
           cursor = c;
         },
-        getModel: deps.getModel,
+        getModel: () => deps.getModel(def.model),
         getThinkingBudget: () => 0,
-        getSettings: deps.getSettings,
+        getSettings,
         getTools: () => childTools,
         dispatch: deps.dispatch,
         checkPermission,
@@ -158,12 +201,7 @@ export function createSubAgentTool(deps: SubAgentDeps): ToolHandler {
         askUser: deps.askUser,
         getMessages: () => [],
         getSystemPrompt: () =>
-          buildSubAgentSystemPrompt(
-            deps.workspace,
-            deps.memory,
-            deps.skillsBlock,
-            input.type,
-          ),
+          buildSubAgentSystemPrompt(deps.workspace, deps.memory, deps.skillsBlock, def),
       });
 
       const result = await agent.runTurn(

@@ -1,12 +1,12 @@
 import { listSessions, type Session } from "@nova/runtime";
-import { dim, green, red } from "../colors.js";
+import { dim, green } from "../colors.js";
 import type { CliContext } from "../context.js";
-import { loadMessages } from "@nova/agent";
 import { pickerArrow } from "../ui/picker.js";
 import {
-  firstUserLabel,
+  buildSessionRows,
   formatTimestamp,
   switchToSession,
+  type SessionRow,
 } from "../session.js";
 
 const TITLE = "/resume";
@@ -27,26 +27,13 @@ export async function handleResume(ctx: CliContext, arg: string): Promise<void> 
       return;
     }
   } else {
-    type PickerItem = { session: Session; label: string };
-    const items: PickerItem[] = [];
-    for (const s of list) {
-      let label: string;
-      try {
-        const msgs = await loadMessages(s.messagesPath);
-        if (msgs.length === 0) continue;
-        label = firstUserLabel(msgs);
-      } catch (err) {
-        const m = err instanceof Error ? (err.message.split("\n")[0] ?? "") : String(err);
-        label = red(`load failed: ${m.slice(0, 60)}`);
-      }
-      items.push({ session: s, label });
-    }
+    const items: SessionRow[] = await buildSessionRows(ctx.settings.sessionDir);
     if (items.length === 0) {
       ctx.screen.card(dim("no sessions to resume."), { title: TITLE });
       return;
     }
     const currentIdx = items.findIndex((it) => it.session.id === ctx.session.id);
-    const pick = await ctx.screen.pickOne<PickerItem>({
+    const pick = await ctx.screen.pickOne<SessionRow>({
       items,
       header: dim("select session to resume:"),
       footer: dim("↑↓ navigate · enter confirm · esc cancel"),

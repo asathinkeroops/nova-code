@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Box, Text } from "ink";
 import type { Task, TaskStatus } from "@nova/tools";
-import { CYAN_RGB, cyan } from "../colors.js";
+import { ACCENT_HEX, ACCENT_RGB, accent } from "../colors.js";
 import { Spinner } from "./spinner.js";
 import type { SpinnerSpec } from "./store.js";
 
@@ -48,8 +48,8 @@ function TaskRow({ task, isFirst }: TaskRowProps): React.ReactElement {
       return (
         <Text>
           {prefix}
-          <Text color="cyan">■</Text>{" "}
-          <Text color="cyan" bold>
+          <Text color={ACCENT_HEX}>■</Text>{" "}
+          <Text color={ACCENT_HEX} bold>
             {task.description}
           </Text>
           {suffix}
@@ -133,8 +133,8 @@ export function TaskFooter({ tasks }: TaskFooterProps): React.ReactElement | nul
         id: -2,
         label: {
           words: [`TASK: ${spinnerTask.description}`],
-          tint: CYAN_RGB,
-          colorize: cyan,
+          tint: ACCENT_RGB,
+          colorize: accent,
         },
         startedAt,
         activeWord: `TASK: ${spinnerTask.description}...`,

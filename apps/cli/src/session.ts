@@ -4,6 +4,7 @@ import {
   createSession,
   getSession,
   listSessions,
+  pruneSessions,
   type Session,
 } from "@nova/runtime";
 import { Transcript } from "@nova/observability";
@@ -25,6 +26,59 @@ export function firstUserLabel(msgs: MessageParam[]): string {
     return text.length > 80 ? `${text.slice(0, 77)}...` : text;
   }
   return "(no user message)";
+}
+
+export interface SessionRow {
+  session: Session;
+  label: string;
+}
+
+/**
+ * Startup housekeeping: prune session directories older than the configured
+ * retention window (settings.sessionCleanup). No-op when disabled. The active
+ * session is protected so resuming an old session never deletes it mid-launch.
+ * Best-effort — failures are logged, never thrown, so a cleanup hiccup can't
+ * block startup.
+ */
+export async function pruneOldSessions(ctx: CliContext): Promise<void> {
+  const { enabled, maxAgeDays } = ctx.settings.sessionCleanup;
+  if (!enabled) return;
+  try {
+    const { removed, failed } = await pruneSessions({
+      ...(ctx.settings.sessionDir ? { rootOverride: ctx.settings.sessionDir } : {}),
+      maxAgeDays,
+      protectedIds: [ctx.session.id],
+    });
+    if (removed.length > 0 || failed > 0) {
+      ctx.logger.info({ removed: removed.length, failed, maxAgeDays }, "pruned expired sessions");
+    }
+  } catch (err) {
+    ctx.logger.warn({ err }, "session cleanup failed");
+  }
+}
+
+/**
+ * Load every saved session and derive a one-line label from its first user
+ * message. Empty sessions are skipped; sessions whose history fails to load are
+ * kept with a red error label. Shared by `--list-sessions` and /resume so the
+ * listing stays consistent.
+ */
+export async function buildSessionRows(
+  sessionDir: string | undefined,
+): Promise<SessionRow[]> {
+  const list = await listSessions(sessionDir);
+  const rows: SessionRow[] = [];
+  for (const s of list) {
+    try {
+      const msgs = await loadMessages(s.messagesPath);
+      if (msgs.length === 0) continue;
+      rows.push({ session: s, label: firstUserLabel(msgs) });
+    } catch (err) {
+      const msg = err instanceof Error ? (err.message.split("\n")[0] ?? "") : String(err);
+      rows.push({ session: s, label: red(`load failed: ${msg.slice(0, 80)}`) });
+    }
+  }
+  return rows;
 }
 
 export interface ResolveSessionOptions {
@@ -54,29 +108,13 @@ export async function resolveSession(
 }
 
 export async function printSessionList(sessionDir: string | undefined): Promise<void> {
-  const list = await listSessions(sessionDir);
-  type Row = { id: string; createdAt: Date; label: string };
-  const rows: Row[] = [];
-  for (const s of list) {
-    try {
-      const msgs = await loadMessages(s.messagesPath);
-      if (msgs.length === 0) continue;
-      rows.push({ id: s.id, createdAt: s.createdAt, label: firstUserLabel(msgs) });
-    } catch (err) {
-      const msg = err instanceof Error ? (err.message.split("\n")[0] ?? "") : String(err);
-      rows.push({
-        id: s.id,
-        createdAt: s.createdAt,
-        label: red(`load failed: ${msg.slice(0, 80)}`),
-      });
-    }
-  }
+  const rows = await buildSessionRows(sessionDir);
   if (rows.length === 0) {
     process.stdout.write("no sessions found\n");
     return;
   }
-  for (const r of rows) {
-    process.stdout.write(`${r.id}  ${dim(formatTimestamp(r.createdAt))}  ${dim(r.label)}\n`);
+  for (const { session: s, label } of rows) {
+    process.stdout.write(`${s.id}  ${dim(formatTimestamp(s.createdAt))}  ${dim(label)}\n`);
   }
 }
 

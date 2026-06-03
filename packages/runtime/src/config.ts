@@ -92,6 +92,17 @@ export const settingsSchema = z.object({
       enabled: z.boolean().default(true),
     })
     .default({ enabled: true }),
+  // Startup housekeeping: on every launch, delete session directories whose
+  // last activity is older than maxAgeDays. Age is the newest mtime of a
+  // session's history/transcript files (last *use*, not creation), so a
+  // resumed-and-still-used old session stays alive. The active session is
+  // always protected. Set enabled:false to keep sessions forever.
+  sessionCleanup: z
+    .object({
+      enabled: z.boolean().default(true),
+      maxAgeDays: z.number().int().positive().default(30),
+    })
+    .default({ enabled: true, maxAgeDays: 30 }),
   logging: z
     .object({
       level: z.enum(["trace", "debug", "info", "warn", "error", "fatal"]).default("info"),
@@ -202,10 +213,17 @@ export const settingsSchema = z.object({
   // Sub-agents spawned via the createSubAgent tool. They run in-process with a
   // fresh context and the parent's tool set (minus createSubAgent itself, to
   // prevent unbounded recursion). `model` defaults to the parent's model.
+  // Custom agent definitions are markdown files scanned from project / user
+  // roots (.nova/agents → .claude/agents; ~/.nova/agents → ~/.claude/agents),
+  // mirroring `skills` / `slash` layering — project shadows user, built-ins
+  // (general-purpose / explore / plan) always win.
   subagent: z
     .object({
       enabled: z.boolean().default(true),
       model: z.string().min(1).optional(),
+      projectDirs: z.array(z.string().min(1)).optional(),
+      userPaths: z.array(z.string().min(1)).optional(),
+      extraDirs: z.array(z.string().min(1)).optional(),
       maxTurns: z.number().int().positive().default(30),
       // Per-response output cap for the sub-agent loop, tunable independently
       // of the top-level maxTokens. A sub-agent's final message is a single

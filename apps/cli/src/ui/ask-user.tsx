@@ -6,6 +6,7 @@ import type {
   AskUserRequest,
   AskUserResponse,
 } from "@nova/core";
+import { ACCENT_HEX } from "../colors.js";
 import { visibleWidth } from "./width.js";
 
 const OTHER_LABEL = "Other";
@@ -293,7 +294,7 @@ export function AskPanel({ req, onResolve }: AskPanelProps): React.ReactElement 
   return (
     <Box flexDirection="column" padding={1} marginTop={1} marginBottom={1} borderStyle={'round'}>
       <Text>
-        <Text bold color="cyan">
+        <Text bold color={ACCENT_HEX}>
           ?
         </Text>{" "}
         {isConfirm ? "Review your answers and submit." : q?.spec.question}
@@ -303,14 +304,14 @@ export function AskPanel({ req, onResolve }: AskPanelProps): React.ReactElement 
           const status = isAnswered(s) ? "✓" : i === tab ? "●" : "○";
           const text = ` ${status} ${s.spec.header} `;
           return (
-            <Text key={i} color={i === tab ? "cyan" : undefined} dimColor={i !== tab}>
+            <Text key={i} color={i === tab ? ACCENT_HEX : undefined} dimColor={i !== tab}>
               {i > 0 ? " " : ""}
               [{text}]
             </Text>
           );
         })}
         <Text
-          color={isConfirm ? "cyan" : everyAnswered ? "green" : undefined}
+          color={isConfirm ? ACCENT_HEX : everyAnswered ? "green" : undefined}
           dimColor={!isConfirm}
         >
           {" "}
@@ -341,7 +342,7 @@ export function AskPanel({ req, onResolve }: AskPanelProps): React.ReactElement 
             return (
               <Text key={b.idx}>
                 {"  "}
-                <Text color={isCur ? "cyan" : undefined}>{isCur ? "❯" : " "}</Text>{" "}
+                <Text color={isCur ? ACCENT_HEX : undefined}>{isCur ? "❯" : " "}</Text>{" "}
                 <Text color={isCur ? b.color : undefined} dimColor={disabled && !isCur}>
                   {b.label}
                 </Text>
@@ -360,11 +361,11 @@ export function AskPanel({ req, onResolve }: AskPanelProps): React.ReactElement 
           return (
             <Text key={i}>
               {"  "}
-              <Text color={isCur ? "cyan" : undefined}>{cur}</Text>
+              <Text color={isCur ? ACCENT_HEX : undefined}>{cur}</Text>
               {" "}
               {marker}
               {" "}
-              <Text color={isCur ? "cyan" : undefined}>{o.label}</Text>
+              <Text color={isCur ? ACCENT_HEX : undefined}>{o.label}</Text>
               {pad}
               {o.description ? (
                 <>
@@ -380,7 +381,7 @@ export function AskPanel({ req, onResolve }: AskPanelProps): React.ReactElement 
         <>
           <Text> </Text>
           <Box>
-            <Text color="cyan">{"  › "}</Text>
+            <Text color={ACCENT_HEX}>{"  › "}</Text>
             <Text>{freeformBuffer}</Text>
             <Text inverse> </Text>
             {freeformBuffer.length === 0 ? (

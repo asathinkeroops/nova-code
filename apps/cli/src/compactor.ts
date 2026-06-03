@@ -6,7 +6,7 @@ import type { Settings } from "@nova/runtime";
 
 export interface BuildCompactorOptions {
   settings: Settings;
-  /** Closes over the CLI's mutable model binding so /model swaps are seen. */
+  /** Closes over the CLI's live model binding. */
   getModel: () => ModelClient;
   /** Closes over the CLI's mutable session binding so /resume swaps land in the new session dir. */
   getSessionDir: () => string;

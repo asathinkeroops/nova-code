@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
 import type { PermissionDecision, PermissionInput } from "@nova/safety";
+import { ACCENT_HEX } from "../colors.js";
 
 export type ApprovalAnswer = "yes" | "no" | "always-allow";
 
@@ -26,7 +27,8 @@ interface Option {
   label: string;
   hint: string;
   shortcut: string;
-  color: "green" | "red" | "cyan";
+  /** Ink color for the option (keyword or hex). */
+  color: string;
 }
 
 const OPTIONS: Option[] = [
@@ -37,7 +39,7 @@ const OPTIONS: Option[] = [
     label: "Always allow this tool",
     hint: "a",
     shortcut: "a",
-    color: "cyan",
+    color: ACCENT_HEX,
   },
 ];
 

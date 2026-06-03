@@ -1,4 +1,4 @@
-import { CYAN_RGB, cyan, dim } from "./colors.js";
+import { ACCENT_RGB, accent, dim } from "./colors.js";
 import { stopSpinner, type CliContext } from "./context.js";
 import { predictNextInput } from "./predict.js";
 import { toUiSlashCommands } from "./slash.js";
@@ -9,8 +9,8 @@ async function refreshPrediction(ctx: CliContext): Promise<void> {
   if (messages.length === 0) return;
   ctx.spinner = ctx.screen.startSpinner({
     words: ["Thinking ahead..."],
-    tint: CYAN_RGB,
-    colorize: cyan,
+    tint: ACCENT_RGB,
+    colorize: accent,
   });
   const t0 = Date.now();
   try {

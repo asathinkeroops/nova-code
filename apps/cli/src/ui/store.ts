@@ -3,7 +3,7 @@ import type { Rgb } from "../colors.js";
 import type { AskUserRequest, AskUserResponse, MessageParam } from "@nova/core";
 import type { Task, Todo } from "@nova/tools";
 import type { PermissionDecision, PermissionInput } from "@nova/safety";
-import type { BannerProps } from "./banner.js";
+import type { BannerProps } from "./render-item.js";
 import type { BoxedInputOptions, SlashCommand } from "./input-box.js";
 import type {
   HorizontalPickerOptions,

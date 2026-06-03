@@ -1,8 +1,17 @@
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createSession, getSession, listSessions } from "./session.js";
+import {
+  createSession,
+  getSession,
+  listSessions,
+  pruneSessions,
+  selectExpiredSessions,
+  type ExpiringSession,
+} from "./session.js";
+
+const DAY = 24 * 60 * 60 * 1000;
 
 let root: string;
 
@@ -43,5 +52,94 @@ describe("session", () => {
     const created = await createSession(root);
     const fetched = await getSession(created.id, root);
     expect(fetched?.id).toBe(created.id);
+  });
+});
+
+describe("selectExpiredSessions", () => {
+  const now = new Date("2026-06-03T00:00:00.000Z");
+  const at = (daysAgo: number): Date => new Date(now.getTime() - daysAgo * DAY);
+  const s = (id: string, daysAgo: number): ExpiringSession => ({
+    id,
+    dir: `/tmp/${id}`,
+    lastActiveAt: at(daysAgo),
+  });
+
+  it("keeps sessions inside the window and drops older ones", () => {
+    const expired = selectExpiredSessions([s("fresh", 5), s("old", 40)], now, 30);
+    expect(expired.map((e) => e.id)).toEqual(["old"]);
+  });
+
+  it("treats exactly maxAgeDays old as still fresh (strict <)", () => {
+    // 30 days ago == cutoff; not strictly before it, so it is kept.
+    expect(selectExpiredSessions([s("edge", 30)], now, 30)).toEqual([]);
+    expect(selectExpiredSessions([s("just-over", 31)], now, 30).map((e) => e.id)).toEqual([
+      "just-over",
+    ]);
+  });
+
+  it("never deletes a protected id even when expired", () => {
+    const expired = selectExpiredSessions([s("active", 99), s("old", 40)], now, 30, ["active"]);
+    expect(expired.map((e) => e.id)).toEqual(["old"]);
+  });
+
+  it("disables pruning for a non-positive or non-finite window", () => {
+    const all = [s("old", 999)];
+    expect(selectExpiredSessions(all, now, 0)).toEqual([]);
+    expect(selectExpiredSessions(all, now, -1)).toEqual([]);
+    expect(selectExpiredSessions(all, now, Number.NaN)).toEqual([]);
+  });
+});
+
+describe("pruneSessions", () => {
+  const now = new Date("2026-06-03T00:00:00.000Z");
+
+  // Stamp a session's history mtime to `daysAgo` so age is driven by
+  // last-activity (mtime), not the directory's birthtime.
+  const ageBy = async (messagesPath: string, daysAgo: number): Promise<void> => {
+    const when = new Date(now.getTime() - daysAgo * DAY);
+    await writeFile(messagesPath, '{"role":"user","content":"hi"}\n');
+    await utimes(messagesPath, when, when);
+  };
+
+  const ids = async (): Promise<string[]> => (await readdir(root)).sort();
+
+  it("removes sessions whose last activity is older than maxAgeDays", async () => {
+    const fresh = await createSession(root);
+    await ageBy(fresh.messagesPath, 5);
+    const old = await createSession(root);
+    await ageBy(old.messagesPath, 40);
+
+    const res = await pruneSessions({ rootOverride: root, maxAgeDays: 30, now });
+
+    expect(res.removed).toEqual([old.id]);
+    expect(res.failed).toBe(0);
+    expect(await ids()).toEqual([fresh.id]);
+  });
+
+  it("protects the active session even if it looks old", async () => {
+    const active = await createSession(root);
+    await ageBy(active.messagesPath, 40);
+
+    const res = await pruneSessions({
+      rootOverride: root,
+      maxAgeDays: 30,
+      now,
+      protectedIds: [active.id],
+    });
+
+    expect(res.removed).toEqual([]);
+    expect(await ids()).toEqual([active.id]);
+  });
+
+  it("does nothing when every session is within the window", async () => {
+    const a = await createSession(root);
+    await ageBy(a.messagesPath, 1);
+    const b = await createSession(root);
+    await ageBy(b.messagesPath, 10);
+
+    const res = await pruneSessions({ rootOverride: root, maxAgeDays: 30, now });
+
+    expect(res.removed).toEqual([]);
+    expect((await ids()).length).toBe(2);
   });
 });

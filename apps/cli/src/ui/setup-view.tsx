@@ -1,5 +1,6 @@
 import React from "react";
 import { Box, Text } from "ink";
+import { ACCENT_HEX } from "../colors.js";
 
 export interface SetupEntry {
   kind: "ok" | "err";
@@ -23,7 +24,7 @@ export function SetupView({ state }: { state: SetupState }): React.ReactElement 
   return (
     <Box flexDirection="column">
       <Box marginTop={1}>
-        <Text bold color="cyan">
+        <Text bold color={ACCENT_HEX}>
           Welcome to Nova!
         </Text>
       </Box>
@@ -50,7 +51,7 @@ export function SetupView({ state }: { state: SetupState }): React.ReactElement 
       {currentPrompt ? (
         <Box marginTop={1}>
           <Text>
-            <Text color="cyan">?</Text> <Text bold>{currentPrompt.label}</Text>{" "}
+            <Text color={ACCENT_HEX}>?</Text> <Text bold>{currentPrompt.label}</Text>{" "}
             <Text dimColor>{`(${currentPrompt.hint})`}</Text>
           </Text>
         </Box>

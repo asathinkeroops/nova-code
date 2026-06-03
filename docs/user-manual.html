@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="scroll-smooth">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Nova 使用手册 · 终端编码 Agent</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@500;600&display=swap" rel="stylesheet">
+<script>
+  tailwind.config = {
+    darkMode: 'class',
+    theme: {
+      extend: {
+        colors: {
+          brand: {
+            50:'#eef0ff',100:'#e0e3ff',200:'#c7cbff',300:'#a5a8ff',
+            400:'#837dff',500:'#6c5cf5',600:'#5b46e0',700:'#4c39bd',
+            800:'#3f3299',900:'#372d7a'
+          }
+        },
+        fontFamily: {
+          sans: ['Inter','Noto Sans SC','system-ui','sans-serif'],
+          serif: ['Noto Serif SC','Georgia','serif'],
+          mono: ['JetBrains Mono','ui-monospace','monospace']
+        }
+      }
+    }
+  }
+</script>
+<style>
+  :root{
+    --bg:#fafafa; --bg-soft:#f3f3f5; --surface:#ffffff; --surface-2:#f7f7fa;
+    --text:#0a0a0a; --text-soft:#52525b; --text-mute:#8a8a93;
+    --border:#e5e7eb; --border-soft:#ececed;
+  }
+  html.dark{
+    --bg:#0a0a0a; --bg-soft:#101012; --surface:#141416; --surface-2:#1a1a1e;
+    --text:#fafafa; --text-soft:#b4b4bd; --text-mute:#7c7c87;
+    --border:#262626; --border-soft:#1f1f22;
+  }
+  body{background:var(--bg);color:var(--text);font-feature-settings:"cv05","ss01";}
+  ::selection{background:rgba(108,92,245,.28);}
+  .text-soft{color:var(--text-soft);} .text-mute{color:var(--text-mute);}
+  .bg-surface{background:var(--surface);} .bg-surface2{background:var(--surface-2);}
+  .border-line{border-color:var(--border);} .border-line-soft{border-color:var(--border-soft);}
+
+  /* 滚动条 */
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-thumb{background:var(--border);border-radius:9999px;border:2px solid var(--bg);}
+  ::-webkit-scrollbar-thumb:hover{background:var(--text-mute);}
+  .nav-scroll::-webkit-scrollbar{width:6px;}
+
+  /* prose 排版 */
+  .prose h2{font-family:'Noto Serif SC',serif;letter-spacing:-.01em;}
+  .prose p{max-width:68ch;line-height:1.85;color:var(--text-soft);}
+  .prose li{line-height:1.8;color:var(--text-soft);}
+  .prose strong{color:var(--text);font-weight:600;}
+  .prose code:not(pre code){
+    font-family:'JetBrains Mono',monospace;font-size:.84em;
+    background:var(--surface-2);border:1px solid var(--border-soft);
+    padding:.1em .42em;border-radius:.4rem;color:var(--text);
+    word-break:break-word;
+  }
+  html.dark .prose code:not(pre code){background:#222228;}
+  .prose a.inline-link{color:#6c5cf5;text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1px;}
+  html.dark .prose a.inline-link{color:#a5a8ff;}
+
+  /* 代码块 */
+  .code-block{border-radius:.85rem;overflow:hidden;border:1px solid #1f2030;background:#15151c;box-shadow:0 8px 24px -12px rgba(0,0,0,.5);}
+  .code-head{display:flex;align-items:center;justify-content:space-between;padding:.5rem .9rem;background:#1b1c27;border-bottom:1px solid #26273a;}
+  .code-head .lang{font-family:'JetBrains Mono',monospace;font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;color:#9a9ab8;}
+  .copy-btn{font-size:.72rem;color:#b9b9d4;background:#2a2b3d;border:1px solid #34354c;padding:.18rem .58rem;border-radius:.45rem;transition:all .15s;font-family:'Inter',sans-serif;}
+  .copy-btn:hover{background:#34354c;color:#fff;}
+  .copy-btn:focus-visible{outline:2px solid #6c5cf5;outline-offset:1px;}
+  .code-block pre{margin:0;padding:1rem 1.1rem;overflow-x:auto;}
+  .code-block code{font-family:'JetBrains Mono',monospace;font-size:.82rem;line-height:1.7;color:#e6e6f0;}
+  .tok-c{color:#6b7090;font-style:italic;} /* comment */
+  .tok-k{color:#c792ea;} /* keyword */
+  .tok-s{color:#c3e88d;} /* string */
+  .tok-f{color:#82aaff;} /* flag/func */
+  .tok-n{color:#f78c6c;} /* number */
+
+  /* callout */
+  .callout{display:flex;gap:.85rem;padding:.95rem 1.05rem;border-radius:.85rem;border:1px solid;margin:1.4rem 0;max-width:72ch;}
+  .callout .ic{flex-shrink:0;width:1.25rem;height:1.25rem;margin-top:.1rem;}
+  .callout p{margin:0;max-width:none;}
+  .callout-info{background:rgba(108,92,245,.07);border-color:rgba(108,92,245,.28);}
+  .callout-info .ic{color:#6c5cf5;} html.dark .callout-info .ic{color:#a5a8ff;}
+  .callout-warn{background:rgba(245,158,11,.08);border-color:rgba(245,158,11,.3);}
+  .callout-warn .ic{color:#d97706;} html.dark .callout-warn .ic{color:#fbbf24;}
+  .callout-danger{background:rgba(239,68,68,.07);border-color:rgba(239,68,68,.3);}
+  .callout-danger .ic{color:#dc2626;} html.dark .callout-danger .ic{color:#f87171;}
+  .callout-title{font-weight:600;color:var(--text);font-size:.92rem;margin-bottom:.15rem;}
+
+  /* 表格 */
+  .tbl-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:.85rem;margin:1.4rem 0;background:var(--surface);}
+  table.doc{width:100%;border-collapse:collapse;font-size:.875rem;min-width:480px;}
+  table.doc th{text-align:left;font-weight:600;color:var(--text);background:var(--surface-2);padding:.7rem .9rem;border-bottom:1px solid var(--border);white-space:nowrap;}
+  table.doc td{padding:.7rem .9rem;border-bottom:1px solid var(--border-soft);color:var(--text-soft);vertical-align:top;}
+  table.doc tr:last-child td{border-bottom:0;}
+  table.doc td code,table.doc th code{font-family:'JetBrains Mono',monospace;font-size:.82em;background:var(--surface-2);padding:.08em .4em;border-radius:.35rem;color:var(--text);white-space:nowrap;}
+  html.dark table.doc td code{background:#222228;}
+  table.doc tbody tr{transition:background .12s;}
+  table.doc tbody tr:hover{background:var(--surface-2);}
+
+  /* nav */
+  .nav-link{display:block;padding:.34rem .7rem;border-radius:.5rem;font-size:.85rem;color:var(--text-soft);transition:all .13s;border-left:2px solid transparent;}
+  .nav-link:hover{background:var(--surface-2);color:var(--text);}
+  .nav-link.active{color:#6c5cf5;background:rgba(108,92,245,.08);font-weight:600;}
+  html.dark .nav-link.active{color:#a5a8ff;}
+  .nav-group{font-size:.68rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text-mute);padding:0 .7rem;margin:1.1rem 0 .35rem;}
+  .nav-group:first-child{margin-top:0;}
+  .toc-link{display:block;padding:.2rem 0 .2rem .8rem;font-size:.78rem;color:var(--text-mute);border-left:2px solid var(--border);transition:all .13s;line-height:1.3;}
+  .toc-link:hover{color:var(--text);}
+  .toc-link.active{color:#6c5cf5;border-left-color:#6c5cf5;font-weight:600;}
+  html.dark .toc-link.active{color:#a5a8ff;border-left-color:#a5a8ff;}
+
+  .sec-num{display:inline-flex;align-items:center;justify-content:center;width:1.9rem;height:1.9rem;border-radius:.6rem;background:var(--surface-2);border:1px solid var(--border);font-size:.85rem;font-weight:700;color:#6c5cf5;font-family:'JetBrains Mono',monospace;flex-shrink:0;}
+  html.dark .sec-num{color:#a5a8ff;}
+  section[id]{scroll-margin-top:5.5rem;}
+  .fade-in{animation:fade .5s ease both;}
+  @keyframes fade{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
+  .kbd{font-family:'JetBrains Mono',monospace;font-size:.74rem;background:var(--surface);border:1px solid var(--border);border-bottom-width:2px;border-radius:.4rem;padding:.1rem .4rem;color:var(--text);white-space:nowrap;}
+  .pill{font-size:.68rem;font-weight:600;padding:.12rem .5rem;border-radius:9999px;}
+  .pill-ro{background:rgba(16,185,129,.12);color:#059669;} html.dark .pill-ro{color:#34d399;}
+  .pill-ap{background:rgba(245,158,11,.14);color:#d97706;} html.dark .pill-ap{color:#fbbf24;}
+</style>
+</head>
+<body class="font-sans antialiased">
+
+<!-- ░░░ 顶栏 ░░░ -->
+<header class="fixed top-0 inset-x-0 z-40 h-14 border-b border-line bg-surface/85 backdrop-blur-md">
+  <div class="h-full max-w-[1600px] mx-auto px-4 flex items-center gap-4">
+    <a href="#top" class="flex items-center gap-2.5 shrink-0">
+      <span class="grid place-items-center w-8 h-8 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 shadow-md shadow-brand-500/30">
+        <svg viewBox="0 0 24 24" class="w-4.5 h-4.5" width="18" height="18" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/></svg>
+      </span>
+      <span class="font-semibold tracking-tight text-[15px]">Nova <span class="text-mute font-normal hidden sm:inline">使用手册</span></span>
+    </a>
+
+    <!-- search -->
+    <div class="relative flex-1 max-w-md ml-2">
+      <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-mute" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      <input id="search" type="text" placeholder="搜索章节…" autocomplete="off"
+        class="w-full pl-9 pr-12 py-1.5 text-sm rounded-lg bg-surface2 border border-line focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30 outline-none transition placeholder:text-mute" style="color:var(--text)">
+      <span class="absolute right-2.5 top-1/2 -translate-y-1/2 kbd hidden sm:inline">/</span>
+    </div>
+
+    <div class="ml-auto flex items-center gap-2 sm:gap-3 shrink-0">
+      <span class="hidden md:inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-md bg-surface2 border border-line text-soft">
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> v1.0 · DeepSeek
+      </span>
+      <a href="https://github.com/anthropic-experimental/sandbox-runtime" target="_blank" rel="noopener" class="hidden sm:grid place-items-center w-8 h-8 rounded-lg hover:bg-surface2 transition text-soft" aria-label="GitHub">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 .5C5.7.5.5 5.7.5 12c0 5.1 3.3 9.4 7.9 10.9.6.1.8-.2.8-.5v-2c-3.2.7-3.9-1.4-3.9-1.4-.5-1.3-1.3-1.7-1.3-1.7-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.7 1.3 3.4 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17.3 4.7 18.3 5 18.3 5c.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .3.2.6.8.5 4.6-1.5 7.9-5.8 7.9-10.9C23.5 5.7 18.3.5 12 .5Z"/></svg>
+      </a>
+      <button id="theme-toggle" class="grid place-items-center w-8 h-8 rounded-lg hover:bg-surface2 transition text-soft focus-visible:ring-2 focus-visible:ring-brand-500" aria-label="切换主题">
+        <svg class="sun hidden" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+        <svg class="moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8Z"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div id="top" class="max-w-[1600px] mx-auto flex">
+
+  <!-- ░░░ 左侧导航 ░░░ -->
+  <aside class="hidden lg:block w-64 shrink-0 border-r border-line">
+    <nav id="side-nav" class="nav-scroll sticky top-14 h-[calc(100vh-3.5rem)] overflow-y-auto px-3 py-6">
+      <div class="nav-group">入门</div>
+      <a class="nav-link" href="#sec-1" data-nav="sec-1">1 · 它能做什么</a>
+      <a class="nav-link" href="#sec-2" data-nav="sec-2">2 · 安装与环境要求</a>
+      <a class="nav-link" href="#sec-3" data-nav="sec-3">3 · 首次配置向导</a>
+      <a class="nav-link" href="#sec-4" data-nav="sec-4">4 · 命令行参数</a>
+
+      <div class="nav-group">交互</div>
+      <a class="nav-link" href="#sec-5" data-nav="sec-5">5 · 交互式界面 TUI</a>
+      <a class="nav-link" href="#sec-6" data-nav="sec-6">6 · Slash 命令大全</a>
+      <a class="nav-link" href="#sec-7" data-nav="sec-7">7 · 思考等级</a>
+      <a class="nav-link" href="#sec-8" data-nav="sec-8">8 · Plan 模式与子 Agent</a>
+
+      <div class="nav-group">工具与安全</div>
+      <a class="nav-link" href="#sec-9" data-nav="sec-9">9 · 内置工具一览</a>
+      <a class="nav-link" href="#sec-10" data-nav="sec-10">10 · 权限与安全</a>
+      <a class="nav-link" href="#sec-11" data-nav="sec-11">11 · 命令沙箱</a>
+      <a class="nav-link" href="#sec-12" data-nav="sec-12">12 · 上下文与压缩</a>
+
+      <div class="nav-group">扩展</div>
+      <a class="nav-link" href="#sec-13" data-nav="sec-13">13 · 记忆 Memory</a>
+      <a class="nav-link" href="#sec-14" data-nav="sec-14">14 · Skills</a>
+      <a class="nav-link" href="#sec-15" data-nav="sec-15">15 · 自定义 Slash 命令</a>
+      <a class="nav-link" href="#sec-16" data-nav="sec-16">16 · MCP 外部工具</a>
+      <a class="nav-link" href="#sec-17" data-nav="sec-17">17 · LSP 代码智能</a>
+
+      <div class="nav-group">运维与参考</div>
+      <a class="nav-link" href="#sec-18" data-nav="sec-18">18 · 会话与数据落盘</a>
+      <a class="nav-link" href="#sec-19" data-nav="sec-19">19 · 配置完整参考</a>
+      <a class="nav-link" href="#sec-20" data-nav="sec-20">20 · FAQ 与排查</a>
+
+      <p id="no-results" class="hidden text-xs text-mute px-3 py-4">没有匹配的章节</p>
+    </nav>
+  </aside>
+
+  <!-- ░░░ 正文 ░░░ -->
+  <main class="flex-1 min-w-0 px-5 sm:px-8 lg:px-12 py-10 lg:py-14">
+    <div class="max-w-3xl mx-auto prose">
+
+      <!-- Hero -->
+      <div class="fade-in mb-14">
+        <span class="inline-flex items-center gap-2 text-xs font-medium px-3 py-1 rounded-full bg-brand-50 dark:bg-brand-500/10 text-brand-600 dark:text-brand-300 border border-brand-200 dark:border-brand-500/30 mb-5">
+          <span class="w-1.5 h-1.5 rounded-full bg-brand-500 animate-pulse"></span> 终端编码 Agent · 用户向手册
+        </span>
+        <h1 class="font-serif text-4xl sm:text-5xl font-semibold tracking-tight leading-tight mb-5" style="color:var(--text)">Nova 使用手册</h1>
+        <p class="text-lg" style="max-width:72ch">
+          <strong>Nova</strong>（命令行二进制 <code>nova</code>，亦称 <em>nova-code</em>）是一个跑在终端里的编码 agent —— 它读代码、跑命令、改文件，通过工具调用把一项任务推到完成。内部消息走 Anthropic 格式，模型层围绕 <strong>DeepSeek</strong> 深度调优，同时兼容其它 Anthropic 兼容端点。
+        </p>
+        <p>本手册面向<strong>使用者</strong>：怎么装、怎么配、怎么在日常里把它用顺。若想了解内部架构（loop 契约、包依赖、扩展点），请读仓库根的 <code>CLAUDE.md</code> 与 <code>README.md</code>。</p>
+      </div>
+
+      <!-- §1 -->
+      <section id="sec-1" class="mb-20">
+        <div class="flex items-center gap-3 mb-5"><span class="sec-num">01</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">它能做什么</h2></div>
+        <ul class="space-y-3 list-none pl-0">
+          <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>Agentic 编码循环</strong> —— 给它一个目标，它自己读代码、改文件、跑命令，一步步把任务做完。同一轮里互相独立的工具调用以<strong>有界并发</strong>运行（默认每轮 3 个）。</span></li>
+          <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>代码与系统工具</strong> —— 文件 read / write / edit，<code>glob</code> + <code>grep</code> 搜索，<code>bash</code> 与后台长任务，web fetch / search，notebook 编辑，向你提问。</span></li>
+          <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>LSP 代码智能</strong> —— 直连语言服务器做 go-to-definition、find-references、hover、诊断、符号搜索，比 grep 更懂作用域和类型。</span></li>
+          <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>扩展 thinking</strong> —— 五档（<code>off</code>/<code>low</code>/<code>medium</code>/<code>high</code>/<code>max</code>）或显式 token 预算。</span></li>
+          <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>Plan 模式与子 agent</strong> —— 把庞大的调查/规划交给全新上下文的 worker，结论汇报回来，主对话保持干净。</span></li>
+          <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>记忆、Skills、自定义命令、MCP</strong> —— 项目 / 用户级的知识与工具扩展。</span></li>
+          <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>权限与沙箱</strong> —— 基于规则的拦截 + OS 级文件写入隔离，双层防护。</span></li>
+          <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>可恢复会话</strong> —— append-only 持久化，随时 <code>--resume</code> / <code>--continue</code>，<code>/rewind</code> 回到更早节点。</span></li>
+          <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>DeepSeek 深度定制</strong> —— thinking 映射到 DeepSeek 的 <code>output_config.effort</code>，请求结构对自动上下文缓存友好，错误码翻译与瞬时重试。</span></li>
+        </ul>
+      </section>
+
+      <!-- §2 -->
+      <section id="sec-2" class="mb-20">
+        <div class="flex items-center gap-3 mb-5"><span class="sec-num">02</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">安装与环境要求</h2></div>
+        <p>环境要求：</p>
+        <ul class="space-y-2">
+          <li><strong>Node ≥ 20</strong>（仓库 <code>.nvmrc</code> 已固定）</li>
+          <li><strong>pnpm 10.28.2</strong>（<code>packageManager</code> 已固定）</li>
+          <li>一个<strong>交互式终端（TTY）</strong>。Nova 不支持管道 / 重定向 / 无 PTY 的 CI 环境 —— 非 TTY 启动会直接报错退出。</li>
+        </ul>
+        <p>从源码运行：</p>
+        <div class="code-block">
+          <div class="code-head"><span class="lang">bash</span><button class="copy-btn" onclick="copyCode(this)">复制</button></div>
+<pre><code><span class="tok-f">pnpm</span> install
+<span class="tok-f">pnpm</span> dev                       <span class="tok-c"># 启动 REPL（tsx 运行 apps/cli/src/index.ts）</span>
+<span class="tok-f">pnpm</span> dev <span class="tok-s">"帮我给这个函数加单测"</span>   <span class="tok-c"># 先跑一轮 prompt，再进入 REPL</span></code></pre>
+        </div>
+        <div class="callout callout-info">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          <div><div class="callout-title">开发态与发布态</div><p><code>pnpm dev</code> 是开发态入口；发布后的二进制名为 <code>nova</code>，本手册中 <code>nova …</code> 与 <code>pnpm dev …</code> 等价。</p></div>
+        </div>
+      </section>
+
+      <!-- §3 -->
+      <section id="sec-3" class="mb-20">
+        <div class="flex items-center gap-3 mb-5"><span class="sec-num">03</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">首次配置向导</h2></div>
+        <p>第一次启动时，如果 <code>~/.nova/nova.config.json</code> 里缺少必填项，Nova 会进入一个交互式向导，依次询问三项并写回配置文件：</p>
+        <div class="tbl-wrap"><table class="doc">
+          <thead><tr><th>字段</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Base URL</strong></td><td>必须是 Anthropic 兼容端点（如 <code>https://api.anthropic.com</code>，或 DeepSeek 的兼容端点）</td></tr>
+            <tr><td><strong>API key</strong></td><td>你的 provider API key（输入时被掩码）</td></tr>
+            <tr><td><strong>Model</strong></td><td>模型 id，例如 <code>claude-sonnet-4-5</code></td></tr>
+          </tbody>
+        </table></div>
+        <p>按 <span class="kbd">Ctrl+C</span> 可中止向导。已有的字段不会再问。你也可以随时手动编辑 <code>~/.nova/nova.config.json</code>（完整字段见 <a class="inline-link" href="#sec-19">§19</a>）。</p>
+        <div class="callout callout-warn">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg>
+          <div><div class="callout-title">apiKey 仍为空？</div><p>如果启动时 <code>apiKey</code> 仍为空，Nova 会报错退出并提示去配置文件里补上。</p></div>
+        </div>
+      </section>
+
+      <!-- §4 -->
+      <section id="sec-4" class="mb-20">
+        <div class="flex items-center gap-3 mb-5"><span class="sec-num">04</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">启动与命令行参数</h2></div>
+        <div class="code-block">
+          <div class="code-head"><span class="lang">text</span><button class="copy-btn" onclick="copyCode(this)">复制</button></div>
+<pre><code><span class="tok-f">nova</span> [prompt...]                   <span class="tok-c"># 先跑一轮初始 prompt，再留在 REPL</span>
+  <span class="tok-f">-p, --prompt</span> &lt;text&gt;              <span class="tok-c"># 初始 prompt（位置参数的替代写法）</span>
+  <span class="tok-f">-m, --model</span> &lt;name&gt;               <span class="tok-c"># 临时覆盖模型 id</span>
+  <span class="tok-f">-t, --think</span> off|low|medium|high|max   <span class="tok-c"># thinking 等级，或正整数 token 预算</span>
+      <span class="tok-f">--max-turns</span> &lt;n&gt;              <span class="tok-c"># 单轮最大循环次数</span>
+      <span class="tok-f">--cwd</span> &lt;dir&gt;                   <span class="tok-c"># 工具的工作目录（工作区根）</span>
+      <span class="tok-f">--resume</span> &lt;id&gt;                 <span class="tok-c"># 恢复指定 id 的 session</span>
+  <span class="tok-f">-c, --continue</span>                  <span class="tok-c"># 恢复最近一个 session</span>
+      <span class="tok-f">--list-sessions</span>             <span class="tok-c"># 列出历史 session 后退出（非交互）</span>
+      <span class="tok-f">--no-transcript</span>             <span class="tok-c"># 本次不写 transcript</span>
+      <span class="tok-f">--no-pretty</span>                 <span class="tok-c"># 关闭 pretty 日志</span></code></pre>
+        </div>
+        <p class="mt-6 font-medium" style="color:var(--text)">要点：</p>
+        <ul class="space-y-2">
+          <li><strong>位置参数即初始 prompt</strong>：<code>nova 把 README 翻译成英文</code> 会先跑这一轮，再停在 REPL 等你继续。<code>-p/--prompt</code> 是等价写法。</li>
+          <li><strong><code>-m</code> / <code>-t</code> / <code>--max-turns</code> 都是本次会话的临时覆盖</strong>，不写回配置文件。</li>
+          <li><strong><code>--cwd</code></strong> 决定工具的「工作区根」—— 读写权限、沙箱写入范围都以它为基准（见 <a class="inline-link" href="#sec-10">§10</a>）。</li>
+          <li><strong><code>--list-sessions</code></strong> 是少数几个非交互子命令，打印列表后直接退出。</li>
+        </ul>
+      </section>
+
+      <!-- §5 -->
+      <section id="sec-5" class="mb-20">
+        <div class="flex items-center gap-3 mb-5"><span class="sec-num">05</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">交互式界面（TUI）</h2></div>
+        <p>Nova 是一个全屏 Ink/React REPL：顶部是滚动的历史区，底部是固定的输入框和实时状态行，支持流式输出、鼠标滚动与选区。</p>
+
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">全局按键</h3>
+        <div class="tbl-wrap"><table class="doc"><thead><tr><th>按键</th><th>作用</th></tr></thead><tbody>
+          <tr><td><span class="kbd">Enter</span></td><td>提交当前输入</td></tr>
+          <tr><td><span class="kbd">Esc</span></td><td>中断正在运行的回合</td></tr>
+          <tr><td><span class="kbd">Ctrl+C</span></td><td>有回合在跑时中断它；空闲时再按一次退出</td></tr>
+          <tr><td><span class="kbd">Ctrl+D</span></td><td>退出 Nova</td></tr>
+          <tr><td>鼠标滚轮</td><td>在历史区上下滚动</td></tr>
+          <tr><td>鼠标拖拽</td><td>选中文本（用于复制）</td></tr>
+        </tbody></table></div>
+
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">输入框编辑键（emacs 风格）</h3>
+        <div class="tbl-wrap"><table class="doc"><thead><tr><th>按键</th><th>作用</th></tr></thead><tbody>
+          <tr><td><span class="kbd">Ctrl+A</span> / <span class="kbd">Ctrl+E</span></td><td>跳到行首 / 行尾</td></tr>
+          <tr><td><span class="kbd">Ctrl+U</span> / <span class="kbd">Ctrl+K</span></td><td>删除到行首 / 删除到行尾</td></tr>
+          <tr><td><span class="kbd">Ctrl+W</span></td><td>往前删一个词</td></tr>
+          <tr><td><span class="kbd">↑</span> / <span class="kbd">↓</span></td><td>浏览输入历史 / 在补全弹窗里移动</td></tr>
+        </tbody></table></div>
+
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">选择类弹窗（审批、提问、session 选择器）</h3>
+        <ul class="space-y-2">
+          <li>上下移动：<span class="kbd">↑</span>/<span class="kbd">↓</span>，或 <span class="kbd">j</span>/<span class="kbd">k</span>（审批框），或 <span class="kbd">Ctrl+P</span>/<span class="kbd">Ctrl+N</span>（选择器）</li>
+          <li>确认：<span class="kbd">Enter</span>；取消/拒绝：<span class="kbd">Esc</span></li>
+          <li>多选题用 <span class="kbd">空格</span> 勾选</li>
+          <li>审批框还支持 <span class="kbd">PageUp</span>/<span class="kbd">PageDown</span> 滚动周围视口，方便先看清要批准的内容</li>
+        </ul>
+
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">输入预测</h3>
+        <p>每成功跑完一轮，Nova 会用主模型预测你<strong>下一句可能想说什么</strong>，作为输入框的灰色占位提示（默认开启，超时 8s，最多 50 字）。用 <code>/predict on|off</code> 开关，或在配置里调 <code>predict</code>。</p>
+      </section>
+
+      <!-- §6 -->
+      <section id="sec-6" class="mb-20">
+        <div class="flex items-center gap-3 mb-5"><span class="sec-num">06</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">Slash 命令大全</h2></div>
+        <p>在输入框里以 <code>/</code> 开头即触发。<strong>内置命令永远优先于自定义命令</strong>。</p>
+        <div class="tbl-wrap"><table class="doc"><thead><tr><th>命令</th><th>作用</th></tr></thead><tbody>
+          <tr><td><code>/help</code></td><td>显示帮助；列出按来源分组（Built-in / Project / User）的命令</td></tr>
+          <tr><td><code>/think [&lt;level&gt;]</code></td><td>查看或切换 thinking 等级（<code>off</code>/<code>low</code>/<code>medium</code>/<code>high</code>/<code>max</code> 或整数预算）</td></tr>
+          <tr><td><code>/clear</code></td><td>清空当前会话历史（session 仍保留）</td></tr>
+          <tr><td><code>/compact [focus…]</code></td><td>把历史压缩成单条摘要消息；可附带关注点提示</td></tr>
+          <tr><td><code>/resume [&lt;id&gt;]</code></td><td>切换到指定 session；不带参数则弹出列表选择</td></tr>
+          <tr><td><code>/rewind [&lt;n&gt;]</code></td><td>回退到此前某条消息 —— 其后的对话历史与文件改动都会被丢弃</td></tr>
+          <tr><td><code>/plan &lt;goal&gt;</code></td><td>把调查交给一个只读的 plan 子 agent，返回分步实现计划</td></tr>
+          <tr><td><code>/predict [on|off]</code></td><td>查看或切换「下一条输入预测」</td></tr>
+          <tr><td><code>/stream [on|off]</code></td><td>查看或切换 token 流式渲染（见配置 <code>stream</code>）</td></tr>
+          <tr><td><code>/commands [reload]</code></td><td>列出已注册的 slash 命令；<code>reload</code> 重新扫盘加载自定义命令</td></tr>
+          <tr><td><code>/skills</code></td><td>列出已发现的 <code>SKILL.md</code>（及各自来源）</td></tr>
+          <tr><td><code>/mcp [tools]</code></td><td>查看 MCP 服务器状态；<code>tools</code> 列出所有桥接的工具</td></tr>
+          <tr><td><code>/lsp</code></td><td>查看已配置的语言服务器（是否在 PATH、本 session 是否已启动）</td></tr>
+          <tr><td><code>/exit</code>, <code>/quit</code></td><td>退出</td></tr>
+        </tbody></table></div>
+        <div class="callout callout-info">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          <div><p><code>/stream</code> 由配置项 <code>stream.enabled</code> 支撑。<code>/help</code> 与 <code>/commands</code> 会把<strong>内置 + 项目 + 用户</strong>三层命令都列出来；自定义命令的加载规则见 <a class="inline-link" href="#sec-15">§15</a>。</p></div>
+        </div>
+      </section>
+
+      <!-- §7 -->
+      <section id="sec-7" class="mb-20">
+        <div class="flex items-center gap-3 mb-5"><span class="sec-num">07</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">思考等级（Thinking）</h2></div>
+        <p>Nova 把「extended thinking」暴露成五个等级，或一个显式的 token 预算。在 DeepSeek 上，等级映射到 <code>output_config.effort</code>（而不是 Anthropic 的 <code>budget_tokens</code>）。</p>
+        <div class="flex flex-wrap gap-2 my-5">
+          <span class="pill bg-surface2 border border-line" style="color:var(--text-soft);padding:.3rem .75rem">off · 默认</span>
+          <span class="pill bg-surface2 border border-line" style="color:var(--text-soft);padding:.3rem .75rem">low</span>
+          <span class="pill bg-surface2 border border-line" style="color:var(--text-soft);padding:.3rem .75rem">medium</span>
+          <span class="pill bg-surface2 border border-line" style="color:var(--text-soft);padding:.3rem .75rem">high</span>
+          <span class="pill" style="padding:.3rem .75rem;background:rgba(108,92,245,.12);color:#6c5cf5">max</span>
+        </div>
+        <ul class="space-y-2">
+          <li>五档：<code>off</code> / <code>low</code> / <code>medium</code> / <code>high</code> / <code>max</code>（默认 <code>off</code>）</li>
+          <li>显式预算：传一个正整数（如 <code>-t 4096</code>），它会覆盖等级映射，直接当作 <code>budget_tokens</code></li>
+        </ul>
+        <p class="mt-5 font-medium" style="color:var(--text)">设置方式：</p>
+        <ul class="space-y-2">
+          <li>启动时：<code>nova -t high "..."</code> 或 <code>nova -t 4096 "..."</code></li>
+          <li>运行时：<code>/think high</code>（查看用 <code>/think</code>）</li>
+          <li>配置文件：<code>thinking.level</code> / <code>thinking.budgetTokens</code></li>
+        </ul>
+        <div class="callout callout-warn">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg>
+          <div><p>更深的思考通常带来更好的规划，但<strong>更慢、更贵</strong> —— 按任务难度调档即可。</p></div>
+        </div>
+      </section>
+
+      <!-- §8 -->
+      <section id="sec-8" class="mb-20">
+        <div class="flex items-center gap-3 mb-5"><span class="sec-num">08</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">Plan 模式与子 Agent</h2></div>
+        <h3 class="text-base font-semibold mt-2 mb-3" style="color:var(--text)">子 Agent</h3>
+        <p>模型可以用 <code>createSubAgent</code> 工具把活儿派出去。子 agent <strong>在进程内运行，带全新上下文</strong>（永远看不到父对话），工具集是父 agent 的工具减去 <code>createSubAgent</code> 本身 —— 所以<strong>不会递归</strong>。三种类型：</p>
+        <div class="tbl-wrap"><table class="doc"><thead><tr><th>类型</th><th>工具权限</th><th>用途</th></tr></thead><tbody>
+          <tr><td><code>explore</code></td><td>只读（无 write/edit/bash）</td><td>检索定位代码，汇报路径 / 调用点</td></tr>
+          <tr><td><code>plan</code></td><td>只读（无 write/edit/bash）</td><td>调查后给出分步实现计划</td></tr>
+          <tr><td><code>general-purpose</code></td><td>完整工具</td><td>需要真正改文件或跑命令的活儿</td></tr>
+        </tbody></table></div>
+        <p>同一轮里的多个 <code>createSubAgent</code> 调用会<strong>并发执行</strong>（受 <code>toolConcurrency</code> 限制）。父 agent 只会收到每个子 agent 的<strong>最终一条消息</strong> —— 庞大的中间调查被挡在主上下文之外。</p>
+        <p>通过 <code>settings.subagent</code> 配置：<code>enabled</code> / <code>model</code>（默认随父模型）/ <code>maxTurns</code>（默认 30）/ <code>maxTokens</code>（默认 8192）。每个子 agent 的 transcript 落在 <code>~/.nova/sessions/{id}/subagents/</code>。</p>
+        <div class="callout callout-info">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          <div><p>子 agent 调用 todo / task / 长任务这类「有状态」工具时，操作的是<strong>父 session</strong> 的共享存储。</p></div>
+        </div>
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)"><code>/plan</code> 命令</h3>
+        <p><code>/plan &lt;goal&gt;</code> 是上面机制的一层薄封装：它让 agent 派生一个 <code>plan</code> 子 agent，对目标做只读调查，然后返回一份分步实现计划 —— 动手改动之前先看清楚要做什么。</p>
+      </section>
+
+      <!-- §9 -->
+      <section id="sec-9" class="mb-20">
+        <div class="flex items-center gap-3 mb-5"><span class="sec-num">09</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">内置工具一览</h2></div>
+        <p>下面是模型可调用的全部内置工具。标 <span class="pill pill-ro">只读</span> 的默认自动放行；标 <span class="pill pill-ap">需批准</span> 的默认走权限引擎询问（见 <a class="inline-link" href="#sec-10">§10</a>）。</p>
+
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">文件与文本</h3>
+        <div class="tbl-wrap"><table class="doc"><thead><tr><th>工具</th><th>权限</th><th>说明</th></tr></thead><tbody>
+          <tr><td><code>read</code></td><td><span class="pill pill-ro">只读</span></td><td>读文本文件，支持 <code>offset</code>/<code>limit</code> 分页；单次最多约 200KB</td></tr>
+          <tr><td><code>write</code></td><td><span class="pill pill-ap">需批准</span></td><td>写整个文件（覆盖），默认自动创建父目录</td></tr>
+          <tr><td><code>edit</code></td><td><span class="pill pill-ap">需批准</span></td><td>精确字符串替换；<code>old_string</code> 默认须唯一匹配，<code>replace_all</code> 可全替</td></tr>
+          <tr><td><code>bash</code></td><td><span class="pill pill-ap">需批准</span></td><td>执行短小、阻塞的 shell 命令；<strong>硬超时 10s</strong>，输出截到 200KB</td></tr>
+        </tbody></table></div>
+
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">搜索与发现</h3>
+        <div class="tbl-wrap"><table class="doc"><thead><tr><th>工具</th><th>权限</th><th>说明</th></tr></thead><tbody>
+          <tr><td><code>glob</code></td><td><span class="pill pill-ro">只读</span></td><td>按 glob 模式列文件；默认遵守 <code>.gitignore</code>，永远跳过 <code>node_modules</code>/<code>.git</code></td></tr>
+          <tr><td><code>grep</code></td><td><span class="pill pill-ro">只读</span></td><td>ripgrep 搜内容；支持大小写 / 字面量 / 上下文行 / 仅列文件名等，超时 30s</td></tr>
+        </tbody></table></div>
+
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">Web</h3>
+        <div class="tbl-wrap"><table class="doc"><thead><tr><th>工具</th><th>权限</th><th>说明</th></tr></thead><tbody>
+          <tr><td><code>webfetch</code></td><td><span class="pill pill-ro">只读</span></td><td>取单个 http(s) URL，转成 markdown/text/html；遵守 robots.txt，默认超时 30s</td></tr>
+          <tr><td><code>websearch</code></td><td><span class="pill pill-ap">需 API key</span></td><td>搜公网返回 title+url+snippet；需环境变量 <code>BRAVE_SEARCH_API_KEY</code> / <code>TAVILY_API_KEY</code> / <code>SERPER_API_KEY</code>（按序自动选）</td></tr>
+        </tbody></table></div>
+
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">代码智能</h3>
+        <div class="tbl-wrap"><table class="doc"><thead><tr><th>工具</th><th>权限</th><th>说明</th></tr></thead><tbody>
+          <tr><td><code>lsp</code></td><td><span class="pill pill-ro">只读</span></td><td>一个工具六个 action：<code>definition</code>/<code>references</code>/<code>hover</code>/<code>diagnostics</code>/<code>document_symbols</code>/<code>workspace_symbol</code>。坐标对模型是 1-based。详见 <a class="inline-link" href="#sec-17">§17</a></td></tr>
+        </tbody></table></div>
+
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">与用户交互</h3>
+        <div class="tbl-wrap"><table class="doc"><thead><tr><th>工具</th><th>权限</th><th>说明</th></tr></thead><tbody>
+          <tr><td><code>askUserQuestion</code></td><td><span class="pill pill-ro">只读</span></td><td>一次提 1–4 个选择题（每题 2–4 个选项，可多选）；运行时自动补一个「Other」让你自由作答</td></tr>
+        </tbody></table></div>
+
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">计划管理：Todo（会话内，内存态）</h3>
+        <p><code>createTodo</code> / <code>updateTodo</code> / <code>getTodoList</code> / <code>clearTodoList</code> —— 把多步计划外化成一张清单，<strong>只存内存</strong>，进程退出即丢。任一时刻最多一个 todo 处于 <code>in_progress</code>。</p>
+
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">计划管理：Task（工作区内，落盘持久）</h3>
+        <p><code>createTask</code> / <code>updateTask</code> / <code>getTask</code> / <code>getTaskList</code> / <code>clearTaskList</code> —— 更大、值得跨会话保留的计划，落盘到工作区的 <code>.tasks/{id}.json</code>。支持 <code>blockedBy</code> 依赖关系，允许多个并行 <code>in_progress</code>。</p>
+
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">后台长任务</h3>
+        <div class="tbl-wrap"><table class="doc"><thead><tr><th>工具</th><th>权限</th><th>说明</th></tr></thead><tbody>
+          <tr><td><code>runLongRunningCommand</code></td><td><span class="pill pill-ap">需批准</span></td><td>后台起一个命令（dev server / watcher 等），立即返回 id；session 退出时子进程被杀</td></tr>
+          <tr><td><code>checkLongRunningCommand</code></td><td><span class="pill pill-ro">只读</span></td><td>查后台命令状态（<code>running</code>/<code>completed</code>/<code>error</code>）；只报状态，不回传输出</td></tr>
+        </tbody></table></div>
+
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">Skills 与子 Agent</h3>
+        <div class="tbl-wrap"><table class="doc"><thead><tr><th>工具</th><th>权限</th><th>说明</th></tr></thead><tbody>
+          <tr><td><code>loadSkill</code></td><td><span class="pill pill-ro">只读</span></td><td>按名加载某个 <code>SKILL.md</code> 的完整正文（响应上限 16KB，可配）</td></tr>
+          <tr><td><code>createSubAgent</code></td><td>派生本身放行</td><td>见 <a class="inline-link" href="#sec-8">§8</a>；子 agent 内部的工具调用会被重新走一遍权限</td></tr>
+        </tbody></table></div>
+        <div class="callout callout-info">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          <div><p>MCP 桥接进来的工具以 <code>mcp__&lt;服务器&gt;__&lt;工具&gt;</code> 命名，同样受权限引擎管控（见 <a class="inline-link" href="#sec-16">§16</a>）。</p></div>
+        </div>
+      </section>
+
+      <!-- §10 -->
+      <section id="sec-10" class="mb-20">
+        <div class="flex items-center gap-3 mb-5"><span class="sec-num">10</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">权限与安全</h2></div>
+        <p>权限引擎（<code>@nova/safety</code> 的 <code>PermissionEngine</code>）是模型与文件系统之间的一道闸门。每次工具调用按下面的顺序裁决：</p>
+        <ol class="space-y-3 list-none pl-0 counter-reset my-5">
+          <li class="flex gap-3"><span class="sec-num" style="width:1.6rem;height:1.6rem;font-size:.75rem">1</span><span><strong>危险 bash 直接拒绝。</strong>命令若匹配内置危险模式（<code>rm -r /</code>、fork bomb、<code>mkfs</code>、<code>dd if=… of=/dev/…</code>、重定向到块设备），立即 deny，无法绕过。</span></li>
+          <li class="flex gap-3"><span class="sec-num" style="width:1.6rem;height:1.6rem;font-size:.75rem">2</span><span><strong>运行时放行表。</strong>你在审批时选过「Always allow this tool」的，记在内存里，本 session 内同工具直接放行。</span></li>
+          <li class="flex gap-3"><span class="sec-num" style="width:1.6rem;height:1.6rem;font-size:.75rem">3</span><span><strong>配置规则（首个匹配生效）。</strong>按顺序遍历 <code>permissions.rules</code>，第一条命中的决定结果。</span></li>
+          <li class="flex gap-3"><span class="sec-num" style="width:1.6rem;height:1.6rem;font-size:.75rem">4</span><span><strong>默认效果兜底。</strong>都没命中就用 <code>permissions.defaultEffect</code>（默认 <code>ask</code>）。</span></li>
+          <li class="flex gap-3"><span class="sec-num" style="width:1.6rem;height:1.6rem;font-size:.75rem">5</span><span><strong>出错降级为 ask。</strong>规则求值若抛异常（坏正则等），降级为询问而非崩溃或拒绝 —— 让你始终掌握控制权。</span></li>
+        </ol>
+
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">默认放行 vs 默认询问</h3>
+        <ul class="space-y-2">
+          <li><strong>默认放行（只读类）</strong>：<code>read</code>/<code>glob</code>/<code>grep</code>（限定在工作区内）、<code>webfetch</code>、<code>askUserQuestion</code>、所有 <code>get*</code> 查询、<code>checkLongRunningCommand</code>、<code>lsp</code>、<code>loadSkill</code>、<code>createSubAgent</code>、todo 全套。</li>
+          <li><strong>默认询问（会改东西的）</strong>：<code>write</code>、<code>edit</code>、<code>bash</code>、<code>runLongRunningCommand</code>、task 的写操作等 —— 落到 <code>defaultEffect</code>（默认 <code>ask</code>）。</li>
+        </ul>
+
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">读操作被限定在工作区</h3>
+        <p><code>read</code>/<code>glob</code>/<code>grep</code> 的路径在裁决前会被<strong>规范化（resolve + realpath）</strong>，再检查是否落在「工作区根」内：</p>
+        <ul class="space-y-2">
+          <li>工作区根 = <code>--cwd</code>（或当前目录）+ <code>permissions.additionalDirectories</code> 里列出的目录。</li>
+          <li><code>..</code> 穿越、符号链接逃逸都会被折算成真实路径后再判断，因此 <code>../../etc/passwd</code>、<code>link→/etc</code> 这类逃逸会被正确拦下。</li>
+          <li><code>glob</code>/<code>grep</code> 不带 <code>path</code> 时自动注入工作区根，所以无参搜索默认就在工作区内。</li>
+        </ul>
+
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">交互式审批</h3>
+        <div class="tbl-wrap"><table class="doc"><thead><tr><th>选项</th><th>快捷键</th><th>效果</th></tr></thead><tbody>
+          <tr><td>Allow once</td><td><span class="kbd">y</span></td><td>只放行这一次，下次同样的调用还会再问</td></tr>
+          <tr><td>Deny</td><td><span class="kbd">n</span> / <span class="kbd">Esc</span></td><td>拒绝本次调用</td></tr>
+          <tr><td>Always allow this tool</td><td><span class="kbd">a</span></td><td>本 session 内该工具今后都放行（仅存内存，不写盘）</td></tr>
+        </tbody></table></div>
+
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">自定义权限规则</h3>
+        <p>在 <code>~/.nova/nova.config.json</code> 的 <code>permissions.rules</code> 里写规则数组，每条形如 <code>{ tool, effect, match? }</code>：</p>
+        <ul class="space-y-2">
+          <li><code>tool</code>：工具名，或 <code>"*"</code> 匹配任意工具</li>
+          <li><code>effect</code>：<code>allow</code> / <code>deny</code> / <code>ask</code></li>
+          <li><code>match</code>（可选）：对输入字段的匹配条件，支持<strong>精确值</strong> <code>{ "command": "ls" }</code>、<strong>正则</strong>（用 <code>/.../</code> 包裹）<code>{ "command": "/^npm test/" }</code>、<strong>路径包含</strong> <code>{ "path": { "within": [...] } }</code></li>
+        </ul>
+        <p>示例：放行所有 <code>npm test</code>、拒绝带 <code>--data</code> 的 curl、其余一律拒绝：</p>
+        <div class="code-block">
+          <div class="code-head"><span class="lang">jsonc</span><button class="copy-btn" onclick="copyCode(this)">复制</button></div>
+<pre><code>{
+  <span class="tok-s">"permissions"</span>: {
+    <span class="tok-s">"defaultEffect"</span>: <span class="tok-s">"ask"</span>,
+    <span class="tok-s">"additionalDirectories"</span>: [<span class="tok-s">"/home/user/shared"</span>],
+    <span class="tok-s">"rules"</span>: [
+      { <span class="tok-s">"tool"</span>: <span class="tok-s">"bash"</span>, <span class="tok-s">"effect"</span>: <span class="tok-s">"allow"</span>, <span class="tok-s">"match"</span>: { <span class="tok-s">"command"</span>: <span class="tok-s">"/^npm test/"</span> } },
+      { <span class="tok-s">"tool"</span>: <span class="tok-s">"bash"</span>, <span class="tok-s">"effect"</span>: <span class="tok-s">"deny"</span>,  <span class="tok-s">"match"</span>: { <span class="tok-s">"command"</span>: <span class="tok-s">"/curl.*--data/"</span> } },
+      { <span class="tok-s">"tool"</span>: <span class="tok-s">"*"</span>,    <span class="tok-s">"effect"</span>: <span class="tok-s">"deny"</span> }
+    ]
+  }
+}</code></pre>
+        </div>
+      </section>
+
+      <!-- §11 -->
+      <section id="sec-11" class="mb-20">
+        <div class="flex items-center gap-3 mb-5"><span class="sec-num">11</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">命令沙箱</h2></div>
+        <p>在权限引擎之上再叠一层 <strong>OS 级纵深防御</strong>：把会起子进程的工具（<code>bash</code>、<code>runLongRunningCommand</code>）放进操作系统沙箱里跑，把<strong>文件写入</strong>限制在工作区根内。底层是 <code>@anthropic-ai/sandbox-runtime</code>：macOS 用 Seatbelt（<code>sandbox-exec</code>），Linux 用 bubblewrap。</p>
+        <ul class="space-y-2">
+          <li><strong>默认开启（opt-out）。</strong>读放行、<strong>网络不限制</strong>（只管文件系统）。</li>
+          <li><strong>自动降级安全。</strong>仅 macOS / Linux 支持；不支持的平台或缺依赖（macOS 需 <code>ripgrep</code>；Linux 还需 <code>bubblewrap</code>/<code>socat</code>）会<strong>静默降级</strong>为不沙箱，agent 照常运行。要彻底关掉设 <code>sandbox.enabled: false</code>。</li>
+          <li><strong>常见缓存默认放行。</strong>npm/pnpm/yarn/cargo/rustup/go 等工具链缓存目录已预置进白名单。显式设置 <code>filesystem.allowWrite</code> 会<strong>替换</strong>这组默认值。</li>
+          <li><strong>SDK 强制保护的危险路径。</strong>即使在工作区里也写不了：<code>.git/hooks</code>、<code>.git/config</code>、<code>.vscode/</code>、<code>.idea/</code>、<code>.claude/{commands,agents}</code>，以及 <code>.gitconfig</code>/<code>.zshrc</code>/<code>.mcp.json</code> 等 dotfile。</li>
+        </ul>
+        <div class="callout callout-danger">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6M9 9l6 6"/></svg>
+          <div><div class="callout-title">受保护路径只有一条豁免</div><p>这些路径中只有 <code>.git/config</code> 能通过 <code>allowGitConfig</code>（默认 <code>true</code>）放行（<code>git config --local</code>、<code>git remote set-url</code> 需要它）；<code>.git/hooks</code> 始终拦。要写其它被保护路径，只能整个关掉沙箱。</p></div>
+        </div>
+        <p>配置示例：</p>
+        <div class="code-block">
+          <div class="code-head"><span class="lang">jsonc</span><button class="copy-btn" onclick="copyCode(this)">复制</button></div>
+<pre><code>{
+  <span class="tok-s">"sandbox"</span>: {
+    <span class="tok-s">"enabled"</span>: <span class="tok-k">true</span>,
+    <span class="tok-s">"monitorViolations"</span>: <span class="tok-k">true</span>,        <span class="tok-c">// 捕获越权写并标注到命令输出（macOS 起一个 log 监听）</span>
+    <span class="tok-s">"filesystem"</span>: {
+      <span class="tok-s">"allowWrite"</span>: [<span class="tok-s">"~/.npm"</span>, <span class="tok-s">"~/.cargo"</span>, <span class="tok-s">"/some/extra/dir"</span>],  <span class="tok-c">// 显式设置会替换默认缓存白名单</span>
+      <span class="tok-s">"denyWrite"</span>: [<span class="tok-s">".env"</span>],           <span class="tok-c">// 即使在允许根内也拒绝写</span>
+      <span class="tok-s">"denyRead"</span>: [<span class="tok-s">"~/.ssh"</span>],          <span class="tok-c">// 读默认放行，这里单独拒绝</span>
+      <span class="tok-s">"allowGitConfig"</span>: <span class="tok-k">true</span>
+    }
+  }
+}</code></pre>
+        </div>
+        <div class="callout callout-info">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          <div><p>如果某个命令要写到工作区外的目录被拦，把对应路径加进 <code>filesystem.allowWrite</code> 即可。</p></div>
+        </div>
+      </section>
+
+      <!-- §12 -->
+      <section id="sec-12" class="mb-20">
+        <div class="flex items-center gap-3 mb-5"><span class="sec-num">12</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">上下文管理与压缩</h2></div>
+        <p>历史是 <strong>append-only</strong> 的：每轮只往后追加新消息，从不改写更早的内容 —— 这既让持久化只做追加写，也让 DeepSeek 的<strong>自动上下文缓存前缀</strong>能持续存活。</p>
+        <p class="font-medium mt-5" style="color:var(--text)">两种压缩：</p>
+        <ul class="space-y-3">
+          <li><strong>auto 压缩（默认开）</strong> —— 只在上下文窗口吃紧时触发，把历史压成一条摘要消息，作为一次有意为之的「前缀重置」。可调 <code>compact.auto.thresholdTokens</code> / <code>contextWindowPercent</code> / <code>maxSummaryTokens</code>。</li>
+          <li><strong>micro 压缩（默认关）</strong> —— 每轮改写更早的 <code>tool_result</code>。它会让从改写点到结尾的缓存全部失效，而它裁掉的 token 本来就按便宜的缓存读取价计费，所以在 DeepSeek 这类有前缀缓存的 provider 上净收益「微弱到负」。<strong>只有在没有前缀缓存的 provider 上</strong>才建议把 <code>compact.micro.enabled</code> 设为 <code>true</code>。</li>
+        </ul>
+        <p>手动压缩：随时 <code>/compact</code>，可附带关注点（如 <code>/compact 保留关于鉴权的部分</code>）让摘要更聚焦。</p>
+        <div class="callout callout-info">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          <div><div class="callout-title">缓存计量</div><p>每个响应的 <code>cache_read_input_tokens</code> / <code>cache_creation_input_tokens</code> 都会累加进本 session 的用量统计，状态行能看到每轮有多少命中了缓存。</p></div>
+        </div>
+      </section>
+
+      <!-- §13 -->
+      <section id="sec-13" class="mb-20">
+        <div class="flex items-center gap-3 mb-5"><span class="sec-num">13</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">记忆（Memory）</h2></div>
+        <p>Nova 会像 CLAUDE.md 那样，把项目与用户级的记忆文件注入 system prompt。优先级与查找规则：</p>
+        <ul class="space-y-2">
+          <li><strong>每个目录内</strong>，按 <code>NOVA.md</code> &gt; <code>CLAUDE.md</code> &gt; <code>AGENTS.md</code> 取<strong>最高优先级的那一个</strong> —— 文件<strong>不合并</strong>。</li>
+          <li><strong>项目层</strong>：从 cwd 向上递归到仓库根，每层各取一个。</li>
+          <li><strong>用户层</strong>：依次找 <code>~/.nova/NOVA.md</code> → <code>~/.claude/CLAUDE.md</code> → <code>~/.config/agents/AGENTS.md</code>，取第一个存在的。</li>
+        </ul>
+        <p>文件名可通过 <code>settings.memory.filenames</code> 自定义；用户层 / 全局路径可用 <code>memory.userPaths</code> / <code>memory.globalPath</code> 覆盖。</p>
+        <div class="callout callout-info">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          <div><div class="callout-title">实战建议</div><p>把项目的构建 / 测试命令、架构约定、风格偏好写进仓库根的 <code>CLAUDE.md</code>（或 <code>NOVA.md</code>），Nova 在该仓库工作时会自动带上。</p></div>
+        </div>
+      </section>
+
+      <!-- §14 -->
+      <section id="sec-14" class="mb-20">
+        <div class="flex items-center gap-3 mb-5"><span class="sec-num">14</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">Skills</h2></div>
+        <p>Skill 是「按需加载的专长说明书」。把 <code>SKILL.md</code> 放在：</p>
+        <ul class="space-y-2">
+          <li>项目层：<code>.nova/skills/&lt;name&gt;/</code>（兼容 <code>.claude/skills/&lt;name&gt;/</code>）</li>
+          <li>用户层：<code>~/.nova/skills/&lt;name&gt;/</code>（兼容 <code>~/.claude/skills/&lt;name&gt;/</code>）</li>
+        </ul>
+        <p>启动时 Nova 扫描这些目录，把每个 skill 的 <strong>name + description 索引</strong>注入 system prompt（只占很少 token），并暴露 <code>loadSkill</code> 工具。当某个任务匹配到某个 skill 时，模型才用 <code>loadSkill</code> 拉取完整正文。</p>
+        <ul class="space-y-2">
+          <li>用 <code>/skills</code> 查看发现了哪些、各自来自哪里。</li>
+          <li>索引 / 响应大小上限：<code>skills.maxIndexBytes</code>（默认 8KB）/ <code>skills.maxResponseBytes</code>（默认 16KB）。</li>
+        </ul>
+      </section>
+
+      <!-- §15 -->
+      <section id="sec-15" class="mb-20">
+        <div class="flex items-center gap-3 mb-5"><span class="sec-num">15</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">自定义 Slash 命令</h2></div>
+        <p>除了内置命令，你可以用 <code>.md</code> 文件定义自己的 slash 命令：</p>
+        <ul class="space-y-2">
+          <li><strong>项目层</strong>：<code>.nova/commands/</code>（兼容 <code>.claude/commands/</code>、<code>.commands/</code>）</li>
+          <li><strong>用户层</strong>：<code>~/.nova/commands/</code>（兼容 <code>~/.claude/commands/</code>）</li>
+        </ul>
+        <p class="font-medium mt-5" style="color:var(--text)">规则：</p>
+        <ul class="space-y-2">
+          <li>每个 <code>*.md</code> 文件名即命令名（<code>deploy.md</code> → <code>/deploy</code>）。</li>
+          <li>文件前置 frontmatter 声明 <code>description</code> / arg hint / 参数；正文做占位符替换后，作为下一轮 prompt 发给模型。</li>
+          <li><strong>优先级</strong>：内置命令永远赢；项目层覆盖用户层（同名时）。</li>
+          <li>改了文件后用 <code>/commands reload</code> 重新扫盘，<code>/commands</code>（或 <code>/help</code>）查看当前注册了哪些。</li>
+        </ul>
+        <p>通过 <code>settings.slash</code> 可调整开关与额外目录（<code>projectDirs</code> / <code>userPaths</code> / <code>extraDirs</code>）。</p>
+      </section>
+
+      <!-- §16 -->
+      <section id="sec-16" class="mb-20">
+        <div class="flex items-center gap-3 mb-5"><span class="sec-num">16</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">MCP 外部工具</h2></div>
+        <p>Nova 可在启动时连接外部 <a class="inline-link" href="https://modelcontextprotocol.io" target="_blank" rel="noopener">MCP</a> 服务器，把它们的工具以 <code>mcp__&lt;服务器&gt;__&lt;工具&gt;</code> 的形式暴露给模型，并走正常权限引擎（默认 ask）。服务器原生的 JSON Schema 原样转发，工具契约不变。</p>
+        <p>支持两种传输：本地子进程走 <strong>stdio</strong>，远程端点走 <strong>http</strong> / <strong>sse</strong>。在 <code>~/.nova/nova.config.json</code> 的 <code>mcp.servers</code> 下配置：</p>
+        <div class="code-block">
+          <div class="code-head"><span class="lang">jsonc</span><button class="copy-btn" onclick="copyCode(this)">复制</button></div>
+<pre><code>{
+  <span class="tok-s">"mcp"</span>: {
+    <span class="tok-s">"enabled"</span>: <span class="tok-k">true</span>,            <span class="tok-c">// 总开关（默认 true）</span>
+    <span class="tok-s">"timeoutMs"</span>: <span class="tok-n">60000</span>,         <span class="tok-c">// 单次工具调用超时</span>
+    <span class="tok-s">"servers"</span>: {
+      <span class="tok-s">"filesystem"</span>: {           <span class="tok-c">// stdio（type 默认 "stdio"）</span>
+        <span class="tok-s">"command"</span>: <span class="tok-s">"npx"</span>,
+        <span class="tok-s">"args"</span>: [<span class="tok-s">"-y"</span>, <span class="tok-s">"@modelcontextprotocol/server-filesystem"</span>, <span class="tok-s">"/path/to/dir"</span>],
+        <span class="tok-s">"env"</span>: { <span class="tok-s">"FOO"</span>: <span class="tok-s">"bar"</span> }
+      },
+      <span class="tok-s">"remote"</span>: {               <span class="tok-c">// http / sse</span>
+        <span class="tok-s">"type"</span>: <span class="tok-s">"http"</span>,
+        <span class="tok-s">"url"</span>: <span class="tok-s">"https://example.com/mcp"</span>,
+        <span class="tok-s">"headers"</span>: { <span class="tok-s">"authorization"</span>: <span class="tok-s">"Bearer …"</span> }
+      },
+      <span class="tok-s">"scratch"</span>: { <span class="tok-s">"command"</span>: <span class="tok-s">"…"</span>, <span class="tok-s">"enabled"</span>: <span class="tok-k">false</span> }   <span class="tok-c">// 单独跳过某个服务器</span>
+    }
+  }
+}</code></pre>
+        </div>
+        <p>各服务器并行连接；某个连不上只会记日志并跳过 —— 不阻塞启动、不影响其它服务器。用 <code>/mcp</code> 查看每个服务器状态和工具数，<code>/mcp tools</code> 列出所有桥接的工具名。</p>
+      </section>
+
+      <!-- §17 -->
+      <section id="sec-17" class="mb-20">
+        <div class="flex items-center gap-3 mb-5"><span class="sec-num">17</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">LSP 代码智能</h2></div>
+        <p><code>lsp</code> 工具让模型直连<strong>语言服务器</strong>（JSON-RPC over stdio），拿到比 grep 精确得多的导航 —— 它懂作用域和类型。一个工具，六个 action：</p>
+        <div class="tbl-wrap"><table class="doc"><thead><tr><th>action</th><th>作用</th><th>必需参数</th></tr></thead><tbody>
+          <tr><td><code>definition</code></td><td>跳到定义</td><td><code>path</code> + <code>line</code>（+<code>character</code>，默认 1）</td></tr>
+          <tr><td><code>references</code></td><td>找所有引用</td><td>同上（<code>include_declaration</code> 默认含声明）</td></tr>
+          <tr><td><code>hover</code></td><td>某位置的类型 / 文档</td><td>同上</td></tr>
+          <tr><td><code>diagnostics</code></td><td>某文件的错误 / 警告</td><td><code>path</code></td></tr>
+          <tr><td><code>document_symbols</code></td><td>单文件符号大纲</td><td><code>path</code></td></tr>
+          <tr><td><code>workspace_symbol</code></td><td>按名字跨项目搜符号</td><td><code>symbol</code></td></tr>
+        </tbody></table></div>
+        <ul class="space-y-2">
+          <li>坐标对模型是 <strong>1-based</strong>（行、列），内部自动转成 LSP 的 0-based。</li>
+          <li>工具<strong>只读</strong>，权限引擎默认放行。</li>
+        </ul>
+        <div class="callout callout-warn">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg>
+          <div><p><strong>Nova 不安装语言服务器</strong> —— 它们必须已在 PATH 上。内置自动识别四种（缺失则该语言的调用静默降级为「未安装」提示）。</p></div>
+        </div>
+        <div class="tbl-wrap"><table class="doc"><thead><tr><th>languageId</th><th>命令</th><th>扩展名</th></tr></thead><tbody>
+          <tr><td><code>typescript</code></td><td><code>typescript-language-server --stdio</code></td><td>ts/tsx/mts/cts/js/jsx/mjs/cjs</td></tr>
+          <tr><td><code>python</code></td><td><code>pyright-langserver --stdio</code></td><td>py/pyi</td></tr>
+          <tr><td><code>go</code></td><td><code>gopls</code></td><td>go</td></tr>
+          <tr><td><code>rust</code></td><td><code>rust-analyzer</code></td><td>rs</td></tr>
+        </tbody></table></div>
+        <p>语言服务器在<strong>首次 <code>lsp</code> 调用时按需懒启动</strong>，所以「已安装但未启动」是正常状态。用 <code>/lsp</code> 查看每种语言：二进制是否在 PATH（● running / ○ installed / ● not installed）以及本 session 是否已起。</p>
+        <p>在配置 <code>lsp.servers</code> 里可覆盖 / 扩展内置表（按 <code>languageId</code> 匹配；同名整条替换，未知则追加），还可调三个超时：<code>initTimeoutMs</code> / <code>requestTimeoutMs</code> / <code>diagnosticsTimeoutMs</code>。</p>
+      </section>
+
+      <!-- §18 -->
+      <section id="sec-18" class="mb-20">
+        <div class="flex items-center gap-3 mb-5"><span class="sec-num">18</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">会话、检查点与数据落盘</h2></div>
+        <h3 class="text-base font-semibold mt-2 mb-3" style="color:var(--text)">恢复与切换</h3>
+        <ul class="space-y-2">
+          <li><code>nova -c</code> / <code>nova --continue</code>：恢复最近一个 session。</li>
+          <li><code>nova --resume &lt;id&gt;</code>：按 id 恢复。</li>
+          <li><code>nova --list-sessions</code>：列出历史 session（打印后退出）。</li>
+          <li>REPL 内 <code>/resume [&lt;id&gt;]</code>：切到指定 session（不带参数则弹列表选）。</li>
+        </ul>
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">回退（Rewind）</h3>
+        <p><code>/rewind [&lt;n&gt;]</code> 回到此前某条消息 —— <strong>其后的对话历史与文件改动都会被丢弃</strong>，相当于一个检查点回滚。</p>
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">自动清理</h3>
+        <p>启动时 Nova 会删掉<strong>最近活动超过 <code>sessionCleanup.maxAgeDays</code>（默认 30 天）</strong>的 session 目录（按文件最新 mtime 算「最后一次使用」，不是创建时间；当前活动 session 始终受保护）。设 <code>sessionCleanup.enabled: false</code> 可永久保留。</p>
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">数据落在哪</h3>
+        <div class="tbl-wrap"><table class="doc"><thead><tr><th>内容</th><th>路径</th></tr></thead><tbody>
+          <tr><td>全局配置</td><td><code>~/.nova/nova.config.json</code></td></tr>
+          <tr><td>历史 session</td><td><code>~/.nova/sessions/{id}/</code></td></tr>
+          <tr><td>transcript（hook 事件流）</td><td><code>~/.nova/sessions/{id}/transcript.jsonl</code></td></tr>
+          <tr><td>可重放 message 历史</td><td><code>~/.nova/sessions/{id}/messages.jsonl</code></td></tr>
+          <tr><td>子 agent transcript/message</td><td><code>~/.nova/sessions/{id}/subagents/</code></td></tr>
+          <tr><td>session 日志</td><td><code>~/.nova/sessions/{id}/session.log</code></td></tr>
+          <tr><td>持久化 Task</td><td>工作区内 <code>.tasks/{id}.json</code></td></tr>
+        </tbody></table></div>
+        <div class="callout callout-info">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          <div><p><code>--no-transcript</code> 让本次不写 transcript；<code>transcript.enabled: false</code> 全局关闭。</p></div>
+        </div>
+      </section>
+
+      <!-- §19 -->
+      <section id="sec-19" class="mb-20">
+        <div class="flex items-center gap-3 mb-5"><span class="sec-num">19</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">配置文件完整参考</h2></div>
+        <p>配置文件位于 <code>~/.nova/nova.config.json</code>，是一份 JSON。下面列出全部字段及默认值（来自 zod schema，<strong>每个可配项都有默认值，缺省即用默认</strong>）。</p>
+
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">顶层与模型</h3>
+        <div class="tbl-wrap"><table class="doc"><thead><tr><th>字段</th><th>默认</th><th>说明</th></tr></thead><tbody>
+          <tr><td><code>apiKey</code></td><td>（无）</td><td>provider API key（首次向导会写入）</td></tr>
+          <tr><td><code>model</code></td><td><code>"claude-sonnet-4-5"</code></td><td>模型 id</td></tr>
+          <tr><td><code>baseURL</code></td><td>（无）</td><td>Anthropic 兼容端点 URL</td></tr>
+          <tr><td><code>sessionDir</code></td><td><code>~/.nova/sessions</code></td><td>session 存放目录</td></tr>
+          <tr><td><code>maxTokens</code></td><td><code>8192</code></td><td>单次响应输出上限</td></tr>
+          <tr><td><code>contextWindowTokens</code></td><td><code>1000000</code></td><td>上下文窗口大小（用于压缩阈值估算）</td></tr>
+          <tr><td><code>maxTurns</code></td><td><code>40</code></td><td>单轮最大循环次数</td></tr>
+          <tr><td><code>toolConcurrency</code></td><td><code>3</code></td><td>单轮内工具并发上限（1 = 全串行）</td></tr>
+        </tbody></table></div>
+
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)"><code>permissions</code></h3>
+        <div class="tbl-wrap"><table class="doc"><thead><tr><th>字段</th><th>默认</th><th>说明</th></tr></thead><tbody>
+          <tr><td><code>defaultEffect</code></td><td><code>"ask"</code></td><td>无规则命中时的兜底（<code>allow</code>/<code>deny</code>/<code>ask</code>）</td></tr>
+          <tr><td><code>rules</code></td><td><code>[]</code></td><td>规则数组（首个匹配生效），见 <a class="inline-link" href="#sec-10">§10</a></td></tr>
+          <tr><td><code>additionalDirectories</code></td><td><code>[]</code></td><td>工作区之外、读工具可免询问触及的目录</td></tr>
+        </tbody></table></div>
+
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)"><code>thinking</code></h3>
+        <div class="tbl-wrap"><table class="doc"><thead><tr><th>字段</th><th>默认</th><th>说明</th></tr></thead><tbody>
+          <tr><td><code>level</code></td><td><code>"off"</code></td><td><code>off</code>/<code>low</code>/<code>medium</code>/<code>high</code>/<code>max</code></td></tr>
+          <tr><td><code>budgetTokens</code></td><td>（无）</td><td>显式 token 预算，设了就盖过 level</td></tr>
+        </tbody></table></div>
+
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)"><code>compact</code></h3>
+        <div class="tbl-wrap"><table class="doc"><thead><tr><th>字段</th><th>默认</th><th>说明</th></tr></thead><tbody>
+          <tr><td><code>micro.enabled</code></td><td><code>false</code></td><td>逐轮微压缩（DeepSeek 上不建议开）</td></tr>
+          <tr><td><code>micro.keepRecent</code> / <code>minContentChars</code> / <code>preserveTools</code></td><td>内置常量</td><td>micro 调参</td></tr>
+          <tr><td><code>auto.enabled</code></td><td><code>true</code></td><td>上下文吃紧时自动压缩</td></tr>
+          <tr><td><code>auto.thresholdTokens</code> / <code>contextWindowPercent</code> / <code>maxSummaryTokens</code></td><td>内置常量</td><td>auto 调参</td></tr>
+        </tbody></table></div>
+
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)"><code>invariants</code>（工具不变量，dispatcher 强制）</h3>
+        <div class="tbl-wrap"><table class="doc"><thead><tr><th>字段</th><th>默认</th><th>说明</th></tr></thead><tbody>
+          <tr><td><code>enabled</code></td><td><code>true</code></td><td>总开关</td></tr>
+          <tr><td><code>readBeforeEdit</code></td><td><code>true</code></td><td>编辑前必须先读过该文件</td></tr>
+          <tr><td><code>mtimeCheck</code></td><td><code>true</code></td><td>检测文件被外部改动（mtime 漂移）</td></tr>
+        </tbody></table></div>
+
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">界面与体验</h3>
+        <div class="tbl-wrap"><table class="doc"><thead><tr><th>字段</th><th>默认</th><th>说明</th></tr></thead><tbody>
+          <tr><td><code>stream.enabled</code></td><td><code>true</code></td><td>TUI 里实时流式渲染文本 / 推理（<code>/stream</code> 切换）</td></tr>
+          <tr><td><code>predict.enabled</code></td><td><code>true</code></td><td>下一条输入预测（<code>/predict</code> 切换）</td></tr>
+          <tr><td><code>predict.timeoutMs</code></td><td><code>8000</code></td><td>预测超时</td></tr>
+          <tr><td><code>predict.maxChars</code></td><td><code>50</code></td><td>预测占位最大字符数</td></tr>
+          <tr><td><code>logging.level</code></td><td><code>"info"</code></td><td><code>trace</code>…<code>fatal</code></td></tr>
+          <tr><td><code>logging.pretty</code></td><td><code>true</code></td><td>pretty 日志（<code>--no-pretty</code> 关）</td></tr>
+        </tbody></table></div>
+
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">持久化</h3>
+        <div class="tbl-wrap"><table class="doc"><thead><tr><th>字段</th><th>默认</th><th>说明</th></tr></thead><tbody>
+          <tr><td><code>transcript.enabled</code></td><td><code>true</code></td><td>写 transcript（<code>--no-transcript</code> 临时关）</td></tr>
+          <tr><td><code>sessionCleanup.enabled</code></td><td><code>true</code></td><td>启动时清理旧 session</td></tr>
+          <tr><td><code>sessionCleanup.maxAgeDays</code></td><td><code>30</code></td><td>旧 session 的天数阈值</td></tr>
+        </tbody></table></div>
+
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">扩展子系统</h3>
+        <div class="tbl-wrap"><table class="doc"><thead><tr><th>字段</th><th>默认</th><th>说明</th></tr></thead><tbody>
+          <tr><td><code>memory.filenames</code></td><td><code>["NOVA.md","CLAUDE.md","AGENTS.md"]</code></td><td>记忆文件名优先级，见 <a class="inline-link" href="#sec-13">§13</a></td></tr>
+          <tr><td><code>memory.userPaths</code> / <code>globalPath</code></td><td>（无）</td><td>覆盖用户层 / 全局记忆路径</td></tr>
+          <tr><td><code>slash.enabled</code></td><td><code>true</code></td><td>自定义 slash 命令开关；<code>projectDirs</code>/<code>userPaths</code>/<code>extraDirs</code> 额外目录</td></tr>
+          <tr><td><code>skills.enabled</code></td><td><code>true</code></td><td>Skills 开关；<code>maxIndexBytes</code>=8192、<code>maxResponseBytes</code>=16384</td></tr>
+          <tr><td><code>subagent.enabled</code></td><td><code>true</code></td><td>子 agent 开关；<code>model</code>（默认随父）/<code>maxTurns</code>=30/<code>maxTokens</code>=8192</td></tr>
+          <tr><td><code>lsp.*</code></td><td><code>enabled:true</code></td><td>LSP，见 <a class="inline-link" href="#sec-17">§17</a></td></tr>
+          <tr><td><code>mcp.*</code></td><td><code>enabled:true</code></td><td>MCP，见 <a class="inline-link" href="#sec-16">§16</a></td></tr>
+          <tr><td><code>sandbox.*</code></td><td><code>enabled:true</code></td><td>命令沙箱，见 <a class="inline-link" href="#sec-11">§11</a></td></tr>
+        </tbody></table></div>
+        <div class="callout callout-info">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          <div><div class="callout-title">临时覆盖</div><p><code>-m/--model</code>、<code>-t/--think</code>、<code>--max-turns</code>、<code>--cwd</code>、<code>--no-transcript</code>、<code>--no-pretty</code> 只影响本次会话，不写回文件。</p></div>
+        </div>
+      </section>
+
+      <!-- §20 -->
+      <section id="sec-20" class="mb-12">
+        <div class="flex items-center gap-3 mb-5"><span class="sec-num">20</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">常见问题与排查</h2></div>
+        <div class="space-y-3">
+          <details class="group bg-surface border border-line rounded-xl overflow-hidden" open>
+            <summary class="cursor-pointer list-none px-5 py-3.5 flex items-center justify-between gap-3 font-medium select-none" style="color:var(--text)">
+              <span>启动报 “Nova requires an interactive terminal (TTY)”</span>
+              <svg class="w-4 h-4 text-mute transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+            </summary>
+            <p class="px-5 pb-4 pt-0 text-sm m-0 max-w-none">Nova 必须在交互式终端里跑，不支持管道 / 重定向 / 无 PTY 的 CI。换一个真正的终端。</p>
+          </details>
+          <details class="group bg-surface border border-line rounded-xl overflow-hidden">
+            <summary class="cursor-pointer list-none px-5 py-3.5 flex items-center justify-between gap-3 font-medium select-none" style="color:var(--text)">
+              <span>启动报 apiKey 未设置</span>
+              <svg class="w-4 h-4 text-mute transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+            </summary>
+            <p class="px-5 pb-4 pt-0 text-sm m-0 max-w-none">跑一次首启向导填上，或手动编辑 <code>~/.nova/nova.config.json</code> 的 <code>apiKey</code>/<code>baseURL</code>/<code>model</code>。</p>
+          </details>
+          <details class="group bg-surface border border-line rounded-xl overflow-hidden">
+            <summary class="cursor-pointer list-none px-5 py-3.5 flex items-center justify-between gap-3 font-medium select-none" style="color:var(--text)">
+              <span><code>websearch</code> 报缺 key</span>
+              <svg class="w-4 h-4 text-mute transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+            </summary>
+            <p class="px-5 pb-4 pt-0 text-sm m-0 max-w-none">设置 <code>BRAVE_SEARCH_API_KEY</code> / <code>TAVILY_API_KEY</code> / <code>SERPER_API_KEY</code> 任一环境变量（按此顺序自动选用）。</p>
+          </details>
+          <details class="group bg-surface border border-line rounded-xl overflow-hidden">
+            <summary class="cursor-pointer list-none px-5 py-3.5 flex items-center justify-between gap-3 font-medium select-none" style="color:var(--text)">
+              <span>每次写文件 / 跑命令都来问我，太烦</span>
+              <svg class="w-4 h-4 text-mute transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+            </summary>
+            <p class="px-5 pb-4 pt-0 text-sm m-0 max-w-none">在审批框选 <strong>Always allow this tool</strong>（本 session 内不再问），或在 <code>permissions.rules</code> 里给具体命令 / 工具加 <code>allow</code> 规则（见 <a class="inline-link" href="#sec-10">§10</a>）。</p>
+          </details>
+          <details class="group bg-surface border border-line rounded-xl overflow-hidden">
+            <summary class="cursor-pointer list-none px-5 py-3.5 flex items-center justify-between gap-3 font-medium select-none" style="color:var(--text)">
+              <span>某条命令被沙箱拦了写入</span>
+              <svg class="w-4 h-4 text-mute transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+            </summary>
+            <p class="px-5 pb-4 pt-0 text-sm m-0 max-w-none">把目标路径加进 <code>sandbox.filesystem.allowWrite</code>；若要写 <code>.git/hooks</code> 等 SDK 强制保护路径，只能 <code>sandbox.enabled: false</code> 关掉沙箱。</p>
+          </details>
+          <details class="group bg-surface border border-line rounded-xl overflow-hidden">
+            <summary class="cursor-pointer list-none px-5 py-3.5 flex items-center justify-between gap-3 font-medium select-none" style="color:var(--text)">
+              <span><code>lsp</code> 总说「未安装」</span>
+              <svg class="w-4 h-4 text-mute transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+            </summary>
+            <p class="px-5 pb-4 pt-0 text-sm m-0 max-w-none">Nova 不装语言服务器。先把对应二进制装到 PATH（<code>typescript-language-server</code>/<code>pyright-langserver</code>/<code>gopls</code>/<code>rust-analyzer</code>），用 <code>/lsp</code> 确认状态。</p>
+          </details>
+          <details class="group bg-surface border border-line rounded-xl overflow-hidden">
+            <summary class="cursor-pointer list-none px-5 py-3.5 flex items-center justify-between gap-3 font-medium select-none" style="color:var(--text)">
+              <span>感觉缓存没命中、变慢变贵</span>
+              <svg class="w-4 h-4 text-mute transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+            </summary>
+            <p class="px-5 pb-4 pt-0 text-sm m-0 max-w-none">保持历史前缀稳定 —— 别开 <code>compact.micro</code>（DeepSeek 上默认就关），让 append-only 历史和 auto 压缩各司其职。状态行可看每轮缓存命中量。</p>
+          </details>
+          <details class="group bg-surface border border-line rounded-xl overflow-hidden">
+            <summary class="cursor-pointer list-none px-5 py-3.5 flex items-center justify-between gap-3 font-medium select-none" style="color:var(--text)">
+              <span>想回到几步之前、撤掉刚才的改动</span>
+              <svg class="w-4 h-4 text-mute transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+            </summary>
+            <p class="px-5 pb-4 pt-0 text-sm m-0 max-w-none"><code>/rewind [&lt;n&gt;]</code> 回退到更早的消息（其后的历史与文件改动会被丢弃）。</p>
+          </details>
+        </div>
+      </section>
+
+      <footer class="mt-16 pt-8 border-t border-line text-sm text-mute">
+        <p class="m-0">本手册依据当前代码生成。如对内部架构、loop 契约或扩展点感兴趣，请进一步阅读仓库根的 <code>CLAUDE.md</code> 与 <code>README.md</code>。</p>
+        <p class="mt-3 text-xs">Nova · 终端编码 Agent · 模型层围绕 DeepSeek 深度调优 · 单文件文档</p>
+      </footer>
+
+    </div>
+  </main>
+
+  <!-- ░░░ 右侧 TOC ░░░ -->
+  <aside class="hidden xl:block w-60 shrink-0">
+    <div class="sticky top-14 h-[calc(100vh-3.5rem)] overflow-y-auto nav-scroll px-5 py-8">
+      <p class="text-xs font-semibold uppercase tracking-wider text-mute mb-3">本页大纲</p>
+      <nav id="toc" class="space-y-0.5">
+        <a class="toc-link" href="#sec-1" data-toc="sec-1">它能做什么</a>
+        <a class="toc-link" href="#sec-2" data-toc="sec-2">安装与环境要求</a>
+        <a class="toc-link" href="#sec-3" data-toc="sec-3">首次配置向导</a>
+        <a class="toc-link" href="#sec-4" data-toc="sec-4">命令行参数</a>
+        <a class="toc-link" href="#sec-5" data-toc="sec-5">交互式界面 TUI</a>
+        <a class="toc-link" href="#sec-6" data-toc="sec-6">Slash 命令大全</a>
+        <a class="toc-link" href="#sec-7" data-toc="sec-7">思考等级</a>
+        <a class="toc-link" href="#sec-8" data-toc="sec-8">Plan 与子 Agent</a>
+        <a class="toc-link" href="#sec-9" data-toc="sec-9">内置工具一览</a>
+        <a class="toc-link" href="#sec-10" data-toc="sec-10">权限与安全</a>
+        <a class="toc-link" href="#sec-11" data-toc="sec-11">命令沙箱</a>
+        <a class="toc-link" href="#sec-12" data-toc="sec-12">上下文与压缩</a>
+        <a class="toc-link" href="#sec-13" data-toc="sec-13">记忆 Memory</a>
+        <a class="toc-link" href="#sec-14" data-toc="sec-14">Skills</a>
+        <a class="toc-link" href="#sec-15" data-toc="sec-15">自定义 Slash 命令</a>
+        <a class="toc-link" href="#sec-16" data-toc="sec-16">MCP 外部工具</a>
+        <a class="toc-link" href="#sec-17" data-toc="sec-17">LSP 代码智能</a>
+        <a class="toc-link" href="#sec-18" data-toc="sec-18">会话与数据落盘</a>
+        <a class="toc-link" href="#sec-19" data-toc="sec-19">配置完整参考</a>
+        <a class="toc-link" href="#sec-20" data-toc="sec-20">FAQ 与排查</a>
+      </nav>
+      <a href="#top" class="mt-6 inline-flex items-center gap-1.5 text-xs text-mute hover:text-brand-500 transition">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m18 15-6-6-6 6"/></svg> 回到顶部
+      </a>
+    </div>
+  </aside>
+
+</div>
+
+<!-- 移动端进度条 -->
+<div class="lg:hidden fixed bottom-0 inset-x-0 h-1 bg-surface2 z-40"><div id="progress" class="h-full bg-brand-500 transition-[width] duration-150" style="width:0%"></div></div>
+
+<script>
+(function(){
+  /* ── 主题 ── */
+  var root = document.documentElement;
+  var stored = localStorage.getItem('nova-theme');
+  if(stored === 'dark' || (!stored && window.matchMedia('(prefers-color-scheme: dark)').matches)){
+    root.classList.add('dark');
+  }
+  function syncIcon(){
+    var dark = root.classList.contains('dark');
+    document.querySelectorAll('.sun').forEach(function(e){e.classList.toggle('hidden',!dark);});
+    document.querySelectorAll('.moon').forEach(function(e){e.classList.toggle('hidden',dark);});
+  }
+  syncIcon();
+  document.getElementById('theme-toggle').addEventListener('click',function(){
+    root.classList.toggle('dark');
+    localStorage.setItem('nova-theme', root.classList.contains('dark')?'dark':'light');
+    syncIcon();
+  });
+
+  /* ── 复制代码 ── */
+  window.copyCode = function(btn){
+    var block = btn.closest('.code-block');
+    var code = block.querySelector('code');
+    var text = code.innerText;
+    navigator.clipboard.writeText(text).then(function(){
+      var old = btn.textContent;
+      btn.textContent = '已复制 ✓';
+      btn.style.color = '#c3e88d';
+      setTimeout(function(){ btn.textContent = old; btn.style.color=''; }, 1400);
+    }).catch(function(){
+      btn.textContent = '失败';
+      setTimeout(function(){ btn.textContent = '复制'; }, 1400);
+    });
+  };
+
+  /* ── 滚动监听：scroll-spy + 进度条 ── */
+  var sections = Array.prototype.slice.call(document.querySelectorAll('section[id]'));
+  var navLinks = {}, tocLinks = {};
+  document.querySelectorAll('[data-nav]').forEach(function(a){ navLinks[a.getAttribute('data-nav')] = a; });
+  document.querySelectorAll('[data-toc]').forEach(function(a){ tocLinks[a.getAttribute('data-toc')] = a; });
+  var progress = document.getElementById('progress');
+  var current = null;
+
+  function setActive(id){
+    if(id === current) return;
+    current = id;
+    Object.keys(navLinks).forEach(function(k){ navLinks[k].classList.toggle('active', k===id); });
+    Object.keys(tocLinks).forEach(function(k){ tocLinks[k].classList.toggle('active', k===id); });
+    var act = tocLinks[id];
+    if(act){
+      var pr = act.getBoundingClientRect(), cr = act.parentElement.parentElement.getBoundingClientRect();
+      if(pr.bottom > cr.bottom || pr.top < cr.top){ act.scrollIntoView({block:'nearest'}); }
+    }
+  }
+
+  var observer = new IntersectionObserver(function(entries){
+    // pick the topmost intersecting section
+    var visible = entries.filter(function(e){return e.isIntersecting;});
+    if(visible.length){
+      visible.sort(function(a,b){ return a.boundingClientRect.top - b.boundingClientRect.top; });
+      setActive(visible[0].target.id);
+    }
+  }, { rootMargin: '-72px 0px -65% 0px', threshold: 0 });
+  sections.forEach(function(s){ observer.observe(s); });
+
+  function updateProgress(){
+    var h = document.documentElement;
+    var scrolled = h.scrollTop / (h.scrollHeight - h.clientHeight);
+    if(progress) progress.style.width = Math.min(100, Math.max(0, scrolled*100)) + '%';
+  }
+  window.addEventListener('scroll', updateProgress, {passive:true});
+  updateProgress();
+
+  /* ── 搜索过滤左侧导航 ── */
+  var search = document.getElementById('search');
+  var noResults = document.getElementById('no-results');
+  var allNav = Array.prototype.slice.call(document.querySelectorAll('#side-nav [data-nav]'));
+  var groups = Array.prototype.slice.call(document.querySelectorAll('#side-nav .nav-group'));
+  search.addEventListener('input', function(){
+    var q = search.value.trim().toLowerCase();
+    var anyVisible = false;
+    allNav.forEach(function(a){
+      var match = a.textContent.toLowerCase().indexOf(q) !== -1;
+      a.style.display = match ? '' : 'none';
+      if(match) anyVisible = true;
+    });
+    // 隐藏没有可见子项的分组标题
+    groups.forEach(function(g){
+      var sib = g.nextElementSibling, hasVisible = false;
+      while(sib && !sib.classList.contains('nav-group')){
+        if(sib.hasAttribute('data-nav') && sib.style.display !== 'none'){ hasVisible = true; break; }
+        sib = sib.nextElementSibling;
+      }
+      g.style.display = (q==='' || hasVisible) ? '' : 'none';
+    });
+    noResults.classList.toggle('hidden', anyVisible);
+  });
+  // 按 "/" 聚焦搜索
+  window.addEventListener('keydown', function(e){
+    if(e.key === '/' && document.activeElement !== search){
+      e.preventDefault(); search.focus();
+    } else if(e.key === 'Escape' && document.activeElement === search){
+      search.value=''; search.dispatchEvent(new Event('input')); search.blur();
+    }
+  });
+
+  /* ── 平滑滚动 ── */
+  document.querySelectorAll('a[href^="#"]').forEach(function(a){
+    a.addEventListener('click', function(e){
+      var id = a.getAttribute('href').slice(1);
+      var el = document.getElementById(id);
+      if(el){ e.preventDefault(); el.scrollIntoView({behavior:'smooth', block:'start'});
+        history.replaceState(null,'', '#'+id); }
+    });
+  });
+})();
+</script>
+</body>
+</html>

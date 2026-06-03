@@ -1,6 +1,21 @@
 import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
-import { cyan, dim, useColor } from "../colors.js";
+import { accent, dim, useColor } from "../colors.js";
+import { applyInverse } from "./selection.js";
+import { visibleWidth } from "./width.js";
+
+/**
+ * Paint a full-width selection bar behind `text`: right-pad with spaces to
+ * `width` visible columns, then lay the drag-selection background across the
+ * whole line so the highlight spans the entire row, not just its glyphs.
+ * Reusing `applyInverse` keeps picker selection and text selection the same
+ * colour and preserves any foreground colours already in `text`.
+ */
+export function highlightRow(text: string, width: number): string {
+  const tw = visibleWidth(text);
+  const padded = tw < width ? text + " ".repeat(width - tw) : text;
+  return applyInverse(padded, 0, Math.max(width, tw));
+}
 
 export interface PickerOptions<T> {
   items: T[];
@@ -67,10 +82,6 @@ export function PickList<T>({ opts, onResolve }: PickListProps<T>): React.ReactE
 
   const windowStart = clampWindow(selected, items.length, pageSize);
   const end = Math.min(items.length, windowStart + pageSize);
-  const rows: React.ReactNode[] = [];
-  for (let i = windowStart; i < end; i++) {
-    rows.push(<Text key={i}>{opts.render(items[i] as T, i === selected)}</Text>);
-  }
 
   const indicator =
     items.length > pageSize
@@ -78,6 +89,29 @@ export function PickList<T>({ opts, onResolve }: PickListProps<T>): React.ReactE
         ? dim(`  (${selected + 1}/${items.length})`)
         : `  (${selected + 1}/${items.length})`
       : null;
+
+  // Render the visible rows once, then size a full-width selection bar to the
+  // widest rendered line (rows plus header/footer/indicator, which also drive
+  // the box width) so the highlighted row spans the whole list, not just its
+  // glyphs. Skip the bar entirely when colour is off — the arrow still marks
+  // the selection and we'd otherwise emit raw escape codes.
+  const rendered: string[] = [];
+  for (let i = windowStart; i < end; i++) {
+    rendered.push(opts.render(items[i] as T, i === selected));
+  }
+  const barWidth = Math.max(
+    0,
+    ...rendered.map(visibleWidth),
+    opts.header ? visibleWidth(opts.header) : 0,
+    opts.footer ? visibleWidth(opts.footer) : 0,
+    indicator ? visibleWidth(indicator) : 0,
+  );
+  const rows: React.ReactNode[] = [];
+  for (let i = windowStart; i < end; i++) {
+    const text = rendered[i - windowStart] as string;
+    const body = i === selected && useColor ? highlightRow(text, barWidth) : text;
+    rows.push(<Text key={i}>{body}</Text>);
+  }
 
   const bordered = opts.border ?? true;
   return (
@@ -97,7 +131,7 @@ export function PickList<T>({ opts, onResolve }: PickListProps<T>): React.ReactE
 
 /** Convenience helper to colour the selection arrow consistently. */
 export const pickerArrow = (selected: boolean): string =>
-  selected ? cyan("❯") : " ";
+  selected ? accent("❯") : " ";
 
 export interface HorizontalPickerOptions<T> {
   items: T[];

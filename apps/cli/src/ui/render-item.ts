@@ -6,8 +6,16 @@ import {
   type ToolResultBlock,
   type ToolUseBlock,
 } from "@nova/core";
-import type { BannerProps } from "./banner.js";
 import type { Card } from "./store.js";
+
+/** Data needed to render the startup banner (logo + session metadata). */
+export interface BannerProps {
+  version: string;
+  model: string;
+  cwd: string;
+  home?: string;
+  sessionId: string;
+}
 
 /**
  * A single visually-discrete chunk that the viewport renders. Stable identity

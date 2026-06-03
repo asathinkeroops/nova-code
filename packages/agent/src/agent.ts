@@ -37,7 +37,7 @@ export interface AgentSettingsSlice {
 
 /**
  * Inputs to `createAgent`. Identity / model / settings live behind getters so
- * the agent transparently sees CLI-side mutations (e.g. /model, /resume) on
+ * the agent transparently sees CLI-side mutations (e.g. /resume, /think) on
  * the next turn. Stable values (workspace, memory) are passed by reference.
  *
  * Built-in capabilities (`checkPermission`, `compactor`) are still accepted
@@ -61,7 +61,7 @@ export interface AgentDeps {
   getPersistCursor: () => PersistCursor;
   setPersistCursor: (cursor: PersistCursor) => void;
 
-  // model / thinking — vary across /model and /think
+  // model / thinking — thinking varies across /think
   getModel: () => ModelClient;
   getThinkingBudget: () => number;
 

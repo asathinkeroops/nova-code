@@ -2,7 +2,7 @@
 
 ## What this is
 
-A terminal coding agent, deeply tuned for DeepSeek. — a TypeScript/Node LLM agent runtime (model loop, tools, permissions, context management, observability) packaged as a pnpm monorepo. The CLI binary is `nova`.
+A terminal coding agent, deeply tuned for DeepSeek — a TypeScript/Node LLM agent runtime (model loop, tools, permissions, context management, observability) packaged as a pnpm monorepo. The CLI binary is `nova`.
 
 ## Commands
 
@@ -18,6 +18,7 @@ Standard `pnpm install / build / typecheck / test / lint / format` also work. No
 ## Workspace layout
 
 - `packages/*` (`@nova/<name>`) — library code. Workspace consumers import from `./src/index.ts` directly (no rebuild needed); published builds switch to `dist/` via `publishConfig`.
+- Active packages: `core`, `runtime`, `observability`, `safety`, `context`, `tools`, `external` (MCP), `sandbox` (OS-level write confinement), `lsp` (language-server code intelligence), `agent`, `subagent`. `sandbox` and `lsp` are the most recently added.
 - `packages/{isolation,multi-agent,sdk}` — empty scaffolding (zero-byte `src/` files, no `package.json`); not wired into anything yet. Skip them.
 - `apps/cli` — the only active app. `apps/http` and `apps/vscode` are placeholders.
 - `eval/` — replay harness; **excluded from eslint/tsconfig**, don't expect it to build with the rest.
@@ -26,16 +27,17 @@ Standard `pnpm install / build / typecheck / test / lint / format` also work. No
 
 `@nova/core` is the model-agnostic loop and never imports a model SDK, tool implementation, or UI — callers wire those in.
 
-**Dependency direction** (do not reverse) — by actual source imports; some `package.json`s declare a superset (e.g. `core` and `observability` list `@nova/runtime` but never import it):
+**Dependency direction** (do not reverse) — by actual source imports; some `package.json`s declare a superset (e.g. `core` and `observability` list `@nova/runtime`, and `lsp` lists `@nova/core`, but never import them):
 
 ```
-runtime, core, observability  ──► (no @nova/* source imports — leaf layer)
-safety                        ──► runtime
-context, tools                ──► core + runtime
-sandbox, external             ──► core            (external imports core type-only)
-agent                         ──► core + runtime + context + observability
-subagent                      ──► agent + context + core + observability + runtime
-cli (apps/cli)                ──► every package above
+runtime, core, observability, lsp  ──► (no @nova/* source imports — leaf layer)
+safety                             ──► runtime
+context                            ──► core + runtime
+tools                              ──► core + runtime + lsp
+sandbox, external                  ──► core            (both import core type-only)
+agent                              ──► core + runtime + context + observability
+subagent                           ──► agent + context + core + observability + runtime
+cli (apps/cli)                     ──► every package above
 ```
 
 **Loop contracts** (`packages/core/src/loop.ts`) — load-bearing, read before changing:
@@ -45,7 +47,11 @@ cli (apps/cli)                ──► every package above
 - Every `tool_use` block always produces a paired `tool_result`, even on throw or permission denial — `packages/tools/src/invariants.ts` enforces this at dispatch time. The next API turn requires the pairing.
 - The `pre_compact` hook must return `{ messages: next }` **iff** `next !== messages` — the loop uses reference equality on the returned array to decide whether to emit `post_compact`.
 
-**Settings** — every new configurable option must be added to the zod schema in `packages/runtime/src/config.ts` (with a default) before being read anywhere. Config file: `~/.nova/nova.config.json`. Sessions live at `~/.nova/sessions/{id}/` with `transcript.jsonl` (hook events) and `messages.jsonl` (replayable history).
+**Settings** — every new configurable option must be added to the zod schema in `packages/runtime/src/config.ts` (with a default) before being read anywhere. Config file: `~/.nova/nova.config.json`. Sessions live at `~/.nova/sessions/{id}/` with `transcript.jsonl` (hook events) and `messages.jsonl` (replayable history). On startup, session dirs whose newest file mtime is older than `settings.sessionCleanup.maxAgeDays` (default 30) are pruned; the active session is always protected.
+
+**Sandbox** — subprocess tools (`bash`, the long-running `run`) execute inside an OS-level sandbox: `@nova/sandbox`'s `createSandbox` produces a `SandboxBridge` (the type lives in `@nova/core`) backed by macOS Seatbelt / Linux bubblewrap that confines filesystem *writes* to the workspace roots plus `settings.sandbox.filesystem.allowWrite` (seeded from `DEFAULT_SANDBOX_ALLOW_WRITE`). Default-ON and degrades to a no-op where unsupported; opt out via `settings.sandbox.enabled: false`.
+
+**Code intelligence** — `@nova/lsp` (`LspManager`) spawns/multiplexes language servers; the `lsp` tool and `/lsp` command expose hover, diagnostics, document/workspace symbols, and definitions. It is the one runtime dependency `@nova/tools` takes beyond `core`/`runtime`. Configured under `settings.lsp`.
 
 **Memory** — global → user → project bundle, with per-directory priority `NOVA.md` > `CLAUDE.md` > `AGENTS.md` (highest priority wins; files are **not** merged). Filenames are configurable via `settings.memory.filenames`.
 

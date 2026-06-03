@@ -12,6 +12,7 @@ import {
 } from "@nova/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import { AgentRegistry, type AgentDefinition } from "./definitions.js";
 import { createSubAgentTool, SUBAGENT_TOOL_NAME, type SubAgentDeps } from "./subagent.js";
 
 const silentLogger = {
@@ -94,6 +95,7 @@ function makeDeps(
     workspace: "/tmp/ws",
     memory: { system: "", sources: [] },
     skillsBlock: "",
+    getAgentRegistry: () => new AgentRegistry(),
     getModel: () => model,
     getToolDefinitions: () => [echoTool, writeDef, editDef, bashDef, subagentDef],
     dispatch: echoExecutor(),
@@ -233,6 +235,95 @@ describe("createSubAgentTool", () => {
 
     expect(result.isError).toBeFalsy();
     expect(result.output).toBe("echoed hi");
+  });
+
+  it("returns an error result for an unknown sub-agent type", async () => {
+    const model = recordingModel([textTurn("unreached")], []);
+    const tool = createSubAgentTool(makeDeps(model, tmp));
+
+    const result = await tool.run(
+      { description: "x", prompt: "y", type: "does-not-exist" },
+      { cwd: tmp },
+    );
+
+    expect(result.isError).toBe(true);
+    expect(result.output).toMatch(/unknown sub-agent type/i);
+    expect(result.output).toContain("general-purpose");
+  });
+
+  it("intersects a custom agent's allowTools with the parent tool set", async () => {
+    const seen: ToolDefinition[][] = [];
+    const model = recordingModel([textTurn("ok")], seen);
+    const registry = new AgentRegistry();
+    registry.addCustom([
+      {
+        name: "reader",
+        description: "echo-only reader",
+        roleLine: "a reader",
+        guidance: "",
+        readOnly: false,
+        allowTools: ["echo"],
+        source: "project",
+      },
+    ]);
+    const tool = createSubAgentTool(
+      makeDeps(model, tmp, { getAgentRegistry: () => registry }),
+    );
+
+    await tool.run({ description: "x", prompt: "y", type: "reader" }, { cwd: tmp });
+
+    expect(seen[0]!.map((d) => d.name)).toEqual(["echo"]);
+  });
+
+  it("a custom readOnly agent strips write/edit/bash without an allow-list", async () => {
+    const seen: ToolDefinition[][] = [];
+    const model = recordingModel([textTurn("ok")], seen);
+    const registry = new AgentRegistry();
+    registry.addCustom([
+      {
+        name: "auditor",
+        description: "read-only auditor",
+        roleLine: "an auditor",
+        guidance: "",
+        readOnly: true,
+        source: "user",
+      },
+    ]);
+    const tool = createSubAgentTool(
+      makeDeps(model, tmp, { getAgentRegistry: () => registry }),
+    );
+
+    await tool.run({ description: "x", prompt: "y", type: "auditor" }, { cwd: tmp });
+
+    const names = seen[0]!.map((d) => d.name);
+    expect(names).toContain("echo");
+    expect(names).not.toContain("write");
+    expect(names).not.toContain("edit");
+    expect(names).not.toContain("bash");
+  });
+
+  it("passes the definition's model override to getModel", async () => {
+    const model = recordingModel([textTurn("ok")], []);
+    const getModel = vi.fn((_id?: string) => model);
+    const registry = new AgentRegistry();
+    registry.addCustom([
+      {
+        name: "fancy",
+        description: "uses a special model",
+        roleLine: "fancy",
+        guidance: "",
+        readOnly: false,
+        model: "special-model",
+        source: "project",
+      } satisfies AgentDefinition,
+    ]);
+    const tool = createSubAgentTool(
+      makeDeps(model, tmp, { getAgentRegistry: () => registry, getModel }),
+    );
+
+    await tool.run({ description: "x", prompt: "y", type: "fancy" }, { cwd: tmp });
+
+    expect(getModel).toHaveBeenCalledWith("special-model");
   });
 
   it("reports an error when the parent signal is already aborted", async () => {

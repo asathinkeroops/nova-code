@@ -4,7 +4,7 @@ import { loadSettings } from "@nova/runtime";
 import { createContext } from "./context.js";
 import { runRepl } from "./repl.js";
 import { Screen, fatalExit } from "./screen.js";
-import { printSessionList } from "./session.js";
+import { printSessionList, pruneOldSessions } from "./session.js";
 import { ensureSettings } from "./setup.js";
 
 interface CliOptions {
@@ -76,6 +76,8 @@ async function run(positional: string[], opts: CliOptions): Promise<void> {
       ...(opts.noTranscript !== undefined ? { noTranscript: opts.noTranscript } : {}),
       ...(opts.noPretty !== undefined ? { noPretty: opts.noPretty } : {}),
     });
+
+    await pruneOldSessions(ctx);
 
     await runRepl(ctx, initialPrompt);
   } catch (err) {

@@ -36,7 +36,7 @@ import {
 import { createLogger, type Logger, type Session, type Settings } from "@nova/runtime";
 import { PermissionDeniedError, PermissionEngine } from "@nova/safety";
 import { createSandbox, type SandboxControl } from "@nova/sandbox";
-import { createSubAgentTool } from "@nova/subagent";
+import { AgentRegistry, createSubAgentTool } from "@nova/subagent";
 import {
   InMemoryFileAccessLedger,
   ToolRegistry,
@@ -46,11 +46,12 @@ import {
   getSkillList,
   type SkillsOptions,
 } from "@nova/tools";
-import { CYAN_RGB, cyan, dim } from "./colors.js";
+import { ACCENT_RGB, accent, dim } from "./colors.js";
 import { buildCompactor } from "./compactor.js";
 import { buildMcpManager } from "./mcp.js";
 import { canonicalizePath, canonicalizeRoots, PATH_INPUT_TOOLS } from "./path-safety.js";
 import { resolvePermissionRules } from "./permissions.js";
+import { loadAgents } from "./agents.js";
 import {
   handleClear,
   handleCommands,
@@ -58,9 +59,10 @@ import {
   handleHelp,
   handleLsp,
   handleMcp,
-  handleModel,
   handlePlan,
   handlePredict,
+  handleAgent,
+  handleAgents,
   handleResume,
   handleRewind,
   handleSkills,
@@ -98,7 +100,7 @@ export interface CliContext {
   /** Per-session file snapshotter backing `/rewind`. Rebuilt on /resume. */
   snapshots: SnapshotStore;
 
-  // ===== Mutable: changes on /model, /think, /predict =====
+  // ===== Mutable: changes on /think, /predict =====
   settings: Settings;
   model: ModelClient;
   /**
@@ -106,7 +108,7 @@ export interface CliContext {
    * silent background call; it must NOT carry the live-stream / spinner-token
    * callbacks (`onStreamText` et al.), or its predicted task text leaks into the
    * message feed as a phantom assistant draft. Same reasoning as sub-agents
-   * (see the `buildModel(id, false)` usage below). Rebuilt on /model.
+   * (see the `buildModel(id, false)` usage below).
    */
   predictModel: ModelClient;
   thinkingLevel: ThinkingLevel;
@@ -153,6 +155,12 @@ export interface CliContext {
   readonly sandbox: SandboxControl;
   readonly registry: SlashRegistry;
   readonly tools: ToolRegistry;
+  /**
+   * Available sub-agent definitions (built-ins + custom defs loaded from
+   * .nova/agents / .claude/agents). Seeded with built-ins even when sub-agents
+   * are disabled; `/agents` lists it and `/agents reload` refreshes it in place.
+   */
+  readonly agents: AgentRegistry;
   /** Connected MCP servers (tools already bridged into `tools`), or null when disabled/none. */
   readonly mcp: McpManager | null;
   readonly dispatch: ToolExecutor;
@@ -247,7 +255,7 @@ export function armToolSpinner(ctx: CliContext): void {
   ctx.toolSpinnerTimer = setTimeout(() => {
     ctx.toolSpinnerTimer = null;
     ctx.spinner = ctx.screen.startSpinner(
-      { words: WORKING_WORDS, tint: CYAN_RGB, colorize: cyan },
+      { words: WORKING_WORDS, tint: ACCENT_RGB, colorize: accent },
       INTERRUPT_HINT,
     );
   }, TOOL_SPINNER_DELAY_MS);
@@ -282,16 +290,6 @@ function registerBuiltinSlashCommands(ctx: CliContext): void {
     source: { kind: "builtin" },
     run: () => {
       handleHelp(ctx);
-      return handled;
-    },
-  });
-  ctx.registry.register({
-    name: "model",
-    description: "show or change the active model",
-    argHint: "[<name>]",
-    source: { kind: "builtin" },
-    run: async (_c, args) => {
-      await handleModel(ctx, args.trim());
       return handled;
     },
   });
@@ -379,6 +377,23 @@ function registerBuiltinSlashCommands(ctx: CliContext): void {
       handleSkills(ctx);
       return handled;
     },
+  });
+  ctx.registry.register({
+    name: "agents",
+    description: "list available sub-agent types; `reload` to rescan agent files",
+    argHint: "[reload]",
+    source: { kind: "builtin" },
+    run: async (_c, args) => {
+      await handleAgents(ctx, args.trim());
+      return handled;
+    },
+  });
+  ctx.registry.register({
+    name: "agent",
+    description: "delegate a task to a named sub-agent",
+    argHint: "<name> <task>",
+    source: { kind: "builtin" },
+    run: (_c, args) => handleAgent(ctx, args),
   });
   ctx.registry.register({
     name: "mcp",
@@ -487,6 +502,27 @@ export async function createContext(
     });
     if (skillItems.length > 0) {
       logger.info({ count: skillItems.length }, "skills loaded");
+    }
+  }
+
+  // Sub-agent definitions: built-ins (general-purpose / explore / plan) are
+  // always seeded; custom defs from .nova/agents / .claude/agents are layered
+  // on when sub-agents are enabled. Built-ins win on name collisions. The
+  // createSubAgent tool and /agents both read this registry; /agents reload
+  // refreshes it in place.
+  const agents = new AgentRegistry();
+  if (settings.subagent.enabled) {
+    const { defs, errors } = loadAgents(settings, workspace, logger);
+    const skipped = agents.addCustom(defs);
+    await transcript.append({
+      kind: "agents_loaded",
+      data: { parsed: defs.length, skipped, errors: errors.length },
+    });
+    if (defs.length > 0 || errors.length > 0) {
+      logger.info(
+        { parsed: defs.length, skipped: skipped.length, errors: errors.length },
+        "custom agents loaded",
+      );
     }
   }
 
@@ -683,6 +719,7 @@ export async function createContext(
     sandbox: null as unknown as SandboxControl,
     registry,
     tools,
+    agents,
     mcp,
     dispatch,
     fileLedger,
@@ -835,26 +872,27 @@ export async function createContext(
     // run concurrently and each onStreamProgress callback reports that agent's
     // own running total (not a sum), so sharing the tracked model would make the
     // parent spinner's "↓ ~N tok" flicker between agents and read as garbage.
-    // They therefore always run on a non-tracked model: a fixed one if
-    // configured, otherwise the current main model mirrored with tracking off
-    // (rebuilt when /model changes so the subagent follows the active model).
-    const fixedSubagentModel = settings.subagent.model
-      ? buildModel(settings.subagent.model, false)
-      : null;
-    let subagentFallback: { id: string; model: ModelClient } | null = null;
-    const getSubagentModel = (): ModelClient => {
-      if (fixedSubagentModel) return fixedSubagentModel;
-      const id = ctx.settings.model;
-      if (!subagentFallback || subagentFallback.id !== id) {
-        subagentFallback = { id, model: buildModel(id, false) };
+    // They therefore always run on a non-tracked model, cached per model-id.
+    //
+    // Model precedence: the definition's `model` override → settings.subagent.model
+    // (global sub-agent default) → the active main model (so sub-agents follow
+    // /model changes when nothing more specific is set).
+    const subagentModelCache = new Map<string, ModelClient>();
+    const getSubagentModel = (modelId?: string): ModelClient => {
+      const id = modelId ?? settings.subagent.model ?? ctx.settings.model;
+      let model = subagentModelCache.get(id);
+      if (!model) {
+        model = buildModel(id, false);
+        subagentModelCache.set(id, model);
       }
-      return subagentFallback.model;
+      return model;
     };
     ctx.tools.register(
       createSubAgentTool({
         workspace,
         memory,
         skillsBlock,
+        getAgentRegistry: () => ctx.agents,
         getModel: getSubagentModel,
         getToolDefinitions: () => ctx.tools.definitions(),
         dispatch: (use, c) => ctx.dispatch(use, c),

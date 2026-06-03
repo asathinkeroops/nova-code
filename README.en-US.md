@@ -61,7 +61,6 @@ pnpm dev [prompt...]                # run an initial prompt, then stay in the RE
 
 ```
 /help                this help
-/model [<name>]      show or change the active model
 /think [<level>]     show or change extended-thinking level
 /clear               clear conversation history (keeps session)
 /compact [focus…]    summarize history into a single message

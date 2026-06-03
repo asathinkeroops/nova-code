@@ -2,6 +2,7 @@ import React from "react";
 import { Box, Text } from "ink";
 import { basename } from "node:path";
 import { useShallow } from "zustand/react/shallow";
+import { ACCENT_HEX } from "../colors.js";
 import type { AppStoreApi } from "./store.js";
 import {
   contextBar,
@@ -63,7 +64,7 @@ export function StatusLine({ store }: StatusLineProps): React.ReactElement {
 
   const segments: StatusSegment[] = [];
   if (sessionStartedAt != null) {
-    segments.push({ icon: "⏱", text: formatDuration(now - sessionStartedAt), color: "cyan" });
+    segments.push({ icon: "⏱", text: formatDuration(now - sessionStartedAt), color: ACCENT_HEX });
   }
   if (banner?.model) {
     const window =
@@ -81,7 +82,7 @@ export function StatusLine({ store }: StatusLineProps): React.ReactElement {
     segments.push({ icon: "⎇", text: gitBranch, color: "blue" });
   }
   if (banner?.cwd) {
-    segments.push({ icon: "•", text: displayCwd(banner.cwd, banner.home), color: "cyan" });
+    segments.push({ icon: "•", text: displayCwd(banner.cwd, banner.home), color: ACCENT_HEX });
   }
 
   // Reserve one leading space (alignment) and one trailing cell (overflow margin).

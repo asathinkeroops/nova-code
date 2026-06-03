@@ -1,33 +1,5 @@
 import type { MemoryBundle } from "@nova/context";
-
-/** The kind of sub-agent to spawn; selected per `createSubAgent` call. */
-export type SubAgentType = "explore" | "plan" | "general-purpose";
-
-const ROLE_LINE: Record<SubAgentType, string> = {
-  "general-purpose":
-    "an autonomous worker spawned by a parent agent to complete ONE focused task and report back",
-  explore:
-    "a read-only EXPLORE worker spawned by a parent agent to locate code and gather information, then report back",
-  plan:
-    "a read-only PLAN worker spawned by a parent agent to investigate a task and produce a concrete implementation plan, then report back",
-};
-
-/**
- * Extra, type-specific guidance bullets. `general-purpose` adds none (it keeps
- * the full tool set); `explore` and `plan` are read-only and steer the worker
- * toward retrieval / planning respectively.
- */
-const TYPE_BULLETS: Record<SubAgentType, string[]> = {
-  "general-purpose": [],
-  explore: [
-    "You are READ-ONLY: you have no write/edit/bash tools and cannot modify files or run commands.",
-    "Your job is retrieval. Use grep/glob/read to find files, symbols, and usages fast. Report concrete file paths and line numbers.",
-  ],
-  plan: [
-    "You are READ-ONLY: you have no write/edit/bash tools and cannot modify files or run commands.",
-    "Your job is planning. Investigate the relevant code, then report a concrete step-by-step plan: which files to change, in what order, and the key tradeoffs. Do NOT implement.",
-  ],
-};
+import type { AgentDefinition } from "./definitions.js";
 
 /**
  * System prompt for a sub-agent: an ephemeral worker spawned by a parent agent
@@ -35,18 +7,21 @@ const TYPE_BULLETS: Record<SubAgentType, string[]> = {
  * FINAL assistant message, so the prompt leans hard on "report back concisely
  * at the end" — intermediate steps are invisible upstream.
  *
- * `type` tailors the role line and adds read-only / retrieval / planning
- * guidance for the `explore` and `plan` variants.
+ * The `def` supplies the role line and any extra guidance (built-in
+ * read-only / retrieval / planning bullets, or a custom agent's markdown
+ * body). The surrounding scaffolding — isolation rules, report-back
+ * discipline, identity, system-info — is fixed so every sub-agent behaves
+ * consistently regardless of type.
  */
 export function buildSubAgentSystemPrompt(
   workspace: string,
   memory: MemoryBundle,
-  skillsBlock = "",
-  type: SubAgentType = "general-purpose",
+  skillsBlock: string,
+  def: Pick<AgentDefinition, "name" | "roleLine" | "guidance">,
 ): string {
-  const typeBullets = TYPE_BULLETS[type].map((b) => `- ${b}`).join("\n");
-  const extra = typeBullets ? `${typeBullets}\n` : "";
-  const base = `You are a Nova sub-agent: ${ROLE_LINE[type]}.
+  const trimmedGuidance = def.guidance.trim();
+  const extra = trimmedGuidance ? `${trimmedGuidance}\n` : "";
+  const base = `You are a Nova sub-agent: ${def.roleLine}.
 
 Working directory: ${workspace}
 
@@ -56,7 +31,7 @@ Working directory: ${workspace}
 ${extra}
 Act, don't explain.
 
-<identity name="Nova" role="sub-agent" type="${type}"></identity>
+<identity name="Nova" role="sub-agent" type="${def.name}"></identity>
 
 <system-info platform="${process.platform}"></system-info>
 `;

@@ -9,7 +9,7 @@ import type { Task, Todo } from "@nova/tools";
 import type { PermissionDecision, PermissionInput } from "@nova/safety";
 import { App } from "./ui/app.js";
 import { type ApprovalAnswer } from "./ui/approval.js";
-import { type BannerProps } from "./ui/banner.js";
+import { type BannerProps } from "./ui/render-item.js";
 import { type BoxedInputOptions, type SlashCommand } from "./ui/input-box.js";
 import { copyToClipboard } from "./ui/clipboard.js";
 import { attachFilteredStdin } from "./ui/mouse.js";

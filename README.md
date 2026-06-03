@@ -61,7 +61,6 @@ pnpm dev [prompt...]                # 先跑一轮初始 prompt，再留在 REPL
 
 ```
 /help                帮助
-/model [<name>]      查看 / 切换模型
 /think [<level>]     查看 / 切换 thinking 等级
 /clear               清空会话历史（保留 session）
 /compact [focus…]    把历史压缩成单条摘要消息
