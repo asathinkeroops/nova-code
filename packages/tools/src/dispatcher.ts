@@ -1,7 +1,30 @@
 import type { ToolContext, ToolExecutor, ToolResultBlock, ToolUseBlock } from "@nova/core";
 import type { Logger } from "@nova/runtime";
+import type { ZodError } from "zod";
 import type { InvariantsCheck } from "./invariants.js";
 import type { ToolRegistry } from "./registry.js";
+
+/**
+ * Flatten a zod validation failure into a terse, model-readable line.
+ *
+ * The default `ZodError.message` is a JSON dump of the issue array — the
+ * actionable signal (which field, why) is buried, so the model rarely
+ * self-corrects. We surface each issue as `<path>: <reason>` and special-case
+ * the most common failure (a missing required field, which zod reports as
+ * `invalid_type` with `received: "undefined"` and the unhelpful message
+ * "Required") into an explicit "is required" hint.
+ */
+export function formatValidationError(error: ZodError): string {
+  return error.issues
+    .map((issue) => {
+      const at = issue.path.length > 0 ? issue.path.join(".") : "input";
+      if (issue.code === "invalid_type" && issue.received === "undefined") {
+        return `${at} is required (expected ${issue.expected})`;
+      }
+      return `${at}: ${issue.message}`;
+    })
+    .join("; ");
+}
 
 export interface DispatcherDeps {
   registry: ToolRegistry;
@@ -38,7 +61,9 @@ export function createDispatcher(deps: DispatcherDeps): ToolExecutor {
 
     const parsed = handler.definition.inputSchema.safeParse(use.input);
     if (!parsed.success) {
-      return errorResult(`Invalid input for tool ${use.name}: ${parsed.error.message}`);
+      return errorResult(
+        `Invalid input for tool ${use.name}: ${formatValidationError(parsed.error)}`,
+      );
     }
 
     if (invariants) {

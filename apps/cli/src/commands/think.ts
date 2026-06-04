@@ -1,7 +1,7 @@
 import { isThinkingLevel, THINKING_LEVELS, type ThinkingLevel } from "@nova/core";
 import { saveSettings } from "@nova/runtime";
 import { dim } from "../colors.js";
-import { thinkingLevelLabel, type CliContext } from "../context.js";
+import { thinkingLevelLabel, refreshBanner, type CliContext } from "../context.js";
 
 const TITLE = "/think";
 
@@ -9,6 +9,7 @@ async function persistThinking(ctx: CliContext): Promise<void> {
   ctx.settings.thinking.level = ctx.thinkingLevel;
   ctx.settings.thinking.budgetTokens = ctx.thinkingBudgetOverride;
   ctx.screen.setThinkingLabel(thinkingLevelLabel(ctx));
+  refreshBanner(ctx);
   try {
     await saveSettings({ thinking: ctx.settings.thinking });
   } catch (err) {

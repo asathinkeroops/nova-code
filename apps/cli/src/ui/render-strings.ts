@@ -89,6 +89,20 @@ function displayCwd(cwd: string, home: string | undefined): string {
   return cwd;
 }
 
+function formatModel(b: BannerProps): string {
+  const base = b.contextWindowTokens
+    ? (() => {
+        const window = b.contextWindowTokens >= 1_000_000
+          ? `${Math.round(b.contextWindowTokens / 1_000_000)}m`
+          : b.contextWindowTokens >= 1_000
+          ? `${Math.round(b.contextWindowTokens / 1_000)}k`
+          : `${b.contextWindowTokens}`;
+        return `${b.model}[${window}]`;
+      })()
+    : b.model;
+  return b.thinkingLabel ? `${base} with ${b.thinkingLabel} effort` : base;
+}
+
 function renderBanner(b: BannerProps, width: number): string {
   const innerWidth = Math.max(40, Math.min(width, 80)) - 4;
   const top = `╭${"─".repeat(innerWidth + 2)}╮`;
@@ -106,7 +120,7 @@ function renderBanner(b: BannerProps, width: number): string {
   lines.push(pad(""));
   LOGO.forEach((l, i) => lines.push(pad(bannerLine(l, i))));
   lines.push(pad(""));
-  lines.push(pad(`${dim("model:")}     ${b.model}`));
+  lines.push(pad(`${dim("model:")}     ${formatModel(b)}`));
   lines.push(pad(`${dim("workspace:")} ${displayCwd(b.cwd, b.home)}`));
   lines.push(pad(`${dim("session:")}   ${b.sessionId}`));
   lines.push(bot);
@@ -245,11 +259,12 @@ const tools: Record<string, ToolStr> = {
     inline: true,
     use: (input) => {
       const path = typeof input.path === "string" ? input.path : "?";
-      const hasRange =
-        typeof input.offset === "number" || typeof input.limit === "number";
-      const rangeStr = hasRange
-        ? `[${input.offset ?? 0}..${input.limit ? Number(input.offset ?? 0) + Number(input.limit) : ""}]`
-        : "";
+      const off = typeof input.offset === "number" ? input.offset : undefined;
+      const lim = typeof input.limit === "number" ? input.limit : undefined;
+      const rangeStr =
+        off !== undefined || lim !== undefined
+          ? `[${off ?? 0}..${lim !== undefined ? (off ?? 0) + lim : ""}]`
+          : "";
       return {
         header: header("read", `${path}${rangeStr ? ` ${dim(rangeStr)}` : ""}`),
       };

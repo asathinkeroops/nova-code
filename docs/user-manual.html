@@ -416,7 +416,7 @@
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">文件与文本</h3>
         <div class="tbl-wrap"><table class="doc"><thead><tr><th>工具</th><th>权限</th><th>说明</th></tr></thead><tbody>
-          <tr><td><code>read</code></td><td><span class="pill pill-ro">只读</span></td><td>读文本文件，支持 <code>offset</code>/<code>limit</code> 分页；单次最多约 200KB</td></tr>
+          <tr><td><code>read</code></td><td><span class="pill pill-ro">只读</span></td><td>读文本文件，输出带 <code>cat -n</code> 风格行号（1-based）；<code>offset</code> 起始行号、<code>limit</code> 最大行数，单页另有约 20 万字符上限（超长单行整行返回、不切断），超出时提示用 <code>offset</code> 续读。行号前缀仅用于显示，传给 <code>edit</code> 前需去掉</td></tr>
           <tr><td><code>write</code></td><td><span class="pill pill-ap">需批准</span></td><td>写整个文件（覆盖），默认自动创建父目录</td></tr>
           <tr><td><code>edit</code></td><td><span class="pill pill-ap">需批准</span></td><td>精确字符串替换；<code>old_string</code> 默认须唯一匹配，<code>replace_all</code> 可全替</td></tr>
           <tr><td><code>bash</code></td><td><span class="pill pill-ap">需批准</span></td><td>执行短小、阻塞的 shell 命令；<strong>硬超时 10s</strong>，输出截到 200KB</td></tr>

@@ -28,7 +28,93 @@ describe("writeTool + readTool round-trip", () => {
     );
     expect(writeRes.isError).toBeUndefined();
     const readRes = await readTool.run({ path: "hello.txt" }, { cwd: dir });
-    expect(readRes.output).toBe("hi\n");
+    // Line-numbered, `cat -n` style: right-padded 1-based number, tab, text.
+    expect(readRes.output).toBe("     1\thi");
+  });
+
+  // Strip the `<line-no>\t` prefix `read` adds, recovering the file's real text.
+  const stripLineNos = (body: string): string[] =>
+    body.split("\n").map((l) => l.slice(l.indexOf("\t") + 1));
+
+  it("paginates a large file by 1-based line offset and reassembles the content", async () => {
+    // ~3000 lines of ~100 chars each → well over the char budget, forcing
+    // several truncated pages.
+    const content =
+      Array.from({ length: 3000 }, (_, i) => `L${i}-${"x".repeat(95)}`).join("\n") + "\n";
+    await writeTool.run({ path: "big.txt", content, create_dirs: true }, { cwd: dir });
+
+    const collected: string[] = [];
+    let offset = 1;
+    let pages = 0;
+    for (;;) {
+      if (pages++ > 100) throw new Error("pagination did not terminate");
+      const out = String((await readTool.run({ path: "big.txt", offset }, { cwd: dir })).output);
+      const footerAt = out.indexOf("\n…(truncated;");
+      const body = footerAt === -1 ? out : out.slice(0, footerAt);
+
+      // The first body line carries this page's starting (1-based) line number.
+      expect(body.split("\n")[0]!.startsWith(`${String(offset).padStart(6)}\t`)).toBe(true);
+      collected.push(...stripLineNos(body));
+
+      if (footerAt === -1) break;
+      // The continuation hint must carry the path (so the model doesn't drop it).
+      expect(out).toContain('path="big.txt"');
+      const next = Number(out.match(/offset=(\d+)\)\)$/)![1]);
+      expect(next).toBeGreaterThan(offset); // always makes progress
+      offset = next;
+    }
+
+    // No gaps, no overlaps, nothing dropped (the line-numbered view drops the
+    // file's trailing newline, so compare against content sans that newline).
+    expect(pages).toBeGreaterThan(1);
+    expect(collected.join("\n")).toBe(content.slice(0, -1));
+  });
+
+  it("returns a single oversized line whole rather than splitting it", async () => {
+    const content = "z".repeat(450_000); // > 2× the char budget, no newline → one line
+    await writeTool.run({ path: "oneline.txt", content, create_dirs: true }, { cwd: dir });
+
+    const out = String((await readTool.run({ path: "oneline.txt" }, { cwd: dir })).output);
+    // We never cut inside a line, so the whole line comes back in one page with
+    // no truncation footer, even though it exceeds the character budget.
+    expect(out).not.toContain("…(truncated;");
+    expect(out).toBe(`     1\t${content}`);
+  });
+
+  it("paginates by whole lines without mangling multibyte characters", async () => {
+    // Cutting inside a line could split a surrogate pair (each 😀 is two UTF-16
+    // code units); cutting only on line boundaries makes every page byte-exact.
+    const content = Array.from({ length: 5 }, () => "😀😀😀").join("\n") + "\n";
+    await writeTool.run({ path: "emoji.txt", content, create_dirs: true }, { cwd: dir });
+
+    const collected: string[] = [];
+    let offset = 1;
+    for (let i = 0; i < 20; i++) {
+      const o = String(
+        (await readTool.run({ path: "emoji.txt", offset, limit: 2 }, { cwd: dir })).output,
+      );
+      const at = o.indexOf("\n…(truncated;");
+      const body = at === -1 ? o : o.slice(0, at);
+      collected.push(...stripLineNos(body));
+      if (at === -1) break;
+      offset = Number(o.match(/offset=(\d+)\)\)$/)![1]);
+    }
+    expect(collected.join("\n")).toBe(content.slice(0, -1));
+  });
+
+  it("respects an explicit line limit and reports a 1-based line-offset continuation", async () => {
+    await writeTool.run(
+      { path: "lines.txt", content: "aaaa\nbbbb\ncccc\ndddd\n", create_dirs: true },
+      { cwd: dir },
+    );
+    // limit 2 returns the first two whole (numbered) lines and points at line 3.
+    const r = await readTool.run({ path: "lines.txt", offset: 1, limit: 2 }, { cwd: dir });
+    const out = String(r.output);
+    expect(out.startsWith("     1\taaaa\n     2\tbbbb")).toBe(true);
+    expect(out).toContain("showing lines 1-2 of 4");
+    expect(out).toContain('continue with read(path="lines.txt", offset=3)');
+    const cont = await readTool.run({ path: "lines.txt", offset: 3 }, { cwd: dir });
+    expect(String(cont.output)).toBe("     3\tcccc\n     4\tdddd");
   });
 
   it("write creates parent directories by default", async () => {
@@ -303,7 +389,7 @@ describe("askUserQuestionTool", () => {
     );
     const r = await askUserQuestionTool.run(sampleInput, { cwd: dir, askUser });
     expect(r.isError).toBe(true);
-    expect(String(r.output)).toContain("cancelled");
+    expect(String(r.output)).toContain("dismissed");
   });
 
   it("rejects empty questions list via schema", async () => {

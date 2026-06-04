@@ -5,7 +5,12 @@ import type { ToolHandler } from "@nova/core";
 
 const inputSchema = z.object({
   path: z.string().min(1).describe("Absolute or cwd-relative file path."),
-  old_string: z.string().min(1).describe("Exact text to replace. Must match the file content verbatim."),
+  old_string: z
+    .string()
+    .min(1)
+    .describe(
+      "Exact text to replace. Must match the file content verbatim — if you copied it from `read` output, first strip the leading line-number + tab prefix that `read` adds (it is display only, not part of the file).",
+    ),
   new_string: z.string().describe("Replacement text. Must differ from old_string."),
   replace_all: z
     .boolean()
@@ -28,7 +33,7 @@ export const editTool: ToolHandler = {
   definition: {
     name: "edit",
     description:
-      "Edit a file by replacing exact text. By default old_string must occur exactly once; set replace_all to change every occurrence.",
+      "Edit a file by replacing exact text. By default old_string must occur exactly once; set replace_all to change every occurrence. old_string must match the file's real bytes — `read` shows a line-number + tab prefix on each line that is NOT in the file, so strip it before matching.",
     inputSchema,
   },
   async run(rawInput, ctx) {

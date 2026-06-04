@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type { ToolHandler, ToolUseBlock } from "@nova/core";
-import { createDispatcher } from "./dispatcher.js";
+import { createDispatcher, formatValidationError } from "./dispatcher.js";
 import { ToolRegistry } from "./registry.js";
 
 function makeHandler(run = vi.fn(async () => ({ output: "ok" }))): ToolHandler {
@@ -28,11 +28,15 @@ describe("dispatcher", () => {
     expect(typeof r.content).toBe("string");
   });
 
-  it("returns is_error when input schema fails", async () => {
+  it("returns is_error with a flattened, readable message when input schema fails", async () => {
     const reg = new ToolRegistry().register(makeHandler());
     const dispatch = createDispatcher({ registry: reg });
     const r = await dispatch(uses("echo", { msg: 42 }), { cwd: "/tmp" });
     expect(r.is_error).toBe(true);
+    // No raw zod JSON dump leaks to the model.
+    expect(String(r.content)).not.toContain('"code"');
+    expect(String(r.content)).toContain("Invalid input for tool echo");
+    expect(String(r.content)).toContain("msg:");
   });
 
   it("runs the tool and returns its output", async () => {
@@ -43,6 +47,26 @@ describe("dispatcher", () => {
     expect(r.is_error).toBeUndefined();
     expect(r.content).toBe("hello world");
     expect(run).toHaveBeenCalledOnce();
+  });
+
+  it("flattens a missing required field into an actionable hint", () => {
+    const schema = z.object({
+      path: z.string().min(1),
+      offset: z.number().int().min(0).optional(),
+    });
+    // Mirrors the real failure: model paginates with offset but drops `path`.
+    const parsed = schema.safeParse({ offset: 115, limit: 10 });
+    expect(parsed.success).toBe(false);
+    if (parsed.success) return;
+    expect(formatValidationError(parsed.error)).toBe("path is required (expected string)");
+  });
+
+  it("formats non-missing issues as `<path>: <message>`", () => {
+    const schema = z.object({ path: z.string().min(1) });
+    const parsed = schema.safeParse({ path: "" });
+    expect(parsed.success).toBe(false);
+    if (parsed.success) return;
+    expect(formatValidationError(parsed.error)).toContain("path: ");
   });
 
   it("catches exceptions thrown by the handler", async () => {

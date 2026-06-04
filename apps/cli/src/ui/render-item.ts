@@ -15,6 +15,9 @@ export interface BannerProps {
   cwd: string;
   home?: string;
   sessionId: string;
+  contextWindowTokens?: number;
+  /** Thinking level label (e.g. "high", "max"), shown on the model line. */
+  thinkingLabel?: string;
 }
 
 /**
