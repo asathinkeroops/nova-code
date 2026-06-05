@@ -11,6 +11,13 @@ describe("handlePlan", () => {
     expect(outcome.text).toMatch(/do NOT start implement/i);
   });
 
+  it("instructs the sub-agent to reply in the task goal's language and script", () => {
+    const outcome = handlePlan("add OAuth login");
+    expect(outcome.kind).toBe("prompt");
+    if (outcome.kind !== "prompt") return;
+    expect(outcome.text).toMatch(/same language, script, and regional variant/i);
+  });
+
   it("trims surrounding whitespace from the goal", () => {
     const outcome = handlePlan("   refactor parser   ");
     expect(outcome.kind).toBe("prompt");

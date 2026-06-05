@@ -188,7 +188,10 @@ export function createAnthropicModel(config: AnthropicModelConfig): ModelClient 
       // One attempt = build the stream, wire live-progress listeners (fresh
       // per attempt so token counters don't carry over a retry), await the
       // final message.
-      const streamOnce = (): Promise<Anthropic.Message> => {
+      const streamOnce = async (): Promise<{
+        message: Anthropic.Message;
+        thinkingText: string;
+      }> => {
         const stream = client.messages.stream(
           {
             model: config.model,
@@ -202,66 +205,72 @@ export function createAnthropicModel(config: AnthropicModelConfig): ModelClient 
         );
         const onProgress = config.onStreamProgress;
         const onText = config.onStreamText;
-        if (onProgress || onText) {
-          // Uploaded prompt tokens are a real count carried by `message_start`;
-          // captured once and replayed with every subsequent update.
-          //
-          // Output tokens, by contrast, only arrive (for real) in the final
-          // message_delta — DeepSeek and Anthropic both withhold them mid-stream —
-          // so a *live* counter estimates from the text as it streams in: ~4
-          // chars/token for latin, ~0.6 token/char for CJK. Accumulated
-          // incrementally from each delta so it stays O(total chars), not O(n²).
-          let inputTokens: number | undefined;
-          let cjk = 0;
-          let other = 0;
-          stream.on("streamEvent", (event) => {
-            if (event.type === "message_start") {
-              if (!onProgress) return;
-              const u = event.message.usage as {
-                input_tokens?: number;
-                cache_read_input_tokens?: number | null;
-                cache_creation_input_tokens?: number | null;
-              };
-              inputTokens =
-                (u.input_tokens ?? 0) +
-                (u.cache_read_input_tokens ?? 0) +
-                (u.cache_creation_input_tokens ?? 0);
-              onProgress({ inputTokens, outputTokens: 0 });
-              return;
-            }
-            if (event.type !== "content_block_delta") return;
-            const delta = event.delta as {
-              text?: string;
-              partial_json?: string;
-              thinking?: string;
-            };
-            // Stream the visible answer / reasoning to the UI as it arrives.
-            // `partial_json` (tool-call arguments) is deliberately excluded —
-            // it isn't readable prose and lands in the final message anyway.
-            if (onText && (delta.text !== undefined || delta.thinking !== undefined)) {
-              onText({
-                ...(delta.text !== undefined ? { text: delta.text } : {}),
-                ...(delta.thinking !== undefined ? { thinking: delta.thinking } : {}),
-              });
-            }
+        // Accumulate streamed reasoning so we can backfill it into the final
+        // message. DeepSeek surfaces thinking via `content_block_delta` (shown
+        // live), but `finalMessage()` reconstructs an EMPTY thinking block —
+        // so the committed/persisted turn loses the reasoning unless we re-attach
+        // it here. Accumulated unconditionally (not gated on the UI callbacks).
+        let thinkingText = "";
+        // Uploaded prompt tokens are a real count carried by `message_start`;
+        // captured once and replayed with every subsequent update.
+        //
+        // Output tokens, by contrast, only arrive (for real) in the final
+        // message_delta — DeepSeek and Anthropic both withhold them mid-stream —
+        // so a *live* counter estimates from the text as it streams in: ~4
+        // chars/token for latin, ~0.6 token/char for CJK. Accumulated
+        // incrementally from each delta so it stays O(total chars), not O(n²).
+        let inputTokens: number | undefined;
+        let cjk = 0;
+        let other = 0;
+        stream.on("streamEvent", (event) => {
+          if (event.type === "message_start") {
             if (!onProgress) return;
-            const chunk = delta.text ?? delta.partial_json ?? delta.thinking ?? "";
-            for (const ch of chunk) {
-              const c = ch.codePointAt(0) ?? 0;
-              if (
-                (c >= 0x4e00 && c <= 0x9fff) || // CJK ideographs
-                (c >= 0x3040 && c <= 0x30ff) || // kana
-                (c >= 0xac00 && c <= 0xd7a3) // hangul
-              ) {
-                cjk++;
-              } else {
-                other++;
-              }
+            const u = event.message.usage as {
+              input_tokens?: number;
+              cache_read_input_tokens?: number | null;
+              cache_creation_input_tokens?: number | null;
+            };
+            inputTokens =
+              (u.input_tokens ?? 0) +
+              (u.cache_read_input_tokens ?? 0) +
+              (u.cache_creation_input_tokens ?? 0);
+            onProgress({ inputTokens, outputTokens: 0 });
+            return;
+          }
+          if (event.type !== "content_block_delta") return;
+          const delta = event.delta as {
+            text?: string;
+            partial_json?: string;
+            thinking?: string;
+          };
+          if (delta.thinking !== undefined) thinkingText += delta.thinking;
+          // Stream the visible answer / reasoning to the UI as it arrives.
+          // `partial_json` (tool-call arguments) is deliberately excluded —
+          // it isn't readable prose and lands in the final message anyway.
+          if (onText && (delta.text !== undefined || delta.thinking !== undefined)) {
+            onText({
+              ...(delta.text !== undefined ? { text: delta.text } : {}),
+              ...(delta.thinking !== undefined ? { thinking: delta.thinking } : {}),
+            });
+          }
+          if (!onProgress) return;
+          const chunk = delta.text ?? delta.partial_json ?? delta.thinking ?? "";
+          for (const ch of chunk) {
+            const c = ch.codePointAt(0) ?? 0;
+            if (
+              (c >= 0x4e00 && c <= 0x9fff) || // CJK ideographs
+              (c >= 0x3040 && c <= 0x30ff) || // kana
+              (c >= 0xac00 && c <= 0xd7a3) // hangul
+            ) {
+              cjk++;
+            } else {
+              other++;
             }
-            onProgress({ inputTokens, outputTokens: Math.ceil(cjk * 0.6 + other / 4) });
-          });
-        }
-        return stream.finalMessage();
+          }
+          onProgress({ inputTokens, outputTokens: Math.ceil(cjk * 0.6 + other / 4) });
+        });
+        const message = await stream.finalMessage();
+        return { message, thinkingText };
       };
 
       // DeepSeek's documented HTTP errors arrive here as SDK APIErrors. The
@@ -271,11 +280,14 @@ export function createAnthropicModel(config: AnthropicModelConfig): ModelClient 
       const maxAttempts =
         format === "deepseek" ? DEEPSEEK_RETRY.maxAttempts : 1;
       let res: Anthropic.Message;
+      let streamedThinking = "";
       let attempt = 0;
       for (;;) {
         attempt++;
         try {
-          res = await streamOnce();
+          const out = await streamOnce();
+          res = out.message;
+          streamedThinking = out.thinkingText;
           break;
         } catch (err) {
           const translated = translateDeepSeekError(err, config.model);
@@ -300,6 +312,16 @@ export function createAnthropicModel(config: AnthropicModelConfig): ModelClient 
       }
 
       const content = res.content as ContentBlock[];
+      // Re-attach reasoning the stream surfaced but `finalMessage()` dropped.
+      // Only fill a thinking block whose text is empty — never clobber one that
+      // already carries reasoning (Anthropic populates these, signature and all).
+      if (streamedThinking.length > 0) {
+        const empty = content.find(
+          (b): b is Extract<ContentBlock, { type: "thinking" }> =>
+            b.type === "thinking" && b.thinking.trim().length === 0,
+        );
+        if (empty) empty.thinking = streamedThinking;
+      }
       const stopReason = (res.stop_reason ?? "end_turn") as StopReason;
       const u = res.usage as {
         input_tokens: number;

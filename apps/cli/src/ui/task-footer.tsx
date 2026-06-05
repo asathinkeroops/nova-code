@@ -7,6 +7,15 @@ import type { SpinnerSpec } from "./store.js";
 
 const MAX_VISIBLE = 5;
 
+// A lone task is noise the model was told not to create in the first place; the
+// plan only earns screen space once it's genuinely multi-step. Exported so the
+// viewport routes the spinner identically — the footer replaces the standalone
+// spinner only when the footer actually renders.
+export const MIN_VISIBLE_TASKS = 2;
+export function taskFooterVisible(tasks: Task[]): boolean {
+  return tasks.length >= MIN_VISIBLE_TASKS;
+}
+
 const STATUS_RANK: Record<TaskStatus, number> = {
   in_progress: 0,
   pending: 1,
@@ -111,7 +120,7 @@ export function TaskFooter({ tasks }: TaskFooterProps): React.ReactElement | nul
     if (spinnerId) setStartedAt(Date.now());
   }, [spinnerId]);
 
-  if (tasks.length === 0) return null;
+  if (!taskFooterVisible(tasks)) return null;
 
   // Stable sort by status priority; original ordering preserved within a status.
   const sorted = tasks

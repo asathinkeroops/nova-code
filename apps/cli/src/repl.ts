@@ -1,5 +1,6 @@
 import { ACCENT_RGB, accent, dim } from "./colors.js";
 import { stopSpinner, type CliContext } from "./context.js";
+import { appendDisplayOverride } from "./display-overrides.js";
 import { predictNextInput } from "./predict.js";
 import { toUiSlashCommands } from "./slash.js";
 
@@ -58,6 +59,18 @@ async function dispatchLine(ctx: CliContext, line: string): Promise<DispatchActi
   }
   const outcome = await hit.cmd.run({ cwd: ctx.workspace }, hit.args);
   if (outcome.kind === "prompt") {
+    // The model receives the expanded prompt, but the transcript should show
+    // what the user actually typed. Record the mapping (in-memory + on-disk so
+    // it survives /resume) only when the command genuinely expanded.
+    if (outcome.text !== line) {
+      ctx.screen.addUserDisplayOverride(outcome.text, line);
+      try {
+        await appendDisplayOverride(ctx.session.dir, outcome.text, line);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        ctx.logger.warn({ err: msg }, "failed to persist display override");
+      }
+    }
     return { kind: "turn", prompt: outcome.text };
   }
   if (outcome.kind === "error") {

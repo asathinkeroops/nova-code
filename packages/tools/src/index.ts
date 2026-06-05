@@ -55,7 +55,6 @@ export {
 export {
   createTaskTool,
   updateTaskTool,
-  getTaskTool,
   getTaskListTool,
   clearTaskListTool,
   createTaskTools,

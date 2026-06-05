@@ -117,6 +117,23 @@ describe("writeTool + readTool round-trip", () => {
     expect(String(cont.output)).toBe("     3\tcccc\n     4\tdddd");
   });
 
+  it("reports a missing file as isError and steers toward glob/grep", async () => {
+    const r = await readTool.run({ path: "nope/missing.ts" }, { cwd: dir });
+    expect(r.isError).toBe(true);
+    const out = String(r.output);
+    expect(out).toContain("no such file: nope/missing.ts");
+    expect(out).toContain("glob/grep");
+    // It must NOT fabricate a concrete glob call that implies the file exists.
+    expect(out).not.toContain("pattern=");
+  });
+
+  it("reports reading a directory as isError", async () => {
+    await mkdir(join(dir, "adir"));
+    const r = await readTool.run({ path: "adir" }, { cwd: dir });
+    expect(r.isError).toBe(true);
+    expect(String(r.output)).toContain("is a directory");
+  });
+
   it("write creates parent directories by default", async () => {
     const res = await writeTool.run(
       { path: "deep/nested/x.txt", content: "x", create_dirs: true },

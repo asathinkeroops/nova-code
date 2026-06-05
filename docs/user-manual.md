@@ -200,7 +200,7 @@ Nova 把「extended thinking」暴露成五个等级，或一个显式的 token 
 
 同一轮里的多个 `createSubAgent` 调用会**并发执行**（受 `toolConcurrency` 限制）。父 agent 只会收到每个子 agent 的**最终一条消息**——庞大的中间调查被挡在主上下文之外。
 
-通过 `settings.subagent` 配置：`enabled` / `model`（默认随父模型）/ `maxTurns`（默认 30）/ `maxTokens`（默认 8192）。每个子 agent 的 transcript 落在 `~/.nova/sessions/{id}/subagents/`。
+通过 `settings.subagent` 配置：`enabled` / `model`（默认随父模型）/ `maxTurns`（默认 50）/ `maxTokens`（默认 32768）。每个子 agent 的 transcript 落在 `~/.nova/sessions/{id}/subagents/`。子 agent 触顶 `maxTurns` 时不再直接报错丢弃，而是追加一轮「禁用工具、立即收尾」的请求,让它基于已收集信息产出一份尽力而为的报告。
 
 > 注：子 agent 调用 todo/task/长任务这类「有状态」工具时，操作的是**父 session** 的共享存储。
 
@@ -255,7 +255,7 @@ Nova 把「extended thinking」暴露成五个等级，或一个显式的 token 
 
 ### 计划管理：Task（工作区内，落盘持久）
 
-`createTask` / `updateTask` / `getTask` / `getTaskList` / `clearTaskList`——更大、值得跨会话保留的计划，落盘到工作区的 `.tasks/{id}.json`。支持 `blockedBy` 依赖关系，允许多个并行 `in_progress`。
+`createTask` / `updateTask` / `getTaskList` / `clearTaskList`——更大、值得跨会话保留的计划，落盘到工作区的 `.tasks/{id}.json`。支持 `blockedBy` 依赖关系，允许多个并行 `in_progress`。
 
 ### 后台长任务
 
@@ -545,7 +545,7 @@ Nova 可在启动时连接外部 [MCP](https://modelcontextprotocol.io) 服务�
 | `model` | `"claude-sonnet-4-5"` | 模型 id |
 | `baseURL` | （无） | Anthropic 兼容端点 URL |
 | `sessionDir` | （无→ `~/.nova/sessions`） | session 存放目录 |
-| `maxTokens` | `8192` | 单次响应输出上限 |
+| `maxTokens` | `32768` | 单次响应输出上限（DeepSeek 端点上限 8192，需手动调低） |
 | `contextWindowTokens` | `1000000` | 上下文窗口大小（用于压缩阈值估算） |
 | `maxTurns` | `40` | 单轮最大循环次数 |
 | `toolConcurrency` | `3` | 单轮内工具并发上限（1 = 全串行） |
@@ -609,7 +609,7 @@ Nova 可在启动时连接外部 [MCP](https://modelcontextprotocol.io) 服务�
 | `memory.userPaths` / `globalPath` | （无） | 覆盖用户层/全局记忆路径 |
 | `slash.enabled` | `true` | 自定义 slash 命令开关；`projectDirs`/`userPaths`/`extraDirs` 额外目录 |
 | `skills.enabled` | `true` | Skills 开关；`maxIndexBytes`=8192、`maxResponseBytes`=16384，及额外目录 |
-| `subagent.enabled` | `true` | 子 agent 开关；`model`（默认随父）/`maxTurns`=30/`maxTokens`=8192 |
+| `subagent.enabled` | `true` | 子 agent 开关；`model`（默认随父）/`maxTurns`=50/`maxTokens`=32768 |
 | `lsp.*` | `enabled:true` | LSP，见 [§17](#17-lsp-代码智能) |
 | `mcp.*` | `enabled:true` | MCP，见 [§16](#16-mcp-外部工具) |
 | `sandbox.*` | `enabled:true` | 命令沙箱，见 [§11](#11-命令沙箱) |

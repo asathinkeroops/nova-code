@@ -66,7 +66,11 @@ export const settingsSchema = z.object({
   model: z.string().default("claude-sonnet-4-5"),
   baseURL: z.string().url().optional(),
   sessionDir: z.string().min(1).optional(),
-  maxTokens: z.number().int().positive().default(8192),
+  // Per-response output cap. 32768 suits the default Claude model, which can
+  // emit long single turns (writing a file, a thorough report) without tripping
+  // the loop's max_tokens hard-stop. DeepSeek's Anthropic-compatible endpoint
+  // caps output at 8192 — DeepSeek users should lower this in nova.config.json.
+  maxTokens: z.number().int().positive().default(32768),
   contextWindowTokens: z.number().int().positive().default(1_000_000),
   maxTurns: z.number().int().positive().default(40),
   // Max tool executions to run concurrently within a single turn. Calls beyond
@@ -224,15 +228,15 @@ export const settingsSchema = z.object({
       projectDirs: z.array(z.string().min(1)).optional(),
       userPaths: z.array(z.string().min(1)).optional(),
       extraDirs: z.array(z.string().min(1)).optional(),
-      maxTurns: z.number().int().positive().default(30),
+      maxTurns: z.number().int().positive().default(50),
       // Per-response output cap for the sub-agent loop, tunable independently
       // of the top-level maxTokens. A sub-agent's final message is a single
       // consolidated report, so a small budget risks the loop's max_tokens
-      // hard-stop. 8192 is the safe ceiling for DeepSeek's Anthropic-compatible
-      // endpoint.
-      maxTokens: z.number().int().positive().default(8192),
+      // hard-stop. 32768 matches the top-level default; DeepSeek's
+      // Anthropic-compatible endpoint caps output at 8192 — lower it there.
+      maxTokens: z.number().int().positive().default(32768),
     })
-    .default({ enabled: true, maxTurns: 30, maxTokens: 8192 }),
+    .default({ enabled: true, maxTurns: 50, maxTokens: 32768 }),
   // OS-level command sandbox (@anthropic-ai/sandbox-runtime). Opt-out
   // (default ON). When enabled, tools that spawn a subprocess (bash,
   // runLongRunningCommand) run inside a platform sandbox — macOS Seatbelt via

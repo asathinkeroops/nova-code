@@ -23,7 +23,6 @@ export const DEFAULT_PERMISSION_RULES: readonly PermissionRule[] = [
   { tool: "clearTodoList", effect: "allow" },
   { tool: "createTask", effect: "allow" },
   { tool: "updateTask", effect: "allow" },
-  { tool: "getTask", effect: "allow" },
   { tool: "getTaskList", effect: "allow" },
   { tool: "clearTaskList", effect: "allow" },
   { tool: "loadSkill", effect: "allow" },

@@ -4,6 +4,7 @@ import {
   assistantMessage,
   blocksOf,
   extractToolUses,
+  userText,
   userToolResults,
 } from "./messages.js";
 import type { ModelClient } from "./model.js";
@@ -70,6 +71,7 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
   const { hooks } = opts;
   let messages = [...opts.messages];
   let turn = 0;
+  let forcedFinalTurn = false;
   const totalUsage = {
     inputTokens: 0,
     outputTokens: 0,
@@ -80,9 +82,26 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
   // eslint-disable-next-line no-constant-condition
   while (true) {
     if (turn >= opts.maxTurns) {
-      throw new Error(
-        `agentLoop exceeded maxTurns=${opts.maxTurns} without an end_turn — possible runaway loop.`,
+      if (forcedFinalTurn) {
+        // The tool-free wrap-up turn already ran and the model STILL kept
+        // calling tools instead of answering. Now we bail for real.
+        throw new Error(
+          `agentLoop exceeded maxTurns=${opts.maxTurns} without an end_turn — possible runaway loop.`,
+        );
+      }
+      // Graceful degradation: rather than discarding everything the agent has
+      // gathered, grant one final tool-free turn so it can produce a
+      // best-effort answer. Tools are stripped from the request below, so the
+      // model cannot keep working and must respond with text (→ end_turn →
+      // return). This costs one model call beyond maxTurns by design.
+      forcedFinalTurn = true;
+      messages = appendMessage(
+        messages,
+        userText(
+          `You have reached the maximum of ${opts.maxTurns} turns. Do not call any more tools — provide your final response now based on what you have gathered so far.`,
+        ),
       );
+      await hooks.runAdvisory("post_messages", { messages });
     }
     turn++;
 
@@ -100,7 +119,7 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
     const baseRequest = {
       system: opts.system,
       messages,
-      tools: opts.tools,
+      tools: forcedFinalTurn ? [] : opts.tools,
       maxTokens: opts.maxTokens,
       ...(opts.thinkingBudgetTokens && opts.thinkingBudgetTokens > 0
         ? { thinkingBudgetTokens: opts.thinkingBudgetTokens }

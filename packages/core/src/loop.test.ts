@@ -556,6 +556,43 @@ describe("agentLoop · stop_reason state machine", () => {
     ).rejects.toThrow(/maxTurns=3/);
   });
 
+  it("grants a tool-free wrap-up turn on hitting maxTurns instead of discarding work", async () => {
+    const { hooks } = makeHooks();
+    const seenTools: ToolDefinition[][] = [];
+    let calls = 0;
+    const model: ModelClient = {
+      async call(req): Promise<AssistantTurn> {
+        seenTools.push(req.tools);
+        calls++;
+        // First maxTurns calls keep working; the forced wrap-up turn answers.
+        if (calls <= 3) {
+          return {
+            content: [
+              { type: "tool_use", id: `t-${calls}`, name: "echo", input: { msg: "x" } },
+            ],
+            stopReason: "tool_use",
+          };
+        }
+        return { content: [{ type: "text", text: "best-effort answer" }], stopReason: "end_turn" };
+      },
+    };
+    const result = await agentLoop({
+      ...baseOpts(hooks),
+      model,
+      executeTool: makeExecutor(),
+      maxTurns: 3,
+    });
+
+    expect(result.stopReason).toBe("end_turn");
+    // The wrap-up turn ran with tools stripped so the model had to answer.
+    expect(seenTools[3]).toEqual([]);
+    // A wrap-up instruction was injected before the final turn.
+    const injected = result.messages.find(
+      (m) => m.role === "user" && typeof m.content === "string" && /maximum of 3 turns/.test(m.content),
+    );
+    expect(injected).toBeDefined();
+  });
+
   it("emits assistant / user / stop advisory events around a tool_use turn", async () => {
     const { hooks, events } = makeHooks();
     const model = mockModel([

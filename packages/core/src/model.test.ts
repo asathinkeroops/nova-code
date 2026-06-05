@@ -260,3 +260,66 @@ describe("createAnthropicModel onStreamText", () => {
     expect(seen).toEqual([{ text: "hi" }]);
   });
 });
+
+describe("createAnthropicModel thinking backfill", () => {
+  beforeEach(() => {
+    mockCreate.mockReset();
+    streamEvents = [];
+  });
+
+  function thinkingDelta(thinking: string) {
+    return { type: "content_block_delta", delta: { type: "thinking_delta", thinking } };
+  }
+
+  it("backfills streamed reasoning into an empty thinking block from finalMessage", async () => {
+    // DeepSeek streams the reasoning (live preview) but reconstructs an EMPTY
+    // thinking block in finalMessage — the adapter must re-attach the text.
+    mockCreate.mockResolvedValueOnce({
+      content: [
+        { type: "thinking", thinking: "", signature: "" },
+        { type: "text", text: "answer" },
+      ],
+      stop_reason: "end_turn",
+      usage: { input_tokens: 1, output_tokens: 1 },
+    });
+    streamEvents = [thinkingDelta("let me "), thinkingDelta("reason")];
+    const m = createAnthropicModel({ apiKey: "x", model: "deepseek-reasoner" });
+    const res = await m.call({ ...baseReq, thinkingBudgetTokens: 16_000 });
+    expect(res.content[0]).toEqual({
+      type: "thinking",
+      thinking: "let me reason",
+      signature: "",
+    });
+  });
+
+  it("does not clobber a thinking block that already carries text", async () => {
+    mockCreate.mockResolvedValueOnce({
+      content: [{ type: "thinking", thinking: "real reasoning", signature: "sig" }],
+      stop_reason: "end_turn",
+      usage: { input_tokens: 1, output_tokens: 1 },
+    });
+    streamEvents = [thinkingDelta("streamed but should be ignored")];
+    const m = createAnthropicModel({ apiKey: "x", model: "claude-sonnet-4-5" });
+    const res = await m.call({ ...baseReq, thinkingBudgetTokens: 16_000 });
+    expect(res.content[0]).toEqual({
+      type: "thinking",
+      thinking: "real reasoning",
+      signature: "sig",
+    });
+  });
+
+  it("leaves content untouched when no reasoning was streamed", async () => {
+    mockCreate.mockResolvedValueOnce({
+      content: [
+        { type: "thinking", thinking: "", signature: "" },
+        { type: "text", text: "answer" },
+      ],
+      stop_reason: "end_turn",
+      usage: { input_tokens: 1, output_tokens: 1 },
+    });
+    streamEvents = [delta("answer")];
+    const m = createAnthropicModel({ apiKey: "x", model: "deepseek-chat" });
+    const res = await m.call({ ...baseReq });
+    expect(res.content[0]).toEqual({ type: "thinking", thinking: "", signature: "" });
+  });
+});

@@ -15,8 +15,8 @@ import { buildLiveDraftItems, buildRenderItems } from "./render-item.js";
 import { blinkPendingOff, hasPendingDot } from "./render-strings.js";
 import { Spinner } from "./spinner.js";
 import type { AppStoreApi, ModalState } from "./store.js";
-import { TaskFooter } from "./task-footer.js";
-import { TodoFooter } from "./todo-footer.js";
+import { MIN_VISIBLE_TASKS, TaskFooter, taskFooterVisible } from "./task-footer.js";
+import { MIN_VISIBLE_TODOS, TodoFooter, todoFooterVisible } from "./todo-footer.js";
 
 const MIN_ROWS = 3;
 
@@ -54,6 +54,7 @@ export function Viewport({ store, rows, resolveModal }: ViewportProps): React.Re
     todos,
     tasks,
     selection,
+    userDisplayOverrides,
   } = store(
     useShallow((s) => ({
       banner: s.banner,
@@ -69,6 +70,7 @@ export function Viewport({ store, rows, resolveModal }: ViewportProps): React.Re
       todos: s.todos,
       tasks: s.tasks,
       selection: s.selection,
+      userDisplayOverrides: s.userDisplayOverrides,
     })),
   );
   const reportViewportMetrics = store.getState().reportViewportMetrics;
@@ -80,9 +82,10 @@ export function Viewport({ store, rows, resolveModal }: ViewportProps): React.Re
         banner,
         messages,
         cards,
+        userDisplayOverrides,
         ...(thinkingLabel !== undefined ? { thinkingLabel } : {}),
       }),
-    [banner, messages, cards, thinkingLabel],
+    [banner, messages, cards, thinkingLabel, userDisplayOverrides],
   );
   // Streaming draft items are built separately and appended, so the transcript's
   // measure-cache (keyed by item identity) stays warm while only the draft
@@ -103,6 +106,7 @@ export function Viewport({ store, rows, resolveModal }: ViewportProps): React.Re
   // row or two of padding above the text; under-reservation pushes content
   // up by 1-2 rows (terminal scroll) which alt-screen absorbs cleanly.
   const inStreamModal = modal && modal.kind !== "input" ? modal : null;
+  const anyFooterVisible = todoFooterVisible(todos) || taskFooterVisible(tasks);
   const usable = Math.max(MIN_ROWS, rows);
   // Clamp to usable-1 so the text region keeps at least one row; a modal taller
   // than the viewport (very short terminal) is the only case this bites.
@@ -174,8 +178,12 @@ export function Viewport({ store, rows, resolveModal }: ViewportProps): React.Re
   return (
     <Box flexDirection="column" flexGrow={1} flexShrink={1} overflowY="hidden">
       {displayLines.length > 0 ? <Text>{displayLines.join("\n")}</Text> : null}
-      {spinner && todos.length === 0 && tasks.length === 0 ? <Spinner spec={spinner} /> : null}
-      {spinner && (todos.length > 0 || tasks.length > 0) ? (
+      {/* A visible footer carries its own spinner and replaces the standalone
+          one; route on whether either footer will actually render (>= 2 items),
+          not on whether any todo/task exists — otherwise a lone item suppresses
+          the standalone spinner without drawing a footer to take its place. */}
+      {spinner && !anyFooterVisible ? <Spinner spec={spinner} /> : null}
+      {spinner && anyFooterVisible ? (
         <>
           <TaskFooter tasks={tasks} />
           <TodoFooter todos={todos} />
@@ -215,14 +223,20 @@ function chromeRowsFor(
         return 0;
     }
   }
+  // A footer only renders (and only replaces the standalone spinner) once it
+  // clears its visibility threshold; a lone item draws neither footer nor an
+  // extra row, so it falls back to the standalone spinner's full reservation.
+  const showTodos = todos >= MIN_VISIBLE_TODOS;
+  const showTasks = tasks >= MIN_VISIBLE_TASKS;
   let n = 0;
   if (spinner) {
     // The standalone spinner line carries a blank above and below (marginTop +
-    // marginBottom); when todos/tasks render instead, only its top spacing
-    // applies since the footers replace the line.
-    n += todos === 0 && tasks === 0 ? 3 : 2;
+    // marginBottom); when a footer renders instead, only its top spacing
+    // applies since the footer replaces the line.
+    n += showTodos || showTasks ? 2 : 3;
   }
-  if (todos > 0 || tasks > 0) n += todos + tasks;
+  if (showTodos) n += todos;
+  if (showTasks) n += tasks;
   return n;
 }
 

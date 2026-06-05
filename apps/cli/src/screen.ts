@@ -306,6 +306,16 @@ export class Screen {
     this.store.getState().setMessages(messages);
   }
 
+  /** Replace the slash-expansion display-override map (e.g. on resume). */
+  setUserDisplayOverrides(overrides: Record<string, string>): void {
+    this.store.getState().setUserDisplayOverrides(overrides);
+  }
+
+  /** Record one expanded-text → original-input display override. */
+  addUserDisplayOverride(expanded: string, rawInput: string): void {
+    this.store.getState().addUserDisplayOverride(expanded, rawInput);
+  }
+
   /**
    * Read the canonical message array. The store is the single source of
    * truth for conversation history; everything that previously held a

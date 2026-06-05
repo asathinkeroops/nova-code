@@ -40,7 +40,7 @@ export const readTool: ToolHandler = {
   definition: {
     name: "read",
     description:
-      "Read a text file from disk. Output is line-numbered (`<line>\\t<text>`, `cat -n` style, 1-based); returns up to `limit` lines (and at most ~200K characters) per call. If more remains, the result tells you the exact read(path, offset) call to continue from. The line-number prefix is display only — strip it before passing text to `edit`.",
+      "Read a text file from disk. Output is line-numbered (`<line>\\t<text>`, `cat -n` style, 1-based); returns up to `limit` lines (and at most ~200K characters) per call. If more remains, the result tells you the exact read(path, offset) call to continue from. The line-number prefix is display only — strip it before passing text to `edit`. If you're unsure of the exact path, locate the file with glob/grep first rather than guessing.",
     inputSchema,
   },
   async run(rawInput, ctx) {
@@ -50,6 +50,23 @@ export const readTool: ToolHandler = {
     try {
       raw = await readFile(abs, "utf8");
     } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      // A bare ENOENT/EISDIR is a dead end the model tends to "recover" from by
+      // guessing another path. Point it at glob/grep instead — but don't fabricate
+      // a concrete call: the file may not exist anywhere, and the right glob args
+      // depend on the path, so let the model drive the search.
+      if (code === "ENOENT") {
+        return {
+          output: `read failed: no such file: ${input.path}. It may not exist at this path (or anywhere) — use glob/grep to locate it rather than guessing another path.`,
+          isError: true,
+        };
+      }
+      if (code === "EISDIR") {
+        return {
+          output: `read failed: ${input.path} is a directory, not a file. Use glob to list its contents or grep to search inside it.`,
+          isError: true,
+        };
+      }
       const msg = err instanceof Error ? err.message : String(err);
       return { output: `read failed: ${msg}`, isError: true };
     }

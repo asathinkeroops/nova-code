@@ -100,7 +100,7 @@ function formatModel(b: BannerProps): string {
         return `${b.model}[${window}]`;
       })()
     : b.model;
-  return b.thinkingLabel ? `${base} with ${b.thinkingLabel} effort` : base;
+  return b.thinkingLabel ? `${base} with ${accent(bold(b.thinkingLabel))} effort` : base;
 }
 
 function renderBanner(b: BannerProps, width: number): string {

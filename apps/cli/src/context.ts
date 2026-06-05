@@ -57,6 +57,7 @@ import {
   handleCommands,
   handleCompact,
   handleHelp,
+  handleInit,
   handleLsp,
   handleMcp,
   handlePlan,
@@ -69,6 +70,7 @@ import {
   handleThink,
 } from "./commands/index.js";
 import { TOOL_SPINNER_DELAY_MS, WORKING_WORDS } from "./constants.js";
+import { loadDisplayOverrides } from "./display-overrides.js";
 import { registerUiHooks } from "./hooks.js";
 import { SnapshotStore } from "./snapshots.js";
 import { renderSkillsBlock } from "./skills-render.js";
@@ -343,6 +345,13 @@ function registerBuiltinSlashCommands(ctx: CliContext): void {
       await handleRewind(ctx, args.trim());
       return handled;
     },
+  });
+  ctx.registry.register({
+    name: "init",
+    description: "generate or refresh NOVA.md by analyzing the codebase",
+    argHint: "[focus…]",
+    source: { kind: "builtin" },
+    run: (_c, args) => handleInit(args),
   });
   ctx.registry.register({
     name: "plan",
@@ -966,6 +975,7 @@ export async function createContext(
       // Push the "loaded N" card before setMessages so its anchor (-1) puts
       // it above the restored history rather than below it.
       ctx.screen.card(dim(`loaded ${msgs.length} message(s) from disk`));
+      ctx.screen.setUserDisplayOverrides(await loadDisplayOverrides(session.dir));
       ctx.screen.setMessages(msgs);
       logger.info({ count: msgs.length }, "messages restored");
     } catch (err) {

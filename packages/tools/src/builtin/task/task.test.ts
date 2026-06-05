@@ -6,7 +6,6 @@ import { TaskStore } from "./store.js";
 import {
   createTaskTool,
   getTaskListTool,
-  getTaskTool,
   updateTaskTool,
 } from "./index.js";
 
@@ -35,7 +34,6 @@ function tools() {
     store,
     create: createTaskTool(store),
     update: updateTaskTool(store),
-    get: getTaskTool(store),
     list: getTaskListTool(store),
   };
 }
@@ -151,27 +149,42 @@ describe("updateTask tool", () => {
   });
 });
 
-describe("getTask tool", () => {
-  it("returns the task by id", async () => {
+describe("getTaskList tool", () => {
+  it("fetches a single task by id filter", async () => {
     const t = tools();
     const a = JSON.parse(
       (await t.create.run({ description: "a" }, ctx)).output,
     ) as TaskResult;
-    const res = await t.get.run({ id: a.id }, ctx);
+    await t.create.run({ description: "b" }, ctx);
+    const res = await t.list.run({ id: a.id }, ctx);
     expect(res.isError).toBeUndefined();
-    const task = JSON.parse(res.output) as TaskResult;
-    expect(task.id).toBe(a.id);
+    const tasks = JSON.parse(res.output) as TaskResult[];
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]?.id).toBe(a.id);
   });
 
-  it("returns isError when id is unknown", async () => {
+  it("returns an empty array when the id filter matches nothing", async () => {
     const t = tools();
-    const res = await t.get.run({ id: "missing" }, ctx);
-    expect(res.isError).toBe(true);
-    expect(res.output).toMatch(/not found/);
+    await t.create.run({ description: "a" }, ctx);
+    const res = await t.list.run({ id: "missing" }, ctx);
+    expect(res.isError).toBeUndefined();
+    expect(JSON.parse(res.output)).toEqual([]);
   });
-});
 
-describe("getTaskList tool", () => {
+  it("combines id and status filters", async () => {
+    const t = tools();
+    const a = JSON.parse(
+      (await t.create.run({ description: "a" }, ctx)).output,
+    ) as TaskResult;
+    await t.update.run({ id: a.id, status: "in_progress" }, ctx);
+    expect(
+      JSON.parse((await t.list.run({ id: a.id, status: "in_progress" }, ctx)).output),
+    ).toHaveLength(1);
+    expect(
+      JSON.parse((await t.list.run({ id: a.id, status: "completed" }, ctx)).output),
+    ).toEqual([]);
+  });
+
   it("returns all tasks when no filter", async () => {
     const t = tools();
     await t.create.run({ description: "a" }, ctx);

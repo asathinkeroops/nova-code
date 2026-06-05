@@ -14,7 +14,7 @@ describe("settingsSchema", () => {
   it("applies defaults when empty input is given", () => {
     const s = parseSettings({});
     expect(s.model).toBe("claude-sonnet-4-5");
-    expect(s.maxTokens).toBe(8192);
+    expect(s.maxTokens).toBe(32768);
     expect(s.maxTurns).toBe(40);
     expect(s.permissions.defaultEffect).toBe("ask");
     expect(s.permissions.rules).toEqual([]);
@@ -26,6 +26,9 @@ describe("settingsSchema", () => {
     expect(s.slash.enabled).toBe(true);
     expect(s.slash.projectDirs).toBeUndefined();
     expect(s.slash.userPaths).toBeUndefined();
+    expect(s.subagent.enabled).toBe(true);
+    expect(s.subagent.maxTurns).toBe(50);
+    expect(s.subagent.maxTokens).toBe(32768);
   });
 
   it("accepts slash overrides", () => {

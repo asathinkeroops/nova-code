@@ -227,6 +227,15 @@ export interface AppState {
    * is empty. Refreshed by the REPL after each turn.
    */
   inputPlaceholder: string;
+  /**
+   * Map of expanded-model-text → original user input for slash commands that
+   * expand into a longer prompt (e.g. `/agent`). The renderer shows the
+   * original input for any user message whose content matches a key, so the
+   * transcript reflects what the user typed rather than the expansion sent to
+   * the model. Persisted per-session in `display-overrides.jsonl` and reloaded
+   * on `/resume` / `-c`; cleared on `/clear` (reset).
+   */
+  userDisplayOverrides: Record<string, string>;
 }
 
 export interface SelectionRect {
@@ -307,6 +316,10 @@ export interface AppActions {
   requestExit: () => void;
   setSlashCommands: (commands: SlashCommand[]) => void;
   setInputPlaceholder: (text: string) => void;
+  /** Replace the display-override map (used on resume to seed from disk). */
+  setUserDisplayOverrides: (overrides: Record<string, string>) => void;
+  /** Record one expanded-text → original-input override. */
+  addUserDisplayOverride: (expanded: string, rawInput: string) => void;
 }
 
 export type AppStoreState = AppState & AppActions;
@@ -405,6 +418,7 @@ export function createAppStore(): AppStoreApi {
       inputQueue: [],
       slashCommands: [],
       inputPlaceholder: "",
+      userDisplayOverrides: {},
 
       // ===== Actions =====
       pushCard(text, opts = {}) {
@@ -597,6 +611,7 @@ export function createAppStore(): AppStoreApi {
           viewportTotalLines: 0,
           viewportRows: 0,
           contextTokens: 0,
+          userDisplayOverrides: {},
         });
         // banner, thinkingLabel, and the session-level status meta
         // (sessionStartedAt / gitBranch / contextWindowTokens) are intentionally
@@ -734,6 +749,16 @@ export function createAppStore(): AppStoreApi {
       setInputPlaceholder(text) {
         if (get().inputPlaceholder === text) return;
         set({ inputPlaceholder: text });
+      },
+
+      setUserDisplayOverrides(overrides) {
+        set({ userDisplayOverrides: overrides });
+      },
+
+      addUserDisplayOverride(expanded, rawInput) {
+        set((s) => ({
+          userDisplayOverrides: { ...s.userDisplayOverrides, [expanded]: rawInput },
+        }));
       },
     };
   });

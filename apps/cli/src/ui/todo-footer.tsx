@@ -7,6 +7,15 @@ import type { SpinnerSpec } from "./store.js";
 
 const MAX_VISIBLE = 5;
 
+// A lone todo is noise the model was told not to create in the first place; the
+// checklist only earns screen space once it's genuinely multi-step. Exported so
+// the viewport routes the spinner identically — the footer replaces the
+// standalone spinner only when the footer actually renders.
+export const MIN_VISIBLE_TODOS = 2;
+export function todoFooterVisible(todos: Todo[]): boolean {
+  return todos.length >= MIN_VISIBLE_TODOS;
+}
+
 const STATUS_RANK: Record<TodoStatus, number> = {
   in_progress: 0,
   pending: 1,
@@ -104,7 +113,7 @@ export function TodoFooter({ todos }: TodoFooterProps): React.ReactElement | nul
     if (spinnerId) setStartedAt(Date.now());
   }, [spinnerId]);
 
-  if (todos.length === 0) return null;
+  if (!todoFooterVisible(todos)) return null;
 
   // Stable sort by status priority; original ordering preserved within a status.
   const sorted = todos

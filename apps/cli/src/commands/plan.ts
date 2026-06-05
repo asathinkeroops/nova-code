@@ -19,6 +19,9 @@ export function handlePlan(goal: string): SlashOutcome {
     'Spawn a sub-agent with createSubAgent (type: "plan") to investigate the ' +
     "relevant code and return a step-by-step plan (which files to change, in " +
     "what order, key tradeoffs), then present that plan to me for review.\n\n" +
+    "Write the plan and your reply in the same language, script, and regional " +
+    "variant as the task goal below (e.g. keep Simplified Chinese as Simplified, " +
+    "not Traditional).\n\n" +
     `Task goal:\n${trimmed}`;
   return { kind: "prompt", text };
 }

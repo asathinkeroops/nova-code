@@ -52,7 +52,6 @@ const HIDDEN_TOOLS = new Set([
   "clearTodoList",
   "createTask",
   "updateTask",
-  "getTask",
   "getTaskList",
   "clearTaskList",
   "checkLongRunningCommand",
@@ -87,6 +86,13 @@ export interface BuildOpts {
   messages: MessageParam[];
   cards: Card[];
   thinkingLabel?: string;
+  /**
+   * Map of expanded-model-text → original user input for slash commands that
+   * expand into a longer prompt (e.g. `/agent`). When a user message's text
+   * matches a key, the renderer shows the original input instead. See
+   * `display-overrides.ts`.
+   */
+  userDisplayOverrides?: Record<string, string>;
 }
 
 /**
@@ -96,7 +102,7 @@ export interface BuildOpts {
  * last. Adjacent `read` tool calls collapse into a single ReadBatch.
  */
 export function buildRenderItems(opts: BuildOpts): RenderItem[] {
-  const { banner, messages, cards, thinkingLabel } = opts;
+  const { banner, messages, cards, thinkingLabel, userDisplayOverrides } = opts;
   const items: RenderItem[] = [];
   let n = 0;
   const nextKey = (prefix: string): string => `${prefix}#${n++}`;
@@ -124,7 +130,7 @@ export function buildRenderItems(opts: BuildOpts): RenderItem[] {
     if (!msg) continue;
 
     if (msg.role === "user") {
-      appendUserItems(items, msg, nextKey);
+      appendUserItems(items, msg, nextKey, userDisplayOverrides);
     } else {
       appendAssistantItems(items, msg, resultIndex, thinkingLabel, nextKey);
     }
@@ -177,14 +183,18 @@ function appendUserItems(
   items: RenderItem[],
   msg: MessageParam,
   nextKey: (p: string) => string,
+  overrides: Record<string, string> | undefined,
 ): void {
+  // Prefer the user's original typed input over the expanded model text for
+  // slash commands that expand (e.g. `/agent`). Keyed by exact content.
+  const display = (text: string): string => overrides?.[text] ?? text;
   if (typeof msg.content === "string") {
     if (isSystemInjectionText(msg.content)) return;
     items.push({ kind: "spacer", key: nextKey("sp") });
     items.push({
       kind: "user-text",
       key: nextKey("user"),
-      text: msg.content,
+      text: display(msg.content),
     });
     return;
   }
@@ -193,7 +203,7 @@ function appendUserItems(
     if (b.text.trim().length === 0) continue;
     if (isSystemInjectionText(b.text)) continue;
     items.push({ kind: "spacer", key: nextKey("sp") });
-    items.push({ kind: "user-text", key: nextKey("user"), text: b.text });
+    items.push({ kind: "user-text", key: nextKey("user"), text: display(b.text) });
   }
 }
 
@@ -217,6 +227,12 @@ function appendAssistantItems(
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i] as ContentBlock;
     if (block.type === "thinking") {
+      // Skip empty thinking blocks (a pure tool-call turn where the model
+      // produced no reasoning) — otherwise they render as a dangling
+      // "✻ thinking" header with nothing under it. Mirrors the live-draft
+      // guard in buildLiveDraftItems. `redacted_thinking` still renders: it
+      // stands in for encrypted reasoning that genuinely exists.
+      if (block.thinking.trim().length === 0) continue;
       push({
         kind: "thinking",
         key: nextKey("th"),
