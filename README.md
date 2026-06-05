@@ -4,30 +4,51 @@
 
 > 一个跑在终端里的 coding agent，深度适配 DeepSeek。
 
-Nova 是一个终端里的编码 agent —— 读代码、跑命令、改文件，通过工具调用把一项任务推到完成。内部消息走的是 Anthropic 的格式，但模型层是围绕 **DeepSeek** 做的：thinking 接到 DeepSeek 的 `output_config.effort`（而不是 Anthropic 的 `budget_tokens`），wire format 会根据模型 id 自动判断，请求结构和上下文管理的默认值都做得**对缓存友好**，让 DeepSeek 的自动上下文缓存持续命中，默认 prompt 和权限规则也按 DeepSeek 的表现调过。其他 Anthropic 兼容端点也能跑，只是 DeepSeek 是第一优先级。
+Nova 是一个终端里的编码 agent —— 读代码、跑命令、改文件，通过工具调用把一项任务推到完成。内部消息走 Anthropic 的格式，但模型层是围绕 **DeepSeek** 做的：thinking 接到 DeepSeek 的 `output_config.effort`（而非 Anthropic 的 `budget_tokens`），wire format 按模型 id 自动判别，请求结构和上下文管理的默认值都对**缓存友好**，让 DeepSeek 的自动上下文缓存持续命中，默认 prompt 与权限规则也按 DeepSeek 的表现调过。其他 Anthropic 兼容端点也能跑，DeepSeek 是第一优先级。
 
-底层上 Nova 是一个 loop-centric 的 harness：`@nova/core` 提供模型无关的 agent loop 和统一的 `HookRegistry` 扩展点，工具、权限、上下文、可观测性、skills、slash 命令都从这里接入；`@nova/agent` 把 loop 封成按 turn 跑的 `createAgent`，自带持久化和 transcript 写入；`apps/cli` 是真正在跑的入口 —— `nova` 二进制，一个全屏 Ink/React REPL，支持鼠标滚动/选区和实时状态行。
+底层是一个 loop-centric 的 harness：`@nova/core` 提供模型无关的 agent loop 和**唯一的扩展点 `HookRegistry`**，工具、权限、上下文、可观测性、skills、slash 命令全从这里接入；`@nova/agent` 把 loop 封成按 turn 跑的 `createAgent`，自带持久化与 transcript 写入；`apps/cli` 是真正在跑的入口 —— `nova` 二进制，一个全屏 Ink/React REPL，带鼠标滚动/选区与实时状态行。
 
-loop 以**有界并发**跑工具调用（每轮默认 3 个），模型还能通过 `createSubAgent` 工具派生**子 agent** —— 全新上下文的 worker（`explore` / `plan` / `general-purpose`），在进程内运行、只把一条最终消息汇报回来，从而把庞大的调查过程挡在主上下文之外。
+---
 
-## 核心能力
+## 核心功能
 
-- **DeepSeek 深度定制** *(头号特性)* —— thinking 映射到 DeepSeek 的 `output_config.effort`（而非 `budget_tokens`），wire format 按模型 id 自动判断，请求结构保持逐字节稳定以持续命中 DeepSeek 的自动上下文缓存，以及 DeepSeek 错误码翻译（400/401/402/422/429/500/503）并对瞬时错误内部重试。其他 Anthropic 兼容端点也能跑。
-- **Agentic 编码循环** —— 读代码、改文件、跑命令，通过工具调用把任务推到完成；一轮内相互独立的工具调用以有界并发运行（默认 3 个）。
-- **代码与系统工具** —— 文件 read / write / edit、`glob` + `grep` 搜索、`bash` 与长时命令、web fetch / search、notebook 编辑、ask-user 询问。
-- **LSP 代码智能** —— `lsp` 工具直连语言服务器（JSON-RPC/stdio），提供 go-to-definition、find-references、hover、diagnostics 和符号搜索，比 grep 更懂作用域与类型；只读、默认放行，按需懒启动。
-- **扩展 thinking** —— `off` / `low` / `medium` / `high` / `max`，或显式的 token 预算。
-- **Plan 模式** —— `/plan` 委派一次只读调查，在动手改动前返回分步计划。
-- **子 agent** —— 全新上下文的 `explore` / `plan` / `general-purpose` worker，把庞大的调查过程挡在主上下文之外。
-- **Memory** —— CLAUDE.md 式的项目与用户 memory，每个目录按 `NOVA.md` > `CLAUDE.md` > `AGENTS.md`（最高者胜，不合并）。
-- **上下文管理** —— append-only 历史，上下文窗口压力下自动压缩。
-- **权限** —— 基于规则的拦截，默认 **ask**，read 按 cwd 作用域放行，以交互式审批呈现。
-- **Skills** —— 启动时扫描 `SKILL.md`，把索引注入 prompt，并通过 `loadSkill` 按需拉取全文。
-- **Slash 命令** —— 内置命令，外加从项目 / 用户目录自动加载的自定义 `.md` 命令。
+**它能干什么**——一个完整的 agentic 编码工作台：
+
+- **Agentic 编码循环** —— 读代码、改文件、跑命令，通过工具调用把任务推到完成；同一轮里相互独立的工具调用以**有界并发**运行（默认 3 个）。
+- **代码与系统工具** —— 文件 `read`（带行号 + 分页）/ `write` / `edit`、`glob` + `grep` 搜索、`bash`（60s 硬上限）与长时命令 `runLongRunningCommand`、`webfetch` / `websearch`、`notebook` 编辑、`askUserQuestion` 询问、todo / task 清单。
+- **子 agent** —— 模型用 `createSubAgent` 把活儿派给**全新上下文**的 worker；内置 `explore` / `plan` / `general-purpose`，并支持用 `.md` 文件自定义任意类型。
+- **LSP 代码智能** —— `lsp` 工具直连语言服务器（JSON-RPC/stdio），提供定义跳转、引用查找、hover、diagnostics 和符号搜索，比 grep 更懂作用域与类型。
+- **Memory** —— CLAUDE.md 式的项目与用户 memory，每个目录按 `NOVA.md` > `CLAUDE.md` > `AGENTS.md`（最高者胜，不合并）；`/init` 一键生成或刷新。
+- **Skills** —— 启动时扫描 `SKILL.md`，把索引注入 prompt，按需 `loadSkill` 拉全文。
+- **Slash 命令** —— 内置命令 + 从项目/用户目录自动加载的自定义 `.md` 命令。
 - **MCP** —— 连接外部 [MCP](https://modelcontextprotocol.io) 服务器（stdio / http / sse），把工具桥接给模型，并受权限管控。
-- **Hooks** —— 一切都从单一扩展点接入：权限、压缩、transcript 写入、UI 更新、流式输出。
-- **会话与检查点** —— 可恢复的会话（`--resume` / `--continue`）配合 append-only 持久化；`/rewind` 回到更早的节点。
+- **会话与检查点** —— 可恢复会话（`--resume` / `--continue`）配合 append-only 持久化；`/rewind` 回到更早的节点。
 - **交互式 TUI** —— 全屏 REPL，带实时流式输出、鼠标滚动与选区、实时状态行，以及下一步输入预测。
+
+## 产品亮点
+
+**用户能直接感知的差异化**：
+
+- **开箱即用的 DeepSeek 调优** —— 不用调 `cache_control`、不用猜 wire format、不用翻错误码文档：装好填 key 就跑，thinking 等级、缓存命中、错误提示都是 DeepSeek 语境下调过的默认值。
+- **`.md` 自定义子 agent** —— 把一个 Markdown 文件丢进 `.nova/agents/`（兼容 `.claude/agents/`），frontmatter 声明 `name` / `description` / `tools`（工具白名单）/ `readOnly` / `model` / `maxTurns` / `maxTokens`，正文即角色指令 —— 立刻成为一个新的子 agent 类型，`/agents` 可见、`/agent <name> <task>` 可调、模型也能自己 `createSubAgent` 派发。
+- **Plan 模式** —— `/plan <goal>` 委派一次**只读**调查，在动手改动前返回分步计划与关键权衡。
+- **干净的命令 UI** —— `/agent`、`/plan`、`/init` 这类会展开成长 prompt 的命令，在历史里仍显示你**原始键入的短输入**（display override），不被冗长的展开文本刷屏。
+- **沙箱默认开** —— 子进程的文件写入被 OS 级沙箱限制在工作区内，不支持的平台自动降级，无需配置即享纵深防御。
+- **可恢复 + 可回退** —— `--continue` 接着上次干，`/rewind` 丢弃某条消息之后的历史与文件改动回到更早节点，`/compact` 把历史压成一条摘要。
+- **可读的报错** —— 工具输入校验错误被翻译成人话（如 `command is required (expected string)`），而不是甩一坨 zod issue JSON。
+
+## 技术亮点
+
+**工程上的关键设计**：
+
+- **单一扩展点的 loop** —— `@nova/core` 的 agent loop 只有一个 `HookRegistry` 扩展点：权限、压缩、transcript 写入、UI 更新、流式输出全是 hook。**阻塞型** hook（`pre_*` / `post_tool_use`）可返回 loop 必须遵守的决策（首个非 undefined 胜）；**advisory** hook（`post_*`）尽力而为、错误被吞、不能改状态。每个 `tool_use` 永远配对一个 `tool_result`，throw 或拒绝也不例外。
+- **缓存友好到设计层** —— 历史 **append-only**、前缀逐字节稳定，让 DeepSeek 的服务端上下文缓存持续命中；磁盘上的 `messages.jsonl` 同样只追加写，只有真正分叉才从分叉点重写。micro 压缩**默认关闭**（它改写更早的 tool_result 会让缓存失效，在 DeepSeek 上净收益为负），auto 压缩仅在窗口吃紧时作为一次有意的前缀重置触发。
+- **DeepSeek wire-format 适配** —— `detectThinkingFormat(model)` 按模型 id 自动选 `deepseek` / `anthropic` 两套 wire format；thinking 预算映射到 effort（`< 32k` → high，`>= 32k` → max）；**thinking backfill** 补上 DeepSeek 流式返回但 `finalMessage()` 丢空的 reasoning 块；7 个错误码（400/401/402/422/429/500/503）翻译成带补救建议的 `DeepSeekApiError` 并对瞬时错误内部重试。
+- **进程内子 agent，全新上下文** —— 子 agent 在进程内运行、永远看不到父对话，工具集是父集减去 `createSubAgent` 本身（不会递归），只把一条最终消息汇报回来，从而把庞大的调查过程挡在主上下文之外；同一轮多个调用并发执行。
+- **OS 级沙箱纵深防御** —— 基于 [`@anthropic-ai/sandbox-runtime`](https://github.com/anthropic-experimental/sandbox-runtime)（macOS Seatbelt / Linux bubblewrap），把 `bash` 和长任务的**文件写入**限制在工作区根目录，叠在权限引擎之上，不替代它。
+- **zod 边界 + 严格的依赖方向** —— 工具输入、settings、一切跨包边界都有 zod schema；`@nova/core` 模型无关、永不 import 模型 SDK / 工具实现 / UI；monorepo 依赖方向单向不可逆（见[仓库结构](#仓库结构)）。
+
+---
 
 ## 快速开始
 
@@ -57,6 +78,8 @@ pnpm dev [prompt...]                # 先跑一轮初始 prompt，再留在 REPL
   --no-pretty                       # 关闭 pretty 日志
 ```
 
+`-t` 的等级映射到固定的 token 预算：`off` = 0、`low` = 2k、`medium` = 8k、`high` = 16k、`max` = 32k；也可以直接传一个整数预算覆盖等级。
+
 ### REPL 内置 slash 命令
 
 ```
@@ -66,7 +89,10 @@ pnpm dev [prompt...]                # 先跑一轮初始 prompt，再留在 REPL
 /compact [focus…]    把历史压缩成单条摘要消息
 /resume [<id>]       切到指定 session（不带参数则从列表选）
 /rewind [<n>]        回退到此前某条消息（其后的历史与文件改动被丢弃）
+/init [focus…]       探索代码库后生成 / 刷新项目 memory（NOVA.md/CLAUDE.md/AGENTS.md）
 /plan <goal>         把调查交给只读 plan 子 agent，再给出实现计划
+/agents [reload]     列出可用的子 agent 类型；`reload` 重新扫盘
+/agent <name> <task> 把任务委派给指定子 agent
 /predict [on|off]    查看 / 切换下一条输入预测占位
 /commands [reload]   列出已注册的 slash 命令；`reload` 重新扫盘
 /skills              列出已发现的 SKILL.md
@@ -79,6 +105,8 @@ builtin 命令永远优先；在此之上，`.nova/commands` / `~/.nova/commands
 `.claude/commands` / `~/.claude/commands`）下任意 `*.md` 都会被自动注册为 slash
 命令 —— 前置 frontmatter 声明 description / arg hint / 参数，正文做占位符替换
 后作为下一轮 prompt 发出去。
+
+会展开成长 prompt 的命令（`/agent`、`/plan`、`/init` 等）在消息历史里仍显示你**原始键入的短输入**而非展开后的全文（display override，落在 session 目录的 `display-overrides.jsonl`，`/clear` 时清空）。
 
 按 `Ctrl+D` 也能退出，按 `Esc` 中断当前回合。
 
@@ -93,7 +121,7 @@ builtin 命令永远优先；在此之上，`.nova/commands` / `~/.nova/commands
 
 模型可以用 `createSubAgent` 工具把活儿派出去。子 agent 在进程内运行，带**全新上下文**
 （永远看不到父对话），工具集是父 agent 的工具减去 `createSubAgent` 本身 —— 所以不会
-递归。三种类型：
+递归。三种内置类型：
 
 - `explore` —— 只读检索（没有 write/edit/bash），定位代码并汇报路径/调用点。
 - `plan` —— 只读规划，调查任务后给出分步实现计划。
@@ -103,6 +131,33 @@ builtin 命令永远优先；在此之上，`.nova/commands` / `~/.nova/commands
 只会收到每个子 agent 的最终消息。通过 `settings.subagent` 配置（`enabled`、`model`、
 `maxTurns`、`maxTokens`）；`/plan` slash 命令就是一层薄封装，让 agent 去派生一个 `plan`
 子 agent。每个子 agent 的 transcript 落在 `~/.nova/sessions/{id}/subagents/`。
+
+#### 自定义子 agent 类型
+
+除了三种内置类型，你可以**自己定义任意多个**。在 `.nova/agents/<name>.md`（项目层）或
+`~/.nova/agents/<name>.md`（用户层）放一个 Markdown 文件即可（也兼容 `.claude/agents/`）：
+
+```markdown
+---
+name: reviewer
+description: read-only code reviewer that reports findings with file:line
+tools: [read, grep, glob, lsp]   # 可选：工具白名单（与可用工具集求交）
+readOnly: true                   # 可选：收走 write/edit/bash
+model: deepseek-chat             # 可选：覆盖模型
+maxTurns: 20                     # 可选：覆盖循环上限
+maxTokens: 60000                 # 可选：覆盖 token 上限
+---
+
+你是一个只读代码评审子 agent。逐文件检查改动，用 file:line 报告问题……
+```
+
+- frontmatter 必填 `name`（`^[a-z][a-z0-9-]*$`）与 `description`（≤200 字符），其余可选；
+  正文成为该 agent 的角色指令（注入其 system prompt）。
+- **优先级**：项目层先于用户层扫描，**先出现者胜**（项目遮蔽用户）；**内置类型永远胜出**，
+  同名自定义会被跳过并在 `/agents reload` 时报告。
+- `createSubAgent` 的 `type` 参数对照动态注册表校验；类型不存在时返回错误并列出可用类型。
+- `/agents` 列出全部（带 `[builtin]`/`[project]`/`[user]` 来源标记与约束），`/agents reload`
+  原地重扫（无需重启，下次 spawn 即生效），`/agent <name> <task>` 直接委派。
 
 ### MCP（Model Context Protocol）
 
@@ -185,6 +240,11 @@ Nova 可以在启动时连接外部 [MCP](https://modelcontextprotocol.io) 服�
 
 `servers` 里 languageId 与内置同名的条目会**整条替换**默认值，未知的则**追加**。
 
+### 文件读取与命令超时
+
+- **`read` 带行号 + 分页** —— 输出是 `cat -n` 风格的行号（右对齐 6 位、tab 分隔）。参数 `offset`（1-based 起始行，默认 1）/ `limit`（最多返回行数）做基于行的分页；单次响应上限约 200K 字符，超长单行整行返回不会从中间切断，截断时会附上精确的续读调用（如 `read(path="…", offset=<下一行>)`）。
+- **`bash` 60s 硬上限** —— `timeout_ms` 可选、上限 60000ms。开发服务器、watcher、长构建、下载这类可能超时的活儿改用 `runLongRunningCommand` / `checkLongRunningCommand`。
+
 ### 命令沙箱（可选，OS 级隔离）
 
 把会起子进程的工具（`bash`、`runLongRunningCommand`）放进操作系统级沙箱里跑，
@@ -256,7 +316,7 @@ packages/
                    webfetch · websearch · askUserQuestion · lsp
                    todo (todoCreate/Update/Get/Clear) · task (taskCreate/Update/Get/List/Clear)
                    runLongRunningCommand / checkLongRunningCommand · loadSkill
-  subagent       createSubAgent 工具 · 子 agent system prompt（explore/plan/general-purpose）
+  subagent       createSubAgent 工具 · 子 agent 定义/注册表/加载器（内置 + .md 自定义）
   context        三层记忆（NOVA.md > CLAUDE.md > AGENTS.md）· auto compact（micro 默认关闭）
   safety         PermissionEngine · approval 提示（规则匹配 + read 限定在 cwd）
   sandbox        OS 级命令沙箱（@anthropic-ai/sandbox-runtime）：bash/长任务的文件写入隔离
@@ -272,6 +332,8 @@ eval/            replay harness + 黄金 case（不走主构建，eslint/tsconfi
 docs/            设计笔记（skills、ask-user）
 ```
 
+依赖方向单向不可逆（按实际源码 import）：`runtime` / `core` / `observability` / `lsp` 是叶子层（不 import 任何 `@nova/*` 源码）；`safety` → `runtime`；`context` → `core` + `runtime`；`tools` → `core` + `runtime` + `lsp`；`sandbox` / `external` → `core`（仅 type-only）；`agent` → `core` + `runtime` + `context` + `observability`；`subagent` → `agent` + `context` + `core` + `observability` + `runtime`；`cli` 在最上层，依赖以上全部。
+
 `@nova/*` package 在 workspace 内通过 `./src/index.ts` 直接互相 import；发布时通过 `publishConfig` 切到 `dist/`。
 
 ## 数据落在哪
@@ -282,10 +344,12 @@ docs/            设计笔记（skills、ask-user）
 | 历史 session | `~/.nova/sessions/{id}/` |
 | transcript (observer 事件流) | `~/.nova/sessions/{id}/transcript.jsonl` |
 | 可重放 message 历史 | `~/.nova/sessions/{id}/messages.jsonl` |
+| slash display override 映射 | `~/.nova/sessions/{id}/display-overrides.jsonl` |
 | 子 agent transcript/message | `~/.nova/sessions/{id}/subagents/` |
 | session 日志 | `~/.nova/sessions/{id}/session.log` |
 | 记忆文件（项目层） | 从 cwd 向上递归，每层按 `NOVA.md` > `CLAUDE.md` > `AGENTS.md` 取最优先的一个（同目录不合并） |
 | 记忆文件（用户层） | `~/.nova/NOVA.md` → `~/.claude/CLAUDE.md` → `~/.config/agents/AGENTS.md`（按顺序取第一个存在的） |
+| 自定义子 agent 定义 | `.nova/agents/*.md`（项目层）· `~/.nova/agents/*.md`（用户层）；兼容 `.claude/agents/` |
 
 ## 开发
 
