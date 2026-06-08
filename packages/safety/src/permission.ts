@@ -37,8 +37,11 @@ export class PermissionDeniedError extends Error {
 }
 
 /** True when `child` is `parent` itself or nested under it. Both must be
- *  absolute, normalized paths — `relative` then yields "" or a non-".." rel. */
-function isWithin(parent: string, child: string): boolean {
+ *  absolute, normalized paths — `relative` then yields "" or a non-".." rel.
+ *  Exported so callers (e.g. the CLI's accept-edits mode) can reuse the exact
+ *  same containment predicate the `within` matcher uses, keeping their notion
+ *  of "inside the workspace" from drifting from the engine's. */
+export function isWithin(parent: string, child: string): boolean {
   if (!isAbsolute(parent) || !isAbsolute(child)) return false;
   const rel = relative(parent, child);
   return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));

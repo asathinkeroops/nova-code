@@ -2,6 +2,7 @@ export {
   createSubAgentTool,
   SUBAGENT_TOOL_NAME,
   type SubAgentDeps,
+  type SubAgentDetail,
 } from "./subagent.js";
 export { buildSubAgentSystemPrompt } from "./system-prompt.js";
 export {

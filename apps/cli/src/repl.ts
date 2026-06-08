@@ -1,6 +1,6 @@
 import { ACCENT_RGB, accent, dim } from "./colors.js";
 import { stopSpinner, type CliContext } from "./context.js";
-import { appendDisplayOverride } from "./display-overrides.js";
+import { appendUserOverride } from "./display-sidecar.js";
 import { predictNextInput } from "./predict.js";
 import { toUiSlashCommands } from "./slash.js";
 
@@ -65,7 +65,7 @@ async function dispatchLine(ctx: CliContext, line: string): Promise<DispatchActi
     if (outcome.text !== line) {
       ctx.screen.addUserDisplayOverride(outcome.text, line);
       try {
-        await appendDisplayOverride(ctx.session.dir, outcome.text, line);
+        await appendUserOverride(ctx.session.dir, outcome.text, line);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         ctx.logger.warn({ err: msg }, "failed to persist display override");

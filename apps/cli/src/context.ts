@@ -50,7 +50,7 @@ import { ACCENT_RGB, accent, dim } from "./colors.js";
 import { buildCompactor } from "./compactor.js";
 import { buildMcpManager } from "./mcp.js";
 import { canonicalizePath, canonicalizeRoots, PATH_INPUT_TOOLS } from "./path-safety.js";
-import { resolvePermissionRules } from "./permissions.js";
+import { resolveModeDecision, resolvePermissionRules } from "./permissions.js";
 import { loadAgents } from "./agents.js";
 import {
   handleClear,
@@ -67,10 +67,10 @@ import {
   handleResume,
   handleRewind,
   handleSkills,
-  handleThink,
+  handleEffort,
 } from "./commands/index.js";
 import { TOOL_SPINNER_DELAY_MS, WORKING_WORDS } from "./constants.js";
-import { loadDisplayOverrides } from "./display-overrides.js";
+import { appendToolDetail, loadDisplaySidecar } from "./display-sidecar.js";
 import { registerUiHooks } from "./hooks.js";
 import { SnapshotStore } from "./snapshots.js";
 import { renderSkillsBlock } from "./skills-render.js";
@@ -102,7 +102,7 @@ export interface CliContext {
   /** Per-session file snapshotter backing `/rewind`. Rebuilt on /resume. */
   snapshots: SnapshotStore;
 
-  // ===== Mutable: changes on /think, /predict =====
+  // ===== Mutable: changes on /effort, /predict =====
   settings: Settings;
   model: ModelClient;
   /**
@@ -298,12 +298,12 @@ function registerBuiltinSlashCommands(ctx: CliContext): void {
     },
   });
   ctx.registry.register({
-    name: "think",
+    name: "effort",
     description: "show or change the extended-thinking level",
     argHint: "[<level>]",
     source: { kind: "builtin" },
     run: async (_c, args) => {
-      await handleThink(ctx, args.trim());
+      await handleEffort(ctx, args.trim());
       return handled;
     },
   });
@@ -814,6 +814,18 @@ export async function createContext(
       const target = typeof raw === "string" && raw.length > 0 ? raw : ".";
       evalInput = { ...evalInput, path: await canonicalizePath(workspace, target) };
     }
+    // Input-box permission mode (shift+tab cycles default/acceptEdits/plan).
+    // Applied AFTER canonicalization so accept-edits containment is judged on
+    // the real on-disk path, and BEFORE the engine so plan-mode denial and
+    // accept-edits auto-grant short-circuit the normal `ask` flow. A null
+    // decision means "no mode opinion — defer to the engine rules below".
+    const modeDecision = resolveModeDecision(
+      ctx.screen.getPermissionMode(),
+      tool,
+      PATH_INPUT_TOOLS.has(tool) ? (evalInput.path as string) : undefined,
+      allowedRoots,
+    );
+    if (modeDecision) return modeDecision;
     try {
       await permission.check({ tool, input: evalInput });
       return { granted: true };
@@ -913,6 +925,18 @@ export async function createContext(
         askUser,
         getLogger: () => ctx.logger,
         getLogDir: () => join(ctx.session.dir, "subagents"),
+        // Live progress: update the UI on every tick; persist the snapshot to
+        // the display sidecar once the sub-agent finishes so it survives resume
+        // (the canonical message only keeps the final report).
+        onDetail: (toolUseId, entries, done) => {
+          ctx.screen.setToolDetail(toolUseId, entries);
+          if (done) {
+            void appendToolDetail(ctx.session.dir, toolUseId, entries).catch((err) => {
+              const msg = err instanceof Error ? err.message : String(err);
+              ctx.logger.warn({ err: msg }, "failed to persist sub-agent details");
+            });
+          }
+        },
         getSettings: () => ({
           maxTokens: ctx.settings.subagent.maxTokens,
           maxTurns: ctx.settings.subagent.maxTurns,
@@ -975,7 +999,9 @@ export async function createContext(
       // Push the "loaded N" card before setMessages so its anchor (-1) puts
       // it above the restored history rather than below it.
       ctx.screen.card(dim(`loaded ${msgs.length} message(s) from disk`));
-      ctx.screen.setUserDisplayOverrides(await loadDisplayOverrides(session.dir));
+      const sidecar = await loadDisplaySidecar(session.dir);
+      ctx.screen.setUserDisplayOverrides(sidecar.userOverrides);
+      ctx.screen.setToolDetails(sidecar.toolDetails);
       ctx.screen.setMessages(msgs);
       logger.info({ count: msgs.length }, "messages restored");
     } catch (err) {

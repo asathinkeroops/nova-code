@@ -150,7 +150,7 @@ Nova 是一个全屏 Ink/React REPL：顶部是滚动的历史区，底部是固
 | 命令 | 作用 |
 |------|------|
 | `/help` | 显示帮助；列出按来源分组（Built-in / Project / User）的命令 |
-| `/think [<level>]` | 查看或切换 thinking 等级（`off`/`low`/`medium`/`high`/`max` 或整数预算） |
+| `/effort [<level>]` | 查看或切换 thinking 等级（`off`/`low`/`medium`/`high`/`max` 或整数预算） |
 | `/clear` | 清空当前会话历史（session 仍保留） |
 | `/compact [focus…]` | 把历史压缩成单条摘要消息；可附带关注点提示 |
 | `/resume [<id>]` | 切换到指定 session；不带参数则弹出列表选择 |
@@ -179,7 +179,7 @@ Nova 把「extended thinking」暴露成五个等级，或一个显式的 token 
 设置方式：
 
 - 启动时：`nova -t high "..."` 或 `nova -t 4096 "..."`
-- 运行时：`/think high`（查看用 `/think`）
+- 运行时：`/effort high`（查看用 `/effort`）
 - 配置文件：`thinking.level` / `thinking.budgetTokens`
 
 更深的思考通常带来更好的规划，但更慢、更贵——按任务难度调档即可。

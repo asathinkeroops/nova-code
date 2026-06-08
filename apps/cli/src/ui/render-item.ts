@@ -1,11 +1,11 @@
 import {
   blocksOf,
-  extractText,
   type ContentBlock,
   type MessageParam,
   type ToolResultBlock,
   type ToolUseBlock,
 } from "@nova/core";
+import type { SubAgentDetail } from "@nova/subagent";
 import type { Card } from "./store.js";
 
 /** Data needed to render the startup banner (logo + session metadata). */
@@ -30,13 +30,19 @@ export type RenderItem =
   | { kind: "spacer"; key: string }
   | { kind: "user-text"; key: string; text: string }
   | { kind: "assistant-text"; key: string; text: string }
-  | { kind: "thinking"; key: string; thinking: string; label?: string }
+  | { kind: "thinking"; key: string; thinking: string; label?: string; collapsed?: boolean }
   | { kind: "redacted-thinking"; key: string; label?: string }
   | {
       kind: "tool-call";
       key: string;
       use: ToolUseBlock;
       result: ToolResultBlock | undefined;
+      /**
+       * Display-only progress details for a sub-agent run (latest few), shown
+       * under the tool-call card. Present only for `createSubAgent` calls that
+       * have recorded details. See `display-sidecar.ts`.
+       */
+      details?: SubAgentDetail[];
     }
   | {
       kind: "read-batch";
@@ -90,9 +96,15 @@ export interface BuildOpts {
    * Map of expanded-model-text → original user input for slash commands that
    * expand into a longer prompt (e.g. `/agent`). When a user message's text
    * matches a key, the renderer shows the original input instead. See
-   * `display-overrides.ts`.
+   * `display-sidecar.ts`.
    */
   userDisplayOverrides?: Record<string, string>;
+  /**
+   * Map of parent `tool_use` id → latest sub-agent progress details. Attached
+   * to the matching tool-call item so the renderer can show them. See
+   * `display-sidecar.ts`.
+   */
+  toolDetails?: Record<string, SubAgentDetail[]>;
 }
 
 /**
@@ -102,7 +114,8 @@ export interface BuildOpts {
  * last. Adjacent `read` tool calls collapse into a single ReadBatch.
  */
 export function buildRenderItems(opts: BuildOpts): RenderItem[] {
-  const { banner, messages, cards, thinkingLabel, userDisplayOverrides } = opts;
+  const { banner, messages, cards, thinkingLabel, userDisplayOverrides, toolDetails } =
+    opts;
   const items: RenderItem[] = [];
   let n = 0;
   const nextKey = (prefix: string): string => `${prefix}#${n++}`;
@@ -132,7 +145,7 @@ export function buildRenderItems(opts: BuildOpts): RenderItem[] {
     if (msg.role === "user") {
       appendUserItems(items, msg, nextKey, userDisplayOverrides);
     } else {
-      appendAssistantItems(items, msg, resultIndex, thinkingLabel, nextKey);
+      appendAssistantItems(items, msg, resultIndex, thinkingLabel, nextKey, toolDetails);
     }
 
     for (const c of cardsByAnchor.get(mi) ?? []) {
@@ -213,6 +226,7 @@ function appendAssistantItems(
   resultIndex: Map<string, ToolResultBlock>,
   thinkingLabel: string | undefined,
   nextKey: (p: string) => string,
+  toolDetails: Record<string, SubAgentDetail[]> | undefined,
 ): void {
   const blocks = blocksOf(msg);
   // Each visible item gets a leading spacer so consecutive tools / thinking
@@ -237,6 +251,10 @@ function appendAssistantItems(
         kind: "thinking",
         key: nextKey("th"),
         thinking: block.thinking,
+        // Committed thinking is "done": collapse it to a short preview. The
+        // live draft (buildLiveDraftItems) stays uncollapsed so reasoning still
+        // streams in full while it is being produced.
+        collapsed: true,
         ...(thinkingLabel !== undefined ? { label: thinkingLabel } : {}),
       });
     } else if (block.type === "redacted_thinking") {
@@ -275,21 +293,24 @@ function appendAssistantItems(
         }
       }
 
+      const details = toolDetails?.[block.id];
       push({
         kind: "tool-call",
         key: nextKey("tc"),
         use: block,
         result: resultIndex.get(block.id),
+        ...(details && details.length > 0 ? { details } : {}),
+      });
+    } else if (block.type === "text") {
+      // Render text at its real position in the block stream so "narrate then
+      // act" turns (text before tool_use in the same message) keep their order.
+      // Skip empty text blocks — a pure tool-call turn often carries one.
+      if (block.text.trim().length === 0) continue;
+      push({
+        kind: "assistant-text",
+        key: nextKey("at"),
+        text: block.text,
       });
     }
-  }
-
-  const text = extractText(blocks);
-  if (text.trim().length > 0) {
-    push({
-      kind: "assistant-text",
-      key: nextKey("at"),
-      text,
-    });
   }
 }

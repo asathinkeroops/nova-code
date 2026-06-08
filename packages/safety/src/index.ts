@@ -1,6 +1,7 @@
 export {
   PermissionEngine,
   PermissionDeniedError,
+  isWithin,
   type PermissionConfig,
   type PermissionDecision,
   type PermissionInput,

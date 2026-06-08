@@ -24,6 +24,39 @@ import { buildSubAgentSystemPrompt } from "./system-prompt.js";
 export const SUBAGENT_TOOL_NAME = "createSubAgent";
 
 /**
+ * A single display-only detail entry streamed out of a running sub-agent so the
+ * host UI can show what it's doing (the parent only receives the final report).
+ * One of the sub-agent's reasoning steps, a tool it invoked, or its final
+ * message. Kept terse — text is pre-truncated to a single short line, since the
+ * host persists these and shows at most the latest few.
+ */
+export type SubAgentDetail =
+  | { type: "thinking"; text: string }
+  | { type: "tool_use"; name: string; summary: string }
+  | { type: "final"; text: string };
+
+/** How many trailing details to retain/emit (the UI shows the latest N). */
+const MAX_DETAILS = 3;
+
+/** Collapse to a single line and clip, so a detail is always one short row. */
+function summarizeDetail(text: string, max = 120): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+}
+
+/** Best-effort one-line summary of a tool_use's input for the detail row. */
+function summarizeToolInput(input: Record<string, unknown>): string {
+  // Prefer a salient string field (path/command/pattern/query/description),
+  // falling back to a compact JSON dump. Keeps the row readable without
+  // hard-coding every tool's schema.
+  for (const key of ["command", "path", "pattern", "query", "description", "url"]) {
+    const v = input[key];
+    if (typeof v === "string" && v.trim()) return summarizeDetail(v, 80);
+  }
+  return summarizeDetail(JSON.stringify(input), 80);
+}
+
+/**
  * Workspace-mutating tools. Withheld from read-only sub-agents both at the
  * tool-list level (the child never sees them) and at the permission level
  * (defense-in-depth, in case they reach dispatch another way).
@@ -112,6 +145,15 @@ export interface SubAgentDeps {
   getLogDir: () => string;
   /** maxTurns / maxTokens / noTranscript slice for the sub-agent loop. */
   getSettings: () => AgentSettingsSlice;
+  /**
+   * Optional sink for live progress details (thinking / tool_use / final),
+   * keyed by the parent `tool_use` id so the host can attach them to the right
+   * tool-call card. Called repeatedly with the latest ≤3 entries as the
+   * sub-agent runs; `done` is true on the final call (success, failure, or
+   * abort) — the host updates the UI on every call and persists on `done`.
+   * No-op when the parent tool_use id is unavailable.
+   */
+  onDetail?: (toolUseId: string, entries: SubAgentDetail[], done: boolean) => void;
 }
 
 export function createSubAgentTool(deps: SubAgentDeps): ToolHandler {
@@ -204,18 +246,48 @@ export function createSubAgentTool(deps: SubAgentDeps): ToolHandler {
           buildSubAgentSystemPrompt(deps.workspace, deps.memory, deps.skillsBlock, def),
       });
 
+      // Stream live progress (thinking / tool_use) out to the host, capped at
+      // the latest MAX_DETAILS. Only wired when we know the parent tool_use id
+      // (needed to key the details to the right UI card) and a sink is set.
+      const toolUseId = ctx.toolUseId;
+      const details: SubAgentDetail[] = [];
+      const emit = (done: boolean): void => {
+        if (!toolUseId || !deps.onDetail) return;
+        deps.onDetail(toolUseId, details.slice(-MAX_DETAILS), done);
+      };
+      if (toolUseId && deps.onDetail) {
+        agent.on("post_assistant", (turn) => {
+          for (const b of turn.content) {
+            if (b.type === "thinking" && b.thinking.trim()) {
+              details.push({ type: "thinking", text: summarizeDetail(b.thinking) });
+            }
+          }
+          emit(false);
+        });
+        agent.on("post_tool_use", ({ use }) => {
+          details.push({
+            type: "tool_use",
+            name: use.name,
+            summary: summarizeToolInput(use.input),
+          });
+          emit(false);
+        });
+      }
+
       const result = await agent.runTurn(
         input.prompt,
         ctx.signal ? { signal: ctx.signal } : {},
       );
 
       if (result.aborted) {
+        emit(true);
         return {
           output: `Sub-agent "${input.description}" was interrupted before finishing.`,
           isError: true,
         };
       }
       if (!result.ok) {
+        emit(true);
         const reason = result.error?.message ?? "unknown error";
         return {
           output: `Sub-agent "${input.description}" failed: ${reason}`,
@@ -225,12 +297,15 @@ export function createSubAgentTool(deps: SubAgentDeps): ToolHandler {
 
       const finalText = lastAssistantText(result.messages);
       if (!finalText) {
+        emit(true);
         return {
           output:
             `Sub-agent "${input.description}" finished without a textual final message ` +
             `(stopReason=${result.stopReason ?? "unknown"}, turns=${result.turns}).`,
         };
       }
+      details.push({ type: "final", text: summarizeDetail(finalText) });
+      emit(true);
       return { output: finalText };
     },
   };

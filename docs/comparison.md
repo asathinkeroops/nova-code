@@ -89,7 +89,7 @@ DeepSeek API 在线上与 Anthropic 兼容,失败会以 `APIError` 携带 HTTP `
 `/resume`、`--continue` 恢复会话;`transcript.jsonl`(事件流)+ `messages.jsonl`(可重放历史),全程可回放;`/rewind` 回退到此前某条消息(其后的历史被丢弃)。
 
 ### ⚡ 斜杠命令 & 技能
-内置 `/help` `/think` `/clear` `/compact` `/resume` `/rewind` `/plan` `/predict` `/commands` `/skills` `/mcp` `/lsp`(`/exit` `/quit` 退出);任意 `.nova/commands` 或 `.claude/commands` 下的 `.md` 自动注册为命令;`SKILL.md` 启动时扫描、按需加载。
+内置 `/help` `/effort` `/clear` `/compact` `/resume` `/rewind` `/plan` `/predict` `/commands` `/skills` `/mcp` `/lsp`(`/exit` `/quit` 退出);任意 `.nova/commands` 或 `.claude/commands` 下的 `.md` 自动注册为命令;`SKILL.md` 启动时扫描、按需加载。
 
 ### 🚀 体验
 Ink/React 终端 REPL · 实时流式渲染(可 `stream.enabled` 开关)· 首次启动引导式配置(`~/.nova/nova.config.json`)· 有界工具并发(默认 3)· 下一句输入预测占位 · `ask-user` 多问卷反问(末尾固定一个 Submit / Cancel 确认页)。

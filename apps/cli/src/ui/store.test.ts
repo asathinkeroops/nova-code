@@ -109,3 +109,24 @@ describe("live draft", () => {
     expect(store.getState().liveDraft).toBeNull();
   });
 });
+
+describe("permission mode", () => {
+  it("starts in default mode", () => {
+    expect(createAppStore().getState().permissionMode).toBe("default");
+  });
+
+  it("cycles default → acceptEdits → plan → default and returns the new mode", () => {
+    const store = createAppStore();
+    expect(store.getState().cyclePermissionMode()).toBe("acceptEdits");
+    expect(store.getState().permissionMode).toBe("acceptEdits");
+    expect(store.getState().cyclePermissionMode()).toBe("plan");
+    expect(store.getState().cyclePermissionMode()).toBe("default");
+  });
+
+  it("survives reset (/clear) like the input placeholder", () => {
+    const store = createAppStore();
+    store.getState().cyclePermissionMode(); // → acceptEdits
+    store.getState().reset();
+    expect(store.getState().permissionMode).toBe("acceptEdits");
+  });
+});

@@ -163,6 +163,14 @@ export interface ToolContext {
   askUser?: AskUserFn;
   fileLedger?: FileAccessLedger;
   sandbox?: SandboxBridge;
+  /**
+   * The `id` of the `tool_use` block driving this call. Injected per-call by
+   * the dispatcher (the shared turn-level context carries no per-use identity).
+   * Lets a tool key out-of-band, display-only state to its own invocation —
+   * e.g. the sub-agent tool tags streamed thinking/tool-use details so the UI
+   * can attach them to the right tool-call card and survive `/resume`.
+   */
+  toolUseId?: string;
 }
 
 export interface ToolHandler {

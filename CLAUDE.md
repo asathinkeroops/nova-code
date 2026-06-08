@@ -19,7 +19,6 @@ Standard `pnpm install / build / typecheck / test / lint / format` also work. No
 
 - `packages/*` (`@nova/<name>`) — library code. Workspace consumers import from `./src/index.ts` directly (no rebuild needed); published builds switch to `dist/` via `publishConfig`.
 - Active packages: `core`, `runtime`, `observability`, `safety`, `context`, `tools`, `external` (MCP), `sandbox` (OS-level write confinement), `lsp` (language-server code intelligence), `agent`, `subagent`. `sandbox` and `lsp` are the most recently added.
-- `packages/{isolation,multi-agent,sdk}` — empty scaffolding (zero-byte `src/` files, no `package.json`); not wired into anything yet. Skip them.
 - `apps/cli` — the only active app. `apps/http` and `apps/vscode` are placeholders.
 - `eval/` — replay harness; **excluded from eslint/tsconfig**, don't expect it to build with the rest.
 

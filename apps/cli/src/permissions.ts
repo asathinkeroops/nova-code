@@ -1,4 +1,54 @@
 import type { PermissionRule, Settings } from "@nova/runtime";
+import { isWithin } from "@nova/safety";
+
+/**
+ * Input-box permission mode, cycled with shift+tab. Stored in the UI store and
+ * read by the CLI's `checkPermission` closure to bias tool gating:
+ *
+ * - `default`    — no change; write/edit/bash fall through to the engine's `ask`.
+ * - `acceptEdits`— in-workspace write/edit auto-granted (no prompt); bash and
+ *                  out-of-workspace write/edit still ask.
+ * - `plan`       — read-only; write/edit/bash are denied (mirrors the read-only
+ *                  `/plan` sub-agent), so the agent investigates and plans only.
+ */
+export type PermissionMode = "default" | "acceptEdits" | "plan";
+
+/**
+ * Workspace-mutating tools, withheld in `plan` mode. Mirrors the read-only
+ * sub-agent's MUTATING_TOOLS set (packages/subagent/src/subagent.ts).
+ */
+const MODE_MUTATING_TOOLS: ReadonlySet<string> = new Set(["write", "edit", "bash"]);
+
+/**
+ * Mode-specific permission decision, applied by `checkPermission` AFTER it has
+ * canonicalized the tool's `path` and BEFORE consulting the PermissionEngine.
+ * Returns a concrete `{ granted }` to short-circuit, or `null` to defer to the
+ * engine's normal rules. `canonicalPath` is the already-resolved+realpath'd
+ * path for path-bearing tools (undefined otherwise); `roots` is the canonical
+ * workspace allow-list the engine itself uses.
+ */
+export function resolveModeDecision(
+  mode: PermissionMode,
+  tool: string,
+  canonicalPath: string | undefined,
+  roots: readonly string[],
+): { granted: boolean; reason?: string } | null {
+  if (mode === "plan" && MODE_MUTATING_TOOLS.has(tool)) {
+    return {
+      granted: false,
+      reason:
+        "Plan mode is on (read-only): the write, edit, and bash tools are disabled. " +
+        "Investigate the relevant code and present a concrete step-by-step plan instead " +
+        "of changing anything; the user can turn off plan mode (shift+tab) to apply it.",
+    };
+  }
+  if (mode === "acceptEdits" && (tool === "write" || tool === "edit")) {
+    if (canonicalPath !== undefined && roots.some((root) => isWithin(root, canonicalPath))) {
+      return { granted: true };
+    }
+  }
+  return null;
+}
 
 /**
  * Built-in tools the CLI always seeds as `allow`. These names mirror the

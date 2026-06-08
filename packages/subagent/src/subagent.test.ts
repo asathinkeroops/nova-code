@@ -326,6 +326,59 @@ describe("createSubAgentTool", () => {
     expect(getModel).toHaveBeenCalledWith("special-model");
   });
 
+  it("streams thinking/tool_use/final details to onDetail, keyed by tool_use id", async () => {
+    const seen: ToolDefinition[][] = [];
+    const model = recordingModel(
+      [
+        {
+          content: [
+            { type: "thinking", thinking: "planning", signature: "sig" },
+            { type: "tool_use", id: "t1", name: "echo", input: { msg: "hi" } },
+          ],
+          stopReason: "tool_use",
+          usage: { inputTokens: 1, outputTokens: 1 },
+        },
+        textTurn("final report"),
+      ],
+      seen,
+    );
+    const calls: Array<{ entries: unknown; done: boolean }> = [];
+    const onDetail: SubAgentDeps["onDetail"] = (toolUseId, entries, done) => {
+      expect(toolUseId).toBe("parent-use-1");
+      calls.push({ entries: structuredClone(entries), done });
+    };
+    const tool = createSubAgentTool(makeDeps(model, tmp, { onDetail }));
+
+    const result = await tool.run(
+      { description: "x", prompt: "echo hi", type: "general-purpose" },
+      { cwd: tmp, toolUseId: "parent-use-1" },
+    );
+
+    expect(result.output).toBe("final report");
+    // Exactly one final (done) call carrying the latest ≤3 entries in order.
+    const final = calls.at(-1)!;
+    expect(final.done).toBe(true);
+    expect(final.entries).toEqual([
+      { type: "thinking", text: "planning" },
+      // echo has no salient field (path/command/...), so the summary falls back
+      // to a compact JSON dump of the input.
+      { type: "tool_use", name: "echo", summary: '{"msg":"hi"}' },
+      { type: "final", text: "final report" },
+    ]);
+    // Earlier calls were live (not done).
+    expect(calls.slice(0, -1).every((c) => !c.done)).toBe(true);
+  });
+
+  it("does not call onDetail when the parent tool_use id is absent", async () => {
+    const model = recordingModel([textTurn("ok")], []);
+    const onDetail = vi.fn();
+    const tool = createSubAgentTool(makeDeps(model, tmp, { onDetail }));
+
+    await tool.run({ description: "x", prompt: "y", type: "general-purpose" }, { cwd: tmp });
+
+    expect(onDetail).not.toHaveBeenCalled();
+  });
+
   it("reports an error when the parent signal is already aborted", async () => {
     const seen: ToolDefinition[][] = [];
     const model = recordingModel([textTurn("should not reach")], seen);

@@ -5,6 +5,7 @@ import {
   fitSegments,
   formatDuration,
   formatTokenCount,
+  permissionModeIndicator,
   type StatusSegment,
 } from "./status-format.js";
 
@@ -89,5 +90,16 @@ describe("fitSegments", () => {
 
   it("returns nothing when even the first does not fit", () => {
     expect(fitSegments(segs, 2)).toEqual([]);
+  });
+});
+
+describe("permissionModeIndicator", () => {
+  it("shows nothing in default mode (no extra row below the status line)", () => {
+    expect(permissionModeIndicator("default")).toBeNull();
+  });
+
+  it("labels accept-edits and plan in distinct colors (hint appended dim by the renderer)", () => {
+    expect(permissionModeIndicator("acceptEdits")).toEqual({ label: "⏵⏵ accept edits on", color: "green" });
+    expect(permissionModeIndicator("plan")).toEqual({ label: "⏸ plan mode on", color: "cyan" });
   });
 });

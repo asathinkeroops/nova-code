@@ -342,7 +342,7 @@
         <p>在输入框里以 <code>/</code> 开头即触发。<strong>内置命令永远优先于自定义命令</strong>。</p>
         <div class="tbl-wrap"><table class="doc"><thead><tr><th>命令</th><th>作用</th></tr></thead><tbody>
           <tr><td><code>/help</code></td><td>显示帮助；列出按来源分组（Built-in / Project / User）的命令</td></tr>
-          <tr><td><code>/think [&lt;level&gt;]</code></td><td>查看或切换 thinking 等级（<code>off</code>/<code>low</code>/<code>medium</code>/<code>high</code>/<code>max</code> 或整数预算）</td></tr>
+          <tr><td><code>/effort [&lt;level&gt;]</code></td><td>查看或切换 thinking 等级（<code>off</code>/<code>low</code>/<code>medium</code>/<code>high</code>/<code>max</code> 或整数预算）</td></tr>
           <tr><td><code>/clear</code></td><td>清空当前会话历史（session 仍保留）</td></tr>
           <tr><td><code>/compact [focus…]</code></td><td>把历史压缩成单条摘要消息；可附带关注点提示</td></tr>
           <tr><td><code>/resume [&lt;id&gt;]</code></td><td>切换到指定 session；不带参数则弹出列表选择</td></tr>
@@ -380,7 +380,7 @@
         <p class="mt-5 font-medium" style="color:var(--text)">设置方式：</p>
         <ul class="space-y-2">
           <li>启动时：<code>nova -t high "..."</code> 或 <code>nova -t 4096 "..."</code></li>
-          <li>运行时：<code>/think high</code>（查看用 <code>/think</code>）</li>
+          <li>运行时：<code>/effort high</code>（查看用 <code>/effort</code>）</li>
           <li>配置文件：<code>thinking.level</code> / <code>thinking.budgetTokens</code></li>
         </ul>
         <div class="callout callout-warn">

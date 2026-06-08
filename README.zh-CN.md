@@ -84,7 +84,7 @@ pnpm dev [prompt...]                # 先跑一轮初始 prompt，再留在 REPL
 
 ```
 /help                帮助
-/think [<level>]     查看 / 切换 thinking 等级
+/effort [<level>]    查看 / 切换 thinking 等级
 /clear               清空会话历史（保留 session）
 /compact [focus…]    把历史压缩成单条摘要消息
 /resume [<id>]       切到指定 session（不带参数则从列表选）
@@ -106,7 +106,7 @@ builtin 命令永远优先；在此之上，`.nova/commands` / `~/.nova/commands
 命令 —— 前置 frontmatter 声明 description / arg hint / 参数，正文做占位符替换
 后作为下一轮 prompt 发出去。
 
-会展开成长 prompt 的命令（`/agent`、`/plan`、`/init` 等）在消息历史里仍显示你**原始键入的短输入**而非展开后的全文（display override，落在 session 目录的 `display-overrides.jsonl`，`/clear` 时清空）。
+会展开成长 prompt 的命令（`/agent`、`/plan`、`/init` 等）在消息历史里仍显示你**原始键入的短输入**而非展开后的全文。这是每个 session 的**展示侧车**（`display-sidecar.jsonl`）记录的两类纯展示信息之一：它从不改变模型看到的内容，只改变 UI 渲染，并能跨 `/resume` 保留；`/clear` 时清空。
 
 按 `Ctrl+D` 也能退出，按 `Esc` 中断当前回合。
 
@@ -130,7 +130,7 @@ builtin 命令永远优先；在此之上，`.nova/commands` / `~/.nova/commands
 同一轮里的多个 `createSubAgent` 调用会并发执行（受 `toolConcurrency` 限制）。父 agent
 只会收到每个子 agent 的最终消息。通过 `settings.subagent` 配置（`enabled`、`model`、
 `maxTurns`、`maxTokens`）；`/plan` slash 命令就是一层薄封装，让 agent 去派生一个 `plan`
-子 agent。每个子 agent 的 transcript 落在 `~/.nova/sessions/{id}/subagents/`。
+子 agent。每个子 agent 的 transcript 落在 `~/.nova/sessions/{id}/subagents/`；其流式进度（thinking / 工具调用 / 最终汇报）会写入展示侧车，从而在 `/resume` 后仍能渲染到对应的工具调用卡片下。
 
 #### 自定义子 agent 类型
 
@@ -323,8 +323,6 @@ packages/
   lsp            LSP 客户端/管理器（JSON-RPC over stdio）· 语言服务器解析（lazy 启动）
   external       SlashRegistry · .md slash 命令加载 · MCP 客户端（stdio/http 传输、工具桥接）
   observability  Transcript (JSONL)
-  multi-agent, isolation, sdk
-                 预留位
 apps/
   cli            nova 二进制入口（Ink/React REPL，唯一在跑的 app）
   http, vscode   占位，未实现
@@ -344,7 +342,7 @@ docs/            设计笔记（skills、ask-user）
 | 历史 session | `~/.nova/sessions/{id}/` |
 | transcript (observer 事件流) | `~/.nova/sessions/{id}/transcript.jsonl` |
 | 可重放 message 历史 | `~/.nova/sessions/{id}/messages.jsonl` |
-| slash display override 映射 | `~/.nova/sessions/{id}/display-overrides.jsonl` |
+| 展示侧车（slash 输入覆盖 + 子 agent 进度，仅渲染用） | `~/.nova/sessions/{id}/display-sidecar.jsonl` |
 | 子 agent transcript/message | `~/.nova/sessions/{id}/subagents/` |
 | session 日志 | `~/.nova/sessions/{id}/session.log` |
 | 记忆文件（项目层） | 从 cwd 向上递归，每层按 `NOVA.md` > `CLAUDE.md` > `AGENTS.md` 取最优先的一个（同目录不合并） |

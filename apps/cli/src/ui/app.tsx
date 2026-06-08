@@ -1,10 +1,11 @@
 import React from "react";
-import { Box } from "ink";
+import { Box, Text } from "ink";
 import { useShallow } from "zustand/react/shallow";
 import { InputBox } from "./input-box.js";
 import { userInputHistory } from "./input-history.js";
 import { SetupView } from "./setup-view.js";
 import { StatusLine } from "./status-line.js";
+import { permissionModeIndicator, PERMISSION_MODE_HINT } from "./status-format.js";
 import type { AppStoreApi } from "./store.js";
 import { Viewport } from "./viewport.js";
 
@@ -13,10 +14,11 @@ import { Viewport } from "./viewport.js";
  * InputBox. The InputBox reports its actual height via `onMeasure` (queued
  * prompts + popup + wrapped buffer + rules), so growing content reserves rows
  * instead of overlapping the viewport. In-stream modals (approval/ask/pick)
- * reserve their own rows inside the Viewport.
+ * reserve their own rows inside the Viewport. `extraRows` covers optional
+ * chrome below the StatusLine (the permission-mode indicator).
  */
-function pinnedBottomRows(inputRows: number): number {
-  return 1 + inputRows;
+function pinnedBottomRows(inputRows: number, extraRows: number): number {
+  return 1 + inputRows + extraRows;
 }
 
 /** Floor for the pinned frame height so a tiny terminal still renders. */
@@ -27,16 +29,18 @@ interface AppProps {
 }
 
 export function App({ store }: AppProps): React.ReactElement {
-  const { setup, modal, slashCommands, inputPlaceholder, inputQueue, termRows } = store(
-    useShallow((s) => ({
-      setup: s.setup,
-      modal: s.modal,
-      slashCommands: s.slashCommands,
-      inputPlaceholder: s.inputPlaceholder,
-      inputQueue: s.inputQueue,
-      termRows: s.termRows,
-    })),
-  );
+  const { setup, modal, slashCommands, inputPlaceholder, inputQueue, permissionMode, termRows } =
+    store(
+      useShallow((s) => ({
+        setup: s.setup,
+        modal: s.modal,
+        slashCommands: s.slashCommands,
+        inputPlaceholder: s.inputPlaceholder,
+        inputQueue: s.inputQueue,
+        permissionMode: s.permissionMode,
+        termRows: s.termRows,
+      })),
+    );
   // Actions are stable across renders — grab them once via getState().
   const { resolveModal } = store.getState();
 
@@ -60,6 +64,10 @@ export function App({ store }: AppProps): React.ReactElement {
   // buffer). InputBox reports its real height via onMeasure as it grows.
   const [inputRows, setInputRows] = React.useState(3);
   const onMeasureInput = React.useCallback((rows: number) => setInputRows(rows), []);
+  const onCyclePermissionMode = React.useCallback(
+    () => store.getState().cyclePermissionMode(),
+    [store],
+  );
 
   // Setup mode commandeers the whole screen — everything else (banner,
   // messages, cards, spinner, footer) is suppressed until the wizard finishes.
@@ -80,10 +88,15 @@ export function App({ store }: AppProps): React.ReactElement {
     );
   }
 
+  // Mode indicator below the StatusLine — one extra reserved row when a
+  // non-default permission mode is active, nothing in default mode.
+  const modeIndicator = permissionModeIndicator(permissionMode);
+  const indicatorRows = modeIndicator ? 1 : 0;
+
   // Leave a 1-row safety margin so the layout never sums to exactly termRows.
   // Some terminals (Warp) push content one row up when the live region fills
   // the screen edge-to-edge, which would clip the top of the viewport.
-  const viewportRows = Math.max(3, termRows - pinnedBottomRows(inputRows) - 1);
+  const viewportRows = Math.max(3, termRows - pinnedBottomRows(inputRows, indicatorRows) - 1);
 
   // The InputBox is a permanent fixture: it stays mounted (and visible) the
   // whole session so the user can type mid-turn. It only goes inert while an
@@ -112,10 +125,17 @@ export function App({ store }: AppProps): React.ReactElement {
           onCancel={onCtrlC}
           onEscape={onEscape}
           onMeasure={onMeasureInput}
+          onCyclePermissionMode={onCyclePermissionMode}
         />
       </Box>
-      <Box flexShrink={0}>
+      <Box flexShrink={0} flexDirection="column">
         <StatusLine store={store} />
+        {modeIndicator ? (
+          <Box>
+            <Text color={modeIndicator.color}>{` ${modeIndicator.label}`}</Text>
+            <Text dimColor>{` ${PERMISSION_MODE_HINT}`}</Text>
+          </Box>
+        ) : null}
       </Box>
     </Box>
   );

@@ -55,6 +55,7 @@ export function Viewport({ store, rows, resolveModal }: ViewportProps): React.Re
     tasks,
     selection,
     userDisplayOverrides,
+    toolDetails,
   } = store(
     useShallow((s) => ({
       banner: s.banner,
@@ -71,6 +72,7 @@ export function Viewport({ store, rows, resolveModal }: ViewportProps): React.Re
       tasks: s.tasks,
       selection: s.selection,
       userDisplayOverrides: s.userDisplayOverrides,
+      toolDetails: s.toolDetails,
     })),
   );
   const reportViewportMetrics = store.getState().reportViewportMetrics;
@@ -83,9 +85,10 @@ export function Viewport({ store, rows, resolveModal }: ViewportProps): React.Re
         messages,
         cards,
         userDisplayOverrides,
+        toolDetails,
         ...(thinkingLabel !== undefined ? { thinkingLabel } : {}),
       }),
-    [banner, messages, cards, thinkingLabel, userDisplayOverrides],
+    [banner, messages, cards, thinkingLabel, userDisplayOverrides, toolDetails],
   );
   // Streaming draft items are built separately and appended, so the transcript's
   // measure-cache (keyed by item identity) stays warm while only the draft

@@ -232,6 +232,11 @@ export interface InputBoxProps {
    * InputBox leaves it unset (Escape only closes the popup).
    */
   onEscape?: () => void;
+  /**
+   * Called on shift+tab to advance the permission mode. Only the permanent
+   * InputBox wires this; without it shift+tab is a no-op (modal InputBoxes).
+   */
+  onCyclePermissionMode?: () => void;
 }
 
 export function InputBox({
@@ -241,6 +246,7 @@ export function InputBox({
   onMeasure,
   active = true,
   onEscape,
+  onCyclePermissionMode,
 }: InputBoxProps): React.ReactElement {
   const [buffer, setBuffer] = useState("");
   const [cursor, setCursor] = useState(0);
@@ -361,6 +367,13 @@ export function InputBox({
         setHistoryPos(next);
         recall(next === history.length ? draft : history[next] ?? "");
       }
+      return;
+    }
+    // shift+tab cycles the permission mode. Ink reports it as tab+shift, so this
+    // must run BEFORE the plain-tab autocomplete branch or that would swallow it.
+    // Returns early regardless of popup state, so cycling works mid-popup too.
+    if (key.tab && key.shift) {
+      onCyclePermissionMode?.();
       return;
     }
     if (key.tab) {

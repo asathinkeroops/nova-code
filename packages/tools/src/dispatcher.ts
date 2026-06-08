@@ -75,7 +75,7 @@ export function createDispatcher(deps: DispatcherDeps): ToolExecutor {
     }
 
     try {
-      const result = await handler.run(parsed.data, ctx);
+      const result = await handler.run(parsed.data, { ...ctx, toolUseId: use.id });
       const block: ToolResultBlock = {
         type: "tool_result",
         tool_use_id: use.id,

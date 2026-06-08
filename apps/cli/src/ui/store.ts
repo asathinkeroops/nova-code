@@ -2,6 +2,7 @@ import { create, type StoreApi, type UseBoundStore } from "zustand";
 import type { Rgb } from "../colors.js";
 import type { AskUserRequest, AskUserResponse, MessageParam } from "@nova/core";
 import type { Task, Todo } from "@nova/tools";
+import type { SubAgentDetail } from "@nova/subagent";
 import type { PermissionDecision, PermissionInput } from "@nova/safety";
 import type { BannerProps } from "./render-item.js";
 import type { BoxedInputOptions, SlashCommand } from "./input-box.js";
@@ -10,6 +11,7 @@ import type {
   PickerOptions,
 } from "./picker.js";
 import type { SetupEntry, SetupState } from "./setup-view.js";
+import type { PermissionMode } from "../permissions.js";
 
 export type SpinnerLabel =
   | string
@@ -52,7 +54,7 @@ export type CardKind = "info" | "warn" | "error";
  * `-1` renders before all messages (e.g. session-load notices on /resume).
  *
  * `title` is an optional short label rendered above the body — slash commands
- * use it to display the invoked command name (e.g. "/think").
+ * use it to display the invoked command name (e.g. "/effort").
  */
 export interface Card {
   id: number;
@@ -232,10 +234,27 @@ export interface AppState {
    * expand into a longer prompt (e.g. `/agent`). The renderer shows the
    * original input for any user message whose content matches a key, so the
    * transcript reflects what the user typed rather than the expansion sent to
-   * the model. Persisted per-session in `display-overrides.jsonl` and reloaded
+   * the model. Persisted per-session in `display-sidecar.jsonl` and reloaded
    * on `/resume` / `-c`; cleared on `/clear` (reset).
    */
   userDisplayOverrides: Record<string, string>;
+  /**
+   * Latest sub-agent progress details (thinking / tool_use / final), keyed by
+   * the parent `createSubAgent` tool_use id. The renderer shows the most recent
+   * few under that tool-call card. Updated live as a sub-agent runs and seeded
+   * from `display-sidecar.jsonl` on resume (the canonical message only keeps
+   * the sub-agent's final report, so these would otherwise be lost). See
+   * `display-sidecar.ts`.
+   */
+  toolDetails: Record<string, SubAgentDetail[]>;
+  /**
+   * Input-box permission mode, cycled with shift+tab and shown as an indicator
+   * below the InputBox. Read by the CLI's `checkPermission` to bias tool gating
+   * (accept-edits auto-grants in-workspace writes; plan denies write/edit/bash).
+   * Session-only (not persisted to config) and preserved across `reset()`
+   * (`/clear`) like `inputPlaceholder`.
+   */
+  permissionMode: PermissionMode;
 }
 
 export interface SelectionRect {
@@ -320,6 +339,12 @@ export interface AppActions {
   setUserDisplayOverrides: (overrides: Record<string, string>) => void;
   /** Record one expanded-text → original-input override. */
   addUserDisplayOverride: (expanded: string, rawInput: string) => void;
+  /** Replace the sub-agent detail map (used on resume to seed from disk). */
+  setToolDetails: (details: Record<string, SubAgentDetail[]>) => void;
+  /** Set the latest details for one sub-agent tool_use (live updates). */
+  setToolDetail: (toolUseId: string, entries: SubAgentDetail[]) => void;
+  /** Advance the permission mode (default → acceptEdits → plan → …) and return the new one. */
+  cyclePermissionMode: () => PermissionMode;
 }
 
 export type AppStoreState = AppState & AppActions;
@@ -419,6 +444,8 @@ export function createAppStore(): AppStoreApi {
       slashCommands: [],
       inputPlaceholder: "",
       userDisplayOverrides: {},
+      toolDetails: {},
+      permissionMode: "default",
 
       // ===== Actions =====
       pushCard(text, opts = {}) {
@@ -612,6 +639,7 @@ export function createAppStore(): AppStoreApi {
           viewportRows: 0,
           contextTokens: 0,
           userDisplayOverrides: {},
+          toolDetails: {},
         });
         // banner, thinkingLabel, and the session-level status meta
         // (sessionStartedAt / gitBranch / contextWindowTokens) are intentionally
@@ -751,6 +779,14 @@ export function createAppStore(): AppStoreApi {
         set({ inputPlaceholder: text });
       },
 
+      cyclePermissionMode() {
+        const order: PermissionMode[] = ["default", "acceptEdits", "plan"];
+        const cur = get().permissionMode;
+        const next = order[(order.indexOf(cur) + 1) % order.length] ?? "default";
+        set({ permissionMode: next });
+        return next;
+      },
+
       setUserDisplayOverrides(overrides) {
         set({ userDisplayOverrides: overrides });
       },
@@ -758,6 +794,16 @@ export function createAppStore(): AppStoreApi {
       addUserDisplayOverride(expanded, rawInput) {
         set((s) => ({
           userDisplayOverrides: { ...s.userDisplayOverrides, [expanded]: rawInput },
+        }));
+      },
+
+      setToolDetails(details) {
+        set({ toolDetails: details });
+      },
+
+      setToolDetail(toolUseId, entries) {
+        set((s) => ({
+          toolDetails: { ...s.toolDetails, [toolUseId]: entries },
         }));
       },
     };

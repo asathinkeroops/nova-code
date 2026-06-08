@@ -1,10 +1,10 @@
 import { persist, type CliContext } from "../context.js";
-import { clearDisplayOverrides } from "../display-overrides.js";
+import { clearDisplaySidecar } from "../display-sidecar.js";
 
 export async function handleClear(ctx: CliContext): Promise<void> {
   ctx.screen.setMessages([]);
   ctx.nextPlaceholder = "";
   await persist(ctx);
-  await clearDisplayOverrides(ctx.session.dir);
+  await clearDisplaySidecar(ctx.session.dir);
   await ctx.screen.reset();
 }

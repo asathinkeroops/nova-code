@@ -6,6 +6,7 @@ import type {
   MessageParam,
 } from "@nova/core";
 import type { Task, Todo } from "@nova/tools";
+import type { SubAgentDetail } from "@nova/subagent";
 import type { PermissionDecision, PermissionInput } from "@nova/safety";
 import { App } from "./ui/app.js";
 import { type ApprovalAnswer } from "./ui/approval.js";
@@ -15,6 +16,7 @@ import { copyToClipboard } from "./ui/clipboard.js";
 import { attachFilteredStdin } from "./ui/mouse.js";
 import { extractSelection } from "./ui/selection.js";
 import { type SetupEntry, type SetupState } from "./ui/setup-view.js";
+import { type PermissionMode } from "./permissions.js";
 import {
   type HorizontalPickerOptions,
   type PickerOptions,
@@ -294,6 +296,16 @@ export class Screen {
     this.store.getState().setInputPlaceholder(text);
   }
 
+  /** Current input-box permission mode (default / acceptEdits / plan). */
+  getPermissionMode(): PermissionMode {
+    return this.store.getState().permissionMode;
+  }
+
+  /** Advance to the next permission mode; returns the new one. */
+  cyclePermissionMode(): PermissionMode {
+    return this.store.getState().cyclePermissionMode();
+  }
+
   setTodos(todos: Todo[]): void {
     this.store.getState().setTodos(todos);
   }
@@ -314,6 +326,16 @@ export class Screen {
   /** Record one expanded-text → original-input display override. */
   addUserDisplayOverride(expanded: string, rawInput: string): void {
     this.store.getState().addUserDisplayOverride(expanded, rawInput);
+  }
+
+  /** Replace the sub-agent detail map (e.g. on resume). */
+  setToolDetails(details: Record<string, SubAgentDetail[]>): void {
+    this.store.getState().setToolDetails(details);
+  }
+
+  /** Set the latest progress details for one sub-agent tool_use. */
+  setToolDetail(toolUseId: string, entries: SubAgentDetail[]): void {
+    this.store.getState().setToolDetail(toolUseId, entries);
   }
 
   /**

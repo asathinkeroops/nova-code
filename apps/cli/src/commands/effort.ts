@@ -3,7 +3,7 @@ import { saveSettings } from "@nova/runtime";
 import { dim } from "../colors.js";
 import { thinkingLevelLabel, refreshBanner, type CliContext } from "../context.js";
 
-const TITLE = "/think";
+const TITLE = "/effort";
 
 async function persistThinking(ctx: CliContext): Promise<void> {
   ctx.settings.thinking.level = ctx.thinkingLevel;
@@ -18,7 +18,7 @@ async function persistThinking(ctx: CliContext): Promise<void> {
   }
 }
 
-export async function handleThink(ctx: CliContext, arg: string): Promise<void> {
+export async function handleEffort(ctx: CliContext, arg: string): Promise<void> {
   if (!arg) {
     const currentIdx = THINKING_LEVELS.indexOf(ctx.thinkingLevel);
     const pick = await ctx.screen.pickHorizontal<ThinkingLevel>({

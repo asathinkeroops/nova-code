@@ -84,7 +84,7 @@ The `-t` levels map to fixed token budgets: `off` = 0, `low` = 2k, `medium` = 8k
 
 ```
 /help                this help
-/think [<level>]     show or change extended-thinking level
+/effort [<level>]    show or change extended-thinking level
 /clear               clear conversation history (keeps session)
 /compact [focus…]    summarize history into a single message
 /resume [<id>]       switch to a saved session (no arg = pick from list)
@@ -109,8 +109,9 @@ next prompt with placeholders expanded.
 
 Commands that expand into a long prompt (`/agent`, `/plan`, `/init`, …) still show
 the **short input you actually typed** in message history rather than the expanded
-text (display override, stored in `display-overrides.jsonl` under the session dir,
-cleared on `/clear`).
+text. This is one of two display-only overlays kept in a per-session **display
+sidecar** (`display-sidecar.jsonl`) that never changes what the model sees, only
+what the UI renders, and survives `/resume`; it is cleared on `/clear`.
 
 `Ctrl+D` also exits; `Esc` interrupts the current turn.
 
@@ -138,7 +139,9 @@ Multiple `createSubAgent` calls in one turn run concurrently (bounded by
 Configure via `settings.subagent` (`enabled`, `model`, `maxTurns`, `maxTokens`);
 the `/plan` slash command is a thin wrapper that asks the agent to spawn a `plan`
 sub-agent. Per-sub-agent transcripts land under
-`~/.nova/sessions/{id}/subagents/`.
+`~/.nova/sessions/{id}/subagents/`, and each sub-agent's streamed progress
+(thinking / tool calls / final report) is recorded into the display sidecar so it
+re-renders under the right tool-call card after `/resume`.
 
 #### Custom sub-agent types
 
@@ -368,8 +371,6 @@ packages/
   lsp            LSP client/manager (JSON-RPC over stdio) · language-server resolution (lazy start)
   external       SlashRegistry · .md slash command loader · MCP client (stdio/http transports, tool bridge)
   observability  Transcript (JSONL)
-  multi-agent, isolation, sdk
-                 reserved package slots
 apps/
   cli            the nova binary (Ink/React REPL, only active app)
   http, vscode   placeholders, not implemented
@@ -389,7 +390,7 @@ Inside the workspace, `@nova/*` packages import each other directly from `./src/
 | Sessions | `~/.nova/sessions/{id}/` |
 | Transcript (observer event stream) | `~/.nova/sessions/{id}/transcript.jsonl` |
 | Replayable message history | `~/.nova/sessions/{id}/messages.jsonl` |
-| Slash display-override map | `~/.nova/sessions/{id}/display-overrides.jsonl` |
+| Display sidecar (slash-input overrides + sub-agent progress details, render-only) | `~/.nova/sessions/{id}/display-sidecar.jsonl` |
 | Sub-agent transcripts/messages | `~/.nova/sessions/{id}/subagents/` |
 | Session log | `~/.nova/sessions/{id}/session.log` |
 | Memory (project layer) | Walks up from cwd; at each directory picks the highest-priority of `NOVA.md` > `CLAUDE.md` > `AGENTS.md` (no merging within a directory) |

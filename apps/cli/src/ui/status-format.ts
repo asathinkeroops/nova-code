@@ -1,4 +1,32 @@
 import { visibleWidth } from "./width.js";
+import type { PermissionMode } from "../permissions.js";
+
+/** Dim hint appended after the mode label below the StatusLine. */
+export const PERMISSION_MODE_HINT = "(shift+tab to cycle)";
+
+/** A colored mode label plus the Ink color used to render it. */
+export interface PermissionModeIndicator {
+  label: string;
+  color: string;
+}
+
+/**
+ * Colored label shown below the StatusLine for a non-default permission mode,
+ * or null for `default` (no extra row). Each mode gets a distinct color for
+ * at-a-glance distinction — green for accept-edits (writes flowing), cyan for
+ * plan (read-only). The PERMISSION_MODE_HINT is rendered after it in the
+ * StatusLine's dim color. Cycled with shift+tab.
+ */
+export function permissionModeIndicator(mode: PermissionMode): PermissionModeIndicator | null {
+  switch (mode) {
+    case "acceptEdits":
+      return { label: "⏵⏵ accept edits on", color: "green" };
+    case "plan":
+      return { label: "⏸ plan mode on", color: "cyan" };
+    default:
+      return null;
+  }
+}
 
 /** `49h48m42s`, dropping leading units that are zero. */
 export function formatDuration(ms: number): string {

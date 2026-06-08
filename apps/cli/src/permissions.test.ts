@@ -3,6 +3,7 @@ import { PermissionEngine } from "@nova/safety";
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_PERMISSION_RULES,
+  resolveModeDecision,
   resolvePermissionRules,
   workspaceReadRules,
 } from "./permissions.js";
@@ -136,5 +137,56 @@ describe("workspace-scoped read", () => {
     expect(
       eng.evaluate({ tool: "grep", input: { pattern: "x", path: "/Users/me/other" } }).effect,
     ).toBe("ask");
+  });
+});
+
+// The mode branch the CLI applies in checkPermission AFTER canonicalization and
+// BEFORE the engine. A null decision means "defer to the engine"; a concrete
+// {granted} short-circuits it.
+describe("resolveModeDecision", () => {
+  const roots = [CWD];
+
+  it("defers entirely in default mode (engine decides)", () => {
+    for (const tool of ["write", "edit", "bash", "read"]) {
+      expect(resolveModeDecision("default", tool, `${CWD}/x`, roots)).toBeNull();
+    }
+  });
+
+  it("plan mode denies write/edit/bash with a read-only reason", () => {
+    for (const tool of ["write", "edit", "bash"]) {
+      const d = resolveModeDecision("plan", tool, `${CWD}/x`, roots);
+      expect(d?.granted).toBe(false);
+      expect(d?.reason).toMatch(/plan mode/i);
+    }
+  });
+
+  it("plan mode leaves read-only tools to the engine", () => {
+    for (const tool of ["read", "glob", "grep", "lsp"]) {
+      expect(resolveModeDecision("plan", tool, `${CWD}/x`, roots)).toBeNull();
+    }
+  });
+
+  it("accept-edits auto-grants in-workspace write/edit", () => {
+    expect(resolveModeDecision("acceptEdits", "write", `${CWD}/src/a.ts`, roots)).toEqual({
+      granted: true,
+    });
+    expect(resolveModeDecision("acceptEdits", "edit", CWD, roots)).toEqual({ granted: true });
+  });
+
+  it("accept-edits defers (asks) for out-of-workspace write/edit", () => {
+    expect(resolveModeDecision("acceptEdits", "write", "/etc/hosts", roots)).toBeNull();
+    expect(resolveModeDecision("acceptEdits", "edit", `${CWD}-sibling/x`, roots)).toBeNull();
+  });
+
+  it("accept-edits never auto-grants bash (still asks)", () => {
+    expect(resolveModeDecision("acceptEdits", "bash", undefined, roots)).toBeNull();
+  });
+
+  it("accept-edits honors additional roots and defers when path is missing", () => {
+    const extra = "/Users/me/shared";
+    expect(resolveModeDecision("acceptEdits", "write", `${extra}/x`, [CWD, extra])).toEqual({
+      granted: true,
+    });
+    expect(resolveModeDecision("acceptEdits", "write", undefined, roots)).toBeNull();
   });
 });

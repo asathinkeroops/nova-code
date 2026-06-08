@@ -1,4 +1,6 @@
 import type { ToolResultBlock, ToolUseBlock } from "@nova/core";
+import type { SubAgentDetail } from "@nova/subagent";
+import wrapAnsi from "wrap-ansi";
 import {
   accent,
   blue,
@@ -144,16 +146,40 @@ function renderUserBubble(text: string, width: number): string {
 
 // ─── thinking ──────────────────────────────────────────────────────────────
 
-const THINKING_PREVIEW_CHARS = 200;
+const THINKING_INDENT = "     "; // aligns continuation rows under the `⎿` body
 
-function renderThinking(text: string, label: string | undefined): string {
+// When a thinking block is collapsed (its reasoning is done), show at most this
+// many wrapped body rows before summarizing the rest with a `… +N lines` hint.
+const THINKING_COLLAPSED_MAX_LINES = 3;
+
+function renderThinking(
+  text: string,
+  label: string | undefined,
+  width: number,
+  collapsed = false,
+): string {
   const head = `${magenta("✻")} ${dim(`thinking${label ? ` · ${label}` : ""}`)}`;
   const trimmed = text.replace(/\s+$/u, "");
   if (trimmed.length === 0) return head;
-  const flat = trimmed.replace(/\s+/g, " ");
-  const preview =
-    flat.length > THINKING_PREVIEW_CHARS ? `${flat.slice(0, THINKING_PREVIEW_CHARS)}…` : flat;
-  return `${head}\n${dim("  ⎿  ")}${dim(italic(preview))}`;
+  // Wrap the reasoning ourselves at the body width and prefix a hanging indent
+  // so soft-wrapped long lines stay aligned under the `⎿` marker instead of
+  // falling back to column 0.
+  const bodyWidth = Math.max(1, width - THINKING_INDENT.length);
+  const lines = wrapAnsi(trimmed, bodyWidth, { hard: true, wordWrap: false, trim: false }).split(
+    "\n",
+  );
+  // Once thinking is done we collapse it to a short preview: the first few
+  // wrapped rows plus a one-line hint counting what was hidden. While streaming
+  // (collapsed === false) the full reasoning is shown.
+  const hidden = collapsed ? Math.max(0, lines.length - THINKING_COLLAPSED_MAX_LINES) : 0;
+  const shown = hidden > 0 ? lines.slice(0, THINKING_COLLAPSED_MAX_LINES) : lines;
+  const body = shown
+    .map((line, i) => `${dim(i === 0 ? "  ⎿  " : THINKING_INDENT)}${dim(italic(line))}`)
+    .join("\n");
+  if (hidden > 0) {
+    return `${head}\n${body}\n${dim(`${THINKING_INDENT}… +${hidden} lines`)}`;
+  }
+  return `${head}\n${body}`;
 }
 
 function renderRedactedThinking(label: string | undefined): string {
@@ -476,12 +502,37 @@ function genericUseHeader(use: ToolUseBlock): string {
   return header(use.name, dim(trim(compact)));
 }
 
-function renderToolCall(use: ToolUseBlock, result: ToolResultBlock | undefined): string {
+/** Glyph per sub-agent detail kind, shown at the head of each detail row. */
+const DETAIL_MARK: Record<SubAgentDetail["type"], string> = {
+  thinking: "✻",
+  tool_use: "⚒",
+  final: "→",
+};
+
+/**
+ * Render the latest sub-agent progress details as dim, indented rows aligned
+ * under the tool-call's `⎿` result gutter. Returns "" when there are none.
+ */
+function renderSubAgentDetails(details: SubAgentDetail[] | undefined): string {
+  if (!details || details.length === 0) return "";
+  const rows = details.map((d) => {
+    const text = d.type === "tool_use" ? `${d.name}: ${d.summary}` : d.text;
+    return `     ${dim(`${DETAIL_MARK[d.type]} ${flatten(trim(text, 160))}`)}`;
+  });
+  return `\n${rows.join("\n")}`;
+}
+
+function renderToolCall(
+  use: ToolUseBlock,
+  result: ToolResultBlock | undefined,
+  details?: SubAgentDetail[],
+): string {
   const def = tools[use.name];
   const view: UseView = def?.use
     ? def.use(use.input as Record<string, unknown>)
     : { header: genericUseHeader(use) };
   const head = `${marker(toolState(result))} ${view.header}`;
+  const detailRows = renderSubAgentDetails(details);
 
   if (result === undefined) {
     // Inline tools (bash / read / write / edit / ...) keep the header on a
@@ -490,10 +541,10 @@ function renderToolCall(use: ToolUseBlock, result: ToolResultBlock | undefined):
     // right under the header (no blank row).
     if (def?.inline) {
       const body = view.body ? `\n${view.body}` : "";
-      return `${head}${body}`;
+      return `${head}${body}${detailRows}`;
     }
     const body = view.body ? `\n\n${view.body}` : "";
-    return `${head}\n  ${dim("⎿")}  ${dim("…")}${body}`;
+    return `${head}\n  ${dim("⎿")}  ${dim("…")}${body}${detailRows}`;
   }
 
   const resultStr = def?.result
@@ -504,11 +555,11 @@ function renderToolCall(use: ToolUseBlock, result: ToolResultBlock | undefined):
 
   if (def?.inline) {
     const body = view.body ? `\n${compactBody(view.body)}` : "";
-    return `${head}  ${resultStr}${body}`;
+    return `${head}  ${resultStr}${body}${detailRows}`;
   }
 
   const body = view.body ? `\n\n${compactBody(view.body)}` : "";
-  return `${head}\n  ${dim("⎿")}  ${resultStr}${body}`;
+  return `${head}\n  ${dim("⎿")}  ${resultStr}${body}${detailRows}`;
 }
 
 // ─── read batch ────────────────────────────────────────────────────────────
@@ -556,11 +607,11 @@ export function renderItemToString(item: RenderItem, width: number): string {
     case "assistant-text":
       return renderMarkdown(item.text);
     case "thinking":
-      return renderThinking(item.thinking, item.label);
+      return renderThinking(item.thinking, item.label, width, item.collapsed ?? false);
     case "redacted-thinking":
       return renderRedactedThinking(item.label);
     case "tool-call":
-      return renderToolCall(item.use, item.result);
+      return renderToolCall(item.use, item.result, item.details);
     case "read-batch":
       return renderReadBatch(item.entries);
     case "card":

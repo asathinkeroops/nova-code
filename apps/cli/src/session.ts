@@ -10,7 +10,7 @@ import {
 import { Transcript } from "@nova/observability";
 import { dim, red } from "./colors.js";
 import { refreshBanner, type CliContext } from "./context.js";
-import { loadDisplayOverrides } from "./display-overrides.js";
+import { loadDisplaySidecar } from "./display-sidecar.js";
 import { SnapshotStore } from "./snapshots.js";
 import { loadMessages, emptyCursor } from "@nova/agent";
 
@@ -169,7 +169,9 @@ export async function switchToSession(ctx: CliContext, newSession: Session): Pro
     `${newSession.id}\nlog: ${ctx.logPath}\n${newMessages.length} message(s)`,
     { kind: "info", title: "/resume" },
   );
-  ctx.screen.setUserDisplayOverrides(await loadDisplayOverrides(newSession.dir));
+  const sidecar = await loadDisplaySidecar(newSession.dir);
+  ctx.screen.setUserDisplayOverrides(sidecar.userOverrides);
+  ctx.screen.setToolDetails(sidecar.toolDetails);
   ctx.screen.setMessages(newMessages);
   ctx.logger.info(
     { sessionId: newSession.id, dir: newSession.dir, messageCount: newMessages.length },
