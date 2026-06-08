@@ -29,18 +29,27 @@ interface AppProps {
 }
 
 export function App({ store }: AppProps): React.ReactElement {
-  const { setup, modal, slashCommands, inputPlaceholder, inputQueue, permissionMode, termRows } =
-    store(
-      useShallow((s) => ({
-        setup: s.setup,
-        modal: s.modal,
-        slashCommands: s.slashCommands,
-        inputPlaceholder: s.inputPlaceholder,
-        inputQueue: s.inputQueue,
-        permissionMode: s.permissionMode,
-        termRows: s.termRows,
-      })),
-    );
+  const {
+    setup,
+    modal,
+    slashCommands,
+    mentionFiles,
+    inputPlaceholder,
+    inputQueue,
+    permissionMode,
+    termRows,
+  } = store(
+    useShallow((s) => ({
+      setup: s.setup,
+      modal: s.modal,
+      slashCommands: s.slashCommands,
+      mentionFiles: s.mentionFiles,
+      inputPlaceholder: s.inputPlaceholder,
+      inputQueue: s.inputQueue,
+      permissionMode: s.permissionMode,
+      termRows: s.termRows,
+    })),
+  );
   // Actions are stable across renders — grab them once via getState().
   const { resolveModal } = store.getState();
 
@@ -116,6 +125,7 @@ export function App({ store }: AppProps): React.ReactElement {
         <InputBox
           options={{
             commands: slashCommands,
+            files: mentionFiles,
             placeholder: inputPlaceholder,
             history: userInputHistory(store.getState().messages),
             queued: inputQueue,

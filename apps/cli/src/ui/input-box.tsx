@@ -15,6 +15,13 @@ export interface BoxedInputOptions {
   width?: number;
   /** Slash commands shown in a popup when the buffer starts with "/". */
   commands?: SlashCommand[];
+  /**
+   * Workspace file paths (relative, posix-style) offered for `@path` mention
+   * completion. When the cursor sits inside an `@token`, a popup of matching
+   * files appears; Tab/Enter completes the token to the selected path. Wired by
+   * App.tsx from a snapshot the REPL refreshes after each turn.
+   */
+  files?: string[];
   /** Render typed characters as `*` (passwords / API keys). */
   mask?: boolean;
   /**
@@ -40,6 +47,8 @@ interface DisplayLine {
 
 const POPUP_MAX_ROWS = 5;
 const QUEUED_MAX_ROWS = 5;
+/** Cap on file candidates fed to the mention popup before it scrolls. */
+const MENTION_MAX_CANDIDATES = 50;
 const RULE_CHAR = "┄";
 const MIN_WIDTH = 20;
 const PROMPT_TEXT = "› ";
@@ -105,6 +114,56 @@ function matchingCommands(
     }
   }
   return out;
+}
+
+/**
+ * The `@mention` token the cursor sits in, or null when there isn't one.
+ *
+ * A mention is a `@` that starts a whitespace-delimited word (so it's at the
+ * buffer start or preceded by whitespace) followed by the path being typed.
+ * `[start, end)` spans the whole `@…` word (which may extend past the cursor
+ * when editing mid-token); `query` is just the path chars up to the cursor,
+ * which is what we match files against. A leading `/` buffer is left to the
+ * slash popup, so `@` mentions never fire on a command line.
+ */
+export function mentionTokenAt(
+  buffer: string,
+  cursor: number,
+): { start: number; end: number; query: string } | null {
+  if (buffer.startsWith("/")) return null;
+  let start = cursor;
+  while (start > 0 && !/\s/.test(buffer[start - 1] ?? "")) start--;
+  if (buffer[start] !== "@") return null;
+  let end = cursor;
+  while (end < buffer.length && !/\s/.test(buffer[end] ?? "")) end++;
+  return { start, end, query: buffer.slice(start + 1, cursor) };
+}
+
+/**
+ * Rank workspace files for an `@mention` query. Basename-prefix matches rank
+ * above basename-substring, then full-path substring; ties break on the
+ * shorter, then lexically-smaller path. An empty query returns the shortest
+ * paths first so a bare `@` still shows a useful starter list. Case-insensitive.
+ */
+export function matchingFiles(query: string, files: string[], limit: number): string[] {
+  const q = query.toLowerCase();
+  const scored: { path: string; score: number }[] = [];
+  for (const path of files) {
+    const lower = path.toLowerCase();
+    const base = lower.slice(lower.lastIndexOf("/") + 1);
+    let score: number;
+    if (q.length === 0) score = 3;
+    else if (base.startsWith(q)) score = 0;
+    else if (base.includes(q)) score = 1;
+    else if (lower.includes(q)) score = 2;
+    else continue;
+    scored.push({ path, score });
+  }
+  scored.sort(
+    (a, b) =>
+      a.score - b.score || a.path.length - b.path.length || (a.path < b.path ? -1 : 1),
+  );
+  return scored.slice(0, limit).map((s) => s.path);
 }
 
 /**
@@ -258,6 +317,7 @@ export function InputBox({
   const width = Math.max(MIN_WIDTH, options.width ?? stdout?.columns ?? 80);
   const placeholderText = options.placeholder ?? "";
   const commands = options.commands ?? [];
+  const files = options.files ?? [];
   const mask = options.mask ?? false;
   const history = options.history ?? [];
   const queued = options.queued ?? [];
@@ -268,7 +328,31 @@ export function InputBox({
   const [historyPos, setHistoryPos] = useState(history.length);
   const [draft, setDraft] = useState("");
 
-  const matches = matchingCommands(buffer, commands, popupDismissed);
+  // The completion popup is one of two kinds: slash commands when the buffer is
+  // a command line, or `@path` file mentions when the cursor sits in an `@`
+  // token. `matches` is the unified item list ({name, description}) the rest of
+  // the component navigates and renders; `mention` carries the token range a
+  // file pick replaces. Masked input (passwords) gets neither popup.
+  const popup = (() => {
+    if (mask || popupDismissed) return null;
+    const cmds = matchingCommands(buffer, commands, false);
+    if (cmds.length > 0) return { kind: "slash" as const, items: cmds, mention: null };
+    if (files.length > 0) {
+      const tok = mentionTokenAt(buffer, cursor);
+      if (tok) {
+        const paths = matchingFiles(tok.query, files, MENTION_MAX_CANDIDATES);
+        if (paths.length > 0) {
+          return {
+            kind: "file" as const,
+            items: paths.map((p) => ({ name: p, description: "" })),
+            mention: { start: tok.start, end: tok.end },
+          };
+        }
+      }
+    }
+    return null;
+  })();
+  const matches = popup?.items ?? [];
   // Highlight range for the leading `/command` token in the input line. Skipped
   // under mask (passwords) — we never colour asterisked input.
   const cmdRange = mask ? null : commandTokenRange(buffer, commands);
@@ -308,6 +392,20 @@ export function InputBox({
     setDraft("");
   };
 
+  // Replace the `@…` token at `range` with `@path ` (trailing space so the
+  // popup closes and the next word starts clean) and park the cursor after it.
+  // Stays in edit mode — completing a mention never submits.
+  const completeMention = (range: { start: number; end: number }, path: string): void => {
+    const insert = `@${path} `;
+    const next = buffer.slice(0, range.start) + insert + buffer.slice(range.end);
+    setBuffer(next);
+    setCursor(range.start + insert.length);
+    setPopupDismissed(true);
+    setPopupCursor(0);
+    setPopupOffset(0);
+    setHistoryPos(history.length);
+  };
+
   const scrollPopupTo = (next: number): void => {
     if (next < safeOffset) {
       setPopupOffset(next);
@@ -324,8 +422,19 @@ export function InputBox({
     if (key.ctrl && input === "d") return;
 
     if (key.return) {
+      // A selected file mention completes in place rather than submitting —
+      // Enter inserts the path and keeps you typing.
+      if (popup?.kind === "file") {
+        const pick = matches[effectivePopupCursor];
+        if (pick) {
+          completeMention(popup.mention, pick.name);
+          return;
+        }
+      }
       if (buffer.length === 0) return;
-      const pick = matches[effectivePopupCursor];
+      // A selected slash command submits as that command; otherwise submit the
+      // buffer verbatim.
+      const pick = popup?.kind === "slash" ? matches[effectivePopupCursor] : undefined;
       const out = pick ? pick.name : buffer;
       onSubmit(out);
       clearBuffer();
@@ -379,11 +488,15 @@ export function InputBox({
     if (key.tab) {
       const pick = matches[effectivePopupCursor];
       if (pick) {
-        setBuffer(pick.name);
-        setCursor(pick.name.length);
-        setPopupDismissed(true);
-        setPopupCursor(0);
-        setPopupOffset(0);
+        if (popup?.kind === "file") {
+          completeMention(popup.mention, pick.name);
+        } else {
+          setBuffer(pick.name);
+          setCursor(pick.name.length);
+          setPopupDismissed(true);
+          setPopupCursor(0);
+          setPopupOffset(0);
+        }
       }
       return;
     }
@@ -490,15 +603,22 @@ export function InputBox({
         const absIndex = i + safeOffset;
         const isSel = absIndex === effectivePopupCursor;
         const arrow = isSel ? "❯ " : "  ";
+        // Truncate the name to the box width so a long file path never wraps
+        // (which would throw off the popup row count fed to onMeasure).
+        const label = truncateToWidth(m.name, Math.max(10, width - 4));
         const nameWidth = Math.min(
           20,
           Math.max(...matches.map((mm) => visibleWidth(mm.name))),
         );
-        const pad = " ".repeat(Math.max(1, nameWidth + 2 - visibleWidth(m.name)));
+        // Pad to align descriptions (slash commands). File rows carry no
+        // description, so they need no padding.
+        const pad = m.description
+          ? " ".repeat(Math.max(1, nameWidth + 2 - visibleWidth(label)))
+          : "";
         return (
           <Text key={m.name} color={isSel ? ACCENT_HEX : undefined} dimColor={!isSel}>
             {arrow}
-            {m.name}
+            {label}
             {pad}
             {m.description}
           </Text>

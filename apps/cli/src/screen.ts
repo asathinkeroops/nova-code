@@ -292,6 +292,11 @@ export class Screen {
     this.store.getState().setSlashCommands(commands);
   }
 
+  /** Replace the workspace file snapshot used for `@path` mention completion. */
+  setMentionFiles(files: string[]): void {
+    this.store.getState().setMentionFiles(files);
+  }
+
   setInputPlaceholder(text: string): void {
     this.store.getState().setInputPlaceholder(text);
   }

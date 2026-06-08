@@ -1,8 +1,24 @@
 import { ACCENT_RGB, accent, dim } from "./colors.js";
 import { stopSpinner, type CliContext } from "./context.js";
 import { appendUserOverride } from "./display-sidecar.js";
+import { listWorkspaceFiles } from "./file-index.js";
 import { predictNextInput } from "./predict.js";
 import { toUiSlashCommands } from "./slash.js";
+
+/**
+ * Rebuild the workspace file snapshot that powers `@path` mention completion in
+ * the InputBox. Best-effort — a failure just leaves the previous snapshot in
+ * place; completion degrades to nothing rather than breaking the REPL.
+ */
+async function refreshMentionFiles(ctx: CliContext): Promise<void> {
+  try {
+    const files = await listWorkspaceFiles(ctx.workspace);
+    ctx.screen.setMentionFiles(files);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    ctx.logger.warn({ err: msg }, "failed to refresh @-mention file index");
+  }
+}
 
 async function refreshPrediction(ctx: CliContext): Promise<void> {
   if (!ctx.settings.predict.enabled) return;
@@ -102,6 +118,7 @@ export async function runRepl(ctx: CliContext, initialPrompt: string): Promise<v
   // single consumer. Prompts typed while a turn runs pile up in the queue and
   // are drained here one turn at a time.
   ctx.screen.setSlashCommands(toUiSlashCommands(ctx.registry.list()));
+  await refreshMentionFiles(ctx);
 
   if (initialPrompt) {
     const ok = await runTurn(ctx, initialPrompt);
@@ -124,6 +141,9 @@ export async function runRepl(ctx: CliContext, initialPrompt: string): Promise<v
 
     const ok = await runTurn(ctx, action.prompt);
     if (ok) await refreshPrediction(ctx);
+    // Pick up files created/deleted during the turn. Fire-and-forget so it
+    // never delays the next prompt; the function swallows its own errors.
+    void refreshMentionFiles(ctx);
   }
 
   await ctx.transcript.flush();

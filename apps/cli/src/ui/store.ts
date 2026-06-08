@@ -225,6 +225,11 @@ export interface AppState {
    */
   slashCommands: SlashCommand[];
   /**
+   * Workspace file snapshot for `@path` mention completion in the InputBox.
+   * Refreshed by the REPL at startup and after each turn.
+   */
+  mentionFiles: string[];
+  /**
    * Predicted next-input hint shown as the InputBox placeholder when the buffer
    * is empty. Refreshed by the REPL after each turn.
    */
@@ -334,6 +339,7 @@ export interface AppActions {
   /** Ask the idle REPL to stop (Ctrl+C with no turn running). */
   requestExit: () => void;
   setSlashCommands: (commands: SlashCommand[]) => void;
+  setMentionFiles: (files: string[]) => void;
   setInputPlaceholder: (text: string) => void;
   /** Replace the display-override map (used on resume to seed from disk). */
   setUserDisplayOverrides: (overrides: Record<string, string>) => void;
@@ -442,6 +448,7 @@ export function createAppStore(): AppStoreApi {
       contextWindowTokens: 0,
       inputQueue: [],
       slashCommands: [],
+      mentionFiles: [],
       inputPlaceholder: "",
       userDisplayOverrides: {},
       toolDetails: {},
@@ -772,6 +779,10 @@ export function createAppStore(): AppStoreApi {
 
       setSlashCommands(commands) {
         set({ slashCommands: commands });
+      },
+
+      setMentionFiles(files) {
+        set({ mentionFiles: files });
       },
 
       setInputPlaceholder(text) {
