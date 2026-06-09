@@ -91,6 +91,8 @@ pnpm dev [prompt...]                # 先跑一轮初始 prompt，再留在 REPL
 /rewind [<n>]        回退到此前某条消息（其后的历史与文件改动被丢弃）
 /init [focus…]       探索代码库后生成 / 刷新项目 memory（NOVA.md/CLAUDE.md/AGENTS.md）
 /plan <goal>         把调查交给只读 plan 子 agent，再给出实现计划
+/commit [guidance…]  审查待提交改动、跟随仓库提交风格，创建本地提交（不 push）
+/review [focus…]     审查当前未提交的 diff（只读）
 /agents [reload]     列出可用的子 agent 类型；`reload` 重新扫盘
 /agent <name> <task> 把任务委派给指定子 agent
 /predict [on|off]    查看 / 切换下一条输入预测占位

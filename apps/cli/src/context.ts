@@ -55,6 +55,7 @@ import { loadAgents } from "./agents.js";
 import {
   handleClear,
   handleCommands,
+  handleCommit,
   handleCompact,
   handleHelp,
   handleInit,
@@ -65,6 +66,7 @@ import {
   handleAgent,
   handleAgents,
   handleResume,
+  handleReview,
   handleRewind,
   handleSkills,
   handleEffort,
@@ -359,6 +361,20 @@ function registerBuiltinSlashCommands(ctx: CliContext): void {
     argHint: "<task goal>",
     source: { kind: "builtin" },
     run: (_c, args) => handlePlan(args),
+  });
+  ctx.registry.register({
+    name: "commit",
+    description: "review pending changes and create a git commit",
+    argHint: "[guidance…]",
+    source: { kind: "builtin" },
+    run: (_c, args) => handleCommit(args),
+  });
+  ctx.registry.register({
+    name: "review",
+    description: "review the current uncommitted diff (read-only)",
+    argHint: "[focus…]",
+    source: { kind: "builtin" },
+    run: (_c, args) => handleReview(args),
   });
   ctx.registry.register({
     name: "predict",

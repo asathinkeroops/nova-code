@@ -15,7 +15,7 @@ describe("settingsSchema", () => {
     const s = parseSettings({});
     expect(s.model).toBe("claude-sonnet-4-5");
     expect(s.maxTokens).toBe(32768);
-    expect(s.maxTurns).toBe(40);
+    expect(s.maxTurns).toBe(50);
     expect(s.permissions.defaultEffect).toBe("ask");
     expect(s.permissions.rules).toEqual([]);
     expect(s.transcript.enabled).toBe(true);

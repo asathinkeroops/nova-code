@@ -72,7 +72,7 @@ export const settingsSchema = z.object({
   // caps output at 8192 — DeepSeek users should lower this in nova.config.json.
   maxTokens: z.number().int().positive().default(32768),
   contextWindowTokens: z.number().int().positive().default(1_000_000),
-  maxTurns: z.number().int().positive().default(40),
+  maxTurns: z.number().int().positive().default(50),
   // Max tool executions to run concurrently within a single turn. Calls beyond
   // this cap queue and start as slots free up. 1 = fully sequential.
   toolConcurrency: z.number().int().positive().default(3),

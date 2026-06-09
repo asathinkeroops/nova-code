@@ -91,6 +91,8 @@ The `-t` levels map to fixed token budgets: `off` = 0, `low` = 2k, `medium` = 8k
 /rewind [<n>]        rewind to an earlier message (history and file edits after it are discarded)
 /init [focus…]       explore the codebase, then generate / refresh project memory (NOVA.md/CLAUDE.md/AGENTS.md)
 /plan <goal>         delegate investigation to a read-only plan sub-agent, then present a plan
+/commit [guidance…]  review pending changes, match repo commit style, and create a local commit (no push)
+/review [focus…]     review the current uncommitted diff (read-only)
 /agents [reload]     list available sub-agent types; `reload` rescans files
 /agent <name> <task> delegate a task to a specific sub-agent
 /predict [on|off]    show or toggle next-input prediction placeholder
