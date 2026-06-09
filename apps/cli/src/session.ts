@@ -119,12 +119,35 @@ export async function printSessionList(sessionDir: string | undefined): Promise<
   }
 }
 
+export interface SwitchSessionOptions {
+  /** Card / log title. Defaults to "/resume". */
+  title?: string;
+  /**
+   * Whether this is a resume of existing history (true) or a freshly created
+   * empty session (false). Recorded in the session_start transcript event.
+   * Defaults to true.
+   */
+  resumed?: boolean;
+  /** Card body to show when the target session has no messages. */
+  emptyCard?: string;
+}
+
 /**
  * Tear down the current session and load a different one in-place.
  * Mutates ctx: session, logPath, logger, transcript, messages, persistCursor,
  * resumed. Re-emits session_start / memory_loaded into the new transcript.
+ *
+ * Shared by `/resume` (switch to an existing session) and `/clear` (switch to a
+ * freshly created empty session). The previous session is left untouched on
+ * disk, so it stays resumable.
  */
-export async function switchToSession(ctx: CliContext, newSession: Session): Promise<boolean> {
+export async function switchToSession(
+  ctx: CliContext,
+  newSession: Session,
+  opts: SwitchSessionOptions = {},
+): Promise<boolean> {
+  const title = opts.title ?? "/resume";
+  const resumed = opts.resumed ?? true;
   let newMessages: MessageParam[];
   try {
     newMessages = await loadMessages(newSession.messagesPath);
@@ -132,9 +155,9 @@ export async function switchToSession(ctx: CliContext, newSession: Session): Pro
     const msg = err instanceof Error ? err.message : String(err);
     ctx.screen.card(`failed to load messages from ${newSession.id}: ${msg}`, {
       kind: "error",
-      title: "/resume",
+      title,
     });
-    ctx.logger.error({ err: msg, target: newSession.id }, "resume failed");
+    ctx.logger.error({ err: msg, target: newSession.id }, "session switch failed");
     return false;
   }
 
@@ -153,11 +176,11 @@ export async function switchToSession(ctx: CliContext, newSession: Session): Pro
           count: newMessages.length,
           lastLine: JSON.stringify(newMessages[newMessages.length - 1]),
         };
-  ctx.resumed = true;
+  ctx.resumed = resumed;
 
   await ctx.transcript.append({
     kind: "session_start",
-    data: { id: newSession.id, cwd: ctx.workspace, model: ctx.settings.model, resumed: true },
+    data: { id: newSession.id, cwd: ctx.workspace, model: ctx.settings.model, resumed },
   });
   if (ctx.memory.sources.length > 0) {
     await ctx.transcript.append({ kind: "memory_loaded", data: { sources: ctx.memory.sources } });
@@ -165,17 +188,18 @@ export async function switchToSession(ctx: CliContext, newSession: Session): Pro
 
   await ctx.screen.reset();
   refreshBanner(ctx);
-  ctx.screen.card(
-    `${newSession.id}\nlog: ${ctx.logPath}\n${newMessages.length} message(s)`,
-    { kind: "info", title: "/resume" },
-  );
+  const card =
+    newMessages.length === 0 && opts.emptyCard
+      ? opts.emptyCard
+      : `${newSession.id}\nlog: ${ctx.logPath}\n${newMessages.length} message(s)`;
+  ctx.screen.card(card, { kind: "info", title });
   const sidecar = await loadDisplaySidecar(newSession.dir);
   ctx.screen.setUserDisplayOverrides(sidecar.userOverrides);
   ctx.screen.setToolDetails(sidecar.toolDetails);
   ctx.screen.setMessages(newMessages);
   ctx.logger.info(
-    { sessionId: newSession.id, dir: newSession.dir, messageCount: newMessages.length },
-    "session resumed via /resume",
+    { sessionId: newSession.id, dir: newSession.dir, messageCount: newMessages.length, resumed },
+    `session switched via ${title}`,
   );
   return true;
 }

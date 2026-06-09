@@ -311,7 +311,7 @@ function registerBuiltinSlashCommands(ctx: CliContext): void {
   });
   ctx.registry.register({
     name: "clear",
-    description: "clear conversation history (keeps session)",
+    description: "start a fresh session (the current one stays resumable)",
     source: { kind: "builtin" },
     run: async () => {
       await handleClear(ctx);

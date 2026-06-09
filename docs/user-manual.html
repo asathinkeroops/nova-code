@@ -223,7 +223,7 @@
         <div class="flex items-center gap-3 mb-5"><span class="sec-num">01</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">它能做什么</h2></div>
         <ul class="space-y-3 list-none pl-0">
           <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>Agentic 编码循环</strong> —— 给它一个目标，它自己读代码、改文件、跑命令，一步步把任务做完。同一轮里互相独立的工具调用以<strong>有界并发</strong>运行（默认每轮 3 个）。</span></li>
-          <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>代码与系统工具</strong> —— 文件 read / write / edit，<code>glob</code> + <code>grep</code> 搜索，<code>bash</code> 与后台长任务，web fetch / search，notebook 编辑，向你提问。</span></li>
+          <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>代码与系统工具</strong> —— 文件 read / write / edit，<code>glob</code> + <code>grep</code> 搜索，<code>bash</code> 与后台长任务，web fetch / search，向你提问。</span></li>
           <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>LSP 代码智能</strong> —— 直连语言服务器做 go-to-definition、find-references、hover、诊断、符号搜索，比 grep 更懂作用域和类型。</span></li>
           <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>扩展 thinking</strong> —— 五档（<code>off</code>/<code>low</code>/<code>medium</code>/<code>high</code>/<code>max</code>）或显式 token 预算。</span></li>
           <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>Plan 模式与子 agent</strong> —— 把庞大的调查/规划交给全新上下文的 worker，结论汇报回来，主对话保持干净。</span></li>
@@ -312,6 +312,7 @@
           <tr><td><span class="kbd">Esc</span></td><td>中断正在运行的回合</td></tr>
           <tr><td><span class="kbd">Ctrl+C</span></td><td>有回合在跑时中断它；空闲时再按一次退出</td></tr>
           <tr><td><span class="kbd">Ctrl+D</span></td><td>退出 Nova</td></tr>
+          <tr><td><span class="kbd">Shift+Tab</span></td><td>循环切换权限模式：default → accept edits → plan（见 <a class="inline-link" href="#sec-10">§10</a>）</td></tr>
           <tr><td>鼠标滚轮</td><td>在历史区上下滚动</td></tr>
           <tr><td>鼠标拖拽</td><td>选中文本（用于复制）</td></tr>
         </tbody></table></div>
@@ -332,6 +333,9 @@
           <li>审批框还支持 <span class="kbd">PageUp</span>/<span class="kbd">PageDown</span> 滚动周围视口，方便先看清要批准的内容</li>
         </ul>
 
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)"><code>@path</code> 文件引用补全</h3>
+        <p>在输入框里打 <code>@</code> 开头的词，会弹出<strong>工作区文件路径</strong>补全（按 basename 前缀优先排序，遵守 <code>.gitignore</code>、跳过 <code>node_modules</code>/<code>.git</code>，与 <code>glob</code>/<code>grep</code> 看到的文件一致）。<span class="kbd">↑</span>/<span class="kbd">↓</span> 选择、<span class="kbd">Enter</span> 或 <span class="kbd">Tab</span> 补全。命令行（<code>/</code> 开头）上不触发 <code>@</code> 补全。</p>
+
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">输入预测</h3>
         <p>每成功跑完一轮，Nova 会用主模型预测你<strong>下一句可能想说什么</strong>，作为输入框的灰色占位提示（默认开启，超时 8s，最多 50 字）。用 <code>/predict on|off</code> 开关，或在配置里调 <code>predict</code>。</p>
       </section>
@@ -347,18 +351,22 @@
           <tr><td><code>/compact [focus…]</code></td><td>把历史压缩成单条摘要消息；可附带关注点提示</td></tr>
           <tr><td><code>/resume [&lt;id&gt;]</code></td><td>切换到指定 session；不带参数则弹出列表选择</td></tr>
           <tr><td><code>/rewind [&lt;n&gt;]</code></td><td>回退到此前某条消息 —— 其后的对话历史与文件改动都会被丢弃</td></tr>
+          <tr><td><code>/init [focus…]</code></td><td>探索代码库后生成 / 刷新项目记忆（<code>NOVA.md</code>，可附关注点）</td></tr>
           <tr><td><code>/plan &lt;goal&gt;</code></td><td>把调查交给一个只读的 plan 子 agent，返回分步实现计划</td></tr>
+          <tr><td><code>/commit [guidance…]</code></td><td>审查待提交改动、跟随仓库提交风格，创建本地提交（<strong>不 push</strong>）</td></tr>
+          <tr><td><code>/review [focus…]</code></td><td>审查当前未提交的 diff，只读地报告问题（不改动任何文件）</td></tr>
           <tr><td><code>/predict [on|off]</code></td><td>查看或切换「下一条输入预测」</td></tr>
-          <tr><td><code>/stream [on|off]</code></td><td>查看或切换 token 流式渲染（见配置 <code>stream</code>）</td></tr>
           <tr><td><code>/commands [reload]</code></td><td>列出已注册的 slash 命令；<code>reload</code> 重新扫盘加载自定义命令</td></tr>
           <tr><td><code>/skills</code></td><td>列出已发现的 <code>SKILL.md</code>（及各自来源）</td></tr>
+          <tr><td><code>/agents [reload]</code></td><td>列出可用的子 agent 类型；<code>reload</code> 重新扫盘加载 agent 文件</td></tr>
+          <tr><td><code>/agent &lt;name&gt; &lt;task&gt;</code></td><td>把一项任务委派给指定的子 agent</td></tr>
           <tr><td><code>/mcp [tools]</code></td><td>查看 MCP 服务器状态；<code>tools</code> 列出所有桥接的工具</td></tr>
           <tr><td><code>/lsp</code></td><td>查看已配置的语言服务器（是否在 PATH、本 session 是否已启动）</td></tr>
           <tr><td><code>/exit</code>, <code>/quit</code></td><td>退出</td></tr>
         </tbody></table></div>
         <div class="callout callout-info">
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
-          <div><p><code>/stream</code> 由配置项 <code>stream.enabled</code> 支撑。<code>/help</code> 与 <code>/commands</code> 会把<strong>内置 + 项目 + 用户</strong>三层命令都列出来；自定义命令的加载规则见 <a class="inline-link" href="#sec-15">§15</a>。</p></div>
+          <div><p><code>/commit</code> 与 <code>/review</code> 不直接动手，而是展开成一段引导 prompt 交给主 agent，让它用自己的工具去查 <code>git status</code>/<code>diff</code> 并完成提交或审查。token 流式渲染由配置项 <code>stream.enabled</code> 控制（无对应 slash 命令）。<code>/help</code> 与 <code>/commands</code> 会把<strong>内置 + 项目 + 用户</strong>三层命令都列出来；自定义命令的加载规则见 <a class="inline-link" href="#sec-15">§15</a>。</p></div>
         </div>
       </section>
 
@@ -400,11 +408,23 @@
           <tr><td><code>general-purpose</code></td><td>完整工具</td><td>需要真正改文件或跑命令的活儿</td></tr>
         </tbody></table></div>
         <p>同一轮里的多个 <code>createSubAgent</code> 调用会<strong>并发执行</strong>（受 <code>toolConcurrency</code> 限制）。父 agent 只会收到每个子 agent 的<strong>最终一条消息</strong> —— 庞大的中间调查被挡在主上下文之外。</p>
-        <p>通过 <code>settings.subagent</code> 配置：<code>enabled</code> / <code>model</code>（默认随父模型）/ <code>maxTurns</code>（默认 30）/ <code>maxTokens</code>（默认 8192）。每个子 agent 的 transcript 落在 <code>~/.nova/sessions/{id}/subagents/</code>。</p>
+        <p>通过 <code>settings.subagent</code> 配置：<code>enabled</code> / <code>model</code>（默认随父模型）/ <code>maxTurns</code>（默认 50）/ <code>maxTokens</code>（默认 32768；DeepSeek 端点输出上限 8192，需调低）。每个子 agent 的 transcript 落在 <code>~/.nova/sessions/{id}/subagents/</code>。</p>
         <div class="callout callout-info">
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
           <div><p>子 agent 调用 todo / task / 长任务这类「有状态」工具时，操作的是<strong>父 session</strong> 的共享存储。</p></div>
         </div>
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">自定义子 Agent 类型</h3>
+        <p>除三种内置类型外，你还能用 <code>.md</code> 文件定义自己的子 agent 类型（frontmatter 写 <code>name</code> / <code>description</code> / 工具与模型等，正文是它的 system prompt）。发现目录：</p>
+        <ul class="space-y-2">
+          <li><strong>项目层</strong>：<code>.nova/agents/</code>（兼容 <code>.claude/agents/</code>）</li>
+          <li><strong>用户层</strong>：<code>~/.nova/agents/</code>（兼容 <code>~/.claude/agents/</code>）</li>
+        </ul>
+        <ul class="space-y-2">
+          <li><code>/agents</code> 列出当前可用的全部子 agent 类型及来源；<code>/agents reload</code> 改完文件后重新扫盘。</li>
+          <li><code>/agent &lt;name&gt; &lt;task&gt;</code> 把一项任务直接委派给指定的子 agent 类型。</li>
+          <li>发现目录可用 <code>settings.subagent</code> 的 <code>projectDirs</code> / <code>userPaths</code> / <code>extraDirs</code> 覆盖。</li>
+        </ul>
+
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)"><code>/plan</code> 命令</h3>
         <p><code>/plan &lt;goal&gt;</code> 是上面机制的一层薄封装：它让 agent 派生一个 <code>plan</code> 子 agent，对目标做只读调查，然后返回一份分步实现计划 —— 动手改动之前先看清楚要做什么。</p>
       </section>
@@ -448,7 +468,7 @@
         <p><code>createTodo</code> / <code>updateTodo</code> / <code>getTodoList</code> / <code>clearTodoList</code> —— 把多步计划外化成一张清单，<strong>只存内存</strong>，进程退出即丢。任一时刻最多一个 todo 处于 <code>in_progress</code>。</p>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">计划管理：Task（工作区内，落盘持久）</h3>
-        <p><code>createTask</code> / <code>updateTask</code> / <code>getTask</code> / <code>getTaskList</code> / <code>clearTaskList</code> —— 更大、值得跨会话保留的计划，落盘到工作区的 <code>.tasks/{id}.json</code>。支持 <code>blockedBy</code> 依赖关系，允许多个并行 <code>in_progress</code>。</p>
+        <p><code>createTask</code> / <code>updateTask</code> / <code>getTaskList</code> / <code>clearTaskList</code> —— 更大、值得跨会话保留的计划，落盘到工作区的 <code>.tasks/{id}.json</code>。支持 <code>blockedBy</code> 依赖关系，允许多个并行 <code>in_progress</code>。</p>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">后台长任务</h3>
         <div class="tbl-wrap"><table class="doc"><thead><tr><th>工具</th><th>权限</th><th>说明</th></tr></thead><tbody>
@@ -478,6 +498,18 @@
           <li class="flex gap-3"><span class="sec-num" style="width:1.6rem;height:1.6rem;font-size:.75rem">4</span><span><strong>默认效果兜底。</strong>都没命中就用 <code>permissions.defaultEffect</code>（默认 <code>ask</code>）。</span></li>
           <li class="flex gap-3"><span class="sec-num" style="width:1.6rem;height:1.6rem;font-size:.75rem">5</span><span><strong>出错降级为 ask。</strong>规则求值若抛异常（坏正则等），降级为询问而非崩溃或拒绝 —— 让你始终掌握控制权。</span></li>
         </ol>
+
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">权限模式（Shift+Tab 切换）</h3>
+        <p>输入框右下角有一个<strong>权限模式</strong>指示，按 <span class="kbd">Shift+Tab</span> 在三档间循环。它在权限引擎之前介入，临时改变写类工具的裁决倾向 —— 只影响当前会话、不写盘：</p>
+        <div class="tbl-wrap"><table class="doc"><thead><tr><th>模式</th><th>状态行</th><th>行为</th></tr></thead><tbody>
+          <tr><td><code>default</code></td><td>（无额外行）</td><td>不改变任何裁决，<code>write</code>/<code>edit</code>/<code>bash</code> 照常落到引擎的 <code>ask</code></td></tr>
+          <tr><td><code>acceptEdits</code></td><td><span style="color:#059669">⏵⏵ accept edits on</span></td><td><strong>工作区内</strong>的 <code>write</code>/<code>edit</code> 自动放行（不再逐次询问）；<code>bash</code> 与工作区外的写仍然询问</td></tr>
+          <tr><td><code>plan</code></td><td><span style="color:#0891b2">⏸ plan mode on</span></td><td><strong>只读</strong>：<code>write</code>/<code>edit</code>/<code>bash</code> 一律拒绝，逼模型先调查、给出分步计划，而不动手改 —— 与只读 <code>/plan</code> 子 agent 同源</td></tr>
+        </tbody></table></div>
+        <div class="callout callout-info">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          <div><p>权限模式只是「在引擎之前」加一层偏置：<code>acceptEdits</code> 只放宽工作区内的写、<code>plan</code> 只收紧写类工具，其余裁决（危险 bash 拒绝、配置规则、读工具放行等）一律不变。想退出 plan 模式动手改动，再按 <span class="kbd">Shift+Tab</span> 切回即可。</p></div>
+        </div>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">默认放行 vs 默认询问</h3>
         <ul class="space-y-2">
@@ -726,9 +758,9 @@
           <tr><td><code>model</code></td><td><code>"claude-sonnet-4-5"</code></td><td>模型 id</td></tr>
           <tr><td><code>baseURL</code></td><td>（无）</td><td>Anthropic 兼容端点 URL</td></tr>
           <tr><td><code>sessionDir</code></td><td><code>~/.nova/sessions</code></td><td>session 存放目录</td></tr>
-          <tr><td><code>maxTokens</code></td><td><code>8192</code></td><td>单次响应输出上限</td></tr>
+          <tr><td><code>maxTokens</code></td><td><code>32768</code></td><td>单次响应输出上限（DeepSeek 端点上限 8192，需调低）</td></tr>
           <tr><td><code>contextWindowTokens</code></td><td><code>1000000</code></td><td>上下文窗口大小（用于压缩阈值估算）</td></tr>
-          <tr><td><code>maxTurns</code></td><td><code>40</code></td><td>单轮最大循环次数</td></tr>
+          <tr><td><code>maxTurns</code></td><td><code>50</code></td><td>单轮最大循环次数</td></tr>
           <tr><td><code>toolConcurrency</code></td><td><code>3</code></td><td>单轮内工具并发上限（1 = 全串行）</td></tr>
         </tbody></table></div>
 
@@ -762,7 +794,7 @@
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">界面与体验</h3>
         <div class="tbl-wrap"><table class="doc"><thead><tr><th>字段</th><th>默认</th><th>说明</th></tr></thead><tbody>
-          <tr><td><code>stream.enabled</code></td><td><code>true</code></td><td>TUI 里实时流式渲染文本 / 推理（<code>/stream</code> 切换）</td></tr>
+          <tr><td><code>stream.enabled</code></td><td><code>true</code></td><td>TUI 里实时流式渲染文本 / 推理（仅配置项，无 slash 命令）</td></tr>
           <tr><td><code>predict.enabled</code></td><td><code>true</code></td><td>下一条输入预测（<code>/predict</code> 切换）</td></tr>
           <tr><td><code>predict.timeoutMs</code></td><td><code>8000</code></td><td>预测超时</td></tr>
           <tr><td><code>predict.maxChars</code></td><td><code>50</code></td><td>预测占位最大字符数</td></tr>
@@ -783,7 +815,7 @@
           <tr><td><code>memory.userPaths</code> / <code>globalPath</code></td><td>（无）</td><td>覆盖用户层 / 全局记忆路径</td></tr>
           <tr><td><code>slash.enabled</code></td><td><code>true</code></td><td>自定义 slash 命令开关；<code>projectDirs</code>/<code>userPaths</code>/<code>extraDirs</code> 额外目录</td></tr>
           <tr><td><code>skills.enabled</code></td><td><code>true</code></td><td>Skills 开关；<code>maxIndexBytes</code>=8192、<code>maxResponseBytes</code>=16384</td></tr>
-          <tr><td><code>subagent.enabled</code></td><td><code>true</code></td><td>子 agent 开关；<code>model</code>（默认随父）/<code>maxTurns</code>=30/<code>maxTokens</code>=8192</td></tr>
+          <tr><td><code>subagent.enabled</code></td><td><code>true</code></td><td>子 agent 开关；<code>model</code>（默认随父）/<code>maxTurns</code>=50/<code>maxTokens</code>=32768；自定义类型目录 <code>projectDirs</code>/<code>userPaths</code>/<code>extraDirs</code></td></tr>
           <tr><td><code>lsp.*</code></td><td><code>enabled:true</code></td><td>LSP，见 <a class="inline-link" href="#sec-17">§17</a></td></tr>
           <tr><td><code>mcp.*</code></td><td><code>enabled:true</code></td><td>MCP，见 <a class="inline-link" href="#sec-16">§16</a></td></tr>
           <tr><td><code>sandbox.*</code></td><td><code>enabled:true</code></td><td>命令沙箱，见 <a class="inline-link" href="#sec-11">§11</a></td></tr>

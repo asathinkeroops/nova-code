@@ -21,7 +21,6 @@ import { compactBody, readExisting, renderDiff, renderFileContent, splitDisplayL
 import { renderMarkdown } from "./markdown.js";
 import type { Card, CardKind } from "./store.js";
 import type { BannerProps, RenderItem } from "./render-item.js";
-import { visibleWidth } from "./width.js";
 
 
 const cardColor: Record<CardKind, (s: string) => string> = {
@@ -106,26 +105,19 @@ function formatModel(b: BannerProps): string {
 }
 
 function renderBanner(b: BannerProps, width: number): string {
-  const innerWidth = Math.max(40, Math.min(width, 80)) - 4;
-  const top = `╭${"─".repeat(innerWidth + 2)}╮`;
-  const bot = `╰${"─".repeat(innerWidth + 2)}╯`;
-  const pad = (s: string): string => {
-    const w = visibleWidth(s);
-    const need = Math.max(0, innerWidth - w);
-    return `│ ${s}${" ".repeat(need)} │`;
-  };
+  void width;
   const lines: string[] = [];
-  lines.push(top);
+  lines.push(`${accent(">_")} Nova Code ${dim(`(v${b.version})`)}`);
+  lines.push("");
+  LOGO.forEach((l, i) => lines.push(bannerLine(l, i)));
+  lines.push("");
   lines.push(
-    pad(`${accent(">_")} Nova Code ${dim(`(v${b.version})`)}`),
+    dim("The coding agent tuned to the metal for DeepSeek — 90%+ cache hits."),
   );
-  lines.push(pad(""));
-  LOGO.forEach((l, i) => lines.push(pad(bannerLine(l, i))));
-  lines.push(pad(""));
-  lines.push(pad(`${dim("model:")}     ${formatModel(b)}`));
-  lines.push(pad(`${dim("workspace:")} ${displayCwd(b.cwd, b.home)}`));
-  lines.push(pad(`${dim("session:")}   ${b.sessionId}`));
-  lines.push(bot);
+  lines.push("");
+  lines.push(`${dim("model:")}     ${formatModel(b)}`);
+  lines.push(`${dim("workspace:")} ${displayCwd(b.cwd, b.home)}`);
+  lines.push(`${dim("session:")}   ${b.sessionId}`);
   return lines.join("\n");
 }
 
