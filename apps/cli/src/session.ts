@@ -8,7 +8,7 @@ import {
   type Session,
 } from "@nova/runtime";
 import { Transcript } from "@nova/observability";
-import { dim, red } from "./colors.js";
+import { red } from "./colors.js";
 import { refreshBanner, type CliContext } from "./context.js";
 import { loadDisplaySidecar } from "./display-sidecar.js";
 import { SnapshotStore } from "./snapshots.js";
@@ -61,8 +61,7 @@ export async function pruneOldSessions(ctx: CliContext): Promise<void> {
 /**
  * Load every saved session and derive a one-line label from its first user
  * message. Empty sessions are skipped; sessions whose history fails to load are
- * kept with a red error label. Shared by `--list-sessions` and /resume so the
- * listing stays consistent.
+ * kept with a red error label. Used by /resume to build its picker rows.
  */
 export async function buildSessionRows(
   sessionDir: string | undefined,
@@ -106,17 +105,6 @@ export async function resolveSession(
     return { session: list[0]!, resumed: true };
   }
   return { session: await createSession(sessionDir), resumed: false };
-}
-
-export async function printSessionList(sessionDir: string | undefined): Promise<void> {
-  const rows = await buildSessionRows(sessionDir);
-  if (rows.length === 0) {
-    process.stdout.write("no sessions found\n");
-    return;
-  }
-  for (const { session: s, label } of rows) {
-    process.stdout.write(`${s.id}  ${dim(formatTimestamp(s.createdAt))}  ${dim(label)}\n`);
-  }
 }
 
 export interface SwitchSessionOptions {

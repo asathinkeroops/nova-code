@@ -62,10 +62,10 @@ interface InkInstance {
  * All UI output goes through this class. Direct `process.stdout.write`
  * after `mount()` would corrupt Ink's render bookkeeping.
  *
- * TTY is required — the entry point (`index.ts`) refuses to start in
- * non-TTY mode, so `mount()` can assume Ink will work. The one exception
- * is `--list-sessions`, which is a non-interactive query that bypasses
- * Screen entirely and dumps straight to stdout.
+ * TTY is required for the interactive UI: `mount()` drives Ink and the
+ * alt-screen buffer. Non-TTY / headless (`-p`) runs use `HeadlessScreen`, a
+ * subclass that no-ops `mount()` and the interactive prompts, so the agent
+ * loop runs without ever touching the terminal.
  */
 export class Screen {
   private store: AppStoreApi = createAppStore();
@@ -311,6 +311,19 @@ export class Screen {
     return this.store.getState().cyclePermissionMode();
   }
 
+  /** Seed the initial permission mode (e.g. from the `--permission-mode` flag). */
+  setPermissionMode(mode: PermissionMode): void {
+    this.store.getState().setPermissionMode(mode);
+  }
+
+  /**
+   * Enable/disable the auto-approve bypass (`--dangerously-skip-permissions`).
+   * When on, `promptApproval` resolves to `always-allow` without opening a modal.
+   */
+  setSkipPermissions(value: boolean): void {
+    this.store.getState().setSkipPermissions(value);
+  }
+
   setTodos(todos: Todo[]): void {
     this.store.getState().setTodos(todos);
   }
@@ -389,6 +402,11 @@ export class Screen {
     input: PermissionInput,
     opts: { signal?: AbortSignal; onCancel?: () => void } = {},
   ): Promise<ApprovalAnswer> {
+    // `--dangerously-skip-permissions`: auto-approve instead of blocking on a
+    // human, mirroring headless `approvalPolicy: "allow"`. Plan-mode denials
+    // never reach here (they short-circuit in checkPermission), so the bypass
+    // only covers tools that fall through to the engine's `ask`.
+    if (this.store.getState().skipPermissions) return "always-allow";
     return this.store.getState().openApprovalModal(decision, input, opts);
   }
 

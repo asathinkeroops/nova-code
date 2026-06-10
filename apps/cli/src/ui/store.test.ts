@@ -129,4 +129,24 @@ describe("permission mode", () => {
     store.getState().reset();
     expect(store.getState().permissionMode).toBe("acceptEdits");
   });
+
+  it("setPermissionMode seeds the mode directly (e.g. from --permission-mode)", () => {
+    const store = createAppStore();
+    store.getState().setPermissionMode("plan");
+    expect(store.getState().permissionMode).toBe("plan");
+  });
+});
+
+describe("skip permissions (bypass)", () => {
+  it("defaults to off", () => {
+    expect(createAppStore().getState().skipPermissions).toBe(false);
+  });
+
+  it("setSkipPermissions toggles the bypass and survives reset", () => {
+    const store = createAppStore();
+    store.getState().setSkipPermissions(true);
+    expect(store.getState().skipPermissions).toBe(true);
+    store.getState().reset();
+    expect(store.getState().skipPermissions).toBe(true);
+  });
 });

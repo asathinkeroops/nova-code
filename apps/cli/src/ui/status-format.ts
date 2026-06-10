@@ -28,6 +28,17 @@ export function permissionModeIndicator(mode: PermissionMode): PermissionModeInd
   }
 }
 
+/**
+ * Red warning shown below the StatusLine while `--dangerously-skip-permissions`
+ * is armed (every approval auto-granted). Takes priority over the mode label —
+ * the bypass is the more important safety fact — and carries no shift+tab hint
+ * since it is a startup flag, not a cycled mode.
+ */
+export const BYPASS_PERMISSIONS_INDICATOR: PermissionModeIndicator = {
+  label: "⚠ bypass permissions on",
+  color: "red",
+};
+
 /** `49h48m42s`, dropping leading units that are zero. */
 export function formatDuration(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));

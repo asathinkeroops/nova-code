@@ -5,7 +5,11 @@ import { InputBox } from "./input-box.js";
 import { userInputHistory } from "./input-history.js";
 import { SetupView } from "./setup-view.js";
 import { StatusLine } from "./status-line.js";
-import { permissionModeIndicator, PERMISSION_MODE_HINT } from "./status-format.js";
+import {
+  permissionModeIndicator,
+  BYPASS_PERMISSIONS_INDICATOR,
+  PERMISSION_MODE_HINT,
+} from "./status-format.js";
 import type { AppStoreApi } from "./store.js";
 import { Viewport } from "./viewport.js";
 
@@ -37,6 +41,7 @@ export function App({ store }: AppProps): React.ReactElement {
     inputPlaceholder,
     inputQueue,
     permissionMode,
+    skipPermissions,
     termRows,
   } = store(
     useShallow((s) => ({
@@ -47,6 +52,7 @@ export function App({ store }: AppProps): React.ReactElement {
       inputPlaceholder: s.inputPlaceholder,
       inputQueue: s.inputQueue,
       permissionMode: s.permissionMode,
+      skipPermissions: s.skipPermissions,
       termRows: s.termRows,
     })),
   );
@@ -98,8 +104,12 @@ export function App({ store }: AppProps): React.ReactElement {
   }
 
   // Mode indicator below the StatusLine — one extra reserved row when a
-  // non-default permission mode is active, nothing in default mode.
-  const modeIndicator = permissionModeIndicator(permissionMode);
+  // non-default permission mode is active, nothing in default mode. The
+  // dangerously-skip-permissions bypass wins over the mode label and drops the
+  // shift+tab hint (it is a startup flag, not a cycled mode).
+  const modeIndicator = skipPermissions
+    ? BYPASS_PERMISSIONS_INDICATOR
+    : permissionModeIndicator(permissionMode);
   const indicatorRows = modeIndicator ? 1 : 0;
 
   // Leave a 1-row safety margin so the layout never sums to exactly termRows.
@@ -143,7 +153,7 @@ export function App({ store }: AppProps): React.ReactElement {
         {modeIndicator ? (
           <Box>
             <Text color={modeIndicator.color}>{` ${modeIndicator.label}`}</Text>
-            <Text dimColor>{` ${PERMISSION_MODE_HINT}`}</Text>
+            {skipPermissions ? null : <Text dimColor>{` ${PERMISSION_MODE_HINT}`}</Text>}
           </Box>
         ) : null}
       </Box>

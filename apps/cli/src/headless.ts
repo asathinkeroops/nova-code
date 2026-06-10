@@ -1,0 +1,86 @@
+import type { MessageParam } from "@nova/core";
+import type { Settings } from "@nova/runtime";
+import { createContext, type CliRuntimeOptions } from "./context.js";
+import { HeadlessScreen, type HeadlessApprovalPolicy } from "./headless-screen.js";
+import { pruneOldSessions } from "./session.js";
+import type { PermissionMode } from "./permissions.js";
+
+export type HeadlessOutputFormat = "text" | "json";
+
+export interface HeadlessOptions extends CliRuntimeOptions {
+  prompt: string;
+  outputFormat: HeadlessOutputFormat;
+  permissionMode: PermissionMode;
+  approvalPolicy: HeadlessApprovalPolicy;
+}
+
+/** Concatenate the text blocks of the last assistant message into a plain string. */
+function finalAssistantText(messages: MessageParam[]): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (!msg || msg.role !== "assistant") continue;
+    if (typeof msg.content === "string") return msg.content.trim();
+    return msg.content
+      .filter((b): b is { type: "text"; text: string } => b.type === "text")
+      .map((b) => b.text)
+      .join("")
+      .trim();
+  }
+  return "";
+}
+
+/**
+ * Run a single turn with no terminal attached and exit. Reuses the full agent
+ * loop (hooks, permission engine, tools, sub-agents) via {@link HeadlessScreen};
+ * nothing in the kernel is special-cased for headless.
+ *
+ * Returns the process exit code: 0 on success, 1 on turn failure/abort.
+ */
+export async function runHeadless(settings: Settings, opts: HeadlessOptions): Promise<number> {
+  const screen = new HeadlessScreen({
+    permissionMode: opts.permissionMode,
+    approvalPolicy: opts.approvalPolicy,
+  });
+
+  const ctx = await createContext(settings, screen, {
+    ...(opts.cwd !== undefined ? { cwd: opts.cwd } : {}),
+    ...(opts.resume !== undefined ? { resume: opts.resume } : {}),
+    ...(opts.continue !== undefined ? { continue: opts.continue } : {}),
+    ...(opts.noTranscript !== undefined ? { noTranscript: opts.noTranscript } : {}),
+    ...(opts.noPretty !== undefined ? { noPretty: opts.noPretty } : {}),
+  });
+
+  let result;
+  try {
+    await pruneOldSessions(ctx);
+    result = await ctx.agent.runTurn(opts.prompt);
+  } finally {
+    await ctx.transcript.flush();
+    await ctx.longRunningManager.disposeAll();
+    if (ctx.lspManager) await ctx.lspManager.disposeAll();
+    await ctx.sandbox.dispose();
+    if (ctx.mcp) await ctx.mcp.close();
+  }
+
+  const text = finalAssistantText(result.messages);
+  const errMsg = result.error ? result.error.message : result.aborted ? "aborted" : undefined;
+
+  if (opts.outputFormat === "json") {
+    const payload = {
+      ok: result.ok,
+      aborted: result.aborted,
+      text,
+      sessionId: ctx.session.id,
+      turns: result.turns,
+      ...(result.stopReason ? { stopReason: result.stopReason } : {}),
+      usage: result.totalUsage,
+      ...(errMsg ? { error: errMsg } : {}),
+    };
+    process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+  } else {
+    if (text) process.stdout.write(`${text}\n`);
+    if (errMsg) process.stderr.write(`\n✗ ${errMsg}\n`);
+  }
+
+  return result.ok ? 0 : 1;
+}

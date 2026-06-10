@@ -260,6 +260,14 @@ export interface AppState {
    * (`/clear`) like `inputPlaceholder`.
    */
   permissionMode: PermissionMode;
+  /**
+   * When true, every permission prompt that would otherwise open the approval
+   * modal is auto-approved (`--dangerously-skip-permissions`). Behavioural only:
+   * it short-circuits `promptApproval`, mirroring headless `approvalPolicy:
+   * "allow"`. Plan-mode denials still apply (they short-circuit before the
+   * approval flow). Session-only; surfaced as a red status-line warning.
+   */
+  skipPermissions: boolean;
 }
 
 export interface SelectionRect {
@@ -351,6 +359,10 @@ export interface AppActions {
   setToolDetail: (toolUseId: string, entries: SubAgentDetail[]) => void;
   /** Advance the permission mode (default → acceptEdits → plan → …) and return the new one. */
   cyclePermissionMode: () => PermissionMode;
+  /** Set the permission mode directly (e.g. seed the initial mode from a CLI flag). */
+  setPermissionMode: (mode: PermissionMode) => void;
+  /** Toggle the auto-approve bypass (`--dangerously-skip-permissions`). */
+  setSkipPermissions: (value: boolean) => void;
 }
 
 export type AppStoreState = AppState & AppActions;
@@ -453,6 +465,7 @@ export function createAppStore(): AppStoreApi {
       userDisplayOverrides: {},
       toolDetails: {},
       permissionMode: "default",
+      skipPermissions: false,
 
       // ===== Actions =====
       pushCard(text, opts = {}) {
@@ -796,6 +809,16 @@ export function createAppStore(): AppStoreApi {
         const next = order[(order.indexOf(cur) + 1) % order.length] ?? "default";
         set({ permissionMode: next });
         return next;
+      },
+
+      setPermissionMode(mode) {
+        if (get().permissionMode === mode) return;
+        set({ permissionMode: mode });
+      },
+
+      setSkipPermissions(value) {
+        if (get().skipPermissions === value) return;
+        set({ skipPermissions: value });
       },
 
       setUserDisplayOverrides(overrides) {
