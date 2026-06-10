@@ -23,7 +23,8 @@ Nova 是一个终端里的编码 agent —— 读代码、跑命令、改文件�
 - **Slash 命令** —— 内置命令 + 从项目/用户目录自动加载的自定义 `.md` 命令。
 - **MCP** —— 连接外部 [MCP](https://modelcontextprotocol.io) 服务器（stdio / http / sse），把工具桥接给模型，并受权限管控。
 - **会话与检查点** —— 可恢复会话（`--resume` / `--continue`）配合 append-only 持久化；`/rewind` 回到更早的节点。
-- **交互式 TUI** —— 全屏 REPL，带实时流式输出、鼠标滚动与选区、实时状态行，以及下一步输入预测。
+- **交互式 TUI** —— 全屏 REPL，带实时流式输出、鼠标滚动与选区、实时状态行、`@path` 文件名补全、可切换的权限模式（shift+tab）、`!` 前缀的 shell 直通，以及下一步输入预测。
+- **Headless 模式** —— `-p/--prompt`（或从 stdin 管道传入 prompt）只跑一轮、打印结果后退出；`--output-format json` 输出机器可读结果。
 
 ## 产品亮点
 
@@ -32,6 +33,8 @@ Nova 是一个终端里的编码 agent —— 读代码、跑命令、改文件�
 - **开箱即用的 DeepSeek 调优** —— 不用调 `cache_control`、不用猜 wire format、不用翻错误码文档：装好填 key 就跑，thinking 等级、缓存命中、错误提示都是 DeepSeek 语境下调过的默认值。
 - **`.md` 自定义子 agent** —— 把一个 Markdown 文件丢进 `.nova/agents/`（兼容 `.claude/agents/`），frontmatter 声明 `name` / `description` / `tools`（工具白名单）/ `readOnly` / `model` / `maxTurns` / `maxTokens`，正文即角色指令 —— 立刻成为一个新的子 agent 类型，`/agents` 可见、`/agent <name> <task>` 可调、模型也能自己 `createSubAgent` 派发。
 - **Plan 模式** —— `/plan <goal>` 委派一次**只读**调查，在动手改动前返回分步计划与关键权衡。
+- **触手可及的权限模式** —— **shift+tab** 在输入框循环切换 `default` → `acceptEdits`（工作区内写入自动放行）→ `plan`（只读：write/edit/bash 被拒）；当前非默认模式显示在状态行下方，也可用 `--permission-mode` 预设。
+- **`!` shell 直通** —— 在输入框输入 `!<命令>` 会通过 `bash` 工具在本地执行，而不是发给模型。边框变绿提示进入 bash 模式，输出以卡片呈现，并继承同样的 OS 沙箱限制（因为是你自己敲的命令，所以不弹权限确认）。
 - **干净的命令 UI** —— `/agent`、`/plan`、`/init` 这类会展开成长 prompt 的命令，在历史里仍显示你**原始键入的短输入**（display override），不被冗长的展开文本刷屏。
 - **沙箱默认开** —— 子进程的文件写入被 OS 级沙箱限制在工作区内，不支持的平台自动降级，无需配置即享纵深防御。
 - **可恢复 + 可回退** —— `--continue` 接着上次干，`/rewind` 丢弃某条消息之后的历史与文件改动回到更早节点，`/compact` 把历史压成一条摘要。
@@ -66,32 +69,37 @@ pnpm dev "帮我把这个函数加单测"          # 先跑一轮 prompt，再�
 
 ```bash
 pnpm dev [prompt...]                # 先跑一轮初始 prompt，再留在 REPL
-  -p, --prompt <text>               # 初始 prompt（位置参数的替代写法）
+  -p, --prompt <text>               # headless：只跑一轮、打印结果后退出
+  --output-format text|json         # headless 输出格式（默认 text）
   -m, --model <name>                # 临时覆盖模型
   -t, --think off|low|medium|high|max   # extended thinking 等级（或整数预算）
   --cwd <dir>                       # 工具的工作目录
   --resume <id>                     # 恢复指定 session
   -c, --continue                    # 恢复最近一个 session
-  --list-sessions                   # 列出历史 session 后退出
   --max-turns <n>                   # 单轮最大循环次数
+  --permission-mode default|acceptEdits|plan   # 初始权限模式
+  --dangerously-skip-permissions    # 自动放行所有权限确认（无人值守写入）
   --no-transcript                   # 不写 transcript
   --no-pretty                       # 关闭 pretty 日志
 ```
 
 `-t` 的等级映射到固定的 token 预算：`off` = 0、`low` = 2k、`medium` = 8k、`high` = 16k、`max` = 32k；也可以直接传一个整数预算覆盖等级。
 
+**Headless 模式**：`-p/--prompt`（或从 stdin 管道传入 prompt）只跑一轮就退出，不进 REPL；`--output-format json` 输出机器可读结果。而位置参数 `[prompt...]` 是先跑一轮、再**保留** REPL。
+
 ### REPL 内置 slash 命令
 
 ```
 /help                帮助
 /effort [<level>]    查看 / 切换 thinking 等级
-/clear               清空会话历史（保留 session）
+/clear               开一个新 session（当前 session 仍可恢复）
 /compact [focus…]    把历史压缩成单条摘要消息
 /resume [<id>]       切到指定 session（不带参数则从列表选）
 /rewind [<n>]        回退到此前某条消息（其后的历史与文件改动被丢弃）
 /init [focus…]       探索代码库后生成 / 刷新项目 memory（NOVA.md/CLAUDE.md/AGENTS.md）
 /plan <goal>         把调查交给只读 plan 子 agent，再给出实现计划
 /commit [guidance…]  审查待提交改动、跟随仓库提交风格，创建本地提交（不 push）
+/diff [pathspec]     在弹窗里浏览未提交改动：文件列表 → 逐文件 diff
 /review [focus…]     审查当前未提交的 diff（只读）
 /agents [reload]     列出可用的子 agent 类型；`reload` 重新扫盘
 /agent <name> <task> 把任务委派给指定子 agent
@@ -111,6 +119,15 @@ builtin 命令永远优先；在此之上，`.nova/commands` / `~/.nova/commands
 会展开成长 prompt 的命令（`/agent`、`/plan`、`/init` 等）在消息历史里仍显示你**原始键入的短输入**而非展开后的全文。这是每个 session 的**展示侧车**（`display-sidecar.jsonl`）记录的两类纯展示信息之一：它从不改变模型看到的内容，只改变 UI 渲染，并能跨 `/resume` 保留；`/clear` 时清空。
 
 按 `Ctrl+D` 也能退出，按 `Esc` 中断当前回合。
+
+### 输入框
+
+除了敲 prompt，输入框还提供：
+
+- **`!` shell 直通** —— 以 `!` 开头的一行（如 `!git status`）会通过 `bash` 工具在本地执行，而不是发给模型。只要 buffer 是 `!` 命令，上下边框就变**绿**，输出以卡片呈现，`Esc` 可中断正在跑的命令。它继承 OS 沙箱（写入限制在工作区），但跳过权限确认 —— 因为是你自己敲的。
+- **`@path` 文件名补全** —— 输入 `@` 打开工作区文件的模糊选择器；选中后插入 `@path `，无需手敲完整路径就能引用文件。
+- **权限模式（shift+tab）** —— 循环切换 `default` → `acceptEdits`（工作区内 write/edit 自动放行，bash 与工作区外改动仍确认）→ `plan`（只读：write/edit/bash 被拒）。当前非默认模式显示在状态行下方；用 `--permission-mode` 预设初始模式，或用 `--dangerously-skip-permissions` 全部自动放行。
+- **历史与预测** —— `↑/↓` 召回此前的 prompt；可选的下一条输入预测会填充占位（用 `/predict` 开关）。
 
 ### Skills
 

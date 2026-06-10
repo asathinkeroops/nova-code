@@ -23,7 +23,8 @@ Under the hood Nova is a loop-centric harness: `@nova/core` exposes a model-agno
 - **Slash commands** — builtins plus custom `.md` commands auto-loaded from project / user dirs.
 - **MCP** — connect external [MCP](https://modelcontextprotocol.io) servers (stdio / http / sse) and bridge their tools to the model, gated by permissions.
 - **Sessions & checkpointing** — resumable sessions (`--resume` / `--continue`) with append-only persistence; `/rewind` back to an earlier point.
-- **Interactive TUI** — a full-screen REPL with live streaming output, mouse scroll & selection, a live status line, and next-input prediction.
+- **Interactive TUI** — a full-screen REPL with live streaming output, mouse scroll & selection, a live status line, `@path` file-mention autocomplete, cycle-able permission modes (shift+tab), a `!`-prefixed shell escape, and next-input prediction.
+- **Headless mode** — `-p/--prompt` (or a piped stdin prompt) runs a single turn, prints the answer, and exits — `--output-format json` for machine-readable output.
 
 ## Product highlights
 
@@ -32,6 +33,8 @@ Under the hood Nova is a loop-centric harness: `@nova/core` exposes a model-agno
 - **DeepSeek tuning out of the box** — no `cache_control` to tweak, no wire format to guess, no error-code docs to dig through: install, drop in your key, and go. Thinking levels, cache hits, and error messages are all defaults tuned for DeepSeek.
 - **`.md` custom sub-agents** — drop one Markdown file into `.nova/agents/` (or `.claude/agents/`), declare `name` / `description` / `tools` (allow-list) / `readOnly` / `model` / `maxTurns` / `maxTokens` in front matter, and the body becomes the role prompt — it instantly becomes a new sub-agent type, visible in `/agents`, callable via `/agent <name> <task>`, and spawnable by the model itself through `createSubAgent`.
 - **Plan mode** — `/plan <goal>` delegates a **read-only** investigation and returns a step-by-step plan with key tradeoffs before touching anything.
+- **Permission modes at your fingertips** — **shift+tab** cycles the input box through `default` → `acceptEdits` (in-workspace writes auto-granted) → `plan` (read-only: write/edit/bash denied); the active mode shows under the status line and can be preset with `--permission-mode`.
+- **`!` shell escape** — type `!<command>` in the input box to run it locally through the `bash` tool instead of sending it to the model. The frame turns green to signal bash mode, output prints as a card, and the command inherits the same OS-sandbox confinement (no permission prompt, since you typed it yourself).
 - **A clean command UI** — commands that expand into a long prompt (`/agent`, `/plan`, `/init`) still show the **short input you actually typed** in history (display override), instead of flooding the transcript with the expanded text.
 - **Sandbox on by default** — subprocess filesystem writes are confined to the workspace by an OS-level sandbox; unsupported platforms degrade automatically, so you get defense-in-depth with zero config.
 - **Resumable & rewindable** — `--continue` picks up where you left off, `/rewind` drops history and file edits after a given message to return to an earlier point, and `/compact` collapses history into a single summary.
@@ -66,32 +69,37 @@ First launch drops you into an interactive setup that writes `~/.nova/nova.confi
 
 ```bash
 pnpm dev [prompt...]                # run an initial prompt, then stay in the REPL
-  -p, --prompt <text>               # initial prompt (alternative to positional)
+  -p, --prompt <text>               # headless: run a single turn, print the answer, exit
+  --output-format text|json         # headless output shape (default text)
   -m, --model <name>                # override model for this run
   -t, --think off|low|medium|high|max   # extended-thinking level (or integer budget)
   --cwd <dir>                       # working directory for tools
   --resume <id>                     # resume a specific session
   -c, --continue                    # resume the most recent session
-  --list-sessions                   # list saved sessions and exit
   --max-turns <n>                   # cap loop iterations
+  --permission-mode default|acceptEdits|plan   # initial permission mode
+  --dangerously-skip-permissions    # auto-approve every prompt (unattended writes)
   --no-transcript                   # skip transcript writing
   --no-pretty                       # disable pretty logging
 ```
 
 The `-t` levels map to fixed token budgets: `off` = 0, `low` = 2k, `medium` = 8k, `high` = 16k, `max` = 32k; you can also pass an integer budget to override the level.
 
+**Headless mode**: `-p/--prompt` (or piping a prompt on stdin) runs one turn and exits instead of opening the REPL — `--output-format json` emits a machine-readable result. The positional `[prompt...]` instead runs first and then *keeps* the REPL open.
+
 ### Slash commands (inside the REPL)
 
 ```
 /help                this help
 /effort [<level>]    show or change extended-thinking level
-/clear               clear conversation history (keeps session)
+/clear               start a fresh session (the current one stays resumable)
 /compact [focus…]    summarize history into a single message
 /resume [<id>]       switch to a saved session (no arg = pick from list)
 /rewind [<n>]        rewind to an earlier message (history and file edits after it are discarded)
 /init [focus…]       explore the codebase, then generate / refresh project memory (NOVA.md/CLAUDE.md/AGENTS.md)
 /plan <goal>         delegate investigation to a read-only plan sub-agent, then present a plan
 /commit [guidance…]  review pending changes, match repo commit style, and create a local commit (no push)
+/diff [pathspec]     browse uncommitted changes in a modal: file list → per-file diff
 /review [focus…]     review the current uncommitted diff (read-only)
 /agents [reload]     list available sub-agent types; `reload` rescans files
 /agent <name> <task> delegate a task to a specific sub-agent
@@ -116,6 +124,25 @@ sidecar** (`display-sidecar.jsonl`) that never changes what the model sees, only
 what the UI renders, and survives `/resume`; it is cleared on `/clear`.
 
 `Ctrl+D` also exits; `Esc` interrupts the current turn.
+
+### Input box
+
+Beyond typing a prompt, the input box gives you:
+
+- **`!` shell escape** — a line starting with `!` (e.g. `!git status`) runs through the
+  `bash` tool locally instead of going to the model. The top/bottom frame turns **green**
+  while the buffer is a `!` command, output is shown as a card, and `Esc` interrupts a
+  running command. It inherits the OS sandbox (writes confined to the workspace) but skips
+  the permission prompt — you typed it yourself.
+- **`@path` mention autocomplete** — typing `@` opens a fuzzy file picker over the workspace;
+  selecting a path inserts `@path ` so you can reference files without typing full paths.
+- **Permission modes (shift+tab)** — cycles `default` → `acceptEdits` (in-workspace
+  write/edit auto-granted; bash and out-of-workspace edits still ask) → `plan` (read-only:
+  write/edit/bash denied). The active non-default mode is shown under the status line; set
+  the initial mode with `--permission-mode`, or auto-approve everything with
+  `--dangerously-skip-permissions`.
+- **History & prediction** — `↑/↓` recall earlier prompts; an optional next-input prediction
+  fills the placeholder (toggle with `/predict`).
 
 ### Skills
 
