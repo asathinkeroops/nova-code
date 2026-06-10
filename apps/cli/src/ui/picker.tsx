@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Box, Text, useInput } from "ink";
+import { Box, Text, useInput, useStdout } from "ink";
 import { accent, diffTint, dim, useColor } from "../colors.js";
 import { applyInverse } from "./selection.js";
 import { visibleWidth } from "./width.js";
@@ -166,6 +166,20 @@ interface ScrollViewerProps {
 }
 
 /**
+ * Width for the full-width diff tint bar: the widest visible body, capped to
+ * the space left on the row (terminal columns minus the round border and the
+ * widest gutter). The cap matters because the gutter is drawn outside the tint,
+ * so an uncapped bar sized to one long line (e.g. README prose) would push
+ * `gutter + bar` past the terminal edge and make Ink wrap every shorter row's
+ * trailing padding onto a blank continuation line.
+ */
+export function tintBarWidth(visible: ViewerLine[], cols: number, bordered: boolean): number {
+  const gutterW = Math.max(0, ...visible.map((l) => visibleWidth(l.gutter ?? "")));
+  const avail = Math.max(1, cols - (bordered ? 2 : 0) - gutterW);
+  return Math.min(avail, Math.max(0, ...visible.map((l) => visibleWidth(l.text))));
+}
+
+/**
  * Pad `text` to `width` visible columns and paint a full-width diff tint across
  * it, so the add/remove highlight spans the whole row rather than just glyphs.
  */
@@ -188,6 +202,7 @@ export function ScrollViewer({ opts, onResolve }: ScrollViewerProps): React.Reac
   const pageSize = Math.max(1, opts.pageSize ?? 20);
   const maxStart = Math.max(0, lines.length - pageSize);
   const [start, setStart] = useState(0);
+  const { stdout } = useStdout();
   const clamp = (n: number): number => Math.min(maxStart, Math.max(0, n));
 
   useInput((input, key) => {
@@ -212,9 +227,8 @@ export function ScrollViewer({ opts, onResolve }: ScrollViewerProps): React.Reac
 
   const end = Math.min(lines.length, start + pageSize);
   const visible = lines.slice(start, end);
-  // Size the tint bar to the widest visible body so add/remove highlights line
-  // up and fill to the same column (the gutter sits outside the tint).
-  const barWidth = Math.max(0, ...visible.map((l) => visibleWidth(l.text)));
+  const bordered = opts.border ?? true;
+  const barWidth = tintBarWidth(visible, stdout?.columns ?? 80, bordered);
   const rows: React.ReactNode[] = [];
   for (let i = 0; i < visible.length; i++) {
     const line = visible[i] as ViewerLine;
@@ -229,7 +243,6 @@ export function ScrollViewer({ opts, onResolve }: ScrollViewerProps): React.Reac
         : `  (${start + 1}–${end}/${lines.length})`
       : null;
 
-  const bordered = opts.border ?? true;
   return (
     <Box
       flexDirection="column"

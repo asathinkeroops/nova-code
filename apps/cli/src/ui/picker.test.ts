@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { highlightRow } from "./picker.js";
+import { highlightRow, tintBarWidth, type ViewerLine } from "./picker.js";
 import { stripAnsi, visibleWidth } from "./width.js";
 
 // The drag-selection background reused for the picker's selected row.
@@ -35,5 +35,34 @@ describe("highlightRow", () => {
     const out = highlightRow("你好", 6); // 你好 == 4 visible columns
     expect(stripAnsi(out)).toBe("你好  ");
     expect(visibleWidth(out)).toBe(6);
+  });
+});
+
+describe("tintBarWidth", () => {
+  const g = (s: string): string => s; // gutter is already a plain string here
+  const line = (gutter: string, text: string): ViewerLine => ({ gutter, text });
+
+  it("uses the widest body when it fits within the row", () => {
+    const visible = [line(g("12 "), "short"), line(g("13 "), "a bit longer")];
+    // cols 80, border 2, gutter 3 → avail 75; widest body is 12.
+    expect(tintBarWidth(visible, 80, true)).toBe(12);
+  });
+
+  it("caps the bar so gutter + bar never exceeds the inner width", () => {
+    // One long line (130 cols) must not size the bar past the terminal edge,
+    // or shorter rows' padding wraps onto blank continuation lines.
+    const long = "x".repeat(130);
+    const visible = [line(g("100 "), "short"), line(g("101 "), long)];
+    const cols = 80;
+    const bordered = true;
+    const gutterW = 4;
+    const bar = tintBarWidth(visible, cols, bordered);
+    expect(bar).toBe(cols - 2 - gutterW); // 74
+    expect(gutterW + bar).toBeLessThanOrEqual(cols - 2);
+  });
+
+  it("never returns less than 1 even on absurdly narrow terminals", () => {
+    const visible = [line(g("      "), "content")];
+    expect(tintBarWidth(visible, 4, true)).toBeGreaterThanOrEqual(1);
   });
 });
