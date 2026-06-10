@@ -43,8 +43,9 @@ cli (apps/cli)                     ──► every package above
 
 - The loop has a single extension point: a `HookRegistry` passed in via `opts.hooks`. Permission gating, compaction, transcript writing, UI updates — all attach as hooks. There is no separate `observer` / `compactor` / `permission` option. `@nova/agent`'s `createAgent` registers the defaults; callers add more via `agent.on(point, fn)`.
 - **Blocking hooks** (`pre_*`, `post_tool_use`) can return a decision the loop must respect; first non-undefined wins. **Advisory hooks** (`post_*`, `post_messages`) are best-effort — registry swallows their errors and they cannot mutate state.
-- Every `tool_use` block always produces a paired `tool_result`, even on throw or permission denial — `packages/tools/src/invariants.ts` enforces this at dispatch time. The next API turn requires the pairing.
+- Every `tool_use` block always produces a paired `tool_result`, even on throw or permission denial — the dispatcher (`packages/tools/src/dispatcher.ts`) always builds one (schema/parse errors included), and the loop (`packages/core/src/loop.ts`, "defense in depth" pass) backfills any slot still missing a result. The next API turn requires the pairing.
 - The `pre_compact` hook must return `{ messages: next }` **iff** `next !== messages` — the loop uses reference equality on the returned array to decide whether to emit `post_compact`.
+- **`messages` is append-only and this MUST be strictly honored.** The history grows only through `appendMessage` (`packages/core/src/messages.ts`), which returns a new array with the next message pushed — never mutate, splice, reorder, or edit-in-place an existing entry. The only sanctioned way to replace history wholesale is the `pre_compact` hook returning a fresh array. `persistMessages` (`packages/agent/src/persistence.ts`) relies on this: it append-fast-paths `messages.jsonl` while the on-disk prefix matches and only falls back to an atomic full rewrite on divergence (compact/clear/shrink). Any in-place edit of an already-persisted message silently breaks the prefix check and corrupts the replayable transcript.
 
 **Settings** — every new configurable option must be added to the zod schema in `packages/runtime/src/config.ts` (with a default) before being read anywhere. Config file: `~/.nova/nova.config.json`. Sessions live at `~/.nova/sessions/{id}/` with `transcript.jsonl` (hook events) and `messages.jsonl` (replayable history). On startup, session dirs whose newest file mtime is older than `settings.sessionCleanup.maxAgeDays` (default 30) are pruned; the active session is always protected.
 
@@ -55,6 +56,8 @@ cli (apps/cli)                     ──► every package above
 **Memory** — global → user → project bundle, with per-directory priority `NOVA.md` > `CLAUDE.md` > `AGENTS.md` (highest priority wins; files are **not** merged). Filenames are configurable via `settings.memory.filenames`.
 
 **Tool dispatch** — `ToolRegistry` definitions carry a zod input schema; `createDispatcher` validates inputs before calling `run`, and schema/parse errors become `is_error: true` tool_results rather than throws.
+
+**File-access invariants** — `packages/tools/src/invariants.ts` holds a per-session `InMemoryFileAccessLedger` (threaded through `ToolContext`) enforcing **read-before-edit** and **mtime-drift** checks. Reads/writes are recorded under symlink-resolved canonical paths (`canonicalizePath`, same as the permission gate) so an edit through an alias still matches its prior read; a stale or absent read surfaces as an `is_error` tool_result instead of clobbering the file.
 
 ## Conventions
 
