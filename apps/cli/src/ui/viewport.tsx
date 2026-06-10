@@ -168,16 +168,33 @@ export function Viewport({ store, rows, resolveModal }: ViewportProps): React.Re
   // existing rows from jumping up when a new message lands (since the new
   // line just appends at the bottom of the text), and still anchors chrome
   // (spinner / modal / footers) immediately below the latest message.
-  // A modal pins to the bottom of the viewport (right above the input box)
-  // while the history stays top-aligned exactly where it already is — the
-  // flex-grow box sits *between* them, so opening a modal doesn't shift the
-  // existing content down; the modal just claims the empty space below it.
   if (inStreamModal) {
+    const modalEl = (
+      <InStreamModal modal={inStreamModal} resolveModal={resolveModal} onScroll={scrollBy} />
+    );
+    // The approval prompt belongs to the pending tool_use at the tail of the
+    // transcript, so it hugs the text (spacer *below* it) and reads as a direct
+    // continuation of that call rather than a panel floating at the bottom. The
+    // text slice is unchanged either way, so existing rows don't shift — only
+    // the empty space moves from above the prompt to below it.
+    if (inStreamModal.kind === "approval") {
+      return (
+        <Box flexDirection="column" flexGrow={1} flexShrink={1} overflowY="hidden">
+          {displayLines.length > 0 ? <Text>{displayLines.join("\n")}</Text> : null}
+          {modalEl}
+          <Box flexGrow={1} />
+        </Box>
+      );
+    }
+    // Other modals (ask / pick / viewer) stay pinned to the bottom of the
+    // viewport, right above the input box: the flex-grow box sits *between* the
+    // history and the modal, so opening one doesn't shift existing content down
+    // — the modal just claims the empty space below.
     return (
       <Box flexDirection="column" flexGrow={1} flexShrink={1} overflowY="hidden">
         {displayLines.length > 0 ? <Text>{displayLines.join("\n")}</Text> : null}
         <Box flexGrow={1} />
-        <InStreamModal modal={inStreamModal} resolveModal={resolveModal} onScroll={scrollBy} />
+        {modalEl}
       </Box>
     );
   }
