@@ -1,3 +1,4 @@
+import { bashTool } from "@nova/tools";
 import { ACCENT_RGB, accent, dim } from "./colors.js";
 import { stopSpinner, type CliContext } from "./context.js";
 import { appendUserOverride } from "./display-sidecar.js";
@@ -62,11 +63,52 @@ type DispatchAction =
   | { kind: "turn"; prompt: string };
 
 /**
+ * Run a `!`-prefixed line as a shell command instead of an LLM turn. Calls the
+ * builtin `bash` tool directly, threading in the OS sandbox bridge so writes
+ * stay confined to the workspace — same confinement the model's bash calls get,
+ * minus the permission prompt (the user typed the command themselves). Output
+ * is shown as a card; ESC aborts mid-run.
+ */
+async function runBang(ctx: CliContext, command: string): Promise<void> {
+  if (!command) {
+    ctx.screen.card(dim("usage: !<shell command>"), { title: "!" });
+    return;
+  }
+  const controller = new AbortController();
+  const bridge = ctx.sandbox?.bridge;
+  ctx.spinner = ctx.screen.startSpinner(
+    { words: ["Running shell..."], tint: ACCENT_RGB, colorize: accent },
+    "esc to interrupt",
+  );
+  ctx.screen.setEscHandler(() => controller.abort());
+  try {
+    const result = await bashTool.run(
+      { command },
+      { cwd: ctx.workspace, signal: controller.signal, ...(bridge ? { sandbox: bridge } : {}) },
+    );
+    // Keep the card title to a single line so a multi-line command doesn't blow
+    // up the header.
+    const title = `! ${command.split("\n", 1)[0]}`;
+    ctx.screen.card(result.output.trim() || dim("(no output)"), {
+      title,
+      kind: result.isError ? "error" : "info",
+    });
+  } finally {
+    ctx.screen.setEscHandler(null);
+    stopSpinner(ctx);
+  }
+}
+
+/**
  * Returns "exit" to leave the REPL, "continue" to skip the LLM turn, or a
  * turn descriptor with the prompt text to feed to the agent.
  */
 async function dispatchLine(ctx: CliContext, line: string): Promise<DispatchAction> {
   if (line === "/exit" || line === "/quit") return "exit";
+  if (line.startsWith("!")) {
+    await runBang(ctx, line.slice(1).trim());
+    return "continue";
+  }
   if (!line.startsWith("/")) return { kind: "turn", prompt: line };
 
   const hit = ctx.registry.resolve(line);

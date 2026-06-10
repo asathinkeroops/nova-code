@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Box, Text, useInput, useStdout } from "ink";
-import { ACCENT_HEX } from "../colors.js";
+import { ACCENT_HEX, BASH_HEX } from "../colors.js";
 import { charDisplayWidth, truncateToWidth, visibleWidth } from "./width.js";
 
 export interface SlashCommand {
@@ -555,6 +555,10 @@ export function InputBox({
 
   const rule = RULE_CHAR.repeat(width);
   const isEmpty = buffer.length === 0;
+  // Bash mode: a `!`-prefixed line runs in the shell rather than going to the
+  // model. Recolour the top/bottom frame green so the mode is visible while
+  // typing — never under mask (passwords).
+  const bashMode = !mask && buffer.startsWith("!");
   const lines = wrapBuffer(buffer, width);
   const { row: cursorRow } = isEmpty ? { row: 0 } : findCursorPosition(lines, cursor);
 
@@ -627,7 +631,9 @@ export function InputBox({
       {matches.length > 0 && safeOffset + POPUP_MAX_ROWS < matches.length ? (
         <Text dimColor> ↓ {matches.length - safeOffset - POPUP_MAX_ROWS} more</Text>
       ) : null}
-      <Text dimColor>{rule}</Text>
+      <Text dimColor={!bashMode} color={bashMode ? BASH_HEX : undefined}>
+        {rule}
+      </Text>
       {isEmpty ? (
         <Box>
           <Text> </Text>
@@ -638,7 +644,9 @@ export function InputBox({
       ) : (
         lines.map(renderContentLine)
       )}
-      <Text dimColor>{rule}</Text>
+      <Text dimColor={!bashMode} color={bashMode ? BASH_HEX : undefined}>
+        {rule}
+      </Text>
     </Box>
   );
 }
