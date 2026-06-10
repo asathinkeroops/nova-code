@@ -4,6 +4,7 @@ export { handleClear } from "./clear.js";
 export { handleCommands } from "./commands.js";
 export { handleCommit } from "./commit.js";
 export { handleCompact } from "./compact.js";
+export { handleDiff } from "./diff.js";
 export { handleHelp } from "./help.js";
 export { handleInit } from "./init.js";
 export { handleLsp } from "./lsp.js";

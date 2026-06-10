@@ -72,7 +72,7 @@ function languageFromPath(path: string | undefined): string | undefined {
   return lang && supportsLanguage(lang) ? lang : undefined;
 }
 
-function highlightContent(content: string, path: string | undefined): string {
+export function highlightContent(content: string, path: string | undefined): string {
   const language = languageFromPath(path);
   // cli-highlight's markdown grammar emits no colors; use our own source
   // highlighter (line-count preserving, so diff/gutter mapping still aligns).

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
-import { accent, dim, useColor } from "../colors.js";
+import { accent, diffTint, dim, useColor } from "../colors.js";
 import { applyInverse } from "./selection.js";
 import { visibleWidth } from "./width.js";
 
@@ -132,6 +132,118 @@ export function PickList<T>({ opts, onResolve }: PickListProps<T>): React.ReactE
 /** Convenience helper to colour the selection arrow consistently. */
 export const pickerArrow = (selected: boolean): string =>
   selected ? accent("❯") : " ";
+
+export interface ViewerLine {
+  /** The line body, already coloured (sign, syntax highlighting, etc.). */
+  text: string;
+  /** Optional full-width background tint, painted across the body only. */
+  bg?: "add" | "del";
+  /** Optional fixed prefix (e.g. a line-number gutter) drawn outside the tint. */
+  gutter?: string;
+}
+
+export interface ViewerOptions {
+  /** The content, one entry per line. Plain strings render with no tint. */
+  lines: Array<string | ViewerLine>;
+  /** Optional header line shown above the content. */
+  header?: string;
+  /** Optional footer line shown below the content. */
+  footer?: string;
+  /** Max lines shown at once; longer content scrolls. Defaults to 20. */
+  pageSize?: number;
+  /** Draw the round border around the viewer. Defaults to true. */
+  border?: boolean;
+}
+
+/** Full rendered text of a viewer line (gutter + body), for width/height measurement. */
+export function viewerLineText(line: string | ViewerLine): string {
+  return typeof line === "string" ? line : (line.gutter ?? "") + line.text;
+}
+
+interface ScrollViewerProps {
+  opts: ViewerOptions;
+  onResolve: (value: null) => void;
+}
+
+/**
+ * Pad `text` to `width` visible columns and paint a full-width diff tint across
+ * it, so the add/remove highlight spans the whole row rather than just glyphs.
+ */
+function tintRow(text: string, width: number, kind: "add" | "del"): string {
+  const tw = visibleWidth(text);
+  const padded = tw < width ? text + " ".repeat(width - tw) : text;
+  return diffTint(kind, padded);
+}
+
+/**
+ * A read-only, scrollable text pager. Unlike {@link PickList} there is no
+ * per-line highlight — content scrolls by line (↑↓ / j k), by page (PgUp/PgDn /
+ * space), or jumps to ends (g / G); any confirm/quit key (enter / esc / q)
+ * closes it. Used by `/diff` to page through a single file's patch.
+ */
+export function ScrollViewer({ opts, onResolve }: ScrollViewerProps): React.ReactElement {
+  const lines: ViewerLine[] = opts.lines.map((l) =>
+    typeof l === "string" ? { text: l } : l,
+  );
+  const pageSize = Math.max(1, opts.pageSize ?? 20);
+  const maxStart = Math.max(0, lines.length - pageSize);
+  const [start, setStart] = useState(0);
+  const clamp = (n: number): number => Math.min(maxStart, Math.max(0, n));
+
+  useInput((input, key) => {
+    if (key.escape || key.return || input === "q" || (key.ctrl && input === "c")) {
+      onResolve(null);
+      return;
+    }
+    if (key.downArrow || input === "j" || (key.ctrl && input === "n")) {
+      setStart((s) => clamp(s + 1));
+    } else if (key.upArrow || input === "k" || (key.ctrl && input === "p")) {
+      setStart((s) => clamp(s - 1));
+    } else if (key.pageDown || input === " " || (key.ctrl && input === "f")) {
+      setStart((s) => clamp(s + pageSize));
+    } else if (key.pageUp || (key.ctrl && input === "b")) {
+      setStart((s) => clamp(s - pageSize));
+    } else if (input === "g" || (key.ctrl && input === "a")) {
+      setStart(0);
+    } else if (input === "G" || (key.ctrl && input === "e")) {
+      setStart(maxStart);
+    }
+  });
+
+  const end = Math.min(lines.length, start + pageSize);
+  const visible = lines.slice(start, end);
+  // Size the tint bar to the widest visible body so add/remove highlights line
+  // up and fill to the same column (the gutter sits outside the tint).
+  const barWidth = Math.max(0, ...visible.map((l) => visibleWidth(l.text)));
+  const rows: React.ReactNode[] = [];
+  for (let i = 0; i < visible.length; i++) {
+    const line = visible[i] as ViewerLine;
+    const body = line.bg && useColor ? tintRow(line.text, barWidth, line.bg) : line.text;
+    rows.push(<Text key={start + i}>{(line.gutter ?? "") + body}</Text>);
+  }
+
+  const indicator =
+    lines.length > pageSize
+      ? useColor
+        ? dim(`  (${start + 1}–${end}/${lines.length})`)
+        : `  (${start + 1}–${end}/${lines.length})`
+      : null;
+
+  const bordered = opts.border ?? true;
+  return (
+    <Box
+      flexDirection="column"
+      marginTop={1}
+      marginBottom={1}
+      {...(bordered ? { borderStyle: "round" as const } : {})}
+    >
+      {opts.header ? <Text>{opts.header}</Text> : null}
+      {rows}
+      {indicator ? <Text>{indicator}</Text> : null}
+      {opts.footer ? <Text>{opts.footer}</Text> : null}
+    </Box>
+  );
+}
 
 export interface HorizontalPickerOptions<T> {
   items: T[];

@@ -20,6 +20,7 @@ import { type PermissionMode } from "./permissions.js";
 import {
   type HorizontalPickerOptions,
   type PickerOptions,
+  type ViewerOptions,
 } from "./ui/picker.js";
 import {
   createAppStore,
@@ -425,6 +426,11 @@ export class Screen {
   async pickHorizontal<T>(opts: HorizontalPickerOptions<T>): Promise<T | null> {
     if (opts.items.length === 0) return null;
     return this.store.getState().openPickHorizontalModal(opts);
+  }
+
+  /** Open a read-only, scrollable text pager. Resolves when the user closes it. */
+  async viewer(opts: ViewerOptions): Promise<void> {
+    return this.store.getState().openViewerModal(opts);
   }
 }
 

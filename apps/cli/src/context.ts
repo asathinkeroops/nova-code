@@ -57,6 +57,7 @@ import {
   handleCommands,
   handleCommit,
   handleCompact,
+  handleDiff,
   handleHelp,
   handleInit,
   handleLsp,
@@ -368,6 +369,16 @@ function registerBuiltinSlashCommands(ctx: CliContext): void {
     argHint: "[guidance…]",
     source: { kind: "builtin" },
     run: (_c, args) => handleCommit(args),
+  });
+  ctx.registry.register({
+    name: "diff",
+    description: "browse uncommitted changes in a modal: file list → per-file diff",
+    argHint: "[pathspec]",
+    source: { kind: "builtin" },
+    run: async (_c, args) => {
+      await handleDiff(ctx, args.trim());
+      return handled;
+    },
   });
   ctx.registry.register({
     name: "review",

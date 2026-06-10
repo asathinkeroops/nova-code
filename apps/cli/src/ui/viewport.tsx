@@ -8,8 +8,11 @@ import { highlightLines } from "./selection.js";
 import {
   type HorizontalPickerOptions,
   type PickerOptions,
+  type ViewerOptions,
   PickHorizontal,
   PickList,
+  ScrollViewer,
+  viewerLineText,
 } from "./picker.js";
 import { buildLiveDraftItems, buildRenderItems } from "./render-item.js";
 import { blinkPendingOff, hasPendingDot } from "./render-strings.js";
@@ -222,6 +225,8 @@ function chromeRowsFor(
         return pickListRows(modal.opts as PickerOptions<unknown>, cols);
       case "pickH":
         return pickHorizontalRows(modal.opts as HorizontalPickerOptions<unknown>, cols);
+      case "viewer":
+        return viewerRows(modal.opts as ViewerOptions, cols);
       default:
         return 0;
     }
@@ -260,6 +265,25 @@ export function pickListRows(opts: PickerOptions<unknown>, cols: number): number
   if (opts.header) n += countWrappedLines(opts.header, inner);
   for (const it of visible) n += countWrappedLines(opts.render(it, false), inner);
   if (opts.items.length > pageSize) n += 1; // indicator line
+  if (opts.footer) n += countWrappedLines(opts.footer, inner);
+  return n;
+}
+
+/**
+ * Render height of `ScrollViewer` (picker.tsx): same box shape as PickList —
+ * round border + top/bottom margins, optional header, up to `pageSize` content
+ * rows, an optional position indicator, and an optional footer. Measured from
+ * the first page; scrolling reuses the same row budget.
+ */
+export function viewerRows(opts: ViewerOptions, cols: number): number {
+  const pageSize = Math.max(1, opts.pageSize ?? 20);
+  const visible = opts.lines.slice(0, Math.min(opts.lines.length, pageSize));
+  const bordered = opts.border ?? true;
+  const inner = Math.max(1, bordered ? cols - 2 : cols);
+  let n = bordered ? 4 : 2;
+  if (opts.header) n += countWrappedLines(opts.header, inner);
+  for (const line of visible) n += countWrappedLines(viewerLineText(line), inner);
+  if (opts.lines.length > pageSize) n += 1; // indicator line
   if (opts.footer) n += countWrappedLines(opts.footer, inner);
   return n;
 }
@@ -311,6 +335,13 @@ function InStreamModal({
       return (
         <PickHorizontal
           opts={modal.opts as HorizontalPickerOptions<unknown>}
+          onResolve={(value) => resolveModal(value)}
+        />
+      );
+    case "viewer":
+      return (
+        <ScrollViewer
+          opts={modal.opts as ViewerOptions}
           onResolve={(value) => resolveModal(value)}
         />
       );

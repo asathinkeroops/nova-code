@@ -9,6 +9,7 @@ import type { BoxedInputOptions, SlashCommand } from "./input-box.js";
 import type {
   HorizontalPickerOptions,
   PickerOptions,
+  ViewerOptions,
 } from "./picker.js";
 import type { SetupEntry, SetupState } from "./setup-view.js";
 import type { PermissionMode } from "../permissions.js";
@@ -79,7 +80,8 @@ export type ModalState =
     }
   | { kind: "ask"; req: AskUserRequest }
   | { kind: "pick"; opts: PickerOptions<unknown> }
-  | { kind: "pickH"; opts: HorizontalPickerOptions<unknown> };
+  | { kind: "pickH"; opts: HorizontalPickerOptions<unknown> }
+  | { kind: "viewer"; opts: ViewerOptions };
 
 export interface SpinnerHandle {
   stop(): void;
@@ -312,6 +314,7 @@ export interface AppActions {
   ) => Promise<AskUserResponse>;
   openPickModal: <T>(opts: PickerOptions<T>) => Promise<T | null>;
   openPickHorizontalModal: <T>(opts: HorizontalPickerOptions<T>) => Promise<T | null>;
+  openViewerModal: (opts: ViewerOptions) => Promise<void>;
   reset: () => void;
   setTerminalSize: (cols: number, rows: number) => void;
   /** Sticky-aware writeback used by the viewport after each measure. */
@@ -638,6 +641,10 @@ export function createAppStore(): AppStoreApi {
           undefined,
           null,
         );
+      },
+
+      openViewerModal(opts: ViewerOptions) {
+        return openModal<void>({ kind: "viewer", opts }, undefined, undefined);
       },
 
       /**

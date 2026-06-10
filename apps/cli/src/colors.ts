@@ -41,6 +41,32 @@ export const ACCENT_HEX = "#ff3caa";
 
 export const MAGENTA_RGB: Rgb = [220, 130, 220];
 
+// Diff row colours — kept in sync with the canonical renderer in ui/diff.ts so
+// the `/diff` viewer and inline tool diffs look identical. Dark row tints with
+// brighter foreground signs.
+export const DIFF_ADD_BG: Rgb = [14, 68, 41];
+export const DIFF_DEL_BG: Rgb = [73, 15, 15];
+export const DIFF_ADD_FG: Rgb = [127, 217, 154];
+export const DIFF_DEL_FG: Rgb = [255, 128, 128];
+
+/**
+ * Paint a background tint behind `text` for a diff row. The inner `[39m`/`[22m`
+ * fg/dim resets in `text` don't touch the background, so any foreground colour
+ * (e.g. syntax highlighting) already in `text` is preserved. Returns `text`
+ * unchanged when colour is disabled.
+ */
+export function diffTint(kind: "add" | "del", text: string): string {
+  if (!useColor) return text;
+  const [r, g, b] = kind === "add" ? DIFF_ADD_BG : DIFF_DEL_BG;
+  return `\x1b[48;2;${r};${g};${b}m${text}\x1b[49m`;
+}
+
+/** The coloured `+`/`-` marker for an add/remove row. */
+export function diffSign(kind: "add" | "del"): string {
+  const sign = kind === "add" ? "+" : "-";
+  return rgbFg(kind === "add" ? DIFF_ADD_FG : DIFF_DEL_FG, sign);
+}
+
 function wrap(open: number, close: number, text: string): string {
   if (!useColor) return text;
   return `\x1b[${open}m${text}\x1b[${close}m`;
