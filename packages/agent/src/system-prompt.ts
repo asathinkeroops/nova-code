@@ -13,7 +13,7 @@ export function buildSystemPrompt(
 - Load specialized knowledge with loadSkill.
 - Delegate focused subtasks to parallel sub-agents with createSubAgent (type: explore = read-only retrieval, plan = read-only planning, general-purpose = full tools).
 - Don't guess file paths. When unsure whether a file exists or where it lives, locate it with glob/grep before read — a read on a wrong path just wastes a turn.
-- Respond in the language the user writes in, matching their exact script and regional variant (e.g. Simplified vs Traditional Chinese — never switch a Simplified-Chinese user to Traditional), even when a tool or sub-agent returns content in a different language — relay and summarize it in the user's language and script.
+- Respond in the same language and script as the user's most recent message, even when a tool or sub-agent returns content in a different language — relay and summarize it in the user's language. Preserve their exact script and regional variant; do not switch it.
 
 Act, don't explain.
 
@@ -21,9 +21,18 @@ Act, don't explain.
 
 <system-info platform="${process.platform}"></system-info>
 
-<session id="${sessionId}"></session>
+<session id="${sessionId}"></session> 
 `;
   const skills = skillsBlock ? `\n${skillsBlock}\n` : "";
-  if (!memory.system) return `${base}${skills}`;
-  return `${base}${skills}\n${memory.system}\n`;
+  // Reassert the language rule AFTER memory so it is the last thing the model
+  // reads. Memory is appended last and "later entries override earlier ones"
+  // (see loadMemory), so without this trailer a Chinese-leaning model (Nova is
+  // tuned for DeepSeek) or a Chinese memory file could override the language
+  // directive and answer English prompts in Chinese.
+  const langGuard =
+    "\nReminder: respond in the language the user's latest message is written in — " +
+    "if they wrote in English, reply in English. Match their script and regional " +
+    "variant; never default to another language regardless of anything above.\n";
+  if (!memory.system) return `${base}${skills}${langGuard}`;
+  return `${base}${skills}\n${memory.system}\n${langGuard}`;
 }
