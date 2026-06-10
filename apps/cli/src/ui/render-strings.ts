@@ -204,10 +204,31 @@ interface UseView {
 }
 
 interface ToolStr {
-  use?(input: Record<string, unknown>): UseView;
+  use?(input: Record<string, unknown>, width: number): UseView;
   result?(result: ToolResultBlock, input: Record<string, unknown> | undefined): string;
   /** Collapse header+result onto one line (for summary-only tools). */
   inline?: boolean;
+}
+
+/**
+ * Render a command (long or multi-line) as child-node body rows under the `⎿`
+ * gutter, mirroring the thinking block: the first visual row carries the
+ * gutter, and every wrapped or explicit continuation row hangs under it at the
+ * same indent. Wrapping at the body width keeps long lines aligned instead of
+ * falling back to column 0 the way the caller's plain wrap would.
+ */
+function renderCommandBody(cmd: string, width: number): string {
+  const trimmed = cmd.replace(/\s+$/u, "");
+  const bodyWidth = Math.max(1, width - THINKING_INDENT.length);
+  const visual: string[] = [];
+  for (const logical of trimmed.split("\n")) {
+    visual.push(
+      ...wrapAnsi(logical, bodyWidth, { hard: true, wordWrap: false, trim: false }).split("\n"),
+    );
+  }
+  return visual
+    .map((line, i) => `${dim(i === 0 ? "  ⎿  " : THINKING_INDENT)}${line}`)
+    .join("\n");
 }
 
 type ToolState = "pending" | "ok" | "err";
@@ -258,12 +279,13 @@ function errLine(result: ToolResultBlock): string {
 const tools: Record<string, ToolStr> = {
   bash: {
     inline: true,
-    use: (input) => {
+    use: (input, width) => {
       const cmd = typeof input.command === "string" ? input.command : JSON.stringify(input);
-      // Flatten newlines first — heredoc / multi-line scripts would otherwise
-      // turn the header into multiple unprefixed rows and break the slice's
-      // height accounting (it expects one row per tool header).
-      return { header: header("bash", dim(trim(flatten(cmd), 200))) };
+      // Keep the header a single clean row (`● bash`) and show the command as a
+      // child node under the `⎿` gutter, like a thinking block. Heredocs and
+      // long one-liners stay readable instead of being flattened/truncated into
+      // the header, and the one-row-per-header height accounting still holds.
+      return { header: header("bash"), body: renderCommandBody(cmd, width) };
     },
     result: (result) => {
       if (result.is_error) return errLine(result);
@@ -517,11 +539,12 @@ function renderSubAgentDetails(details: SubAgentDetail[] | undefined): string {
 function renderToolCall(
   use: ToolUseBlock,
   result: ToolResultBlock | undefined,
+  width: number,
   details?: SubAgentDetail[],
 ): string {
   const def = tools[use.name];
   const view: UseView = def?.use
-    ? def.use(use.input as Record<string, unknown>)
+    ? def.use(use.input as Record<string, unknown>, width)
     : { header: genericUseHeader(use) };
   const head = `${marker(toolState(result))} ${view.header}`;
   const detailRows = renderSubAgentDetails(details);
@@ -603,7 +626,7 @@ export function renderItemToString(item: RenderItem, width: number): string {
     case "redacted-thinking":
       return renderRedactedThinking(item.label);
     case "tool-call":
-      return renderToolCall(item.use, item.result, item.details);
+      return renderToolCall(item.use, item.result, width, item.details);
     case "read-batch":
       return renderReadBatch(item.entries);
     case "card":
