@@ -1,13 +1,17 @@
 import { describe, it, expect } from "vitest";
 import {
+  cacheHitRate,
   contextBar,
   displayCwd,
   fitSegments,
   formatDuration,
+  formatPercent,
   formatTokenCount,
   permissionModeIndicator,
+  SHELL_MODE_INDICATOR,
   type StatusSegment,
 } from "./status-format.js";
+import { BASH_HEX } from "../colors.js";
 
 describe("formatDuration", () => {
   it("shows hours/minutes/seconds for long spans", () => {
@@ -39,6 +43,33 @@ describe("formatTokenCount", () => {
   });
   it("leaves small counts as-is", () => {
     expect(formatTokenCount(512)).toBe("512");
+  });
+});
+
+describe("cacheHitRate", () => {
+  it("is reads over all prompt tokens (read + write + uncached)", () => {
+    // 80 read out of 80 + 15 write + 5 uncached = 100 → 0.8
+    expect(cacheHitRate(80, 15, 5)).toBe(0.8);
+  });
+  it("returns null when no prompt tokens have been seen", () => {
+    expect(cacheHitRate(0, 0, 0)).toBeNull();
+  });
+  it("is 0 when nothing was served from cache", () => {
+    expect(cacheHitRate(0, 40, 60)).toBe(0);
+  });
+  it("is 1 when the whole prompt was a cache hit", () => {
+    expect(cacheHitRate(100, 0, 0)).toBe(1);
+  });
+});
+
+describe("formatPercent", () => {
+  it("rounds a ratio to a whole percent", () => {
+    expect(formatPercent(0.8523)).toBe("85%");
+    expect(formatPercent(0.8556)).toBe("86%");
+  });
+  it("clamps out-of-range ratios", () => {
+    expect(formatPercent(1.4)).toBe("100%");
+    expect(formatPercent(-0.2)).toBe("0%");
   });
 });
 
@@ -101,5 +132,11 @@ describe("permissionModeIndicator", () => {
   it("labels accept-edits and plan in distinct colors (hint appended dim by the renderer)", () => {
     expect(permissionModeIndicator("acceptEdits")).toEqual({ label: "⏵⏵ accept edits on", color: "green" });
     expect(permissionModeIndicator("plan")).toEqual({ label: "⏸ plan mode on", color: "cyan" });
+  });
+});
+
+describe("SHELL_MODE_INDICATOR", () => {
+  it("labels shell mode in bash green for the status row", () => {
+    expect(SHELL_MODE_INDICATOR).toEqual({ label: "! for shell mode", color: BASH_HEX });
   });
 });

@@ -1,3 +1,4 @@
+import { BASH_HEX } from "../colors.js";
 import { visibleWidth } from "./width.js";
 import type { PermissionMode } from "../permissions.js";
 
@@ -9,6 +10,19 @@ export interface PermissionModeIndicator {
   label: string;
   color: string;
 }
+
+/**
+ * Green label shown below the StatusLine while the input is in shell (`!`)
+ * mode — the leading `!` runs the line in the shell instead of sending it to
+ * the model. Coloured to match the bash-green input frame. Takes the indicator
+ * slot ahead of the permission-mode label (a shell escape bypasses the model's
+ * permission system, so that label would be misleading while it's active), but
+ * still yields to the bypass-permissions safety warning.
+ */
+export const SHELL_MODE_INDICATOR: PermissionModeIndicator = {
+  label: "! for shell mode",
+  color: BASH_HEX,
+};
 
 /**
  * Colored label shown below the StatusLine for a non-default permission mode,
@@ -61,6 +75,29 @@ export function formatTokenCount(tokens: number): string {
     return `${Number.isInteger(k) ? k : Number(k.toFixed(1))}K`;
   }
   return `${Math.max(0, Math.floor(tokens))}`;
+}
+
+/**
+ * Prompt-cache hit rate over *all* prompt input tokens: the fraction served
+ * from cache out of (cache read + cache creation + uncached input). DeepSeek's
+ * Anthropic-compatible usage splits every prompt into those three buckets, so
+ * their sum is the full prompt size. Returns null when no prompt tokens have
+ * been seen yet — there is no meaningful rate to show.
+ */
+export function cacheHitRate(
+  read: number,
+  creation: number,
+  uncachedInput: number,
+): number | null {
+  const total = read + creation + uncachedInput;
+  if (total <= 0) return null;
+  return read / total;
+}
+
+/** A 0–1 ratio as a whole-percent string, e.g. 0.8523 → "85%". */
+export function formatPercent(ratio: number): string {
+  const clamped = Math.max(0, Math.min(1, ratio));
+  return `${Math.round(clamped * 100)}%`;
 }
 
 /** A `width`-cell meter, e.g. 9% over 10 cells → "░░░░░░░░░░". */

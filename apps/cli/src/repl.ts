@@ -57,10 +57,7 @@ async function refreshPrediction(ctx: CliContext): Promise<void> {
   }
 }
 
-type DispatchAction =
-  | "exit"
-  | "continue"
-  | { kind: "turn"; prompt: string };
+type DispatchAction = "exit" | "continue" | { kind: "turn"; prompt: string };
 
 /**
  * Run a `!`-prefixed line as a shell command instead of an LLM turn. Calls the
@@ -155,6 +152,35 @@ async function runTurn(ctx: CliContext, input: string): Promise<boolean> {
   }
 }
 
+/** Hard cap on Stop-hook forced continuations, so a misbehaving hook can't loop forever. */
+const MAX_STOP_CONTINUATIONS = 8;
+
+/**
+ * Run a turn, then consult Stop hooks. A Stop hook that exits 2 forces the turn
+ * to continue: its stderr becomes the next prompt and we run again, up to a hard
+ * cap. The payload's `stop_continuation` (0-based) lets a hook see how many times
+ * it has already forced a continue and bow out. Aborted turns are not continued.
+ */
+async function runTurnWithStopHooks(ctx: CliContext, prompt: string): Promise<boolean> {
+  let ok = await runTurn(ctx, prompt);
+  for (let i = 0; ok; i++) {
+    const decision = await ctx.userHooks.runStop({ stop_continuation: i });
+    if (!decision.continue) break;
+    if (i >= MAX_STOP_CONTINUATIONS) {
+      ctx.screen.card(
+        `Stop hook kept blocking; stopping after ${MAX_STOP_CONTINUATIONS} continuations`,
+        {
+          kind: "warn",
+          title: "Stop hook",
+        },
+      );
+      break;
+    }
+    ok = await runTurn(ctx, decision.reason || "A Stop hook requested that you keep going.");
+  }
+  return ok;
+}
+
 export async function runRepl(ctx: CliContext, initialPrompt: string): Promise<void> {
   // The InputBox is a permanent fixture that always enqueues; the REPL is the
   // single consumer. Prompts typed while a turn runs pile up in the queue and
@@ -162,8 +188,14 @@ export async function runRepl(ctx: CliContext, initialPrompt: string): Promise<v
   ctx.screen.setSlashCommands(toUiSlashCommands(ctx.registry.list()));
   await refreshMentionFiles(ctx);
 
+  const startSource = ctx.resumed ? "resume" : "startup";
+  await ctx.userHooks.fire("SessionStart", {
+    subject: startSource,
+    fields: { source: startSource },
+  });
+
   if (initialPrompt) {
-    const ok = await runTurn(ctx, initialPrompt);
+    const ok = await runTurnWithStopHooks(ctx, initialPrompt);
     if (ok) await refreshPrediction(ctx);
   }
 
@@ -181,12 +213,18 @@ export async function runRepl(ctx: CliContext, initialPrompt: string): Promise<v
     if (action === "exit") break;
     if (action === "continue") continue;
 
-    const ok = await runTurn(ctx, action.prompt);
+    const ok = await runTurnWithStopHooks(ctx, action.prompt);
     if (ok) await refreshPrediction(ctx);
     // Pick up files created/deleted during the turn. Fire-and-forget so it
     // never delays the next prompt; the function swallows its own errors.
     void refreshMentionFiles(ctx);
   }
+
+  // SessionEnd runs before teardown so the hook can still use the sandbox bridge.
+  await ctx.userHooks.fire("SessionEnd", {
+    subject: "exit",
+    fields: { reason: "exit" },
+  });
 
   await ctx.transcript.flush();
   await ctx.longRunningManager.disposeAll();

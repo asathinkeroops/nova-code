@@ -77,6 +77,9 @@ export function registerUiHooks(ctx: CliContext): void {
         (usage.cacheCreationInputTokens ?? 0) +
         usage.outputTokens;
       ctx.screen.setContextTokens(used);
+      // Fold the same usage into the session-cumulative counters behind the
+      // cache-hit-rate meter and `/usage`.
+      ctx.screen.addUsage(usage);
     }
   });
 

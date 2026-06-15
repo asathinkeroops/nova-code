@@ -268,6 +268,40 @@ export class Screen {
     this.store.getState().setContextTokens(tokens);
   }
 
+  addUsage(usage: {
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadInputTokens?: number;
+    cacheCreationInputTokens?: number;
+  }): void {
+    this.store.getState().addUsage(usage);
+  }
+
+  seedUsage(totals: {
+    cacheReadTokens: number;
+    cacheCreationTokens: number;
+    uncachedInputTokens: number;
+    outputTokens: number;
+  }): void {
+    this.store.getState().seedUsage(totals);
+  }
+
+  /** Snapshot of the session-cumulative token counters (for `/usage`). */
+  usage(): {
+    cacheReadTokens: number;
+    cacheCreationTokens: number;
+    uncachedInputTokens: number;
+    outputTokens: number;
+  } {
+    const s = this.store.getState();
+    return {
+      cacheReadTokens: s.cacheReadTokens,
+      cacheCreationTokens: s.cacheCreationTokens,
+      uncachedInputTokens: s.uncachedInputTokens,
+      outputTokens: s.sessionOutputTokens,
+    };
+  }
+
   setSpinnerTokens(progress: { inputTokens?: number; outputTokens: number }): void {
     this.store.getState().setSpinnerTokens(progress);
   }

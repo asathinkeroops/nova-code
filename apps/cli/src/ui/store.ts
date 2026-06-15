@@ -213,6 +213,18 @@ export interface AppState {
    */
   contextWindowTokens: number;
   /**
+   * Session-cumulative prompt tokens served from cache (hits), summed across
+   * every model request. Numerator of the cache-hit-rate meter. Reset to 0 on
+   * `reset()` (/clear) — a fresh session starts with a cold cache.
+   */
+  cacheReadTokens: number;
+  /** Session-cumulative prompt tokens written to cache (new entries). Reset on `reset()`. */
+  cacheCreationTokens: number;
+  /** Session-cumulative uncached prompt input tokens (neither read nor written). Reset on `reset()`. */
+  uncachedInputTokens: number;
+  /** Session-cumulative output (completion) tokens. Reset on `reset()`. */
+  sessionOutputTokens: number;
+  /**
    * Prompts the user submitted while a turn was running, waiting to be consumed
    * as their own turns once the current one finishes (FIFO). The permanent
    * InputBox renders these above itself so the user can see what's pending.
@@ -336,6 +348,28 @@ export interface AppActions {
   }) => void;
   /** Update the latest-request token count shown by the StatusLine meter. */
   setContextTokens: (tokens: number) => void;
+  /**
+   * Fold one request's usage into the session-cumulative token counters that
+   * back the cache-hit-rate meter and `/usage`. Each field is added to its
+   * running total; missing cache fields count as 0.
+   */
+  addUsage: (usage: {
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadInputTokens?: number;
+    cacheCreationInputTokens?: number;
+  }) => void;
+  /**
+   * Set the session-cumulative token counters to absolute totals — used to
+   * restore them from a resumed session's transcript so the cache-hit-rate
+   * meter and `/usage` survive a restart.
+   */
+  seedUsage: (totals: {
+    cacheReadTokens: number;
+    cacheCreationTokens: number;
+    uncachedInputTokens: number;
+    outputTokens: number;
+  }) => void;
   /**
    * Submit a prompt from the InputBox. If the REPL is idle (blocked in
    * `takeInput`) it's delivered immediately; otherwise it's appended to
@@ -461,6 +495,10 @@ export function createAppStore(): AppStoreApi {
       gitBranch: null,
       contextTokens: 0,
       contextWindowTokens: 0,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+      uncachedInputTokens: 0,
+      sessionOutputTokens: 0,
       inputQueue: [],
       slashCommands: [],
       mentionFiles: [],
@@ -665,6 +703,10 @@ export function createAppStore(): AppStoreApi {
           viewportTotalLines: 0,
           viewportRows: 0,
           contextTokens: 0,
+          cacheReadTokens: 0,
+          cacheCreationTokens: 0,
+          uncachedInputTokens: 0,
+          sessionOutputTokens: 0,
           userDisplayOverrides: {},
           toolDetails: {},
         });
@@ -759,6 +801,24 @@ export function createAppStore(): AppStoreApi {
       setContextTokens(tokens) {
         if (get().contextTokens === tokens) return;
         set({ contextTokens: tokens });
+      },
+
+      addUsage(usage) {
+        set((s) => ({
+          uncachedInputTokens: s.uncachedInputTokens + usage.inputTokens,
+          cacheReadTokens: s.cacheReadTokens + (usage.cacheReadInputTokens ?? 0),
+          cacheCreationTokens: s.cacheCreationTokens + (usage.cacheCreationInputTokens ?? 0),
+          sessionOutputTokens: s.sessionOutputTokens + usage.outputTokens,
+        }));
+      },
+
+      seedUsage(totals) {
+        set({
+          cacheReadTokens: totals.cacheReadTokens,
+          cacheCreationTokens: totals.cacheCreationTokens,
+          uncachedInputTokens: totals.uncachedInputTokens,
+          sessionOutputTokens: totals.outputTokens,
+        });
       },
 
       enqueueInput(line) {

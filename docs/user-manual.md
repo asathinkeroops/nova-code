@@ -613,8 +613,114 @@ Nova 可在启动时连接外部 [MCP](https://modelcontextprotocol.io) 服务�
 | `lsp.*` | `enabled:true` | LSP，见 [§17](#17-lsp-代码智能) |
 | `mcp.*` | `enabled:true` | MCP，见 [§16](#16-mcp-外部工具) |
 | `sandbox.*` | `enabled:true` | 命令沙箱，见 [§11](#11-命令沙箱) |
+| `hooks.*` | `enabled:true` | 用户事件 shell 钩子，见下方 [`hooks`](#hooks用户事件-shell-钩子) |
 
 > 临时覆盖：`-m/--model`、`-t/--think`、`--max-turns`、`--cwd`、`--no-transcript`、`--no-pretty` 只影响本次会话，不写回文件。
+
+### `hooks`（用户事件 shell 钩子）
+
+在生命周期事件上跑你自己的 shell 命令——无需改代码即可实现「写完文件自动 format / lint」「提交前注入上下文」等自动化。这些声明式 hook 由 CLI 桥接到内核的 `HookRegistry` 上，命令在与 `bash` 工具**相同的 OS 沙箱**里执行。
+
+**工具/对话事件**（名字沿用 `PreToolUse` / `PostToolUse` / `UserPromptSubmit` 约定；`Stop` 见下方生命周期表）：
+
+| 事件 | 触发时机 | 退出码语义 | stdout 语义 |
+|------|----------|-----------|-------------|
+| `PreToolUse` | 工具执行**前**，作为权限门的**第一步**（早于权限模式 / 规则） | **非 0 → 拒绝该次工具调用**，stderr 作为拒绝理由 | 忽略（用 JSON `permissionDecision` 表达 allow/ask,见下） |
+| `PostToolUse` | 工具执行**后** | 非 0 → 把结果标记为错误 | 追加到回灌给模型的工具结果里 |
+| `UserPromptSubmit` | 每轮**开始前** | **非 0 → 中止本轮**，stderr 作为理由 | 追加到用户输入作为上下文 |
+
+**生命周期事件**（`matcher` 匹配 source/trigger；沿用 **exit 2 = 阻断** 约定，其它非 0 = 非阻断错误仅记日志）：
+
+| 事件 | 触发时机 | `matcher` subject | 阻断语义 |
+|------|----------|-------------------|----------|
+| `SessionStart` | 会话启动 / `/resume` / `/clear` 后 | `startup` \| `resume` \| `clear` | advisory |
+| `SessionEnd` | 退出 REPL 时（沙箱销毁前） | `exit` | advisory |
+| `PreCompact` | 自动或 `/compact` 压缩**前** | `auto` \| `manual` | **exit 2 → 跳过本次压缩**（stderr 作理由） |
+| `PostCompact` | 压缩**后** | `auto` \| `manual` | advisory |
+| `Stop` | 每轮**结束后** | （无） | **exit 2 → 强制本轮继续**：stderr 作为下一轮 prompt 喂回模型 |
+
+> `Stop` 强制继续带硬上限(默认 8 次)防死循环;hook 可读 payload 的 `stop_continuation`(0 起的已继续次数)自行收手。阻断自动压缩有上下文溢出风险,谨慎使用。
+
+每条 hook 形如 `{ matcher?, command, timeout_ms? }`：
+
+- `matcher`：正则。对工具事件匹配**工具名**，对生命周期事件匹配 **source/trigger**（上表第三列）。省略 = 全部匹配。无法编译的正则视为不匹配。
+- `command`：经 `bash -lc` 执行的命令，**走与 `bash` 工具相同的 OS 沙箱**，工作目录即工作区根。
+- `timeout_ms`：默认 `60000`，上限 `600000`。
+
+命令通过 **stdin 上的单个 JSON 对象**拿到上下文（对齐 Claude Code 约定，用 `jq` 取字段）。所有事件都带公共字段 `hook_event_name`、`session_id`、`transcript_path`、`cwd`；其余按事件：
+
+- 工具事件：`tool_name`、`tool_input`（原始对象）、`file_paths`（`write`/`edit` 受影响的绝对路径数组）、`tool_response` 与 `is_error`（仅 `PostToolUse`）、`prompt`（仅 `UserPromptSubmit`）。
+- 生命周期事件：`source`（SessionStart）、`reason`（SessionEnd）；`trigger`、`before`、`after`、`archived_transcript_path`（*Compact）；`stop_continuation`（Stop）。
+
+> 例如 PreToolUse 守卫取待执行命令：`cmd=$(jq -r '.tool_input.command')`。
+
+**回话:退出码 或 stdout JSON。** 简单 hook 用退出码即可(上表语义)。需要更精细的控制时,把一个 **JSON 对象写到 stdout**——识别到合法 JSON 时其结构化决定**优先于**退出码,否则退回「退出码 + 原始 stdout」。支持字段:
+
+| 字段 | 作用 |
+|------|------|
+| `decision: "block"` + `reason` | `PostToolUse` 标记结果为错误并把 `reason` 回灌;`UserPromptSubmit` 中止本轮;`PreCompact` 跳过压缩;`Stop` 强制继续(等价 exit 2) |
+| `hookSpecificOutput.permissionDecision: "deny" \| "allow" \| "ask"` + `permissionDecisionReason` | **仅 `PreToolUse`**:`deny` 拒绝;`allow` **绕过权限门**(权限模式 + 规则,直接放行);`ask` **强制弹确认**(即便权限门本会自动放行)。多个 hook 时优先级 `deny` > `ask` > `allow` |
+| `hookSpecificOutput.additionalContext` | `PostToolUse` / `UserPromptSubmit` 追加到回灌模型的文本(给出时**取代**原始 stdout) |
+
+```jsonc
+// PreToolUse 守卫:用 JSON 拒绝(可不依赖退出码)
+// echo '{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":"命中危险命令"}}'
+```
+
+```jsonc
+{
+  "hooks": {
+    "enabled": true,                       // 总开关（默认 true）
+    "PostToolUse": [
+      { "matcher": "write|edit", "command": "jq -r '.file_paths[]' | xargs -r prettier --write" },
+      { "matcher": "write|edit", "command": "jq -r '.file_paths[]' | xargs -r eslint --fix" }
+    ],
+    "PreToolUse": [
+      { "matcher": "bash", "command": "./scripts/guard.sh" }   // 读 stdin 的 .tool_input.command；退出码非 0 → 拒绝
+    ],
+    "UserPromptSubmit": [
+      { "command": "git status --porcelain" }                  // stdout 注入为上下文
+    ],
+    "Stop": [
+      { "command": "osascript -e 'display notification \"done\"'" }
+    ],
+    "SessionStart": [
+      { "command": "echo \"started $(jq -r .session_id)\" >> ~/.nova/audit.log" }
+    ],
+    "SessionEnd": [
+      { "command": "git stash list" }
+    ],
+    "PreCompact": [
+      { "command": "cp \"$(jq -r .transcript_path)\" /tmp/ 2>/dev/null || true" }
+    ],
+    "PostCompact": [
+      { "command": "jq -r '\"compacted \\(.before)→\\(.after) (\\(.trigger))\"'" }
+    ]
+  }
+}
+```
+
+#### 多源累加（全局 + 项目 + local）
+
+除了全局 `~/.nova/nova.config.json` 的 `hooks` 段，hook 还可以**随仓库**声明在工作区根的两个文件里（形状就是上面的 `hooks` 对象，去掉外层 key）：
+
+| 文件 | 用途 | 是否提交 |
+|------|------|----------|
+| `.nova/hooks.json` | 项目级，团队共享 | ✅ 提交进仓库 |
+| `.nova/hooks.local.json` | 个人本地覆盖 | ❌ 建议加入 `.gitignore` |
+
+三源按 **全局 → 项目 → local** 顺序**累加**（不是覆盖）：每个事件的数组拼接起来，全部都会跑；`(matcher, command)` 完全相同的条目自动去重（第一个生效）。`enabled` 取所有源的**逻辑与**——任一源设 `false` 即关闭。
+
+```jsonc
+// <workspace>/.nova/hooks.json
+{
+  "PostToolUse": [
+    { "matcher": "write|edit", "command": "jq -r '.file_paths[]' | xargs -r pnpm prettier --write" }
+  ]
+}
+```
+
+> ⚠️ **安全提示**：项目级 hook 会在你打开该仓库时**执行本地 shell 命令**（与拉取不可信仓库的供应链风险同理）。Nova 启动时会显式弹一张卡片列出已加载的项目 hook 文件；命令仍受 OS 沙箱**写入**约束，但读取/网络不受限。审阅来路不明仓库的 `.nova/hooks*.json` 后再运行。
 
 ---
 

@@ -1,13 +1,17 @@
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_SANDBOX_ALLOW_WRITE,
+  hooksConfigSchema,
   isDangerousBash,
+  loadProjectHooks,
   loadSettings,
+  mergeHooks,
   parseSettings,
   settingsSchema,
+  type HooksConfig,
 } from "./config.js";
 
 describe("settingsSchema", () => {
@@ -88,6 +92,99 @@ describe("loadSettings", () => {
     expect(s.baseURL).toBeUndefined();
     expect(s.apiKey).toBeUndefined();
     expect(s.sessionDir).toBeUndefined();
+  });
+});
+
+describe("hooks config", () => {
+  it("defaults to an empty, enabled hooks section with all 8 event arrays", () => {
+    const s = parseSettings({});
+    expect(s.hooks.enabled).toBe(true);
+    expect(Object.keys(s.hooks).sort()).toEqual(
+      [
+        "PostCompact",
+        "PostToolUse",
+        "PreCompact",
+        "PreToolUse",
+        "SessionEnd",
+        "SessionStart",
+        "Stop",
+        "UserPromptSubmit",
+        "enabled",
+      ].sort(),
+    );
+    expect(s.hooks.PreToolUse).toEqual([]);
+  });
+
+  it("standalone hook files parse and fill per-hook defaults", () => {
+    const h = hooksConfigSchema.parse({
+      PostToolUse: [{ matcher: "write", command: "fmt" }],
+    });
+    expect(h.PostToolUse[0]?.timeout_ms).toBe(60000);
+    expect(h.SessionStart).toEqual([]);
+  });
+});
+
+describe("mergeHooks", () => {
+  const cfg = (partial: Partial<HooksConfig>): HooksConfig => hooksConfigSchema.parse(partial);
+
+  it("accumulates arrays across sources instead of overriding", () => {
+    const global = cfg({ PostToolUse: [{ command: "g", timeout_ms: 1000 }] });
+    const project = cfg({ PostToolUse: [{ command: "p", timeout_ms: 1000 }] });
+    const merged = mergeHooks([global, project]);
+    expect(merged.PostToolUse.map((h) => h.command)).toEqual(["g", "p"]);
+  });
+
+  it("de-duplicates identical (matcher, command) entries, first wins", () => {
+    const a = cfg({ PreToolUse: [{ matcher: "bash", command: "guard", timeout_ms: 1000 }] });
+    const b = cfg({ PreToolUse: [{ matcher: "bash", command: "guard", timeout_ms: 5000 }] });
+    const merged = mergeHooks([a, b]);
+    expect(merged.PreToolUse).toHaveLength(1);
+    expect(merged.PreToolUse[0]?.timeout_ms).toBe(1000);
+  });
+
+  it("enabled is the AND across sources", () => {
+    expect(mergeHooks([cfg({ enabled: true }), cfg({ enabled: true })]).enabled).toBe(true);
+    expect(mergeHooks([cfg({ enabled: true }), cfg({ enabled: false })]).enabled).toBe(false);
+  });
+});
+
+describe("loadProjectHooks", () => {
+  it("loads .nova/hooks.json and .nova/hooks.local.json in order", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "nova-hooks-"));
+    await mkdir(join(dir, ".nova"), { recursive: true });
+    await writeFile(
+      join(dir, ".nova", "hooks.json"),
+      JSON.stringify({ PostToolUse: [{ command: "shared" }] }),
+      "utf8",
+    );
+    await writeFile(
+      join(dir, ".nova", "hooks.local.json"),
+      JSON.stringify({ PostToolUse: [{ command: "local-only" }] }),
+      "utf8",
+    );
+    const result = await loadProjectHooks(dir);
+    expect(result.errors).toEqual([]);
+    expect(result.loaded.map((l) => l.hooks.PostToolUse[0]?.command)).toEqual([
+      "shared",
+      "local-only",
+    ]);
+  });
+
+  it("skips missing files and reports malformed ones without throwing", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "nova-hooks-"));
+    await mkdir(join(dir, ".nova"), { recursive: true });
+    await writeFile(join(dir, ".nova", "hooks.json"), "{ not json", "utf8");
+    const result = await loadProjectHooks(dir);
+    expect(result.loaded).toEqual([]);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]?.source).toContain("hooks.json");
+  });
+
+  it("returns nothing when no project hook files exist", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "nova-hooks-"));
+    const result = await loadProjectHooks(dir);
+    expect(result.loaded).toEqual([]);
+    expect(result.errors).toEqual([]);
   });
 });
 

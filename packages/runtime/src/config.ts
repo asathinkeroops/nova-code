@@ -36,6 +36,59 @@ export const mcpHttpServerSchema = z.object({
 
 export const mcpServerSchema = z.union([mcpStdioServerSchema, mcpHttpServerSchema]);
 
+// User-configurable shell hooks. Each entry runs a shell command at a given
+// lifecycle event, bridged onto the in-code HookRegistry by the CLI. `matcher`
+// is a regex tested against the tool name (only meaningful for the *ToolUse
+// events; ignored by UserPromptSubmit / Stop); omitting it matches every tool.
+// The command receives event context as a single JSON object on stdin (the
+// Claude Code convention) and runs inside the same OS sandbox as the `bash` tool.
+export const hookCommandSchema = z.object({
+  matcher: z
+    .string()
+    .min(1)
+    .optional()
+    .describe("Regex matched against the tool name; omitted matches all tools."),
+  command: z.string().min(1).describe("Shell command to run (via `bash -lc`)."),
+  timeout_ms: z.number().int().positive().max(600_000).default(60_000),
+});
+
+export type HookCommandConfig = z.infer<typeof hookCommandSchema>;
+
+// The `hooks` section, extracted so standalone project/local hook files
+// (`.nova/hooks.json`, `.nova/hooks.local.json`) can be parsed with the same
+// schema and accumulated onto the global config (see `mergeHooks`).
+export const hooksConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  PreToolUse: z.array(hookCommandSchema).default([]),
+  PostToolUse: z.array(hookCommandSchema).default([]),
+  UserPromptSubmit: z.array(hookCommandSchema).default([]),
+  Stop: z.array(hookCommandSchema).default([]),
+  // Lifecycle events (advisory side effects; matcher tests the source/trigger):
+  //   - SessionStart: matcher = startup | resume | clear
+  //   - SessionEnd:   matcher = exit
+  //   - PreCompact / PostCompact: matcher = auto | manual
+  SessionStart: z.array(hookCommandSchema).default([]),
+  SessionEnd: z.array(hookCommandSchema).default([]),
+  PreCompact: z.array(hookCommandSchema).default([]),
+  PostCompact: z.array(hookCommandSchema).default([]),
+});
+
+export type HooksConfig = z.infer<typeof hooksConfigSchema>;
+
+/** Event keys carrying hook arrays (everything in HooksConfig except `enabled`). */
+export const HOOK_EVENT_NAMES = [
+  "PreToolUse",
+  "PostToolUse",
+  "UserPromptSubmit",
+  "Stop",
+  "SessionStart",
+  "SessionEnd",
+  "PreCompact",
+  "PostCompact",
+] as const;
+
+export type HookEventName = (typeof HOOK_EVENT_NAMES)[number];
+
 export type McpStdioServerConfig = z.infer<typeof mcpStdioServerSchema>;
 export type McpHttpServerConfig = z.infer<typeof mcpHttpServerSchema>;
 export type McpServerConfig = z.infer<typeof mcpServerSchema>;
@@ -348,6 +401,19 @@ export const settingsSchema = z.object({
       timeoutMs: z.number().int().positive().default(60_000),
     })
     .default({ enabled: true, servers: {}, timeoutMs: 60_000 }),
+  // Declarative shell automation bridged onto the in-code HookRegistry by the
+  // CLI (apps/cli/src/user-hooks.ts). Event names mirror the familiar
+  // PreToolUse / PostToolUse / UserPromptSubmit / Stop convention:
+  //   - PreToolUse:      runs before a tool; non-zero exit DENIES the call
+  //                      (stderr becomes the denial reason).
+  //   - PostToolUse:     runs after a tool; stdout is appended to the tool
+  //                      result fed back to the model, non-zero exit also
+  //                      marks it as an error.
+  //   - UserPromptSubmit: runs before the turn starts; stdout is appended to
+  //                      the user input as context, non-zero exit ABORTS.
+  //   - Stop:            runs after the turn ends (advisory, side-effect only).
+  // Disable the whole subsystem with `hooks.enabled: false`.
+  hooks: hooksConfigSchema.default({}),
 });
 
 export type Settings = z.infer<typeof settingsSchema>;
@@ -377,6 +443,67 @@ export async function loadSettings(configPath: string = DEFAULT_CONFIG_PATH): Pr
 
 export function parseSettings(raw: unknown): Settings {
   return settingsSchema.parse(raw);
+}
+
+/** Project / local hook file paths, relative to the workspace root. */
+export const PROJECT_HOOK_FILES = [".nova/hooks.json", ".nova/hooks.local.json"] as const;
+
+export interface ProjectHooksResult {
+  /** Successfully parsed project/local hook files, in load order. */
+  loaded: { source: string; hooks: HooksConfig }[];
+  /** Files that existed but failed to parse — surfaced, not silently dropped. */
+  errors: { source: string; message: string }[];
+}
+
+/**
+ * Load standalone hook files (`.nova/hooks.json`, `.nova/hooks.local.json`) from
+ * a workspace. Missing files are skipped; malformed ones are collected in
+ * `errors` rather than thrown, so one bad file can't brick startup or hide a
+ * valid sibling.
+ */
+export async function loadProjectHooks(workspace: string): Promise<ProjectHooksResult> {
+  const result: ProjectHooksResult = { loaded: [], errors: [] };
+  for (const rel of PROJECT_HOOK_FILES) {
+    const source = join(workspace, rel);
+    let text: string;
+    try {
+      text = await readFile(source, "utf8");
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") continue;
+      result.errors.push({ source, message: err instanceof Error ? err.message : String(err) });
+      continue;
+    }
+    try {
+      result.loaded.push({ source, hooks: hooksConfigSchema.parse(JSON.parse(text)) });
+    } catch (err) {
+      result.errors.push({ source, message: err instanceof Error ? err.message : String(err) });
+    }
+  }
+  return result;
+}
+
+/**
+ * Accumulate hooks across sources (global → project → local). Arrays are
+ * concatenated, not overridden, so every source's hooks run; entries identical
+ * in `(matcher, command)` are de-duplicated (first wins) to avoid double-runs
+ * when the same hook is declared in two files. `enabled` is the AND of all
+ * sources, so any source can opt its scope out.
+ */
+export function mergeHooks(sources: HooksConfig[]): HooksConfig {
+  const merged = hooksConfigSchema.parse({});
+  merged.enabled = sources.every((s) => s.enabled);
+  for (const event of HOOK_EVENT_NAMES) {
+    const seen = new Set<string>();
+    for (const src of sources) {
+      for (const hook of src[event]) {
+        const key = `${hook.matcher ?? ""} ${hook.command}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        merged[event].push(hook);
+      }
+    }
+  }
+  return merged;
 }
 
 export async function saveSettings(

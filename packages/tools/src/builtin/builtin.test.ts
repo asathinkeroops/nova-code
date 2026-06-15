@@ -75,10 +75,12 @@ describe("writeTool + readTool round-trip", () => {
     await writeTool.run({ path: "oneline.txt", content, create_dirs: true }, { cwd: dir });
 
     const out = String((await readTool.run({ path: "oneline.txt" }, { cwd: dir })).output);
-    // We never cut inside a line, so the whole line comes back in one page with
-    // no truncation footer, even though it exceeds the character budget.
-    expect(out).not.toContain("…(truncated;");
-    expect(out).toBe(`     1\t${content}`);
+    // A single oversized line is truncated at MAX_LINE_CHARS with a marker
+    // so it can't blow up the context window. Budget charging uses the capped
+    // cost, so the page isn't empty — the truncated portion still fits.
+    expect(out).toContain("line 1 truncated");
+    expect(out).toContain("use grep/sed/bash");
+    expect((out.match(/z/g) ?? []).length).toBe(16_000);
   });
 
   it("paginates by whole lines without mangling multibyte characters", async () => {

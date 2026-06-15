@@ -22,6 +22,7 @@ Under the hood Nova is a loop-centric harness: `@nova/core` exposes a model-agno
 - **Skills** — `SKILL.md` files discovered on startup, indexed into the prompt, pulled in full on demand via `loadSkill`.
 - **Slash commands** — builtins plus custom `.md` commands auto-loaded from project / user dirs.
 - **MCP** — connect external [MCP](https://modelcontextprotocol.io) servers (stdio / http / sse) and bridge their tools to the model, gated by permissions.
+- **Event hooks** — declarative shell automation bridged onto the in-code `HookRegistry`: run a command on `PreToolUse` / `PostToolUse` / `UserPromptSubmit` / `Stop` / `SessionStart` / `SessionEnd` / `PreCompact` / `PostCompact` to auto-format on write, guard a tool call, inject context, or block a compaction — no code changes, shipped per-repo via `.nova/hooks.json`.
 - **Sessions & checkpointing** — resumable sessions (`--resume` / `--continue`) with append-only persistence; `/rewind` back to an earlier point.
 - **Interactive TUI** — a full-screen REPL with live streaming output, mouse scroll & selection, a live status line, `@path` file-mention autocomplete, cycle-able permission modes (shift+tab), a `!`-prefixed shell escape, and next-input prediction.
 - **Headless mode** — `-p/--prompt` (or a piped stdin prompt) runs a single turn, prints the answer, and exits — `--output-format json` for machine-readable output.
@@ -37,6 +38,7 @@ Under the hood Nova is a loop-centric harness: `@nova/core` exposes a model-agno
 - **`!` shell escape** — type `!<command>` in the input box to run it locally through the `bash` tool instead of sending it to the model. The frame turns green to signal bash mode, output prints as a card, and the command inherits the same OS-sandbox confinement (no permission prompt, since you typed it yourself).
 - **A clean command UI** — commands that expand into a long prompt (`/agent`, `/plan`, `/init`) still show the **short input you actually typed** in history (display override), instead of flooding the transcript with the expanded text.
 - **Sandbox on by default** — subprocess filesystem writes are confined to the workspace by an OS-level sandbox; unsupported platforms degrade automatically, so you get defense-in-depth with zero config.
+- **Claude-Code-style shell hooks** — wire a shell command to any of eight lifecycle events (`PreToolUse`, `PostToolUse`, `Stop`, …) in `settings.hooks` or a repo's `.nova/hooks.json`. Hooks get their event as a JSON object on stdin (`jq`-friendly), and reply by exit code (non-zero blocks/denies) or a JSON control object on stdout (`permissionDecision: deny/allow/ask`, `additionalContext`, `decision: block`) — a `PreToolUse` hook can even bypass or force the permission prompt.
 - **Resumable & rewindable** — `--continue` picks up where you left off, `/rewind` drops history and file edits after a given message to return to an earlier point, and `/compact` collapses history into a single summary.
 - **Readable errors** — tool-input validation failures are translated into plain language (e.g. `command is required (expected string)`) instead of a dumped blob of zod issues.
 
@@ -131,7 +133,8 @@ Beyond typing a prompt, the input box gives you:
 
 - **`!` shell escape** — a line starting with `!` (e.g. `!git status`) runs through the
   `bash` tool locally instead of going to the model. The top/bottom frame turns **green**
-  while the buffer is a `!` command, output is shown as a card, and `Esc` interrupts a
+  while the buffer is a `!` command, the status row collapses to a green `! for shell mode`
+  hint, output is shown as a card, and `Esc` interrupts a
   running command. It inherits the OS sandbox (writes confined to the workspace) but skips
   the permission prompt — you typed it yourself.
 - **`@path` mention autocomplete** — typing `@` opens a fuzzy file picker over the workspace;
@@ -358,6 +361,104 @@ entirely. In `~/.nova/nova.config.json`:
   `allowGitConfig` (default true); `.git/hooks` is always blocked. To write the
   other protected paths, disable the sandbox (`enabled: false`).
 
+### Event hooks (shell automation)
+
+Run your own shell commands on lifecycle events — auto-format/lint after a write,
+guard or veto a tool call, inject context before a turn, archive a transcript
+before compaction — without touching code. These declarative hooks are bridged
+onto the in-code `HookRegistry` and execute inside the **same OS sandbox** as the
+`bash` tool (writes confined to the workspace; reads and network open). Eight
+events, two families:
+
+**Tool / conversation events** — exit code drives the decision; stdout feeds the model:
+
+| Event | When | Non-zero exit | stdout |
+|-------|------|---------------|--------|
+| `PreToolUse` | before a tool runs, as the **first step** of the permission gate (ahead of mode / rules) | **denies the call** (stderr = reason) | ignored (use JSON `permissionDecision` for allow/ask) |
+| `PostToolUse` | after a tool runs | marks the result as an error | appended to the tool result fed back to the model |
+| `UserPromptSubmit` | before each turn starts | **aborts the turn** (stderr = reason) | appended to the user input as context |
+
+**Lifecycle events** — `matcher` tests the source/trigger; `exit 2` is the blocking signal (other non-zero = non-blocking error, logged):
+
+| Event | When | `matcher` subject | Blocking |
+|-------|------|-------------------|----------|
+| `SessionStart` | session launch / `/resume` / `/clear` | `startup` \| `resume` \| `clear` | advisory |
+| `SessionEnd` | leaving the REPL (before sandbox teardown) | `exit` | advisory |
+| `PreCompact` | before an auto or `/compact` compaction | `auto` \| `manual` | **`exit 2` skips the compaction** |
+| `PostCompact` | after a compaction | `auto` \| `manual` | advisory |
+| `Stop` | after each turn ends | (none) | **`exit 2` forces the turn to continue** — stderr becomes the next prompt |
+
+> `Stop` continuations are hard-capped (default 8) to stop a misbehaving hook
+> looping forever; a hook can read `stop_continuation` (0-based count) from its
+> payload to bow out earlier.
+
+Each hook is `{ matcher?, command, timeout_ms? }`:
+
+- `matcher` — a regex. For tool events it tests the **tool name**; for lifecycle
+  events the **source/trigger** (third column above). Omit to match everything; an
+  un-compilable regex matches nothing.
+- `command` — run via `bash -lc`, inside the OS sandbox, with the workspace root as cwd.
+- `timeout_ms` — default `60000`, max `600000`.
+
+The command receives its event context as a **single JSON object on stdin**
+(Claude Code convention; read with `jq`). Every payload carries `hook_event_name`,
+`session_id`, `transcript_path`, and `cwd`; tool events add `tool_name` /
+`tool_input` / `file_paths` (write/edit) / `tool_response` + `is_error`
+(PostToolUse) / `prompt` (UserPromptSubmit); lifecycle events add `source`,
+`reason`, `trigger`, `before`/`after`, `archived_transcript_path`,
+`stop_continuation` as applicable.
+
+**Replying with stdout JSON (optional, wins over the exit code).** Write a JSON
+object to stdout for finer control — recognized fields:
+
+| Field | Effect |
+|-------|--------|
+| `decision: "block"` + `reason` | PostToolUse marks an error & feeds back `reason`; UserPromptSubmit aborts; PreCompact skips; Stop forces a continue (≡ exit 2) |
+| `hookSpecificOutput.permissionDecision: "deny" \| "allow" \| "ask"` + `permissionDecisionReason` | **PreToolUse only**: `deny` blocks; `allow` **bypasses the permission gate** (mode + rules); `ask` **forces a confirmation** even when the gate would auto-allow. Across hooks: `deny` > `ask` > `allow` |
+| `hookSpecificOutput.additionalContext` | PostToolUse / UserPromptSubmit text appended to the model (replaces raw stdout when present) |
+
+Invalid JSON falls back to the exit-code + raw-stdout semantics.
+
+```jsonc
+{
+  "hooks": {
+    "enabled": true,                          // master switch (default true)
+    "PostToolUse": [
+      { "matcher": "write|edit", "command": "jq -r '.file_paths[]' | xargs -r prettier --write" }
+    ],
+    "PreToolUse": [
+      { "matcher": "bash", "command": "./scripts/guard.sh" }   // reads .tool_input.command on stdin; non-zero exit denies
+    ],
+    "UserPromptSubmit": [
+      { "command": "git status --porcelain" }                  // stdout injected as context
+    ],
+    "Stop": [
+      { "command": "osascript -e 'display notification \"done\"'" }
+    ]
+  }
+}
+```
+
+**Multi-source accumulation (global + project + local).** Beyond the global
+`hooks` block in `~/.nova/nova.config.json`, hooks can ship **with a repo** in two
+workspace-root files (same shape as the `hooks` object, minus the outer key):
+
+| File | Purpose | Commit? |
+|------|---------|---------|
+| `.nova/hooks.json` | project-level, shared with the team | ✅ commit it |
+| `.nova/hooks.local.json` | personal local overrides | ❌ git-ignore it |
+
+The three sources accumulate **global → project → local** (concatenated, not
+overridden — every source's hooks run); entries identical in `(matcher, command)`
+are de-duplicated. `enabled` is the **AND** of all sources, so any source can opt
+its scope out. Malformed files are reported and skipped rather than aborting startup.
+
+> ⚠️ **Security.** Project hooks **execute local shell commands when you open the
+> repo** — the same supply-chain risk as cloning an untrusted repository. Nova
+> surfaces a card at startup listing the loaded project-hook files; commands are
+> still confined by the OS sandbox for **writes**, but reads and network are not.
+> Review a repo's `.nova/hooks*.json` before running it.
+
 ### Prompt caching (DeepSeek)
 
 DeepSeek's Anthropic-compatible endpoint does automatic, server-side **context
@@ -425,6 +526,7 @@ Inside the workspace, `@nova/*` packages import each other directly from `./src/
 | Memory (project layer) | Walks up from cwd; at each directory picks the highest-priority of `NOVA.md` > `CLAUDE.md` > `AGENTS.md` (no merging within a directory) |
 | Memory (user layer) | `~/.nova/NOVA.md` → `~/.claude/CLAUDE.md` → `~/.config/agents/AGENTS.md` (first existing wins) |
 | Custom sub-agent definitions | `.nova/agents/*.md` (project) · `~/.nova/agents/*.md` (user); `.claude/agents/` also accepted |
+| Project / local shell hooks | `.nova/hooks.json` (committed) · `.nova/hooks.local.json` (git-ignored), accumulated onto `settings.hooks` |
 
 ## Development
 

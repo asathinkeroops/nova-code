@@ -33,7 +33,14 @@ import {
   makeTodoReminder,
   type InterjectFn,
 } from "@nova/tools";
-import { createLogger, type Logger, type Session, type Settings } from "@nova/runtime";
+import {
+  createLogger,
+  loadProjectHooks,
+  mergeHooks,
+  type Logger,
+  type Session,
+  type Settings,
+} from "@nova/runtime";
 import { PermissionDeniedError, PermissionEngine } from "@nova/safety";
 import { createSandbox, type SandboxControl } from "@nova/sandbox";
 import { AgentRegistry, createSubAgentTool } from "@nova/subagent";
@@ -71,10 +78,13 @@ import {
   handleRewind,
   handleSkills,
   handleEffort,
+  handleUsage,
 } from "./commands/index.js";
 import { TOOL_SPINNER_DELAY_MS, WORKING_WORDS } from "./constants.js";
 import { appendToolDetail, loadDisplaySidecar } from "./display-sidecar.js";
 import { registerUiHooks } from "./hooks.js";
+import { restoreUsageFromTranscript } from "./usage-restore.js";
+import { UserHooks } from "./user-hooks.js";
 import { SnapshotStore } from "./snapshots.js";
 import { renderSkillsBlock } from "./skills-render.js";
 import { loadFileCommandsInto } from "./slash.js";
@@ -158,6 +168,8 @@ export interface CliContext {
   readonly lspManager: LspManager | undefined;
   /** OS command sandbox handle. Inactive (bridge undefined) unless opted in via settings.sandbox. */
   readonly sandbox: SandboxControl;
+  /** User-configured shell hooks (settings.hooks). Lifecycle events fire via `userHooks.fire(...)`. */
+  readonly userHooks: UserHooks;
   readonly registry: SlashRegistry;
   readonly tools: ToolRegistry;
   /**
@@ -449,6 +461,15 @@ function registerBuiltinSlashCommands(ctx: CliContext): void {
     source: { kind: "builtin" },
     run: () => {
       handleLsp(ctx);
+      return handled;
+    },
+  });
+  ctx.registry.register({
+    name: "usage",
+    description: "show this session's token usage and cache hit rate",
+    source: { kind: "builtin" },
+    run: () => {
+      handleUsage(ctx);
       return handled;
     },
   });
@@ -755,6 +776,7 @@ export async function createContext(
     longRunningManager,
     lspManager,
     sandbox: null as unknown as SandboxControl,
+    userHooks: null as unknown as UserHooks,
     registry,
     tools,
     agents,
@@ -815,7 +837,10 @@ export async function createContext(
   (ctx as { sandbox: SandboxControl }).sandbox = sandboxControl;
   await transcript.append({
     kind: "sandbox_init",
-    data: { active: sandboxControl.active, ...(sandboxControl.reason ? { reason: sandboxControl.reason } : {}) },
+    data: {
+      active: sandboxControl.active,
+      ...(sandboxControl.reason ? { reason: sandboxControl.reason } : {}),
+    },
   });
   if (settings.sandbox.enabled && !sandboxControl.active) {
     logger.warn({ reason: sandboxControl.reason }, "sandbox requested but inactive");
@@ -840,6 +865,26 @@ export async function createContext(
       // missing on `undefined` and falling through to ask.
       const target = typeof raw === "string" && raw.length > 0 ? raw : ".";
       evalInput = { ...evalInput, path: await canonicalizePath(workspace, target) };
+    }
+    // PreToolUse hooks run BEFORE the permission system (Claude Code semantics):
+    // they see the raw tool input and can deny, allow (bypass mode + rules), or
+    // ask (force a confirmation even when the gate would auto-allow). A "none"
+    // verdict defers to the mode/engine logic below.
+    const hookVerdict = await ctx.userHooks.evaluatePreToolUse(tool, input);
+    if (hookVerdict.decision === "deny") {
+      return { granted: false, reason: hookVerdict.reason };
+    }
+    if (hookVerdict.decision === "allow") {
+      return { granted: true };
+    }
+    if (hookVerdict.decision === "ask") {
+      const answer = await askWithSignal(
+        { effect: "ask", reason: hookVerdict.reason ?? "PreToolUse hook requested confirmation" },
+        { tool, input: evalInput },
+      );
+      return answer === "no"
+        ? { granted: false, reason: "denied at PreToolUse hook prompt" }
+        : { granted: true };
     }
     // Input-box permission mode (shift+tab cycles default/acceptEdits/plan).
     // Applied AFTER canonicalization so accept-edits containment is judged on
@@ -868,13 +913,36 @@ export async function createContext(
     settings,
     getModel: () => ctx.model,
     getSessionDir: () => ctx.session.dir,
-    onAutoCompact: ({ before, after, transcriptPath }) => {
+    onPreCompact: async ({ before }) => {
+      const r = await ctx.userHooks.firePreCompact({
+        subject: "auto",
+        fields: { trigger: "auto", before },
+      });
+      if (r.blocked) {
+        ctx.logger.warn({ reason: r.reason }, "auto-compaction blocked by PreCompact hook");
+        ctx.screen.card(
+          `auto-compaction blocked by PreCompact hook${r.reason ? `: ${r.reason}` : ""}`,
+          { kind: "warn", title: "PreCompact" },
+        );
+      }
+      return { block: r.blocked };
+    },
+    onAutoCompact: async ({ before, after, transcriptPath }) => {
       ctx.pendingAutoCompactNotice = {
         before,
         after,
         ...(transcriptPath ? { transcriptPath } : {}),
       };
       ctx.logger.info({ before, after, transcriptPath }, "auto-compacted");
+      await ctx.userHooks.fire("PostCompact", {
+        subject: "auto",
+        fields: {
+          trigger: "auto",
+          before,
+          after,
+          ...(transcriptPath ? { archived_transcript_path: transcriptPath } : {}),
+        },
+      });
     },
   });
 
@@ -986,6 +1054,47 @@ export async function createContext(
     ctx.snapshots.setEpoch(ctx.screen.getMessages().length);
     return undefined;
   });
+
+  // User-configured shell hooks (settings.hooks). The four loop events are
+  // registered LAST so the pre_user_prompt handler runs after the /rewind epoch
+  // tag above — both are blocking, and a UserPromptSubmit hook that rewrites the
+  // input would otherwise short-circuit the epoch tagging. The pre_tool_use /
+  // post_tool_use handlers sit after the permission gate (in createAgent) and
+  // the UI hooks for the same reason. Lifecycle events (SessionStart/End,
+  // Pre/PostCompact) are fired directly via ctx.userHooks.fire(...).
+  // Accumulate hooks across global config + project files (.nova/hooks.json,
+  // .nova/hooks.local.json). Project hooks run shell commands when you open the
+  // repo, so loaded files are surfaced loudly; a malformed file is reported and
+  // skipped rather than aborting startup.
+  const projectHooks = await loadProjectHooks(ctx.workspace);
+  const mergedHooks = mergeHooks([ctx.settings.hooks, ...projectHooks.loaded.map((p) => p.hooks)]);
+  if (projectHooks.loaded.length > 0) {
+    const sources = projectHooks.loaded.map((p) => p.source);
+    ctx.logger.info({ sources }, "loaded project hooks");
+    ctx.screen.card(`shell hooks active from:\n${sources.join("\n")}`, {
+      kind: "warn",
+      title: "project hooks",
+    });
+  }
+  for (const e of projectHooks.errors) {
+    ctx.logger.warn({ source: e.source, err: e.message }, "project hooks file invalid");
+    ctx.screen.card(`${e.source}\n${e.message}`, {
+      kind: "error",
+      title: "project hooks (ignored)",
+    });
+  }
+  (ctx as { userHooks: UserHooks }).userHooks = new UserHooks({
+    config: mergedHooks,
+    cwd: ctx.workspace,
+    getSignal: () => ctx.agent.currentSignal(),
+    getSession: () => ({ id: ctx.session.id, transcriptPath: ctx.session.transcriptPath }),
+    wrapCommand: (command, signal) => {
+      const bridge = ctx.sandbox?.bridge;
+      return bridge ? bridge.wrapCommand(command, signal) : Promise.resolve(command);
+    },
+    onError: (message) => ctx.logger.warn({ message }, "user hook failed"),
+  });
+  ctx.userHooks.register(ctx.agent.on);
   void refreshTaskFooter(ctx);
 
   registerBuiltinSlashCommands(ctx);
@@ -1030,6 +1139,9 @@ export async function createContext(
       ctx.screen.setUserDisplayOverrides(sidecar.userOverrides);
       ctx.screen.setToolDetails(sidecar.toolDetails);
       ctx.screen.setMessages(msgs);
+      // Rebuild the session-cumulative token counters (cache hit rate / `/usage`)
+      // from the transcript so they survive a restart.
+      ctx.screen.seedUsage(await restoreUsageFromTranscript(session.transcriptPath));
       logger.info({ count: msgs.length }, "messages restored");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

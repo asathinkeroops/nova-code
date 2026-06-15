@@ -51,7 +51,7 @@ const QUEUED_MAX_ROWS = 5;
 const MENTION_MAX_CANDIDATES = 50;
 const RULE_CHAR = "┄";
 const MIN_WIDTH = 20;
-const PROMPT_TEXT = "› ";
+const PROMPT_TEXT = "❯ ";
 const PROMPT_LEN = visibleWidth(PROMPT_TEXT);
 
 function wrapBuffer(buffer: string, width: number): DisplayLine[] {
@@ -296,6 +296,12 @@ export interface InputBoxProps {
    * InputBox wires this; without it shift+tab is a no-op (modal InputBoxes).
    */
   onCyclePermissionMode?: () => void;
+  /**
+   * Called when shell (`!`) mode toggles, so the host can surface a hint in the
+   * status row. Only the permanent InputBox wires this; modal/setup InputBoxes
+   * leave it unset (their `!` is just a literal character).
+   */
+  onShellModeChange?: (active: boolean) => void;
 }
 
 export function InputBox({
@@ -306,6 +312,7 @@ export function InputBox({
   active = true,
   onEscape,
   onCyclePermissionMode,
+  onShellModeChange,
 }: InputBoxProps): React.ReactElement {
   const [buffer, setBuffer] = useState("");
   const [cursor, setCursor] = useState(0);
@@ -559,6 +566,11 @@ export function InputBox({
   // model. Recolour the top/bottom frame green so the mode is visible while
   // typing — never under mask (passwords).
   const bashMode = !mask && buffer.startsWith("!");
+  // Surface shell mode to the host (status-row hint). Effect, not inline call,
+  // so we only notify on an actual transition rather than every render.
+  useEffect(() => {
+    onShellModeChange?.(bashMode);
+  }, [onShellModeChange, bashMode]);
   const lines = wrapBuffer(buffer, width);
   const { row: cursorRow } = isEmpty ? { row: 0 } : findCursorPosition(lines, cursor);
 
@@ -584,7 +596,7 @@ export function InputBox({
     return (
       <Box key={idx}>
         <Text>{" "}</Text>
-        {idx === 0 ? <Text color={ACCENT_HEX}>{PROMPT_TEXT}</Text> : null}
+        {idx === 0 ? <Text color={BASH_HEX}>{PROMPT_TEXT}</Text> : null}
         {styledSpans(content, line.bufStart, slice.cursorCol, slice.showCursorAtEnd, cmdRange)}
       </Box>
     );
@@ -637,7 +649,7 @@ export function InputBox({
       {isEmpty ? (
         <Box>
           <Text> </Text>
-          <Text color={ACCENT_HEX}>{PROMPT_TEXT}</Text>
+          <Text color={BASH_HEX}>{PROMPT_TEXT}</Text>
           <Text inverse> </Text>
           {placeholderText ? <Text dimColor>{placeholderText}</Text> : null}
         </Box>

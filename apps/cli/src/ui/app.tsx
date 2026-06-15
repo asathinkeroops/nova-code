@@ -14,16 +14,21 @@ import type { AppStoreApi } from "./store.js";
 import { Viewport } from "./viewport.js";
 
 /**
- * Pinned bottom chrome row count: the always-present StatusLine plus the
- * InputBox. The InputBox reports its actual height via `onMeasure` (queued
- * prompts + popup + wrapped buffer + rules), so growing content reserves rows
- * instead of overlapping the viewport. In-stream modals (approval/ask/pick)
- * reserve their own rows inside the Viewport. `extraRows` covers optional
- * chrome below the StatusLine (the permission-mode indicator).
+ * Pinned bottom chrome row count: a blank spacer row above the InputBox, the
+ * InputBox itself, and the always-present StatusLine. The spacer keeps the
+ * message stream from butting up against the input frame. The InputBox reports
+ * its actual height via `onMeasure` (queued prompts + popup + wrapped buffer +
+ * rules), so growing content reserves rows instead of overlapping the viewport.
+ * In-stream modals (approval/ask/pick) reserve their own rows inside the
+ * Viewport. `extraRows` covers optional chrome below the StatusLine (the
+ * permission-mode indicator).
  */
 function pinnedBottomRows(inputRows: number, extraRows: number): number {
-  return 1 + inputRows + extraRows;
+  return 1 + INPUT_TOP_SPACER_ROWS + inputRows + extraRows;
 }
+
+/** Blank rows held between the viewport and the InputBox so they aren't cramped. */
+const INPUT_TOP_SPACER_ROWS = 1;
 
 /** Floor for the pinned frame height so a tiny terminal still renders. */
 const MIN_FRAME_ROWS = 4;
@@ -79,6 +84,9 @@ export function App({ store }: AppProps): React.ReactElement {
   // buffer). InputBox reports its real height via onMeasure as it grows.
   const [inputRows, setInputRows] = React.useState(3);
   const onMeasureInput = React.useCallback((rows: number) => setInputRows(rows), []);
+  // Whether the permanent input is in shell (`!`) mode — drives the status-row
+  // hint. Only the permanent InputBox reports this (modal/setup don't wire it).
+  const [shellMode, setShellMode] = React.useState(false);
   const onCyclePermissionMode = React.useCallback(
     () => store.getState().cyclePermissionMode(),
     [store],
@@ -104,12 +112,16 @@ export function App({ store }: AppProps): React.ReactElement {
   }
 
   // Mode indicator below the StatusLine — one extra reserved row when a
-  // non-default permission mode is active, nothing in default mode. The
-  // dangerously-skip-permissions bypass wins over the mode label and drops the
-  // shift+tab hint (it is a startup flag, not a cycled mode).
-  const modeIndicator = skipPermissions
-    ? BYPASS_PERMISSIONS_INDICATOR
-    : permissionModeIndicator(permissionMode);
+  // non-default permission mode is active, nothing in default mode. Shell mode
+  // takes over the StatusLine row itself (segments hidden, only the `!` hint),
+  // so it suppresses this separate row entirely; otherwise the
+  // dangerously-skip-permissions bypass wins over the cycled mode label and
+  // drops the shift+tab hint (it is a startup flag, not a cycled mode).
+  const modeIndicator = shellMode
+    ? null
+    : skipPermissions
+      ? BYPASS_PERMISSIONS_INDICATOR
+      : permissionModeIndicator(permissionMode);
   const indicatorRows = modeIndicator ? 1 : 0;
 
   // Leave a 1-row safety margin so the layout never sums to exactly termRows.
@@ -131,6 +143,7 @@ export function App({ store }: AppProps): React.ReactElement {
   return (
     <Box flexDirection="column" height={Math.max(MIN_FRAME_ROWS, termRows - 1)} overflowY="hidden">
       <Viewport store={store} rows={viewportRows} resolveModal={resolveModal} />
+      <Box flexShrink={0} height={INPUT_TOP_SPACER_ROWS} />
       <Box flexShrink={0} flexDirection="column">
         <InputBox
           options={{
@@ -146,10 +159,11 @@ export function App({ store }: AppProps): React.ReactElement {
           onEscape={onEscape}
           onMeasure={onMeasureInput}
           onCyclePermissionMode={onCyclePermissionMode}
+          onShellModeChange={setShellMode}
         />
       </Box>
       <Box flexShrink={0} flexDirection="column">
-        <StatusLine store={store} />
+        <StatusLine store={store} shellMode={shellMode} />
         {modeIndicator ? (
           <Box>
             <Text color={modeIndicator.color}>{` ${modeIndicator.label}`}</Text>

@@ -22,6 +22,7 @@ Nova 是一个终端里的编码 agent —— 读代码、跑命令、改文件�
 - **Skills** —— 启动时扫描 `SKILL.md`，把索引注入 prompt，按需 `loadSkill` 拉全文。
 - **Slash 命令** —— 内置命令 + 从项目/用户目录自动加载的自定义 `.md` 命令。
 - **MCP** —— 连接外部 [MCP](https://modelcontextprotocol.io) 服务器（stdio / http / sse），把工具桥接给模型，并受权限管控。
+- **事件 hooks** —— 声明式 shell 自动化，桥接到内核 `HookRegistry`：在 `PreToolUse` / `PostToolUse` / `UserPromptSubmit` / `Stop` / `SessionStart` / `SessionEnd` / `PreCompact` / `PostCompact` 上跑命令，实现写完自动 format、拦截工具调用、注入上下文、阻断压缩——无需改代码，并可随仓库通过 `.nova/hooks.json` 分发。
 - **会话与检查点** —— 可恢复会话（`--resume` / `--continue`）配合 append-only 持久化；`/rewind` 回到更早的节点。
 - **交互式 TUI** —— 全屏 REPL，带实时流式输出、鼠标滚动与选区、实时状态行、`@path` 文件名补全、可切换的权限模式（shift+tab）、`!` 前缀的 shell 直通，以及下一步输入预测。
 - **Headless 模式** —— `-p/--prompt`（或从 stdin 管道传入 prompt）只跑一轮、打印结果后退出；`--output-format json` 输出机器可读结果。
@@ -37,6 +38,7 @@ Nova 是一个终端里的编码 agent —— 读代码、跑命令、改文件�
 - **`!` shell 直通** —— 在输入框输入 `!<命令>` 会通过 `bash` 工具在本地执行，而不是发给模型。边框变绿提示进入 bash 模式，输出以卡片呈现，并继承同样的 OS 沙箱限制（因为是你自己敲的命令，所以不弹权限确认）。
 - **干净的命令 UI** —— `/agent`、`/plan`、`/init` 这类会展开成长 prompt 的命令，在历史里仍显示你**原始键入的短输入**（display override），不被冗长的展开文本刷屏。
 - **沙箱默认开** —— 子进程的文件写入被 OS 级沙箱限制在工作区内，不支持的平台自动降级，无需配置即享纵深防御。
+- **Claude Code 式 shell hooks** —— 在 `settings.hooks` 或仓库的 `.nova/hooks.json` 里，把 shell 命令挂到 8 个生命周期事件（`PreToolUse`、`PostToolUse`、`Stop`…）。hook 通过 **stdin 上的单个 JSON 对象**拿到事件（`jq` 友好），用退出码（非 0 = 拦截/拒绝）或 stdout 的 JSON 控制对象（`permissionDecision: deny/allow/ask`、`additionalContext`、`decision: block`）回话——`PreToolUse` hook 甚至能绕过或强制弹出权限确认。
 - **可恢复 + 可回退** —— `--continue` 接着上次干，`/rewind` 丢弃某条消息之后的历史与文件改动回到更早节点，`/compact` 把历史压成一条摘要。
 - **可读的报错** —— 工具输入校验错误被翻译成人话（如 `command is required (expected string)`），而不是甩一坨 zod issue JSON。
 
@@ -124,7 +126,7 @@ builtin 命令永远优先；在此之上，`.nova/commands` / `~/.nova/commands
 
 除了敲 prompt，输入框还提供：
 
-- **`!` shell 直通** —— 以 `!` 开头的一行（如 `!git status`）会通过 `bash` 工具在本地执行，而不是发给模型。只要 buffer 是 `!` 命令，上下边框就变**绿**，输出以卡片呈现，`Esc` 可中断正在跑的命令。它继承 OS 沙箱（写入限制在工作区），但跳过权限确认 —— 因为是你自己敲的。
+- **`!` shell 直通** —— 以 `!` 开头的一行（如 `!git status`）会通过 `bash` 工具在本地执行，而不是发给模型。只要 buffer 是 `!` 命令，上下边框就变**绿**、状态行收起为绿色的 `! for shell mode` 提示，输出以卡片呈现，`Esc` 可中断正在跑的命令。它继承 OS 沙箱（写入限制在工作区），但跳过权限确认 —— 因为是你自己敲的。
 - **`@path` 文件名补全** —— 输入 `@` 打开工作区文件的模糊选择器；选中后插入 `@path `，无需手敲完整路径就能引用文件。
 - **权限模式（shift+tab）** —— 循环切换 `default` → `acceptEdits`（工作区内 write/edit 自动放行，bash 与工作区外改动仍确认）→ `plan`（只读：write/edit/bash 被拒）。当前非默认模式显示在状态行下方；用 `--permission-mode` 预设初始模式，或用 `--dangerously-skip-permissions` 全部自动放行。
 - **历史与预测** —— `↑/↓` 召回此前的 prompt；可选的下一条输入预测会填充占位（用 `/predict` 开关）。
@@ -305,6 +307,93 @@ macOS 用 Seatbelt（`sandbox-exec`），Linux 用 bubblewrap。这是叠在权�
   `.git/config` 能通过 `allowGitConfig`（默认 true）放行，`.git/hooks` 始终拦。
   要写其它被保护路径，只能整个关掉沙箱（`enabled: false`）。
 
+### 事件 hooks（shell 自动化）
+
+在生命周期事件上跑你自己的 shell 命令——写完文件自动 format / lint、拦截或否决工具
+调用、开轮前注入上下文、压缩前归档 transcript——无需改代码。这些声明式 hook 桥接到
+内核 `HookRegistry`，并在与 `bash` 工具**相同的 OS 沙箱**里执行（写入限制在工作区，
+读取与网络放行）。共 8 个事件，分两类：
+
+**工具 / 对话事件** —— 退出码决定动作，stdout 回灌给模型：
+
+| 事件 | 触发时机 | 非 0 退出 | stdout |
+|------|----------|-----------|--------|
+| `PreToolUse` | 工具执行**前**，作为权限门的**第一步**（早于模式 / 规则） | **拒绝该次调用**（stderr 作理由） | 忽略（用 JSON `permissionDecision` 表达 allow/ask） |
+| `PostToolUse` | 工具执行**后** | 把结果标记为错误 | 追加到回灌模型的工具结果里 |
+| `UserPromptSubmit` | 每轮**开始前** | **中止本轮**（stderr 作理由） | 追加到用户输入作为上下文 |
+
+**生命周期事件** —— `matcher` 匹配 source/trigger；`exit 2` 是阻断信号（其它非 0 = 非阻断错误，仅记日志）：
+
+| 事件 | 触发时机 | `matcher` subject | 阻断语义 |
+|------|----------|-------------------|----------|
+| `SessionStart` | 会话启动 / `/resume` / `/clear` | `startup` \| `resume` \| `clear` | advisory |
+| `SessionEnd` | 退出 REPL（沙箱销毁前） | `exit` | advisory |
+| `PreCompact` | 自动或 `/compact` 压缩**前** | `auto` \| `manual` | **`exit 2` 跳过本次压缩** |
+| `PostCompact` | 压缩**后** | `auto` \| `manual` | advisory |
+| `Stop` | 每轮**结束后** | （无） | **`exit 2` 强制本轮继续**——stderr 作为下一轮 prompt |
+
+> `Stop` 强制继续带硬上限（默认 8 次）防止 hook 死循环；hook 可读 payload 里的
+> `stop_continuation`（0 起的已继续次数）自行收手。
+
+每条 hook 形如 `{ matcher?, command, timeout_ms? }`：
+
+- `matcher` —— 正则。工具事件匹配**工具名**，生命周期事件匹配 **source/trigger**（上表第三列）。省略 = 全匹配；无法编译的正则视为不匹配。
+- `command` —— 经 `bash -lc` 执行，在 OS 沙箱内，工作目录即工作区根。
+- `timeout_ms` —— 默认 `60000`，上限 `600000`。
+
+命令通过 **stdin 上的单个 JSON 对象**拿到事件上下文（对齐 Claude Code 约定，用 `jq`
+取）。所有事件都带 `hook_event_name`、`session_id`、`transcript_path`、`cwd`；工具事件
+另加 `tool_name` / `tool_input` / `file_paths`（write/edit）/ `tool_response` + `is_error`
+（PostToolUse）/ `prompt`（UserPromptSubmit）；生命周期事件按需附带 `source`、`reason`、
+`trigger`、`before`/`after`、`archived_transcript_path`、`stop_continuation`。
+
+**用 stdout JSON 回话（可选，优先于退出码）。** 把一个 JSON 对象写到 stdout 可获得更
+精细的控制——识别的字段：
+
+| 字段 | 作用 |
+|------|------|
+| `decision: "block"` + `reason` | PostToolUse 标记错误并回灌 `reason`；UserPromptSubmit 中止；PreCompact 跳过；Stop 强制继续（≡ exit 2） |
+| `hookSpecificOutput.permissionDecision: "deny" \| "allow" \| "ask"` + `permissionDecisionReason` | **仅 PreToolUse**：`deny` 拒绝；`allow` **绕过权限门**（模式 + 规则）；`ask` **强制弹确认**（即便本会自动放行）。多 hook 优先级 `deny` > `ask` > `allow` |
+| `hookSpecificOutput.additionalContext` | PostToolUse / UserPromptSubmit 追加到模型的文本（给出时取代原始 stdout） |
+
+非法 JSON 自动回退到「退出码 + 原始 stdout」语义。
+
+```jsonc
+{
+  "hooks": {
+    "enabled": true,                          // 总开关（默认 true）
+    "PostToolUse": [
+      { "matcher": "write|edit", "command": "jq -r '.file_paths[]' | xargs -r prettier --write" }
+    ],
+    "PreToolUse": [
+      { "matcher": "bash", "command": "./scripts/guard.sh" }   // 读 stdin 的 .tool_input.command；非 0 退出 → 拒绝
+    ],
+    "UserPromptSubmit": [
+      { "command": "git status --porcelain" }                  // stdout 注入为上下文
+    ],
+    "Stop": [
+      { "command": "osascript -e 'display notification \"done\"'" }
+    ]
+  }
+}
+```
+
+**多源累加（全局 + 项目 + local）。** 除全局 `~/.nova/nova.config.json` 的 `hooks` 段，
+hook 还可**随仓库**声明在工作区根的两个文件里（形状就是 `hooks` 对象，去掉外层 key）：
+
+| 文件 | 用途 | 是否提交 |
+|------|------|----------|
+| `.nova/hooks.json` | 项目级，团队共享 | ✅ 提交进仓库 |
+| `.nova/hooks.local.json` | 个人本地覆盖 | ❌ 建议 git-ignore |
+
+三源按 **全局 → 项目 → local** 顺序**累加**（拼接而非覆盖——全部都会跑）；`(matcher,
+command)` 完全相同的条目自动去重。`enabled` 取所有源的**逻辑与**，任一源设 `false` 即
+关闭其范围。格式错误的文件会被报告并跳过，而不会让启动失败。
+
+> ⚠️ **安全提示**：项目级 hook 会在你**打开该仓库时执行本地 shell 命令**（与克隆不可信
+> 仓库的供应链风险同理）。Nova 启动时会弹一张卡片列出已加载的项目 hook 文件；命令的
+> **写入**仍受 OS 沙箱约束，但读取与网络不受限。运行前请先审阅仓库的 `.nova/hooks*.json`。
+
 ### 上下文缓存（DeepSeek）
 
 DeepSeek 的 Anthropic 兼容端点会做自动的、服务端的**上下文缓存**：只要某个请求的
@@ -367,6 +456,7 @@ docs/            设计笔记（skills、ask-user）
 | 记忆文件（项目层） | 从 cwd 向上递归，每层按 `NOVA.md` > `CLAUDE.md` > `AGENTS.md` 取最优先的一个（同目录不合并） |
 | 记忆文件（用户层） | `~/.nova/NOVA.md` → `~/.claude/CLAUDE.md` → `~/.config/agents/AGENTS.md`（按顺序取第一个存在的） |
 | 自定义子 agent 定义 | `.nova/agents/*.md`（项目层）· `~/.nova/agents/*.md`（用户层）；兼容 `.claude/agents/` |
+| 项目 / 本地 shell hooks | `.nova/hooks.json`（提交）· `.nova/hooks.local.json`（git-ignore），累加到 `settings.hooks` |
 
 ## 开发
 

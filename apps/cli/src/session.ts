@@ -11,6 +11,7 @@ import { Transcript } from "@nova/observability";
 import { red } from "./colors.js";
 import { refreshBanner, type CliContext } from "./context.js";
 import { loadDisplaySidecar } from "./display-sidecar.js";
+import { restoreUsageFromTranscript } from "./usage-restore.js";
 import { SnapshotStore } from "./snapshots.js";
 import { loadMessages, emptyCursor } from "@nova/agent";
 
@@ -63,9 +64,7 @@ export async function pruneOldSessions(ctx: CliContext): Promise<void> {
  * message. Empty sessions are skipped; sessions whose history fails to load are
  * kept with a red error label. Used by /resume to build its picker rows.
  */
-export async function buildSessionRows(
-  sessionDir: string | undefined,
-): Promise<SessionRow[]> {
+export async function buildSessionRows(sessionDir: string | undefined): Promise<SessionRow[]> {
   const list = await listSessions(sessionDir);
   const rows: SessionRow[] = [];
   for (const s of list) {
@@ -174,6 +173,12 @@ export async function switchToSession(
     await ctx.transcript.append({ kind: "memory_loaded", data: { sources: ctx.memory.sources } });
   }
 
+  const startSource = resumed ? "resume" : "clear";
+  await ctx.userHooks.fire("SessionStart", {
+    subject: startSource,
+    fields: { source: startSource },
+  });
+
   await ctx.screen.reset();
   refreshBanner(ctx);
   const card =
@@ -185,6 +190,12 @@ export async function switchToSession(
   ctx.screen.setUserDisplayOverrides(sidecar.userOverrides);
   ctx.screen.setToolDetails(sidecar.toolDetails);
   ctx.screen.setMessages(newMessages);
+  // Restore the cumulative token counters (cache hit rate / `/usage`) from the
+  // switched-in session's transcript. `/clear` lands on a fresh empty session,
+  // so its counters stay at the zero set by `screen.reset()` above.
+  if (resumed) {
+    ctx.screen.seedUsage(await restoreUsageFromTranscript(newSession.transcriptPath));
+  }
   ctx.logger.info(
     { sessionId: newSession.id, dir: newSession.dir, messageCount: newMessages.length, resumed },
     `session switched via ${title}`,

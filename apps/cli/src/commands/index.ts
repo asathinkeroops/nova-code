@@ -16,3 +16,4 @@ export { handleReview } from "./review.js";
 export { handleRewind } from "./rewind.js";
 export { handleSkills } from "./skills.js";
 export { handleEffort } from "./effort.js";
+export { handleUsage } from "./usage.js";

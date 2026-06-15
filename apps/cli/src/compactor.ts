@@ -10,12 +10,19 @@ export interface BuildCompactorOptions {
   getModel: () => ModelClient;
   /** Closes over the CLI's mutable session binding so /resume swaps land in the new session dir. */
   getSessionDir: () => string;
-  /** Fired when auto-compact actually replaces the history (not on micro-only passes). */
+  /**
+   * Fired right before auto-compact runs the summarizer (awaited). Return
+   * `{ block: true }` to skip this compaction (a PreCompact hook vetoed it).
+   */
+  onPreCompact?: (info: {
+    before: number;
+  }) => { block: boolean } | void | Promise<{ block: boolean } | void>;
+  /** Fired when auto-compact actually replaces the history (not on micro-only passes). Awaited. */
   onAutoCompact?: (info: {
     before: number;
     after: number;
     transcriptPath?: string;
-  }) => void;
+  }) => void | Promise<void>;
 }
 
 async function saveSnapshot(sessionDir: string, messages: MessageParam[]): Promise<string> {
@@ -68,7 +75,7 @@ export async function manualCompact(
 export function buildCompactor(
   opts: BuildCompactorOptions,
 ): (messages: MessageParam[]) => Promise<MessageParam[]> {
-  const { settings, getModel, getSessionDir, onAutoCompact } = opts;
+  const { settings, getModel, getSessionDir, onPreCompact, onAutoCompact } = opts;
   const micro = settings.compact.micro;
   const auto = settings.compact.auto;
 
@@ -78,9 +85,7 @@ export function buildCompactor(
     if (micro.enabled) {
       const r = microCompact(next, {
         ...(micro.keepRecent !== undefined ? { keepRecent: micro.keepRecent } : {}),
-        ...(micro.minContentChars !== undefined
-          ? { minContentChars: micro.minContentChars }
-          : {}),
+        ...(micro.minContentChars !== undefined ? { minContentChars: micro.minContentChars } : {}),
         ...(micro.preserveTools !== undefined ? { preserveTools: micro.preserveTools } : {}),
       });
       next = r.messages;
@@ -98,12 +103,14 @@ export function buildCompactor(
     if (!trigger) return next;
 
     const before = next.length;
+    const pre = await onPreCompact?.({ before });
+    if (pre?.block) return next;
     const result = await autoCompact(next, {
       model: getModel(),
       ...(auto.maxSummaryTokens !== undefined ? { maxSummaryTokens: auto.maxSummaryTokens } : {}),
       saveTranscript: (msgs) => saveSnapshot(getSessionDir(), msgs),
     });
-    onAutoCompact?.({
+    await onAutoCompact?.({
       before,
       after: result.messages.length,
       ...(result.transcriptPath ? { transcriptPath: result.transcriptPath } : {}),
