@@ -15,7 +15,7 @@ Nova 是一个终端里的编码 agent —— 读代码、跑命令、改文件�
 **它能干什么**——一个完整的 agentic 编码工作台：
 
 - **Agentic 编码循环** —— 读代码、改文件、跑命令，通过工具调用把任务推到完成；同一轮里相互独立的工具调用以**有界并发**运行（默认 3 个）。
-- **代码与系统工具** —— 文件 `read`（带行号 + 分页）/ `write` / `edit`、`glob` + `grep` 搜索、`bash`（60s 硬上限）与长时命令 `runLongRunningCommand`、`webfetch` / `websearch`、`notebook` 编辑、`askUserQuestion` 询问、todo / task 清单。
+- **代码与系统工具** —— 文件 `read`（带行号 + 分页，支持 `.xlsx`/`.xls`/`.ods` 表格）/ `write` / `edit`、`glob` + `grep` 搜索、`bash`（60s 硬上限）与长时命令 `runLongRunningCommand`、`webfetch` / `websearch`、`notebook` 编辑、`askUserQuestion` 询问、todo / task 清单。
 - **子 agent** —— 模型用 `createSubAgent` 把活儿派给**全新上下文**的 worker；内置 `explore` / `plan` / `general-purpose`，并支持用 `.md` 文件自定义任意类型。
 - **LSP 代码智能** —— `lsp` 工具直连语言服务器（JSON-RPC/stdio），提供定义跳转、引用查找、hover、diagnostics 和符号搜索，比 grep 更懂作用域与类型。
 - **Memory** —— CLAUDE.md 式的项目与用户 memory，每个目录按 `NOVA.md` > `CLAUDE.md` > `AGENTS.md`（最高者胜，不合并）；`/init` 一键生成或刷新。
@@ -34,6 +34,8 @@ Nova 是一个终端里的编码 agent —— 读代码、跑命令、改文件�
 - **开箱即用的 DeepSeek 调优** —— 不用调 `cache_control`、不用猜 wire format、不用翻错误码文档：装好填 key 就跑，thinking 等级、缓存命中、错误提示都是 DeepSeek 语境下调过的默认值。
 - **`.md` 自定义子 agent** —— 把一个 Markdown 文件丢进 `.nova/agents/`（兼容 `.claude/agents/`），frontmatter 声明 `name` / `description` / `tools`（工具白名单）/ `readOnly` / `model` / `maxTurns` / `maxTokens`，正文即角色指令 —— 立刻成为一个新的子 agent 类型，`/agents` 可见、`/agent <name> <task>` 可调、模型也能自己 `createSubAgent` 派发。
 - **Plan 模式** —— `/plan <goal>` 委派一次**只读**调查，在动手改动前返回分步计划与关键权衡。
+- **会话内换模型** —— `/model` 只为当前会话切换活动模型（配置的 tier 如 `flash`/`pro`，或裸 id），不写回 `nova.config.json`，下次启动仍回到你的默认值；不带参数则打开 tier 选择器并带一行简介。
+- **状态行上的花费与余额** —— 模型有已知定价时，状态行实时显示花费，`/usage` 把估算按 token 桶（cache-read / cache-write / uncached / output）拆开。在 DeepSeek 官方 API 上，状态行还会以**账户余额**打头，取自 `/user/balance` 并在每轮后刷新——可扣费时绿色，不可扣费时琥珀色。
 - **触手可及的权限模式** —— **shift+tab** 在输入框循环切换 `default` → `acceptEdits`（工作区内写入自动放行）→ `plan`（只读：write/edit/bash 被拒）；当前非默认模式显示在状态行下方，也可用 `--permission-mode` 预设。
 - **`!` shell 直通** —— 在输入框输入 `!<命令>` 会通过 `bash` 工具在本地执行，而不是发给模型。边框变绿提示进入 bash 模式，输出以卡片呈现，并继承同样的 OS 沙箱限制（因为是你自己敲的命令，所以不弹权限确认）。
 - **干净的命令 UI** —— `/agent`、`/plan`、`/init` 这类会展开成长 prompt 的命令，在历史里仍显示你**原始键入的短输入**（display override），不被冗长的展开文本刷屏。
@@ -94,6 +96,8 @@ pnpm dev [prompt...]                # 先跑一轮初始 prompt，再留在 REPL
 ```
 /help                帮助
 /effort [<level>]    查看 / 切换 thinking 等级
+/model [<name>]      只为本 session 切换活动模型（tier 名或裸 id；不带参数则从已配置 tier 选择）
+/usage               查看本 session 的 token 用量、缓存命中率，以及（模型有定价时）估算花费
 /clear               开一个新 session（当前 session 仍可恢复）
 /compact [focus…]    把历史压缩成单条摘要消息
 /resume [<id>]       切到指定 session（不带参数则从列表选）
@@ -263,7 +267,8 @@ Nova 可以在启动时连接外部 [MCP](https://modelcontextprotocol.io) 服�
 
 ### 文件读取与命令超时
 
-- **`read` 带行号 + 分页** —— 输出是 `cat -n` 风格的行号（右对齐 6 位、tab 分隔）。参数 `offset`（1-based 起始行，默认 1）/ `limit`（最多返回行数）做基于行的分页；单次响应上限约 200K 字符，超长单行整行返回不会从中间切断，截断时会附上精确的续读调用（如 `read(path="…", offset=<下一行>)`）。
+- **`read` 带行号 + 分页** —— 输出是 `cat -n` 风格的行号（右对齐 6 位、tab 分隔）。参数 `offset`（1-based 起始行，默认 1）/ `limit`（最多返回行数）做基于行的分页；单次响应上限约 200K 字符，截断时会附上精确的续读调用（如 `read(path="…", offset=<下一行>)`）。**超长单行也会按行截断** —— 压缩 bundle、单行 JSON 之类的病态长行被逐行截断，避免撑爆上下文（普通的超长行仍整行返回、不从中间切断）。
+- **`read` 能打开表格** —— `.xlsx` / `.xls` / `.xlsm` / `.xlsb` / `.ods` 会被解析成 CSV 风格文本而非原始字节；用 `sheet`（sheet 名或 1-based 序号）选择某个标签页，默认第一个。
 - **`bash` 60s 硬上限** —— `timeout_ms` 可选、上限 60000ms。开发服务器、watcher、长构建、下载这类可能超时的活儿改用 `runLongRunningCommand` / `checkLongRunningCommand`。
 
 ### 命令沙箱（可选，OS 级隔离）
@@ -410,7 +415,24 @@ DeepSeek 的 Anthropic 兼容端点会做自动的、服务端的**上下文缓�
   净收益是「微弱到负」。auto 压缩仍然开着：它只在上下文窗口吃紧时触发，作为一次有意为之的
   前缀重置。只有在没有前缀缓存的 provider 上才建议把 `compact.micro.enabled` 设为 `true`。
 - **缓存计量。** 每个响应的 `cache_read_input_tokens` / `cache_creation_input_tokens`
-  都会被读出来并累加进本 session 的用量统计，所以你能看到每一轮里到底有多少命中了缓存。
+  都会被读出来并累加进本 session 的用量统计（`--resume` 时从 transcript 恢复，重载也不丢），
+  所以你能看到每一轮里到底有多少命中了缓存。
+
+### 花费与余额计量
+
+在 token 计数之上，Nova 还会估算**花费**，并在 DeepSeek 上显示你的**账户余额**。
+
+- **估算花费。** `settings.pricing` 是一张每百万 token 的价目表（`input` / `output` /
+  `cacheRead` / `cacheWrite`，单位 `USD` 或 `CNY`）。先查你的 `pricing.models`（首个大小写
+  无关的 `match` 子串命中者胜），再回落到内置默认表（覆盖 DeepSeek v4 系列，零配置即有花费显示）。
+  `/usage` 给每个 token 桶定价并汇总，状态行带实时数字；没有定价的模型只显示 token。设
+  `pricing.enabled = false` 可整体关闭。
+- **DeepSeek 账户余额。** 当 baseURL 指向 `api.deepseek.com` 时，Nova 调用 DeepSeek 专有的
+  `/user/balance` 端点，在状态行打头显示可用余额（可扣费时绿色，DeepSeek 报告账户不可用时琥珀色）。
+  尽力而为 —— 5s 超时、每轮后 fire-and-forget —— 其他端点一律隐藏。
+- **模型 tier。** `settings.models` 把 tier 名映射到模型 id（默认 `flash` → `deepseek-v4-flash`、
+  `pro` → `deepseek-v4-pro`）；`/model` 在它们之间为当前 session 切换，每个 tier 还可带自己的
+  `description`（显示在选择器里）和 `contextWindowTokens`。
 
 ## 仓库结构
 

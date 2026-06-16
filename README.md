@@ -15,7 +15,7 @@ Under the hood Nova is a loop-centric harness: `@nova/core` exposes a model-agno
 **What it does** — a complete agentic coding workbench:
 
 - **Agentic coding loop** — reads code, edits files, runs commands, and drives a task to done through tool use; independent tool calls within a turn run with **bounded concurrency** (default 3).
-- **Code & system tools** — file `read` (line-numbered + paginated) / `write` / `edit`, `glob` + `grep` search, `bash` (60s hard cap) and long-running commands via `runLongRunningCommand`, `webfetch` / `websearch`, notebook edit, `askUserQuestion`, and todo / task lists.
+- **Code & system tools** — file `read` (line-numbered + paginated, with `.xlsx`/`.xls`/`.ods` spreadsheet support) / `write` / `edit`, `glob` + `grep` search, `bash` (60s hard cap) and long-running commands via `runLongRunningCommand`, `webfetch` / `websearch`, notebook edit, `askUserQuestion`, and todo / task lists.
 - **Sub-agents** — the model delegates work to **fresh-context** workers via `createSubAgent`; ships `explore` / `plan` / `general-purpose`, and lets you define arbitrary custom types with `.md` files.
 - **LSP code intelligence** — an `lsp` tool that talks straight to language servers (JSON-RPC/stdio) for go-to-definition, find-references, hover, diagnostics, and symbol search — scope- and type-aware, far more precise than grep.
 - **Memory** — CLAUDE.md-style project & user memory, per directory `NOVA.md` > `CLAUDE.md` > `AGENTS.md` (highest wins, no merging); `/init` generates or refreshes it in one step.
@@ -34,6 +34,8 @@ Under the hood Nova is a loop-centric harness: `@nova/core` exposes a model-agno
 - **DeepSeek tuning out of the box** — no `cache_control` to tweak, no wire format to guess, no error-code docs to dig through: install, drop in your key, and go. Thinking levels, cache hits, and error messages are all defaults tuned for DeepSeek.
 - **`.md` custom sub-agents** — drop one Markdown file into `.nova/agents/` (or `.claude/agents/`), declare `name` / `description` / `tools` (allow-list) / `readOnly` / `model` / `maxTurns` / `maxTokens` in front matter, and the body becomes the role prompt — it instantly becomes a new sub-agent type, visible in `/agents`, callable via `/agent <name> <task>`, and spawnable by the model itself through `createSubAgent`.
 - **Plan mode** — `/plan <goal>` delegates a **read-only** investigation and returns a step-by-step plan with key tradeoffs before touching anything.
+- **Switch models mid-session** — `/model` swaps the active model for the current session only (a configured tier like `flash`/`pro`, or a bare id) without touching `nova.config.json`, so the next launch reverts to your default. No arg opens a picker over the configured tiers with one-line blurbs.
+- **Cost & balance on the status line** — when the model has a known price, the status line shows a live spend figure and `/usage` breaks the estimate out per token bucket (cache-read / cache-write / uncached / output). On DeepSeek's official API the row also leads with your **account balance**, fetched from `/user/balance` and refreshed after each turn — green when chargeable, amber when not.
 - **Permission modes at your fingertips** — **shift+tab** cycles the input box through `default` → `acceptEdits` (in-workspace writes auto-granted) → `plan` (read-only: write/edit/bash denied); the active mode shows under the status line and can be preset with `--permission-mode`.
 - **`!` shell escape** — type `!<command>` in the input box to run it locally through the `bash` tool instead of sending it to the model. The frame turns green to signal bash mode, output prints as a card, and the command inherits the same OS-sandbox confinement (no permission prompt, since you typed it yourself).
 - **A clean command UI** — commands that expand into a long prompt (`/agent`, `/plan`, `/init`) still show the **short input you actually typed** in history (display override), instead of flooding the transcript with the expanded text.
@@ -94,6 +96,8 @@ The `-t` levels map to fixed token budgets: `off` = 0, `low` = 2k, `medium` = 8k
 ```
 /help                this help
 /effort [<level>]    show or change extended-thinking level
+/model [<name>]      switch the active model for this session only (tier name or bare id; no arg = pick from configured tiers)
+/usage               show this session's token usage, prompt-cache hit rate, and — when the model is priced — estimated cost
 /clear               start a fresh session (the current one stays resumable)
 /compact [focus…]    summarize history into a single message
 /resume [<id>]       switch to a saved session (no arg = pick from list)
@@ -308,8 +312,14 @@ entirely; unknown ones are **appended**.
 - **`read` is line-numbered + paginated** — output is `cat -n`-style line numbers
   (right-padded to 6, tab-separated). The `offset` (1-based start line, default 1)
   and `limit` (max lines) params paginate by line; a single response caps at ~200K
-  chars, oversized single lines are returned whole (never split mid-line), and a
-  truncation appends the exact continuation call (e.g. `read(path="…", offset=<next>)`).
+  chars and a truncation appends the exact continuation call (e.g.
+  `read(path="…", offset=<next>)`). Individual **pathological lines are capped**
+  too — a minified bundle or one-line JSON is truncated per line so it can't blow
+  the context window (normal oversized lines are still returned whole, never split
+  mid-token).
+- **`read` opens spreadsheets** — `.xlsx` / `.xls` / `.xlsm` / `.xlsb` / `.ods`
+  are parsed to CSV-style text instead of raw bytes; pass `sheet` (a sheet name or
+  1-based index) to pick a tab, defaulting to the first.
 - **`bash` has a 60s hard cap** — `timeout_ms` is optional and capped at 60000ms.
   Dev servers, watchers, long builds, and downloads that may exceed it should use
   `runLongRunningCommand` / `checkLongRunningCommand` instead.
@@ -480,7 +490,30 @@ turn to the next. Nova is built around keeping it stable:
   `compact.micro.enabled = true` only on a provider with no prefix caching.
 - **Cache accounting.** Each response's `cache_read_input_tokens` /
   `cache_creation_input_tokens` are surfaced and rolled into the per-session
-  usage totals, so you can see how much of each turn actually hit the cache.
+  usage totals (restored from the transcript on `--resume`, so they survive a
+  reload), so you can see how much of each turn actually hit the cache.
+
+### Cost & balance accounting
+
+On top of token counting, Nova estimates **spend** and — on DeepSeek — shows your
+**account balance**.
+
+- **Estimated cost.** `settings.pricing` carries a per-1M-token price table
+  (`input` / `output` / `cacheRead` / `cacheWrite`, each in `USD` or `CNY`). Your
+  `pricing.models` entries are consulted first (first case-insensitive `match`
+  substring wins), then a built-in default table covers the DeepSeek v4 models so
+  cost shows up with zero config. `/usage` prices each token bucket and totals it;
+  the status line carries the running figure. An unpriced model simply shows
+  tokens only. Turn the whole thing off with `pricing.enabled = false`.
+- **DeepSeek account balance.** When the base URL points at `api.deepseek.com`,
+  Nova calls the DeepSeek-specific `/user/balance` endpoint and leads the status
+  line with your spendable balance (green when chargeable, amber when DeepSeek
+  reports the account unavailable). It's best-effort — a 5s timeout, fire-and-forget
+  after each turn — and stays hidden for every other endpoint.
+- **Model tiers.** `settings.models` maps tier names to model ids (defaults to
+  `flash` → `deepseek-v4-flash`, `pro` → `deepseek-v4-pro`); `/model` switches
+  between them for the session, and a tier can carry its own `description` (shown
+  in the picker) and `contextWindowTokens`.
 
 ## Repository layout
 
