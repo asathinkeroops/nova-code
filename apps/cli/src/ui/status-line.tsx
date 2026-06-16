@@ -75,6 +75,7 @@ export function StatusLine({ store, shellMode = false }: StatusLineProps): React
     uncachedInputTokens,
     sessionOutputTokens,
     costRates,
+    accountBalance,
     termCols,
   } = store(
     useShallow((s) => ({
@@ -88,6 +89,7 @@ export function StatusLine({ store, shellMode = false }: StatusLineProps): React
       uncachedInputTokens: s.uncachedInputTokens,
       sessionOutputTokens: s.sessionOutputTokens,
       costRates: s.costRates,
+      accountBalance: s.accountBalance,
       termCols: s.termCols,
     })),
   );
@@ -147,6 +149,17 @@ export function StatusLine({ store, shellMode = false }: StatusLineProps): React
   // Each segment gets a distinct color so the row reads like a small dashboard
   // (matching the multi-colored reference statusline) rather than a flat block.
   const usage: StatusSegment[] = [];
+  // DeepSeek account balance leads the row (only present when talking to
+  // DeepSeek's official API) and is prepended so it survives `fitSegments`
+  // dropping rightmost segments first on a narrow terminal. Dimmed to amber
+  // when DeepSeek reports the account as unavailable (can't be charged).
+  if (accountBalance) {
+    usage.push({
+      icon: "▰",
+      text: `${formatMoney(accountBalance.total, accountBalance.currency)} balance`,
+      color: accountBalance.available ? "green" : "yellow",
+    });
+  }
   const hitRate = cacheHitRate(cacheReadTokens, cacheCreationTokens, uncachedInputTokens);
   if (hitRate !== null) {
     // A geometric glyph (not an emoji like ⚡): emoji render double-width but
@@ -173,8 +186,8 @@ export function StatusLine({ store, shellMode = false }: StatusLineProps): React
     );
     usage.push({
       icon: "●",
-      text: formatMoney(cost.total, costRates.currency),
-      color: "green",
+      text: `${formatMoney(cost.total, costRates.currency)} cost`,
+      color: "yellowBright",
     });
   }
 

@@ -7,6 +7,7 @@ import type {
 } from "@nova/core";
 import type { Task, Todo } from "@nova/tools";
 import type { ModelRates } from "@nova/observability";
+import type { AccountBalance } from "./deepseek-balance.js";
 import type { SubAgentDetail } from "@nova/subagent";
 import type { PermissionDecision, PermissionInput } from "@nova/safety";
 import { App } from "./ui/app.js";
@@ -271,6 +272,10 @@ export class Screen {
 
   setCostRates(rates: ModelRates | null): void {
     this.store.getState().setCostRates(rates);
+  }
+
+  setAccountBalance(balance: AccountBalance | null): void {
+    this.store.getState().setAccountBalance(balance);
   }
 
   addUsage(usage: {

@@ -1,6 +1,6 @@
 import { bashTool } from "@nova/tools";
 import { ACCENT_RGB, accent, dim } from "./colors.js";
-import { stopSpinner, type CliContext } from "./context.js";
+import { refreshBalance, stopSpinner, type CliContext } from "./context.js";
 import { appendUserOverride } from "./display-sidecar.js";
 import { listWorkspaceFiles } from "./file-index.js";
 import { predictNextInput } from "./predict.js";
@@ -227,6 +227,11 @@ export async function runRepl(ctx: CliContext, initialPrompt: string): Promise<v
     fields: { source: startSource },
   });
 
+  // Seed the DeepSeek balance segment on the StatusLine (no-op off DeepSeek's
+  // official API). Fire-and-forget so a slow/blocked request never delays the
+  // first prompt; it's refreshed after every turn below as tokens are spent.
+  void refreshBalance(ctx);
+
   if (initialPrompt) {
     const ok = await runTurnWithStopHooks(ctx, initialPrompt);
     if (ok) await refreshPrediction(ctx);
@@ -240,6 +245,7 @@ export async function runRepl(ctx: CliContext, initialPrompt: string): Promise<v
       const ok = await runContinuationTurn(ctx);
       if (ok) await refreshPrediction(ctx);
       void refreshMentionFiles(ctx);
+      void refreshBalance(ctx);
       continue;
     }
 
@@ -254,6 +260,7 @@ export async function runRepl(ctx: CliContext, initialPrompt: string): Promise<v
       const ok = await runContinuationTurn(ctx);
       if (ok) await refreshPrediction(ctx);
       void refreshMentionFiles(ctx);
+      void refreshBalance(ctx);
       continue;
     }
     const line = raw.trim();
@@ -268,6 +275,7 @@ export async function runRepl(ctx: CliContext, initialPrompt: string): Promise<v
     // Pick up files created/deleted during the turn. Fire-and-forget so it
     // never delays the next prompt; the function swallows its own errors.
     void refreshMentionFiles(ctx);
+    void refreshBalance(ctx);
   }
 
   // SessionEnd runs before teardown so the hook can still use the sandbox bridge.

@@ -3,6 +3,7 @@ import type { Rgb } from "../colors.js";
 import type { AskUserRequest, AskUserResponse, MessageParam } from "@nova/core";
 import type { Task, Todo } from "@nova/tools";
 import type { ModelRates } from "@nova/observability";
+import type { AccountBalance } from "../deepseek-balance.js";
 import type { SubAgentDetail } from "@nova/subagent";
 import type { PermissionDecision, PermissionInput } from "@nova/safety";
 import type { BannerProps } from "./render-item.js";
@@ -233,6 +234,14 @@ export interface AppState {
    */
   costRates: ModelRates | null;
   /**
+   * DeepSeek account balance for the second StatusLine row, or null when not on
+   * DeepSeek's official API (the only provider that exposes a balance endpoint)
+   * or when a fetch has not yet succeeded. Account-level, so it survives
+   * `reset()` (/clear) like the cost rates. Refreshed at startup and after each
+   * turn by the REPL.
+   */
+  accountBalance: AccountBalance | null;
+  /**
    * Prompts the user submitted while a turn was running, waiting to be consumed
    * as their own turns once the current one finishes (FIFO). The permanent
    * InputBox renders these above itself so the user can see what's pending.
@@ -358,6 +367,8 @@ export interface AppActions {
   setContextTokens: (tokens: number) => void;
   /** Set the active model's per-token rates for the StatusLine cost segment. */
   setCostRates: (rates: ModelRates | null) => void;
+  /** Set the DeepSeek account balance for the StatusLine (null hides the segment). */
+  setAccountBalance: (balance: AccountBalance | null) => void;
   /**
    * Fold one request's usage into the session-cumulative token counters that
    * back the cache-hit-rate meter and `/usage`. Each field is added to its
@@ -525,6 +536,7 @@ export function createAppStore(): AppStoreApi {
       uncachedInputTokens: 0,
       sessionOutputTokens: 0,
       costRates: null,
+      accountBalance: null,
       inputQueue: [],
       slashCommands: [],
       mentionFiles: [],
@@ -827,6 +839,23 @@ export function createAppStore(): AppStoreApi {
       setCostRates(rates) {
         if (get().costRates === rates) return;
         set({ costRates: rates });
+      },
+
+      setAccountBalance(balance) {
+        const cur = get().accountBalance;
+        // Skip the update when nothing changed so an unchanged balance fetched
+        // after every turn doesn't churn a re-render.
+        if (
+          cur === balance ||
+          (cur &&
+            balance &&
+            cur.total === balance.total &&
+            cur.currency === balance.currency &&
+            cur.available === balance.available)
+        ) {
+          return;
+        }
+        set({ accountBalance: balance });
       },
 
       setContextTokens(tokens) {

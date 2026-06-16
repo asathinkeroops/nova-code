@@ -85,6 +85,7 @@ import {
   resolveSessionRates,
 } from "./commands/index.js";
 import { TOOL_SPINNER_DELAY_MS, WORKING_WORDS } from "./constants.js";
+import { fetchDeepSeekBalance } from "./deepseek-balance.js";
 import { appendToolDetail, loadDisplaySidecar } from "./display-sidecar.js";
 import { registerUiHooks } from "./hooks.js";
 import { restoreUsageFromTranscript } from "./usage-restore.js";
@@ -243,6 +244,20 @@ export function refreshBanner(ctx: CliContext): void {
     contextWindowTokens,
   });
   ctx.screen.setCostRates(resolveSessionRates(ctx) ?? null);
+}
+
+/**
+ * Refresh the DeepSeek account balance shown on the StatusLine's second row.
+ * No-op (clears nothing) unless the base URL points at DeepSeek's official API;
+ * best-effort and self-contained — `fetchDeepSeekBalance` swallows its own
+ * errors and returns null, which `setAccountBalance` treats as "hide". Always
+ * call fire-and-forget so a slow request never delays a turn.
+ */
+export async function refreshBalance(ctx: CliContext): Promise<void> {
+  const balance = await fetchDeepSeekBalance(ctx.settings);
+  // Leave a previously-fetched balance in place on a transient failure rather
+  // than blanking the segment; only overwrite when we actually got a figure.
+  if (balance) ctx.screen.setAccountBalance(balance);
 }
 
 export function refreshTodoFooter(ctx: CliContext): void {
