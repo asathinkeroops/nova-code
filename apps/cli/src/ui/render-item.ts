@@ -60,11 +60,10 @@ const HIDDEN_TOOLS = new Set([
   "updateTask",
   "getTaskList",
   "clearTaskList",
-  "checkLongRunningCommand",
 ]);
 
 /**
- * Hook-injected user-role messages (todo/task reminders, long-running command
+ * Hook-injected user-role messages (todo/task reminders, background command
  * notifications) wrap their payload in a known tag so we can skip rendering
  * them as user bubbles.
  */
@@ -72,7 +71,7 @@ function isSystemInjectionText(text: string): boolean {
   const trimmed = text.trimStart();
   return (
     trimmed.startsWith("<reminder>") ||
-    trimmed.startsWith("<long-running-command")
+    trimmed.startsWith("<background-command")
   );
 }
 

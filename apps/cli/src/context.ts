@@ -37,6 +37,8 @@ import {
   createLogger,
   loadProjectHooks,
   mergeHooks,
+  resolveContextWindowTokens,
+  resolveModelId,
   type Logger,
   type Session,
   type Settings,
@@ -70,6 +72,7 @@ import {
   handleLsp,
   handleMcp,
   handlePlan,
+  handleModel,
   handlePredict,
   handleAgent,
   handleAgents,
@@ -79,6 +82,7 @@ import {
   handleSkills,
   handleEffort,
   handleUsage,
+  resolveSessionRates,
 } from "./commands/index.js";
 import { TOOL_SPINNER_DELAY_MS, WORKING_WORDS } from "./constants.js";
 import { appendToolDetail, loadDisplaySidecar } from "./display-sidecar.js";
@@ -221,20 +225,24 @@ function currentGitBranch(cwd: string): string | null {
 }
 
 export function refreshBanner(ctx: CliContext): void {
+  // Effective window follows the active model tier (a tier may override the
+  // top-level contextWindowTokens); recomputed here so /model switches it live.
+  const contextWindowTokens = resolveContextWindowTokens(ctx.settings, ctx.settings.model);
   ctx.screen.setBanner({
     version: ctx.version,
     model: ctx.settings.model,
     cwd: ctx.workspace,
     home: homedir(),
     sessionId: ctx.session.id,
-    contextWindowTokens: ctx.settings.contextWindowTokens,
+    contextWindowTokens,
     thinkingLabel: thinkingLevelLabel(ctx),
   });
   ctx.screen.setStatusMeta({
     sessionStartedAt: ctx.session.createdAt.getTime(),
     gitBranch: currentGitBranch(ctx.workspace),
-    contextWindowTokens: ctx.settings.contextWindowTokens,
+    contextWindowTokens,
   });
+  ctx.screen.setCostRates(resolveSessionRates(ctx) ?? null);
 }
 
 export function refreshTodoFooter(ctx: CliContext): void {
@@ -319,6 +327,16 @@ function registerBuiltinSlashCommands(ctx: CliContext): void {
     source: { kind: "builtin" },
     run: async (_c, args) => {
       await handleEffort(ctx, args.trim());
+      return handled;
+    },
+  });
+  ctx.registry.register({
+    name: "model",
+    description: "show or switch the active model tier",
+    argHint: "[<name>|<id>]",
+    source: { kind: "builtin" },
+    run: async (_c, args) => {
+      await handleModel(ctx, args.trim());
       return handled;
     },
   });
@@ -651,7 +669,7 @@ export async function createContext(
   // Permission is gated by a pre_tool_use hook upstream of executeTool, so a
   // denied write never reaches here. This is also where the OS sandbox bridge
   // is threaded onto the ToolContext, so subprocess tools (bash,
-  // runLongRunningCommand) — and the sub-agent calls that reuse this dispatch —
+  // runInBackground) — and the sub-agent calls that reuse this dispatch —
   // wrap their commands before spawning.
   const dispatch: ToolExecutor = async (use, toolCtx) => {
     if (use.name === "write" || use.name === "edit") {
@@ -735,10 +753,15 @@ export async function createContext(
     screen.clearLiveDraft();
   };
 
-  const buildModel = (id: string, trackTokens = true): ModelClient =>
+  // `name` may be a bare model id or a key into settings.models; resolveModelId
+  // maps a known alias to its concrete id and passes anything else through, so
+  // both /model tiers and raw ids work. Resolving here means every caller —
+  // ctx.model, predictModel, and the sub-agent model cache — gets alias support
+  // for free, and the resolved id is what reaches cost/pricing matching.
+  const buildModel = (name: string, trackTokens = true): ModelClient =>
     createAnthropicModel({
       apiKey,
-      model: id,
+      model: resolveModelId(settings, name),
       ...(settings.baseURL ? { baseURL: settings.baseURL } : {}),
       ...(trackTokens
         ? { onStreamProgress: pushSpinnerTokens, onStreamText: pushLiveText, onRetry }
@@ -1046,6 +1069,17 @@ export async function createContext(
   registerInterject(ctx.agent, makeTodoReminder(todoStore));
   registerInterject(ctx.agent, makeTaskReminder(taskStore));
   ctx.agent.on("pre_request", makeLongRunningNotifier(longRunningManager));
+
+  // Push completion: when a background command finishes while the agent is idle,
+  // nudge the REPL to wake and react (the notifier above injects the output on
+  // the resulting continuation turn). During a running turn we do nothing — the
+  // notifier already delivers on that turn's next request. Headless has no input
+  // loop to wake, so wake() is a no-op there.
+  if (ctx.settings.longRunning.autoContinueOnComplete) {
+    longRunningManager.onComplete(() => {
+      if (!ctx.agent.currentSignal()) ctx.screen.wake();
+    });
+  }
 
   // /rewind: tag each user turn with the message index its prompt lands at —
   // the same point /rewind truncates to, and the epoch the dispatcher's

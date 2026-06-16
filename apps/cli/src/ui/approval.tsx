@@ -15,7 +15,7 @@ const TOOL_PROMPTS: Record<string, string> = {
   webfetch: "Allow fetching this URL?",
   websearch: "Allow searching the web?",
   createSubAgent: "Allow spawning a subagent?",
-  runLongRunningCommand: "Allow running this command in the background?",
+  runInBackground: "Allow running this command in the background?",
 };
 
 function promptFor(tool: string): string {

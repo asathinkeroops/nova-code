@@ -76,7 +76,6 @@ export const DEFAULT_PERMISSION_RULES: readonly PermissionRule[] = [
   { tool: "getTaskList", effect: "allow" },
   { tool: "clearTaskList", effect: "allow" },
   { tool: "loadSkill", effect: "allow" },
-  { tool: "checkLongRunningCommand", effect: "allow" },
   // The lsp tool is read-only (queries language servers; never mutates files).
   { tool: "lsp", effect: "allow" },
   // Spawning a sub-agent is itself safe to auto-allow: the sub-agent's own tool

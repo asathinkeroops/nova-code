@@ -2,6 +2,7 @@ import { create, type StoreApi, type UseBoundStore } from "zustand";
 import type { Rgb } from "../colors.js";
 import type { AskUserRequest, AskUserResponse, MessageParam } from "@nova/core";
 import type { Task, Todo } from "@nova/tools";
+import type { ModelRates } from "@nova/observability";
 import type { SubAgentDetail } from "@nova/subagent";
 import type { PermissionDecision, PermissionInput } from "@nova/safety";
 import type { BannerProps } from "./render-item.js";
@@ -225,6 +226,13 @@ export interface AppState {
   /** Session-cumulative output (completion) tokens. Reset on `reset()`. */
   sessionOutputTokens: number;
   /**
+   * Active model's resolved per-token rates, or null when pricing is disabled
+   * or the model is unpriced. Lets the StatusLine show an estimated session
+   * cost from the cumulative token counters. Set by `setCostRates` (from
+   * `refreshBanner`); survives `reset()` since the model is unchanged.
+   */
+  costRates: ModelRates | null;
+  /**
    * Prompts the user submitted while a turn was running, waiting to be consumed
    * as their own turns once the current one finishes (FIFO). The permanent
    * InputBox renders these above itself so the user can see what's pending.
@@ -348,6 +356,8 @@ export interface AppActions {
   }) => void;
   /** Update the latest-request token count shown by the StatusLine meter. */
   setContextTokens: (tokens: number) => void;
+  /** Set the active model's per-token rates for the StatusLine cost segment. */
+  setCostRates: (rates: ModelRates | null) => void;
   /**
    * Fold one request's usage into the session-cumulative token counters that
    * back the cache-hit-rate meter and `/usage`. Each field is added to its
@@ -383,6 +393,13 @@ export interface AppActions {
   takeInput: () => Promise<string | null>;
   /** Ask the idle REPL to stop (Ctrl+C with no turn running). */
   requestExit: () => void;
+  /**
+   * Wake an idle REPL: if it's blocked in `takeInput`, resolve it with
+   * {@link CONTINUE_SENTINEL} so the loop runs a continuation turn instead of a
+   * user prompt. No-op when not parked — the REPL's pre-park `hasPending` check
+   * covers a completion that lands while it's busy.
+   */
+  wake: () => void;
   setSlashCommands: (commands: SlashCommand[]) => void;
   setMentionFiles: (files: string[]) => void;
   setInputPlaceholder: (text: string) => void;
@@ -415,6 +432,14 @@ interface ModalSlot {
   resolve: ((value: unknown) => void) | null;
   abortCleanup: (() => void) | null;
 }
+
+/**
+ * Sentinel returned by `takeInput` when {@link AppActions.wake} unparks an idle
+ * REPL for a background continuation (rather than a typed prompt). A NUL-led
+ * control string the InputBox can never produce, so it never collides with real
+ * user input.
+ */
+export const CONTINUE_SENTINEL = "\x00__nova_continue__";
 
 export function createAppStore(): AppStoreApi {
   const slot: ModalSlot = { resolve: null, abortCleanup: null };
@@ -499,6 +524,7 @@ export function createAppStore(): AppStoreApi {
       cacheCreationTokens: 0,
       uncachedInputTokens: 0,
       sessionOutputTokens: 0,
+      costRates: null,
       inputQueue: [],
       slashCommands: [],
       mentionFiles: [],
@@ -798,6 +824,11 @@ export function createAppStore(): AppStoreApi {
         });
       },
 
+      setCostRates(rates) {
+        if (get().costRates === rates) return;
+        set({ costRates: rates });
+      },
+
       setContextTokens(tokens) {
         if (get().contextTokens === tokens) return;
         set({ contextTokens: tokens });
@@ -855,6 +886,14 @@ export function createAppStore(): AppStoreApi {
           return;
         }
         inputSlot.exitRequested = true;
+      },
+
+      wake() {
+        if (inputSlot.waiter) {
+          const w = inputSlot.waiter;
+          inputSlot.waiter = null;
+          w(CONTINUE_SENTINEL);
+        }
       },
 
       setSlashCommands(commands) {

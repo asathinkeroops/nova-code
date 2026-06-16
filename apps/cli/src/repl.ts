@@ -5,6 +5,7 @@ import { appendUserOverride } from "./display-sidecar.js";
 import { listWorkspaceFiles } from "./file-index.js";
 import { predictNextInput } from "./predict.js";
 import { toUiSlashCommands } from "./slash.js";
+import { CONTINUE_SENTINEL } from "./ui/store.js";
 
 /**
  * Rebuild the workspace file snapshot that powers `@path` mention completion in
@@ -152,6 +153,38 @@ async function runTurn(ctx: CliContext, input: string): Promise<boolean> {
   }
 }
 
+/**
+ * Resume the agent with no new user message so it can react to a background
+ * command that finished while idle. The completion output is injected by the
+ * `pre_request` notifier inside the loop; here we just drive the turn and bind
+ * ESC, mirroring {@link runTurn}.
+ */
+async function runContinuationTurn(ctx: CliContext): Promise<boolean> {
+  ctx.screen.setEscHandler(() => ctx.agent.abort(new Error("interrupted by user")));
+  try {
+    const result = await ctx.agent.continueTurn();
+    if (result.aborted) {
+      ctx.screen.card(dim("interrupted by user"), { title: "ESC" });
+    }
+    return result.ok;
+  } finally {
+    ctx.screen.setEscHandler(null);
+  }
+}
+
+/**
+ * True when a background command has finished and the agent should wake to react
+ * to it now, rather than waiting for the next typed prompt. Gated by the setting
+ * and only meaningful between turns (no turn in flight).
+ */
+function shouldAutoContinue(ctx: CliContext): boolean {
+  return (
+    ctx.settings.longRunning.autoContinueOnComplete &&
+    ctx.longRunningManager.hasPending() &&
+    !ctx.agent.currentSignal()
+  );
+}
+
 /** Hard cap on Stop-hook forced continuations, so a misbehaving hook can't loop forever. */
 const MAX_STOP_CONTINUATIONS = 8;
 
@@ -201,11 +234,28 @@ export async function runRepl(ctx: CliContext, initialPrompt: string): Promise<v
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
+    // A background command may have finished while we were busy with the
+    // previous turn / prediction; react to it before parking for input.
+    if (shouldAutoContinue(ctx)) {
+      const ok = await runContinuationTurn(ctx);
+      if (ok) await refreshPrediction(ctx);
+      void refreshMentionFiles(ctx);
+      continue;
+    }
+
     ctx.screen.setInputPlaceholder(ctx.nextPlaceholder);
     ctx.nextPlaceholder = "";
 
     const raw = await ctx.screen.takeInput();
     if (raw === null) break; // exit requested (Ctrl+C while idle)
+    // A background completion landed while we were parked: `wake()` unblocked
+    // takeInput with this sentinel so we run a continuation instead of a prompt.
+    if (raw === CONTINUE_SENTINEL) {
+      const ok = await runContinuationTurn(ctx);
+      if (ok) await refreshPrediction(ctx);
+      void refreshMentionFiles(ctx);
+      continue;
+    }
     const line = raw.trim();
     if (!line) continue;
 

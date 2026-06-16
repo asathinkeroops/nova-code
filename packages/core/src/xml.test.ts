@@ -7,8 +7,8 @@ describe("xmlEscape", () => {
   });
 
   it("escapes a closing tag inside content so wrapping is preserved", () => {
-    expect(xmlEscape("foo </long-running-command> bar")).toBe(
-      "foo &lt;/long-running-command&gt; bar",
+    expect(xmlEscape("foo </background-command> bar")).toBe(
+      "foo &lt;/background-command&gt; bar",
     );
   });
 

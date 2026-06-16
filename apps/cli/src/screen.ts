@@ -6,6 +6,7 @@ import type {
   MessageParam,
 } from "@nova/core";
 import type { Task, Todo } from "@nova/tools";
+import type { ModelRates } from "@nova/observability";
 import type { SubAgentDetail } from "@nova/subagent";
 import type { PermissionDecision, PermissionInput } from "@nova/safety";
 import { App } from "./ui/app.js";
@@ -268,6 +269,10 @@ export class Screen {
     this.store.getState().setContextTokens(tokens);
   }
 
+  setCostRates(rates: ModelRates | null): void {
+    this.store.getState().setCostRates(rates);
+  }
+
   addUsage(usage: {
     inputTokens: number;
     outputTokens: number;
@@ -321,6 +326,11 @@ export class Screen {
   /** Consumer side of the input queue — resolves with the next prompt or null on exit. */
   takeInput(): Promise<string | null> {
     return this.store.getState().takeInput();
+  }
+
+  /** Wake an idle REPL for a background continuation (see store `wake`). */
+  wake(): void {
+    this.store.getState().wake();
   }
 
   setSlashCommands(commands: SlashCommand[]): void {

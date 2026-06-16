@@ -118,6 +118,14 @@ export interface Agent {
   runTurn(input: string, opts?: { signal?: AbortSignal }): Promise<TurnResult>;
 
   /**
+   * Resume the loop on the CURRENT message buffer without appending a user
+   * message. Used to wake the agent for out-of-band injections (e.g. a
+   * background command completing): `pre_request` hooks fire and may inject,
+   * then the model responds. Fires `post_turn`; never throws.
+   */
+  continueTurn(opts?: { signal?: AbortSignal }): Promise<TurnResult>;
+
+  /**
    * Flush the current messages buffer to disk using the deps' cursor. Used by
    * `/clear`, `/compact`, `/resume` to persist out-of-band mutations.
    */
@@ -205,60 +213,16 @@ export function createAgent(deps: AgentDeps): Agent {
     totalUsage: TurnResult["totalUsage"];
   }): Promise<void> => hooks.runAdvisory("post_turn", payload);
 
-  const runTurn = async (
-    input: string,
-    opts: { signal?: AbortSignal } = {},
+  /**
+   * Drive `agentLoop` over a prepared message buffer to completion: wire the
+   * AbortController, run the loop, persist, fire `post_turn`, and shape the
+   * `TurnResult`. Shared by `runTurn` (which prepends a user message first) and
+   * `continueTurn` (which resumes the current buffer unchanged). Never throws.
+   */
+  const runLoop = async (
+    baseMessages: MessageParam[],
+    opts: { signal?: AbortSignal },
   ): Promise<TurnResult> => {
-    // ── pre_user_prompt (blocking) ────────────────────────────────────────
-    let effectiveInput = input;
-    try {
-      const pre = await hooks.runBlocking("pre_user_prompt", { input });
-      if (pre) {
-        if ("abort" in pre && pre.abort) {
-          const totalUsage = zeroUsage();
-          await emitPostTurn({
-            ok: false,
-            aborted: true,
-            turns: 0,
-            totalUsage,
-            ...(pre.reason ? { error: pre.reason } : {}),
-          });
-          return {
-            ok: false,
-            aborted: true,
-            turns: 0,
-            messages: deps.getMessages(),
-            totalUsage,
-          };
-        }
-        if ("input" in pre && pre.input !== undefined) {
-          effectiveInput = pre.input;
-        }
-      }
-    } catch (err) {
-      const e = err instanceof Error ? err : new Error(String(err));
-      await hooks.runAdvisory("error", {
-        message: e.message,
-        ...(e.stack ? { stack: e.stack } : {}),
-      });
-      const totalUsage = zeroUsage();
-      await emitPostTurn({
-        ok: false,
-        aborted: false,
-        turns: 0,
-        error: e.message,
-        totalUsage,
-      });
-      return {
-        ok: false,
-        aborted: false,
-        error: e,
-        turns: 0,
-        messages: deps.getMessages(),
-        totalUsage,
-      };
-    }
-
     const controller = new AbortController();
     activeController = controller;
     const externalSignal = opts.signal;
@@ -278,15 +242,6 @@ export function createAgent(deps: AgentDeps): Agent {
     const transcript = deps.getTranscript();
     const logger = deps.getLogger();
     const settings = deps.getSettings();
-    const baseMessages = [...deps.getMessages(), userText(effectiveInput)];
-
-    // Immediate visual sync: surface the user message BEFORE the loop fires
-    // its first post_messages (which only lands after model.call starts).
-    await hooks.runAdvisory("post_messages", { messages: baseMessages });
-    if (!settings.noTranscript) {
-      await transcript.append({ kind: "user_prompt", data: { text: effectiveInput } });
-    }
-
     const budget = deps.getThinkingBudget();
 
     let result: Awaited<ReturnType<typeof agentLoop>> | null = null;
@@ -382,9 +337,85 @@ export function createAgent(deps: AgentDeps): Agent {
     };
   };
 
+  const runTurn = async (
+    input: string,
+    opts: { signal?: AbortSignal } = {},
+  ): Promise<TurnResult> => {
+    // ── pre_user_prompt (blocking) ────────────────────────────────────────
+    let effectiveInput = input;
+    try {
+      const pre = await hooks.runBlocking("pre_user_prompt", { input });
+      if (pre) {
+        if ("abort" in pre && pre.abort) {
+          const totalUsage = zeroUsage();
+          await emitPostTurn({
+            ok: false,
+            aborted: true,
+            turns: 0,
+            totalUsage,
+            ...(pre.reason ? { error: pre.reason } : {}),
+          });
+          return {
+            ok: false,
+            aborted: true,
+            turns: 0,
+            messages: deps.getMessages(),
+            totalUsage,
+          };
+        }
+        if ("input" in pre && pre.input !== undefined) {
+          effectiveInput = pre.input;
+        }
+      }
+    } catch (err) {
+      const e = err instanceof Error ? err : new Error(String(err));
+      await hooks.runAdvisory("error", {
+        message: e.message,
+        ...(e.stack ? { stack: e.stack } : {}),
+      });
+      const totalUsage = zeroUsage();
+      await emitPostTurn({
+        ok: false,
+        aborted: false,
+        turns: 0,
+        error: e.message,
+        totalUsage,
+      });
+      return {
+        ok: false,
+        aborted: false,
+        error: e,
+        turns: 0,
+        messages: deps.getMessages(),
+        totalUsage,
+      };
+    }
+
+    const baseMessages = [...deps.getMessages(), userText(effectiveInput)];
+
+    // Immediate visual sync: surface the user message BEFORE the loop fires
+    // its first post_messages (which only lands after model.call starts).
+    await hooks.runAdvisory("post_messages", { messages: baseMessages });
+    if (!deps.getSettings().noTranscript) {
+      await deps
+        .getTranscript()
+        .append({ kind: "user_prompt", data: { text: effectiveInput } });
+    }
+
+    return runLoop(baseMessages, opts);
+  };
+
+  // Resume the loop on the current buffer with no new user message. Out-of-band
+  // injections (a background command completing) reach the model through the
+  // `pre_request` hooks that fire inside `agentLoop`; the buffer carries no
+  // synthetic user turn of its own.
+  const continueTurn = (opts: { signal?: AbortSignal } = {}): Promise<TurnResult> =>
+    runLoop([...deps.getMessages()], opts);
+
   return {
     on: (point, fn) => hooks.on(point, fn),
     runTurn,
+    continueTurn,
     persist,
     currentSignal: () => activeController?.signal,
     abort: (reason) => {

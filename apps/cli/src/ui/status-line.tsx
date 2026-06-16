@@ -2,6 +2,7 @@ import React from "react";
 import { Box, Text } from "ink";
 import { basename } from "node:path";
 import { useShallow } from "zustand/react/shallow";
+import { computeCost, formatMoney } from "@nova/observability";
 import { ACCENT_HEX } from "../colors.js";
 import type { AppStoreApi } from "./store.js";
 import {
@@ -25,14 +26,42 @@ interface StatusLineProps {
   shellMode?: boolean;
 }
 
+/** Render one fitted row of status segments (leading space + ` | ` joins). */
+function SegmentRow({
+  segments,
+  termCols,
+}: {
+  segments: StatusSegment[];
+  termCols: number;
+}): React.ReactElement {
+  // Reserve one leading space (alignment) and one trailing cell (overflow margin).
+  const shown = fitSegments(segments, Math.max(0, termCols - 2));
+  return (
+    <Box>
+      <Text>{" "}</Text>
+      {shown.map((seg, i) => (
+        <React.Fragment key={i}>
+          {i > 0 ? <Text dimColor>{" | "}</Text> : null}
+          {/* Icon and text share the segment color so each reads as one unit. */}
+          <Text color={seg.color}>
+            {seg.icon} {seg.text}
+          </Text>
+        </React.Fragment>
+      ))}
+    </Box>
+  );
+}
+
 /**
- * A single always-reserved row above the InputBox. It normally renders the
- * session status — model, context-window usage, workspace, git
- * branch, and directory — fitted to the terminal width (rightmost segments
- * drop first when space runs out). The transient "✓ copied" notice from a
- * mouse-drag selection takes over the row for its short lifetime. Permanent
- * layout slot: the row is one line whether or not anything is shown, so
- * toggling content never shifts the InputBox or the viewport.
+ * Two always-reserved rows above the InputBox. The first renders the session
+ * status — model, context-window usage, workspace, git branch, and directory;
+ * the second renders cumulative usage — prompt-cache hit rate and prompt /
+ * output token totals. Each row is fitted to the terminal width independently
+ * (rightmost segments drop first when space runs out). The transient "✓ copied"
+ * notice from a mouse-drag selection takes over the first row for its short
+ * lifetime (the second stays blank). Permanent layout slot: the block is always
+ * two lines whether or not anything is shown, so toggling content never shifts
+ * the InputBox or the viewport.
  */
 export function StatusLine({ store, shellMode = false }: StatusLineProps): React.ReactElement {
   const {
@@ -44,6 +73,8 @@ export function StatusLine({ store, shellMode = false }: StatusLineProps): React
     cacheReadTokens,
     cacheCreationTokens,
     uncachedInputTokens,
+    sessionOutputTokens,
+    costRates,
     termCols,
   } = store(
     useShallow((s) => ({
@@ -55,65 +86,102 @@ export function StatusLine({ store, shellMode = false }: StatusLineProps): React
       cacheReadTokens: s.cacheReadTokens,
       cacheCreationTokens: s.cacheCreationTokens,
       uncachedInputTokens: s.uncachedInputTokens,
+      sessionOutputTokens: s.sessionOutputTokens,
+      costRates: s.costRates,
       termCols: s.termCols,
     })),
   );
 
-  // Shell mode collapses the whole row to just the `!` hint — every segment is
+  // Shell mode collapses the first row to just the `!` hint — every segment is
   // hidden. Checked ahead of the copy notice so the mode stays unambiguous
-  // while a `!` line is being typed.
+  // while a `!` line is being typed. The second row stays blank so the pinned
+  // two-row height never changes.
   if (shellMode) {
     return (
-      <Box>
-        <Text color={SHELL_MODE_INDICATOR.color}>{` ${SHELL_MODE_INDICATOR.label}`}</Text>
+      <Box flexDirection="column">
+        <Box>
+          <Text color={SHELL_MODE_INDICATOR.color}>{` ${SHELL_MODE_INDICATOR.label}`}</Text>
+        </Box>
+        <Box>
+          <Text>{" "}</Text>
+        </Box>
       </Box>
     );
   }
 
   if (copyNotice) {
     return (
-      <Box>
-        <Text color="green">{` ${copyNotice}`}</Text>
+      <Box flexDirection="column">
+        <Box>
+          <Text color="green">{` ${copyNotice}`}</Text>
+        </Box>
+        <Box>
+          <Text>{" "}</Text>
+        </Box>
       </Box>
     );
   }
 
-  const segments: StatusSegment[] = [];
+  // First row: model / context / workspace / branch / directory.
+  const main: StatusSegment[] = [];
   if (banner?.model) {
     const window = contextWindowTokens > 0 ? ` (${formatTokenCount(contextWindowTokens)})` : "";
-    segments.push({ icon: "◆", text: `${banner.model.toUpperCase()}${window}`, color: "magenta" });
+    main.push({ icon: "◆", text: `${banner.model.toUpperCase()}${window}`, color: "magenta" });
   }
   if (contextWindowTokens > 0) {
     const pct = Math.min(100, Math.round((contextTokens / contextWindowTokens) * 100));
-    segments.push({ icon: "○", text: `${contextBar(pct)} ${pct}%`, color: "yellow" });
-  }
-  const hitRate = cacheHitRate(cacheReadTokens, cacheCreationTokens, uncachedInputTokens);
-  if (hitRate !== null) {
-    segments.push({ icon: "⚡", text: `${formatPercent(hitRate)} cache`, color: "cyan" });
+    main.push({ icon: "○", text: `${contextBar(pct)} ${pct}%`, color: "yellow" });
   }
   if (banner?.cwd) {
-    segments.push({ icon: "◈", text: basename(banner.cwd) || banner.cwd, color: "green" });
+    main.push({ icon: "◈", text: basename(banner.cwd) || banner.cwd, color: "green" });
   }
   if (gitBranch) {
-    segments.push({ icon: "⎇", text: gitBranch, color: "blue" });
+    main.push({ icon: "⎇", text: gitBranch, color: "blue" });
   }
   if (banner?.cwd) {
-    segments.push({ icon: "•", text: displayCwd(banner.cwd, banner.home), color: ACCENT_HEX });
+    main.push({ icon: "•", text: displayCwd(banner.cwd, banner.home), color: ACCENT_HEX });
   }
 
-  // Reserve one leading space (alignment) and one trailing cell (overflow margin).
-  const shown = fitSegments(segments, Math.max(0, termCols - 2));
+  // Second row: cumulative usage — cache hit rate, prompt / output token
+  // totals, and estimated cost when the model is priced.
+  // Each segment gets a distinct color so the row reads like a small dashboard
+  // (matching the multi-colored reference statusline) rather than a flat block.
+  const usage: StatusSegment[] = [];
+  const hitRate = cacheHitRate(cacheReadTokens, cacheCreationTokens, uncachedInputTokens);
+  if (hitRate !== null) {
+    // A geometric glyph (not an emoji like ⚡): emoji render double-width but
+    // `visibleWidth` counts them as 1, so the layout would under-reserve space
+    // and leave a visible gap after the icon.
+    usage.push({ icon: "◆", text: `${formatPercent(hitRate)} cache`, color: "cyan" });
+  }
+  const promptTotal = cacheReadTokens + cacheCreationTokens + uncachedInputTokens;
+  if (promptTotal > 0) {
+    usage.push({ icon: "↑", text: `${formatTokenCount(promptTotal)} in`, color: "blue" });
+  }
+  if (sessionOutputTokens > 0) {
+    usage.push({ icon: "↓", text: `${formatTokenCount(sessionOutputTokens)} out`, color: "magenta" });
+  }
+  if (costRates && promptTotal + sessionOutputTokens > 0) {
+    const cost = computeCost(
+      {
+        uncachedInputTokens,
+        cacheReadTokens,
+        cacheCreationTokens,
+        outputTokens: sessionOutputTokens,
+      },
+      costRates,
+    );
+    usage.push({
+      icon: "●",
+      text: formatMoney(cost.total, costRates.currency),
+      color: "green",
+    });
+  }
 
   return (
-    <Box>
-      <Text>{" "}</Text>
-      {shown.map((seg, i) => (
-        <React.Fragment key={i}>
-          {i > 0 ? <Text dimColor>{" | "}</Text> : null}
-          <Text color={seg.color}>{seg.icon} </Text>
-          <Text dimColor>{seg.text}</Text>
-        </React.Fragment>
-      ))}
+    <Box flexDirection="column">
+      <SegmentRow segments={main} termCols={termCols} />
+      <SegmentRow segments={usage} termCols={termCols} />
     </Box>
   );
 }

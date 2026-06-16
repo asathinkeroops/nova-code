@@ -20,8 +20,8 @@ export type LongRunningNotifierHook = (
 function renderRecord(r: CommandRecord): string {
   const body = xmlEscape(r.result ?? "no data");
   return (
-    `<long-running-command id="${xmlAttr(r.id)}" command="${xmlAttr(r.command)}"` +
-    ` status="${xmlAttr(r.status)}">${body}</long-running-command>`
+    `<background-command id="${xmlAttr(r.id)}" command="${xmlAttr(r.command)}"` +
+    ` status="${xmlAttr(r.status)}">${body}</background-command>`
   );
 }
 

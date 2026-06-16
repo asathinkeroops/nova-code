@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ToolContext } from "@nova/core";
-import { LongRunningCommandManager } from "./manager.js";
-import { runLongRunningCommandTool } from "./run.js";
-import { checkLongRunningCommandTool } from "./check.js";
+import { LongRunningCommandManager, type CommandRecord } from "./manager.js";
+import { runInBackgroundTool } from "./run.js";
 
 const ctx: ToolContext = { cwd: process.cwd() };
 
@@ -14,11 +13,10 @@ async function waitFor(predicate: () => boolean, timeoutMs = 3000): Promise<void
   }
 }
 
-describe("runLongRunningCommand / checkLongRunningCommand", () => {
-  it("run returns an id; check by id returns the record", async () => {
+describe("runInBackground", () => {
+  it("run returns an id; the record reaches completed", async () => {
     const mgr = new LongRunningCommandManager();
-    const runTool = runLongRunningCommandTool(mgr);
-    const checkTool = checkLongRunningCommandTool(mgr);
+    const runTool = runInBackgroundTool(mgr);
 
     const runRes = await runTool.run({ command: "echo hi" }, ctx);
     expect(runRes.isError).toBeUndefined();
@@ -26,47 +24,47 @@ describe("runLongRunningCommand / checkLongRunningCommand", () => {
     expect(id).toMatch(/^[A-Za-z0-9_-]+$/);
 
     await waitFor(() => mgr.get(id)?.status !== "running");
-
-    const checkRes = await checkTool.run({ id }, ctx);
-    const view = JSON.parse(checkRes.output) as {
-      id: string;
-      command: string;
-      status: string;
-      pid?: unknown;
-      result?: unknown;
-    };
-    expect(view.id).toBe(id);
-    expect(view.command).toBe("echo hi");
-    expect(view.status).toBe("completed");
-    expect(view.pid).toBeUndefined();
-    expect(view.result).toBeUndefined();
-    expect(Object.keys(view).sort()).toEqual(["command", "id", "status"]);
+    expect(mgr.get(id)?.status).toBe("completed");
   });
 
-  it("check with no id returns all records", async () => {
+  it("emits 'complete' with the public record and marks pending until drained", async () => {
     const mgr = new LongRunningCommandManager();
-    const runTool = runLongRunningCommandTool(mgr);
-    const checkTool = checkLongRunningCommandTool(mgr);
+    const runTool = runInBackgroundTool(mgr);
 
-    await runTool.run({ command: "echo a" }, ctx);
-    await runTool.run({ command: "echo b" }, ctx);
+    const completed: CommandRecord[] = [];
+    mgr.onComplete((r) => completed.push(r));
 
-    const res = await checkTool.run({}, ctx);
-    const { records } = JSON.parse(res.output) as { records: unknown[] };
-    expect(records).toHaveLength(2);
+    const runRes = await runTool.run({ command: "echo hi" }, ctx);
+    const { id } = JSON.parse(runRes.output) as { id: string };
+
+    await waitFor(() => completed.length > 0);
+    expect(completed[0]?.id).toBe(id);
+    expect(completed[0]?.status).toBe("completed");
+
+    // Completion is queued for the notifier until drained.
+    expect(mgr.hasPending()).toBe(true);
+    expect(mgr.drainNotifications()).toContain(id);
+    expect(mgr.hasPending()).toBe(false);
+    expect(mgr.drainNotifications()).toEqual([]);
   });
 
-  it("check with unknown id returns isError", async () => {
+  it("emits 'complete' for a failing command with an error record", async () => {
     const mgr = new LongRunningCommandManager();
-    const checkTool = checkLongRunningCommandTool(mgr);
-    const res = await checkTool.run({ id: "doesNotExist" }, ctx);
-    expect(res.isError).toBe(true);
-    expect(res.output).toContain("no such command id");
+    const runTool = runInBackgroundTool(mgr);
+
+    const completed: CommandRecord[] = [];
+    mgr.onComplete((r) => completed.push(r));
+
+    await runTool.run({ command: "exit 3" }, ctx);
+
+    await waitFor(() => completed.length > 0);
+    expect(completed[0]?.status).toBe("error");
+    expect(mgr.hasPending()).toBe(true);
   });
 
   it("run reports the manager error when concurrency cap is hit", async () => {
     const mgr = new LongRunningCommandManager({ maxConcurrent: 1 });
-    const runTool = runLongRunningCommandTool(mgr);
+    const runTool = runInBackgroundTool(mgr);
 
     await runTool.run({ command: "sleep 1" }, ctx);
     const second = await runTool.run({ command: "echo nope" }, ctx);

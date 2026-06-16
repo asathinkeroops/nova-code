@@ -12,7 +12,7 @@ const inputSchema = z.object({
     .default(60_000)
     .describe(
       "Timeout in milliseconds. Default and max 60000 (60s). Anything that " +
-        "might take longer should be launched with runLongRunningCommand instead.",
+        "might take longer should be launched with runInBackground instead.",
     ),
   cwd: z.string().optional().describe("Working directory; defaults to the nova session cwd."),
 });
@@ -32,7 +32,7 @@ export const bashTool: ToolHandler = {
       "Use for quick scripts, lookups, builds that finish in seconds, etc. " +
       "Hard cap is 60 seconds — for anything that might take longer (dev " +
       "servers, watchers, long builds, sleeps, downloads) use " +
-      "runLongRunningCommand instead.",
+      "runInBackground instead.",
     inputSchema,
   },
   async run(rawInput, ctx) {

@@ -42,7 +42,7 @@ describe("userInputHistory", () => {
         content: [
           {
             type: "text",
-            text: '<long-running-command id="1" command="sleep" status="done">x</long-running-command>',
+            text: '<background-command id="1" command="sleep" status="done">x</background-command>',
           },
         ],
       },

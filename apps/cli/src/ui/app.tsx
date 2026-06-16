@@ -15,17 +15,20 @@ import { Viewport } from "./viewport.js";
 
 /**
  * Pinned bottom chrome row count: a blank spacer row above the InputBox, the
- * InputBox itself, and the always-present StatusLine. The spacer keeps the
- * message stream from butting up against the input frame. The InputBox reports
- * its actual height via `onMeasure` (queued prompts + popup + wrapped buffer +
- * rules), so growing content reserves rows instead of overlapping the viewport.
- * In-stream modals (approval/ask/pick) reserve their own rows inside the
- * Viewport. `extraRows` covers optional chrome below the StatusLine (the
- * permission-mode indicator).
+ * InputBox itself, and the always-present two-row StatusLine (status + usage).
+ * The spacer keeps the message stream from butting up against the input frame.
+ * The InputBox reports its actual height via `onMeasure` (queued prompts +
+ * popup + wrapped buffer + rules), so growing content reserves rows instead of
+ * overlapping the viewport. In-stream modals (approval/ask/pick) reserve their
+ * own rows inside the Viewport. `extraRows` covers optional chrome below the
+ * StatusLine (the permission-mode indicator).
  */
 function pinnedBottomRows(inputRows: number, extraRows: number): number {
-  return 1 + INPUT_TOP_SPACER_ROWS + inputRows + extraRows;
+  return STATUS_LINE_ROWS + INPUT_TOP_SPACER_ROWS + inputRows + extraRows;
 }
+
+/** Rows the StatusLine always occupies: the status row plus the usage row. */
+const STATUS_LINE_ROWS = 2;
 
 /** Blank rows held between the viewport and the InputBox so they aren't cramped. */
 const INPUT_TOP_SPACER_ROWS = 1;

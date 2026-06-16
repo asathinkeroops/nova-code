@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { EventEmitter } from "node:events";
 import { execa, type ExecaError, type ResultPromise } from "execa";
 
 export type CommandStatus = "running" | "completed" | "error";
@@ -111,15 +112,36 @@ function finalize(
   return { status: "error", result };
 }
 
-export class LongRunningCommandManager {
+/** Event name carrying a finished command's public record. */
+const COMPLETE_EVENT = "complete";
+
+export class LongRunningCommandManager extends EventEmitter {
   private readonly records = new Map<string, InternalRecord>();
   private readonly completedIds: string[] = [];
   private readonly bufferBytes: number;
   private readonly maxConcurrent: number;
 
   constructor(opts: ManagerOptions = {}) {
+    super();
     this.bufferBytes = opts.bufferBytes ?? DEFAULT_BUFFER_BYTES;
     this.maxConcurrent = opts.maxConcurrent ?? DEFAULT_MAX_CONCURRENT;
+  }
+
+  /**
+   * Subscribe to command completions (success or failure) — the push signal the
+   * CLI listens on to wake an idle agent. Returns an unsubscribe function.
+   */
+  onComplete(listener: (record: CommandRecord) => void): () => void {
+    this.on(COMPLETE_EVENT, listener);
+    return () => {
+      this.off(COMPLETE_EVENT, listener);
+    };
+  }
+
+  /** Mark a finished command: queue it for the notifier and emit `complete`. */
+  private markComplete(record: InternalRecord): void {
+    this.completedIds.push(record.id);
+    this.emit(COMPLETE_EVENT, publicView(record));
   }
 
   start(input: StartInput): { id: string } {
@@ -160,7 +182,7 @@ export class LongRunningCommandManager {
         buf,
       };
       this.records.set(id, record);
-      this.completedIds.push(id);
+      this.markComplete(record);
       return { id };
     }
 
@@ -185,7 +207,7 @@ export class LongRunningCommandManager {
         record.status = status;
         record.result = result;
         record.child = undefined;
-        this.completedIds.push(id);
+        this.markComplete(record);
       },
       (err: ExecaError) => {
         const signal = (err.signal ?? null) as NodeJS.Signals | null;
@@ -195,7 +217,7 @@ export class LongRunningCommandManager {
         record.status = status;
         record.result = result;
         record.child = undefined;
-        this.completedIds.push(id);
+        this.markComplete(record);
       },
     );
 
@@ -206,6 +228,11 @@ export class LongRunningCommandManager {
     const out = this.completedIds.slice();
     this.completedIds.length = 0;
     return out;
+  }
+
+  /** True when commands have finished but their completion is not yet drained. */
+  hasPending(): boolean {
+    return this.completedIds.length > 0;
   }
 
   get(id: string): CommandRecord | undefined {

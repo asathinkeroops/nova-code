@@ -475,7 +475,7 @@ const tools: Record<string, ToolStr> = {
       return okLine(formatBytes(contentToString(result.content).length));
     },
   },
-  runLongRunningCommand: {
+  runInBackground: {
     inline: true,
     use: (input) => {
       const cmd = typeof input.command === "string" ? input.command : JSON.stringify(input);

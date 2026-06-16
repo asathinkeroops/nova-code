@@ -3,8 +3,8 @@ import type { MessageParam } from "@nova/core";
 
 /**
  * User-typed prompts for InputBox ↑/↓ recall, oldest first. Only plain-string
- * user messages survive — tool_results, todo/task reminders, and long-running
- * notifiers all use block-array content, and the auto-compaction summary
+ * user messages survive — tool_results, todo/task reminders, and background
+ * command notifiers all use block-array content, and the auto-compaction summary
  * (a string message) is dropped by its `[Conversation compacted …]` header.
  */
 export function userInputHistory(messages: MessageParam[]): string[] {

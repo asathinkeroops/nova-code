@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_MODELS,
   DEFAULT_SANDBOX_ALLOW_WRITE,
   hooksConfigSchema,
   isDangerousBash,
@@ -10,6 +11,8 @@ import {
   loadSettings,
   mergeHooks,
   parseSettings,
+  resolveContextWindowTokens,
+  resolveModelId,
   settingsSchema,
   type HooksConfig,
 } from "./config.js";
@@ -61,6 +64,80 @@ describe("settingsSchema", () => {
         permissions: { defaultEffect: "nope", rules: [] },
       }),
     ).toThrow();
+  });
+});
+
+describe("model tiers", () => {
+  it("defaults models to the built-in flash/pro tiers", () => {
+    expect(parseSettings({}).models).toEqual({ ...DEFAULT_MODELS });
+  });
+
+  it("a provided models table replaces the default wholesale", () => {
+    const s = parseSettings({ models: { mini: "some-mini" } });
+    expect(s.models).toEqual({ mini: "some-mini" });
+  });
+
+  it("accepts bare-id and (reserved) profile-object entries", () => {
+    const s = parseSettings({
+      models: {
+        flash: "deepseek-v4-flash",
+        pro: { id: "deepseek-v4-pro", maxTokens: 8192 },
+      },
+    });
+    expect(s.models.flash).toBe("deepseek-v4-flash");
+    expect(s.models.pro).toEqual({ id: "deepseek-v4-pro", maxTokens: 8192 });
+  });
+
+  it("rejects a profile object missing id", () => {
+    expect(() => settingsSchema.parse({ models: { pro: { maxTokens: 8192 } } })).toThrow();
+  });
+
+  it("resolves an alias key to its concrete id", () => {
+    const s = parseSettings({ models: { flash: "deepseek-v4-flash" } });
+    expect(resolveModelId(s, "flash")).toBe("deepseek-v4-flash");
+  });
+
+  it("resolves the id of a profile-object entry", () => {
+    const s = parseSettings({ models: { pro: { id: "deepseek-v4-pro" } } });
+    expect(resolveModelId(s, "pro")).toBe("deepseek-v4-pro");
+  });
+
+  it("passes an unknown name through unchanged (bare id)", () => {
+    const s = parseSettings({ models: { flash: "deepseek-v4-flash" } });
+    expect(resolveModelId(s, "claude-sonnet-4-5")).toBe("claude-sonnet-4-5");
+  });
+
+  it("accepts a per-tier contextWindowTokens override", () => {
+    const s = parseSettings({
+      models: { pro: { id: "deepseek-v4-pro", contextWindowTokens: 500_000 } },
+    });
+    const entry = s.models.pro;
+    expect(typeof entry === "object" && entry.contextWindowTokens).toBe(500_000);
+  });
+});
+
+describe("resolveContextWindowTokens", () => {
+  const base = (extra: Record<string, unknown> = {}) =>
+    parseSettings({ contextWindowTokens: 256_000, ...extra });
+
+  it("falls back to the top-level value when the tier has no override", () => {
+    const s = base({ models: { flash: "deepseek-v4-flash" } });
+    expect(resolveContextWindowTokens(s, "flash")).toBe(256_000);
+  });
+
+  it("uses the tier's own contextWindowTokens when set (by tier key)", () => {
+    const s = base({ models: { pro: { id: "deepseek-v4-pro", contextWindowTokens: 800_000 } } });
+    expect(resolveContextWindowTokens(s, "pro")).toBe(800_000);
+  });
+
+  it("matches a profile tier by resolved id when given a bare model id", () => {
+    const s = base({ models: { pro: { id: "deepseek-v4-pro", contextWindowTokens: 800_000 } } });
+    expect(resolveContextWindowTokens(s, "deepseek-v4-pro")).toBe(800_000);
+  });
+
+  it("falls back for an unknown name with no matching tier", () => {
+    const s = base({ models: { pro: { id: "deepseek-v4-pro", contextWindowTokens: 800_000 } } });
+    expect(resolveContextWindowTokens(s, "claude-sonnet-4-5")).toBe(256_000);
   });
 });
 

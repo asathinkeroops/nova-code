@@ -129,7 +129,7 @@ export interface FileAccessLedger {
 
 /**
  * Optional OS-level sandbox bridge. When present on a ToolContext, tools that
- * spawn a subprocess (bash, runLongRunningCommand) route their command through
+ * spawn a subprocess (bash, runInBackground) route their command through
  * `wrapCommand` before spawning, so it executes inside the platform sandbox
  * (macOS Seatbelt / Linux bubblewrap). Injected by the CLI; @nova/core and
  * @nova/tools never import the sandbox SDK directly, keeping those layers

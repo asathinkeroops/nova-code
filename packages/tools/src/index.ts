@@ -68,8 +68,7 @@ export {
 } from "./builtin/task/store.js";
 export { makeTaskReminder, type TaskReminderOptions } from "./builtin/task/reminder.js";
 export {
-  runLongRunningCommandTool,
-  checkLongRunningCommandTool,
+  runInBackgroundTool,
   createLongRunningCommandTools,
   makeLongRunningNotifier,
   type LongRunningNotifierHook,

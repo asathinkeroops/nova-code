@@ -19,16 +19,17 @@ const inputSchema = z
   })
   .strict();
 
-export function runLongRunningCommandTool(
+export function runInBackgroundTool(
   manager: LongRunningCommandManager,
 ): ToolHandler {
   return {
     definition: {
-      name: "runLongRunningCommand",
+      name: "runInBackground",
       description:
         "Spawn a shell command in the background and return its id immediately. " +
         "Use this for dev servers, watchers, or any work that should keep running " +
-        "across multiple tool calls. Poll completion with checkLongRunningCommand. " +
+        "across multiple tool calls. When the command finishes, its captured " +
+        "output is delivered to you automatically — you do not need to poll. " +
         "Children are killed when the nova session exits.",
       inputSchema,
     },
@@ -56,7 +57,7 @@ export function runLongRunningCommandTool(
             : err instanceof Error
               ? err.message
               : String(err);
-        return { output: `runLongRunningCommand failed: ${msg}`, isError: true };
+        return { output: `runInBackground failed: ${msg}`, isError: true };
       }
     },
   };
