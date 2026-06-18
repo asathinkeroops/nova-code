@@ -113,7 +113,7 @@ function formatModel(b: BannerProps): string {
 
 function renderBanner(b: BannerProps, width: number): string {
   void width;
-  const lines: string[] = [];
+  const lines: string[] = [""];
   lines.push(`${accent(">_")} Nova Code ${dim(`(v${b.version})`)}`);
   lines.push("");
   LOGO.forEach((l, i) => lines.push(bannerLine(l, i)));

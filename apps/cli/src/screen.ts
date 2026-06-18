@@ -17,6 +17,7 @@ import { type BoxedInputOptions, type SlashCommand } from "./ui/input-box.js";
 import { copyToClipboard } from "./ui/clipboard.js";
 import { attachFilteredStdin } from "./ui/mouse.js";
 import { extractSelection } from "./ui/selection.js";
+import { H_PAD } from "./ui/viewport.js";
 import { type SetupEntry, type SetupState } from "./ui/setup-view.js";
 import { type PermissionMode } from "./permissions.js";
 import {
@@ -115,13 +116,14 @@ export class Screen {
     //
     // Mouse coords arrive 1-indexed (terminal convention) and reference
     // absolute terminal rows. The viewport always starts at row 1 (alt
-    // screen), so visibleLines index = row - 1. Selection state lives in
-    // 0-indexed viewport coords for direct use during render.
+    // screen), so visibleLines index = row - 1. Column is additionally
+    // offset by the viewport's horizontal padding (H_PAD) so selection
+    // coordinates map to the pre-wrapped content width.
     const filtered = attachFilteredStdin({
       onWheel: ({ delta }) => this.store.getState().scrollBy(delta),
       onSelectStart: ({ row, col }) => {
         const r = Math.max(0, row - 1);
-        const c = Math.max(0, col - 1);
+        const c = Math.max(0, col - 1 - H_PAD);
         this.store.getState().setSelection({
           startRow: r,
           startCol: c,
@@ -135,7 +137,7 @@ export class Screen {
         this.store.getState().setSelection({
           ...cur,
           endRow: Math.max(0, row - 1),
-          endCol: Math.max(0, col - 1),
+          endCol: Math.max(0, col - 1 - H_PAD),
         });
       },
       onSelectEnd: ({ row, col }, moved) => {
@@ -149,7 +151,7 @@ export class Screen {
           startRow: cur.startRow,
           startCol: cur.startCol,
           endRow: Math.max(0, row - 1),
-          endCol: Math.max(0, col - 1),
+          endCol: Math.max(0, col - 1 - H_PAD),
         }).trim();
         if (text.length === 0) return;
         if (copyToClipboard(text)) {

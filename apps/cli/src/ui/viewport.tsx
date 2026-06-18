@@ -23,6 +23,10 @@ import { MIN_VISIBLE_TODOS, TodoFooter, todoFooterVisible } from "./todo-footer.
 
 const MIN_ROWS = 3;
 
+/** Columns of horizontal padding on each side of the message flow. Exported
+ *  so the mouse-selection coordinate mapping in screen.ts can account for it. */
+export const H_PAD = 2;
+
 export interface ViewportProps {
   store: AppStoreApi;
   /** Available vertical rows for the viewport region (text + in-stream chrome). */
@@ -106,6 +110,10 @@ export function Viewport({ store, rows, resolveModal }: ViewportProps): React.Re
     [baseItems, liveItems],
   );
 
+  // Content width accounting for horizontal padding so text wraps before the
+  // terminal edge instead of butting against it.
+  const innerWidth = Math.max(1, termCols - H_PAD * 2);
+
   // Reserve rows for in-stream chrome (spinner / modal / footers) that
   // render as React components below the text region but inside the same
   // viewport box. Conservative estimates — over-reservation just shows a
@@ -118,11 +126,11 @@ export function Viewport({ store, rows, resolveModal }: ViewportProps): React.Re
   // than the viewport (very short terminal) is the only case this bites.
   const chromeRows = Math.min(
     usable - 1,
-    chromeRowsFor(spinner, inStreamModal, todos.length, tasks.length, termCols),
+    chromeRowsFor(spinner, inStreamModal, todos.length, tasks.length, innerWidth),
   );
   const textRows = Math.max(1, usable - chromeRows);
   const effectiveOffset = stickToBottom ? Number.MAX_SAFE_INTEGER : scrollOffset;
-  const slice = sliceLines(items, termCols, effectiveOffset, textRows);
+  const slice = sliceLines(items, innerWidth, effectiveOffset, textRows);
 
   React.useEffect(() => {
     reportViewportMetrics(slice.totalLines, textRows);
@@ -179,7 +187,7 @@ export function Viewport({ store, rows, resolveModal }: ViewportProps): React.Re
     // the empty space moves from above the prompt to below it.
     if (inStreamModal.kind === "approval") {
       return (
-        <Box flexDirection="column" flexGrow={1} flexShrink={1} overflowY="hidden">
+        <Box flexDirection="column" flexGrow={1} flexShrink={1} overflowY="hidden" paddingX={H_PAD}>
           {displayLines.length > 0 ? <Text>{displayLines.join("\n")}</Text> : null}
           {modalEl}
           <Box flexGrow={1} />
@@ -191,7 +199,7 @@ export function Viewport({ store, rows, resolveModal }: ViewportProps): React.Re
     // history and the modal, so opening one doesn't shift existing content down
     // — the modal just claims the empty space below.
     return (
-      <Box flexDirection="column" flexGrow={1} flexShrink={1} overflowY="hidden">
+      <Box flexDirection="column" flexGrow={1} flexShrink={1} overflowY="hidden" paddingX={H_PAD}>
         {displayLines.length > 0 ? <Text>{displayLines.join("\n")}</Text> : null}
         <Box flexGrow={1} />
         {modalEl}
@@ -199,7 +207,7 @@ export function Viewport({ store, rows, resolveModal }: ViewportProps): React.Re
     );
   }
   return (
-    <Box flexDirection="column" flexGrow={1} flexShrink={1} overflowY="hidden">
+    <Box flexDirection="column" flexGrow={1} flexShrink={1} overflowY="hidden" paddingX={H_PAD}>
       {displayLines.length > 0 ? <Text>{displayLines.join("\n")}</Text> : null}
       {/* A visible footer carries its own spinner and replaces the standalone
           one; route on whether either footer will actually render (>= 2 items),
