@@ -508,14 +508,83 @@ describe("agentLoop · stop_reason state machine", () => {
     }
   });
 
-  it("throws LoopTerminatedError on max_tokens", async () => {
+  it("throws LoopTerminatedError on max_tokens when continuation is disabled", async () => {
     const { hooks } = makeHooks();
     const model = mockModel([
       { content: [{ type: "text", text: "incomplete" }], stopReason: "max_tokens" },
     ]);
+    // No maxTokensContinuations → cap defaults to 0 → hard-stop on first truncation.
     await expect(
       agentLoop({ ...baseOpts(hooks), model, executeTool: makeExecutor() }),
     ).rejects.toBeInstanceOf(LoopTerminatedError);
+  });
+
+  it("re-prompts and continues after a max_tokens truncation", async () => {
+    const { hooks, events } = makeHooks();
+    const model = mockModel([
+      { content: [{ type: "text", text: "half a thought" }], stopReason: "max_tokens" },
+      { content: [{ type: "text", text: "the rest of it" }], stopReason: "end_turn" },
+    ]);
+    const result = await agentLoop({
+      ...baseOpts(hooks),
+      maxTokensContinuations: 2,
+      model,
+      executeTool: makeExecutor(),
+    });
+    expect(result.stopReason).toBe("end_turn");
+    // The loop injected a continuation user turn between the two assistant turns.
+    const continuation = result.messages.find(
+      (m) =>
+        m.role === "user" &&
+        typeof m.content === "string" &&
+        m.content.includes("cut off"),
+    );
+    expect(continuation).toBeDefined();
+    // No terminating stop was emitted for the truncation itself.
+    const stops = events.filter((e) => e.kind === "post_stop");
+    expect(stops).toHaveLength(1);
+    expect((stops[0]!.payload as { reason: string }).reason).toBe("end_turn");
+  });
+
+  it("gives up after maxTokensContinuations consecutive truncations", async () => {
+    const { hooks } = makeHooks();
+    const model = mockModel([
+      { content: [{ type: "text", text: "a" }], stopReason: "max_tokens" },
+      { content: [{ type: "text", text: "b" }], stopReason: "max_tokens" },
+      { content: [{ type: "text", text: "c" }], stopReason: "max_tokens" },
+    ]);
+    // cap = 2 → grant 2 continuations (calls 2 and 3), then the 3rd truncation
+    // exhausts the budget and terminates.
+    await expect(
+      agentLoop({
+        ...baseOpts(hooks),
+        maxTokensContinuations: 2,
+        model,
+        executeTool: makeExecutor(),
+      }),
+    ).rejects.toBeInstanceOf(LoopTerminatedError);
+  });
+
+  it("runs tool calls that precede a max_tokens cut and resets the counter", async () => {
+    const { hooks } = makeHooks();
+    const useId = "tu_trunc";
+    const model = mockModel([
+      // Truncated, but a complete tool_use landed before the cut → run it.
+      {
+        content: [{ type: "tool_use", id: useId, name: "echo", input: { msg: "hi" } }],
+        stopReason: "max_tokens",
+      },
+      { content: [{ type: "text", text: "done" }], stopReason: "end_turn" },
+    ]);
+    const exec = vi.fn(makeExecutor());
+    const result = await agentLoop({
+      ...baseOpts(hooks),
+      maxTokensContinuations: 1,
+      model,
+      executeTool: exec,
+    });
+    expect(exec).toHaveBeenCalledTimes(1);
+    expect(result.stopReason).toBe("end_turn");
   });
 
   it("throws LoopTerminatedError on refusal", async () => {

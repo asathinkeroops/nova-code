@@ -3,6 +3,7 @@ import { extname, resolve } from "node:path";
 import { z } from "zod";
 import type { ToolHandler } from "@nova/core";
 import * as XLSX from "xlsx";
+import { PATH_ALIASES, withAliases } from "../schema.js";
 
 // Secondary safety budget on the size of a single response, measured in JS
 // string length (UTF-16 code units ≈ characters), NOT disk bytes. The model-
@@ -32,31 +33,37 @@ const LINE_NO_WIDTH = 6;
 // realistically encounter (xls, xlsx, xlsm, xlsb, ods).
 const EXCEL_EXTENSIONS = new Set([".xlsx", ".xls", ".xlsm", ".xlsb", ".ods"]);
 
-const inputSchema = z.object({
-  path: z.string().min(1).describe("Absolute or cwd-relative file path."),
-  offset: z
-    .number()
-    .int()
-    .min(1)
-    .optional()
-    .describe(
-      "1-based line number to start reading from (default 1). To continue a large file, pass the offset shown in the previous call's truncation note.",
-    ),
-  limit: z
-    .number()
-    .int()
-    .positive()
-    .optional()
-    .describe(
-      `Max number of lines to return. The response is also capped at ~${MAX_CHARS} characters; a single line longer than that is truncated with a marker (use grep/sed/bash to read the remainder).`,
-    ),
-  sheet: z
-    .string()
-    .optional()
-    .describe(
-      "For Excel files (.xlsx/.xls/.ods): sheet name or 1-based sheet number. Default: first sheet.",
-    ),
-});
+// `withAliases` lets the model name the path field `filePath`/`file_path`/`file`
+// instead of `path` without failing validation — a frequent DeepSeek slip,
+// especially on paginated reads. See packages/tools/src/schema.ts for the why.
+const inputSchema = withAliases(
+  z.object({
+    path: z.string().min(1).describe("Absolute or cwd-relative file path."),
+    offset: z
+      .number()
+      .int()
+      .min(1)
+      .optional()
+      .describe(
+        "1-based line number to start reading from (default 1). To continue a large file, pass the offset shown in the previous call's truncation note.",
+      ),
+    limit: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe(
+        `Max number of lines to return. The response is also capped at ~${MAX_CHARS} characters; a single line longer than that is truncated with a marker (use grep/sed/bash to read the remainder).`,
+      ),
+    sheet: z
+      .string()
+      .optional()
+      .describe(
+        "For Excel files (.xlsx/.xls/.ods): sheet name or 1-based sheet number. Default: first sheet.",
+      ),
+  }),
+  { path: PATH_ALIASES },
+);
 
 // ── plain-text path (existing behaviour) ────────────────────────────────────
 
@@ -275,9 +282,7 @@ async function readExcel(abs: string, input: ExcelInput, path: string) {
 
   // Build the sheet-hint for continuation calls if needed.
   const sheetHint =
-    input.sheet !== undefined || wb.SheetNames.length > 1
-      ? `, sheet="${sheetName}"`
-      : "";
+    input.sheet !== undefined || wb.SheetNames.length > 1 ? `, sheet="${sheetName}"` : "";
 
   if (endIdx < totalRows) {
     return {

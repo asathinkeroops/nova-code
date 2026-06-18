@@ -64,8 +64,8 @@ import { loadAgents } from "./agents.js";
 import {
   handleClear,
   handleCommands,
-  handleCommit,
   handleCompact,
+  handleContext,
   handleDiff,
   handleHelp,
   handleInit,
@@ -409,13 +409,6 @@ function registerBuiltinSlashCommands(ctx: CliContext): void {
     run: (_c, args) => handlePlan(args),
   });
   ctx.registry.register({
-    name: "commit",
-    description: "review pending changes and create a git commit",
-    argHint: "[guidance…]",
-    source: { kind: "builtin" },
-    run: (_c, args) => handleCommit(args),
-  });
-  ctx.registry.register({
     name: "diff",
     description: "browse uncommitted changes in a modal: file list → per-file diff",
     argHint: "[pathspec]",
@@ -503,6 +496,15 @@ function registerBuiltinSlashCommands(ctx: CliContext): void {
     source: { kind: "builtin" },
     run: () => {
       handleUsage(ctx);
+      return handled;
+    },
+  });
+  ctx.registry.register({
+    name: "context",
+    description: "visualize the context window: what fills it, by category",
+    source: { kind: "builtin" },
+    run: () => {
+      handleContext(ctx);
       return handled;
     },
   });
@@ -1007,6 +1009,7 @@ export async function createContext(
     getSettings: () => ({
       maxTokens: ctx.settings.maxTokens,
       maxTurns: ctx.settings.maxTurns,
+      maxTokensContinuations: ctx.settings.maxTokensContinuations,
       noTranscript: ctx.noTranscript,
       toolConcurrency: ctx.settings.toolConcurrency,
     }),
@@ -1070,9 +1073,17 @@ export async function createContext(
             });
           }
         },
+        // Fold the sub-agent's token spend into the parent session's cumulative
+        // counters so the status line, `/usage`, and cost include it. Unlike the
+        // parent's own `post_request` hook this does NOT touch `setContextTokens`
+        // — the sub-agent's prompt is a separate context, not the main window's
+        // fill level. Resume recovery reads the sub-agent transcripts too (see
+        // restoreUsageFromTranscript), so this stays consistent after `--resume`.
+        onUsage: (usage) => ctx.screen.addUsage(usage),
         getSettings: () => ({
           maxTokens: ctx.settings.subagent.maxTokens,
           maxTurns: ctx.settings.subagent.maxTurns,
+          maxTokensContinuations: ctx.settings.maxTokensContinuations,
           noTranscript: ctx.noTranscript,
           toolConcurrency: ctx.settings.toolConcurrency,
         }),
@@ -1190,7 +1201,9 @@ export async function createContext(
       ctx.screen.setMessages(msgs);
       // Rebuild the session-cumulative token counters (cache hit rate / `/usage`)
       // from the transcript so they survive a restart.
-      ctx.screen.seedUsage(await restoreUsageFromTranscript(session.transcriptPath));
+      ctx.screen.seedUsage(
+        await restoreUsageFromTranscript(session.transcriptPath, join(session.dir, "subagents")),
+      );
       logger.info({ count: msgs.length }, "messages restored");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

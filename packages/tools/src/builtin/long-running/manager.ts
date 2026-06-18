@@ -23,6 +23,23 @@ export interface ManagerOptions {
   maxConcurrent?: number;
 }
 
+export interface KillResult {
+  id: string;
+  command: string;
+  /** True when the command had already finished, so the kill was a no-op. */
+  alreadyExited: boolean;
+}
+
+export interface ReadResult {
+  id: string;
+  command: string;
+  status: CommandStatus;
+  /** New output produced since the previous read (this read consumes it). */
+  output: string;
+  /** Bytes that scrolled out of the ring buffer before this read saw them. */
+  droppedBytes: number;
+}
+
 const DEFAULT_BUFFER_BYTES = 1_000_000;
 const DEFAULT_MAX_CONCURRENT = 8;
 const DISPOSE_SIGKILL_DELAY_MS = 1500;
@@ -44,6 +61,10 @@ interface InternalRecord extends CommandRecord {
   buf: OutputBuffer;
   child?: ResultPromise;
   lifecycle?: Promise<void>;
+  /** Total produced-bytes already returned by `read` (incremental cursor). */
+  readCursor: number;
+  /** Exit/termination marker (unbracketed) for error completions, if any. */
+  reason?: string;
 }
 
 function generateId(): string {
@@ -97,7 +118,7 @@ function finalize(
   signal: NodeJS.Signals | null,
   exitCode: number | null,
   errMsg: string | undefined,
-): { status: CommandStatus; result: string } {
+): { status: CommandStatus; result: string; reason?: string } {
   const output = renderOutput(buf);
   const isError = !!signal || !!errMsg || (exitCode !== null && exitCode !== 0);
   if (!isError) {
@@ -109,7 +130,7 @@ function finalize(
       ? `terminated by signal ${signal}`
       : `exited with code ${exitCode}`;
   const result = output ? `${output}\n[${reason}]` : `[${reason}]`;
-  return { status: "error", result };
+  return { status: "error", result, reason };
 }
 
 /** Event name carrying a finished command's public record. */
@@ -144,7 +165,7 @@ export class LongRunningCommandManager extends EventEmitter {
     this.emit(COMPLETE_EVENT, publicView(record));
   }
 
-  start(input: StartInput): { id: string } {
+  start(input: StartInput): { id: string; pid: number } {
     const running = Array.from(this.records.values()).filter(
       (r) => r.status === "running",
     );
@@ -172,7 +193,7 @@ export class LongRunningCommandManager extends EventEmitter {
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      const { status, result } = finalize(buf, null, null, msg);
+      const { status, result, reason } = finalize(buf, null, null, msg);
       const record: InternalRecord = {
         id,
         pid: -1,
@@ -180,10 +201,12 @@ export class LongRunningCommandManager extends EventEmitter {
         status,
         result,
         buf,
+        readCursor: 0,
+        ...(reason !== undefined ? { reason } : {}),
       };
       this.records.set(id, record);
       this.markComplete(record);
-      return { id };
+      return { id, pid: record.pid };
     }
 
     const cap = this.bufferBytes;
@@ -196,6 +219,7 @@ export class LongRunningCommandManager extends EventEmitter {
       status: "running",
       buf,
       child,
+      readCursor: 0,
     };
     this.records.set(id, record);
 
@@ -203,9 +227,10 @@ export class LongRunningCommandManager extends EventEmitter {
       (res) => {
         const signal = (res.signal ?? null) as NodeJS.Signals | null;
         const exitCode = res.exitCode ?? null;
-        const { status, result } = finalize(buf, signal, exitCode, undefined);
+        const { status, result, reason } = finalize(buf, signal, exitCode, undefined);
         record.status = status;
         record.result = result;
+        if (reason !== undefined) record.reason = reason;
         record.child = undefined;
         this.markComplete(record);
       },
@@ -213,15 +238,54 @@ export class LongRunningCommandManager extends EventEmitter {
         const signal = (err.signal ?? null) as NodeJS.Signals | null;
         const exitCode = err.exitCode ?? null;
         const msg = err.shortMessage ?? err.message ?? String(err);
-        const { status, result } = finalize(buf, signal, exitCode, msg);
+        const { status, result, reason } = finalize(buf, signal, exitCode, msg);
         record.status = status;
         record.result = result;
+        if (reason !== undefined) record.reason = reason;
         record.child = undefined;
         this.markComplete(record);
       },
     );
 
-    return { id };
+    return { id, pid: record.pid };
+  }
+
+  /**
+   * Terminate a running command by id (SIGTERM, escalating to SIGKILL). The
+   * child's lifecycle handler still fires on exit, so the terminated output is
+   * delivered through the normal completion path. Throws if the id is unknown;
+   * a no-op (with `alreadyExited: true`) if the command already finished.
+   */
+  kill(id: string): KillResult {
+    const r = this.records.get(id);
+    if (!r) {
+      throw new LongRunningCommandError(`no background command with id ${id}`);
+    }
+    if (r.status !== "running" || !r.child) {
+      return { id: r.id, command: r.command, alreadyExited: true };
+    }
+
+    const child = r.child;
+    try {
+      child.kill("SIGTERM");
+    } catch {
+      // best-effort
+    }
+
+    const sigkillTimer = setTimeout(() => {
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        // best-effort
+      }
+    }, DISPOSE_SIGKILL_DELAY_MS);
+    // Don't let the escalation timer keep the process alive on its own.
+    sigkillTimer.unref?.();
+    void (r.lifecycle ?? Promise.resolve()).finally(() =>
+      clearTimeout(sigkillTimer),
+    );
+
+    return { id: r.id, command: r.command, alreadyExited: false };
   }
 
   drainNotifications(): string[] {
@@ -233,6 +297,60 @@ export class LongRunningCommandManager extends EventEmitter {
   /** True when commands have finished but their completion is not yet drained. */
   hasPending(): boolean {
     return this.completedIds.length > 0;
+  }
+
+  /**
+   * Consume the output produced since the last `read` for this command. The
+   * buffer is a fixed-size ring, so if output scrolled past the cap between
+   * reads the dropped byte count is reported rather than silently lost. Works
+   * for running and finished commands alike. Throws on an unknown id.
+   */
+  read(id: string): ReadResult {
+    const r = this.records.get(id);
+    if (!r) {
+      throw new LongRunningCommandError(`no background command with id ${id}`);
+    }
+    const buf = r.buf;
+    // The live buffer holds produced-bytes [truncated, produced); anything
+    // before `truncated` has already scrolled out.
+    const produced = buf.truncated + buf.bytes;
+    const droppedBytes = Math.max(0, buf.truncated - r.readCursor);
+    const liveStart = Math.max(r.readCursor, buf.truncated);
+    const sliceStart = liveStart - buf.truncated;
+    const output = Buffer.concat(buf.chunks)
+      .subarray(sliceStart)
+      .toString("utf8");
+    r.readCursor = produced;
+    return {
+      id: r.id,
+      command: r.command,
+      status: r.status,
+      output,
+      droppedBytes,
+    };
+  }
+
+  /**
+   * Build the completion payload for the notifier: the output not yet consumed
+   * by `read` (so already-streamed content is not re-pushed), prefixed with a
+   * dropped-bytes notice and suffixed with the exit/termination marker. Returns
+   * undefined for an unknown id. Advances the read cursor like `read`.
+   */
+  takeCompletion(
+    id: string,
+  ): { id: string; command: string; status: CommandStatus; body: string } | undefined {
+    const r = this.records.get(id);
+    if (!r) return undefined;
+    const { output, droppedBytes } = this.read(id);
+    let body = output;
+    if (droppedBytes > 0) {
+      body = `[dropped ${droppedBytes} earlier bytes]\n${body}`;
+    }
+    if (r.reason) {
+      body = body ? `${body}\n[${r.reason}]` : `[${r.reason}]`;
+    }
+    if (!body) body = "[no new output]";
+    return { id: r.id, command: r.command, status: r.status, body };
   }
 
   get(id: string): CommandRecord | undefined {

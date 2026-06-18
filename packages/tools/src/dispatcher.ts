@@ -41,10 +41,7 @@ export interface DispatcherDeps {
 export function createDispatcher(deps: DispatcherDeps): ToolExecutor {
   const { registry, logger, invariants } = deps;
 
-  return async function dispatch(
-    use: ToolUseBlock,
-    ctx: ToolContext,
-  ): Promise<ToolResultBlock> {
+  return async function dispatch(use: ToolUseBlock, ctx: ToolContext): Promise<ToolResultBlock> {
     logger?.debug({ tool: use.name, id: use.id }, "tool dispatched");
 
     const errorResult = (content: string): ToolResultBlock => ({
@@ -66,8 +63,16 @@ export function createDispatcher(deps: DispatcherDeps): ToolExecutor {
       );
     }
 
+    // Everything downstream must see the validated, normalized input — not the
+    // raw `use.input`. A schema may rewrite keys before validation (e.g. the
+    // `path` field accepts a `filePath`/`file_path` alias via withAliases), and
+    // the invariants layer reads `input.path` directly: handing it the raw input
+    // would silently skip read-before-edit / mtime-drift gating whenever the
+    // model used an alias — a write/edit could then clobber an unread file.
+    const normalizedUse: ToolUseBlock = { ...use, input: parsed.data as Record<string, unknown> };
+
     if (invariants) {
-      const check = await invariants.preCheck(use, ctx);
+      const check = await invariants.preCheck(normalizedUse, ctx);
       if (!check.ok) {
         logger?.warn({ tool: use.name, reason: check.message }, "invariant violation");
         return errorResult(check.message);
@@ -84,7 +89,7 @@ export function createDispatcher(deps: DispatcherDeps): ToolExecutor {
       };
       if (invariants) {
         try {
-          await invariants.postCommit(use, ctx, Boolean(result.isError));
+          await invariants.postCommit(normalizedUse, ctx, Boolean(result.isError));
         } catch (err) {
           // Ledger bookkeeping should never break the tool result the model
           // sees. Log and move on.

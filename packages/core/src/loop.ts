@@ -53,6 +53,17 @@ export interface AgentLoopOptions {
    * The product default (3) is supplied by the caller; core stays policy-free.
    */
   toolConcurrency?: number;
+  /**
+   * When a response is truncated by the per-response output cap
+   * (`stop_reason: "max_tokens"`) with no tool calls, the loop re-prompts the
+   * model to continue from where it left off instead of terminating. This caps
+   * how many *consecutive* such continuations are allowed before the loop gives
+   * up and throws `LoopTerminatedError("max_tokens")`. The counter resets to 0
+   * on any turn that makes progress (produces tool calls or finishes cleanly).
+   * `undefined` or `0` disables continuation — the loop hard-stops on the first
+   * truncation (legacy behavior).
+   */
+  maxTokensContinuations?: number;
 }
 
 export interface LoopResult {
@@ -72,6 +83,8 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
   let messages = [...opts.messages];
   let turn = 0;
   let forcedFinalTurn = false;
+  // Consecutive max_tokens continuations granted (see `maxTokensContinuations`).
+  let truncationContinuations = 0;
   const totalUsage = {
     inputTokens: 0,
     outputTokens: 0,
@@ -199,10 +212,44 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
     }
 
     const toolUses = extractToolUses(res.content);
+
+    // max_tokens: the response hit the per-response output cap. If the cut
+    // landed *after* one or more complete tool_use blocks, fall through and run
+    // them (the model made progress — let the normal tool path drive the next
+    // turn). Otherwise it was truncated mid-text/thinking: re-prompt the model
+    // to continue, bounded by maxTokensContinuations so a model that never
+    // finishes can't spin forever. When the budget is exhausted (or disabled)
+    // we surface the original max_tokens termination.
+    if (decision.kind === "truncated" && toolUses.length === 0) {
+      const cap = opts.maxTokensContinuations ?? 0;
+      if (truncationContinuations >= cap) {
+        await hooks.runAdvisory("post_stop", {
+          reason: decision.reason,
+          message: decision.message,
+        });
+        throw new LoopTerminatedError(decision.reason, decision.message);
+      }
+      truncationContinuations++;
+      messages = appendMessage(
+        messages,
+        userText(
+          "Your previous response was cut off because it reached the output length limit. " +
+            "Continue exactly from where you left off — do not repeat what you already wrote.",
+        ),
+      );
+      await hooks.runAdvisory("post_messages", { messages });
+      continue;
+    }
+
     if (toolUses.length === 0) {
       await hooks.runAdvisory("post_stop", { reason: "end_turn" });
       return { messages, turns: turn, stopReason: "end_turn", totalUsage };
     }
+
+    // The turn produced tool calls — real progress, so clear the consecutive
+    // truncation counter even if this very turn was itself truncated after the
+    // tool blocks.
+    truncationContinuations = 0;
 
     // Two-phase tool handling (see prior comment block, unchanged behavior).
     type Phase1Slot =

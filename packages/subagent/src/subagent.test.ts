@@ -139,6 +139,35 @@ describe("createSubAgentTool", () => {
     expect(result.output).toBe("final report");
   });
 
+  it("reports the sub-agent's token usage to onUsage", async () => {
+    const seen: ToolDefinition[][] = [];
+    // Two model calls (a tool_use turn then a final turn), each billing 1+1.
+    const model = recordingModel(
+      [
+        {
+          content: [{ type: "tool_use", id: "e1", name: "echo", input: { msg: "hi" } }],
+          stopReason: "tool_use",
+          usage: { inputTokens: 3, outputTokens: 2, cacheReadInputTokens: 7 },
+        },
+        textTurn("final report"),
+      ],
+      seen,
+    );
+    const onUsage = vi.fn();
+    const tool = createSubAgentTool(makeDeps(model, tmp, { onUsage }));
+
+    await tool.run({ description: "x", prompt: "y", type: "general-purpose" }, { cwd: tmp });
+
+    expect(onUsage).toHaveBeenCalledTimes(1);
+    // Summed across both requests: input 3+1, output 2+1, cacheRead 7+0.
+    expect(onUsage).toHaveBeenCalledWith({
+      inputTokens: 4,
+      outputTokens: 3,
+      cacheReadInputTokens: 7,
+      cacheCreationInputTokens: 0,
+    });
+  });
+
   it("hides createSubAgent from the child's tool list (no recursion)", async () => {
     const seen: ToolDefinition[][] = [];
     const model = recordingModel([textTurn("ok")], seen);

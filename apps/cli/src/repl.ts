@@ -144,9 +144,6 @@ async function runTurn(ctx: CliContext, input: string): Promise<boolean> {
   ctx.screen.setEscHandler(() => ctx.agent.abort(new Error("interrupted by user")));
   try {
     const result = await ctx.agent.runTurn(input);
-    if (result.aborted) {
-      ctx.screen.card(dim("interrupted by user"), { title: "ESC" });
-    }
     return result.ok;
   } finally {
     ctx.screen.setEscHandler(null);
@@ -163,9 +160,6 @@ async function runContinuationTurn(ctx: CliContext): Promise<boolean> {
   ctx.screen.setEscHandler(() => ctx.agent.abort(new Error("interrupted by user")));
   try {
     const result = await ctx.agent.continueTurn();
-    if (result.aborted) {
-      ctx.screen.card(dim("interrupted by user"), { title: "ESC" });
-    }
     return result.ok;
   } finally {
     ctx.screen.setEscHandler(null);

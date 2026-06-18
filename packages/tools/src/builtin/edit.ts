@@ -2,21 +2,31 @@ import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { z } from "zod";
 import type { ToolHandler } from "@nova/core";
+import { PATH_ALIASES, withAliases } from "../schema.js";
 
-const inputSchema = z.object({
-  path: z.string().min(1).describe("Absolute or cwd-relative file path."),
-  old_string: z
-    .string()
-    .min(1)
-    .describe(
-      "Exact text to replace. Must match the file content verbatim — if you copied it from `read` output, first strip the leading line-number + tab prefix that `read` adds (it is display only, not part of the file).",
-    ),
-  new_string: z.string().describe("Replacement text. Must differ from old_string."),
-  replace_all: z
-    .boolean()
-    .default(false)
-    .describe("Replace every occurrence when true. When false (default), old_string must occur exactly once."),
-});
+// `withAliases` tolerates `filePath`/`file_path`/`file` as synonyms for `path`
+// (a common model slip). For write/edit this also matters for safety: the
+// invariants gate (read-before-edit) keys off `path`, so the alias must be
+// normalized before it runs — see schema.ts and the dispatcher's normalizedUse.
+const inputSchema = withAliases(
+  z.object({
+    path: z.string().min(1).describe("Absolute or cwd-relative file path."),
+    old_string: z
+      .string()
+      .min(1)
+      .describe(
+        "Exact text to replace. Must match the file content verbatim — if you copied it from `read` output, first strip the leading line-number + tab prefix that `read` adds (it is display only, not part of the file).",
+      ),
+    new_string: z.string().describe("Replacement text. Must differ from old_string."),
+    replace_all: z
+      .boolean()
+      .default(false)
+      .describe(
+        "Replace every occurrence when true. When false (default), old_string must occur exactly once.",
+      ),
+  }),
+  { path: PATH_ALIASES },
+);
 
 function countOccurrences(haystack: string, needle: string): number {
   if (needle.length === 0) return 0;

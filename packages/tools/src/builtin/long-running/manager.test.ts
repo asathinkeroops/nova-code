@@ -110,6 +110,41 @@ describe("LongRunningCommandManager", () => {
     expect(mgr.drainNotifications()).toEqual([c.id]);
   });
 
+  it("read() consumes output incrementally and reports nothing new on re-read", async () => {
+    const mgr = new LongRunningCommandManager();
+    const { id } = mgr.start({ command: "echo hello", cwd: process.cwd() });
+    await waitFor(() => mgr.get(id)?.status !== "running");
+
+    const first = mgr.read(id);
+    expect(first.output).toContain("hello");
+    expect(first.droppedBytes).toBe(0);
+    expect(first.status).toBe("completed");
+
+    const second = mgr.read(id);
+    expect(second.output).toBe("");
+    expect(second.droppedBytes).toBe(0);
+  });
+
+  it("read() reports bytes dropped from the ring buffer between reads", async () => {
+    const mgr = new LongRunningCommandManager({ bufferBytes: 1024 });
+    const { id } = mgr.start({
+      command: "head -c 8192 /dev/zero | tr '\\0' 'a'",
+      cwd: process.cwd(),
+    });
+    await waitFor(() => mgr.get(id)?.status !== "running");
+
+    // The cursor starts at 0 but 8192 bytes were produced into a 1024 cap, so
+    // ~7168 bytes scrolled out before this first read.
+    const res = mgr.read(id);
+    expect(res.droppedBytes).toBe(8192 - res.output.length);
+    expect(res.output.length).toBeLessThanOrEqual(1024);
+  });
+
+  it("read() throws on an unknown id", () => {
+    const mgr = new LongRunningCommandManager();
+    expect(() => mgr.read("nope")).toThrow(LongRunningCommandError);
+  });
+
   it("disposeAll() terminates running children into error status", async () => {
     const mgr = new LongRunningCommandManager();
     const { id } = mgr.start({ command: "sleep 10", cwd: process.cwd() });

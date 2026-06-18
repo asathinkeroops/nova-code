@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type { ToolHandler, ToolUseBlock } from "@nova/core";
 import { createDispatcher, formatValidationError } from "./dispatcher.js";
+import type { InvariantsCheck } from "./invariants.js";
 import { ToolRegistry } from "./registry.js";
+import { PATH_ALIASES, withAliases } from "./schema.js";
 
 function makeHandler(run = vi.fn(async () => ({ output: "ok" }))): ToolHandler {
   return {
@@ -78,5 +80,47 @@ describe("dispatcher", () => {
     const r = await dispatch(uses("echo", { msg: "hi" }), { cwd: "/tmp" });
     expect(r.is_error).toBe(true);
     expect(String(r.content)).toContain("kaboom");
+  });
+
+  // Regression: when a schema rewrites keys before validation (withAliases maps
+  // a `filePath` alias onto `path`), the invariants gate — which reads
+  // `input.path` straight off the tool_use — must see the *normalized* input.
+  // If the dispatcher fed it the raw `use.input`, read-before-edit / mtime-drift
+  // gating would be silently skipped for any aliased call, letting an edit
+  // clobber a file it never read.
+  it("feeds the alias-normalized input to the invariants gate and the handler", async () => {
+    const seen: { pre?: unknown; post?: unknown } = {};
+    const invariants: InvariantsCheck = {
+      async preCheck(use) {
+        seen.pre = use.input;
+        return { ok: true };
+      },
+      async postCommit(use) {
+        seen.post = use.input;
+      },
+    };
+    const run = vi.fn(async () => ({ output: "ok" }));
+    const handler: ToolHandler = {
+      definition: {
+        name: "read",
+        description: "read",
+        inputSchema: withAliases(z.object({ path: z.string().min(1) }), { path: PATH_ALIASES }),
+      },
+      run,
+    };
+    const reg = new ToolRegistry().register(handler);
+    const dispatch = createDispatcher({ registry: reg, invariants });
+
+    // Model names the path `filePath` — the exact live DeepSeek failure.
+    const r = await dispatch(uses("read", { filePath: "/abs/x.ts" }), { cwd: "/tmp" });
+
+    expect(r.is_error).toBeUndefined();
+    // Both invariant hooks and the handler see the canonical `path`, never the alias.
+    expect(seen.pre).toEqual({ path: "/abs/x.ts" });
+    expect(seen.post).toEqual({ path: "/abs/x.ts" });
+    expect(run).toHaveBeenCalledWith(
+      { path: "/abs/x.ts" },
+      expect.objectContaining({ toolUseId: "u_1" }),
+    );
   });
 });

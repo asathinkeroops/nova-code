@@ -32,6 +32,13 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("Respond in the same language and script as the user");
   });
 
+  it("bakes in version-control guidance so committing needs no slash command", () => {
+    const prompt = buildSystemPrompt("/ws", emptyMemory, "sess-1");
+    expect(prompt).toContain("Conventional Commits");
+    expect(prompt).toMatch(/never push/i);
+    expect(prompt).toMatch(/git log/);
+  });
+
   it("does not name 'Chinese' anywhere — naming it primes a Chinese-prior model", () => {
     // The only language token that may appear is 'English' (in the langGuard,
     // as the positive example). 'Chinese' must not appear: Nova is tuned for

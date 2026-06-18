@@ -20,6 +20,8 @@ export { decide, type StopDecision } from "./stop-reason.js";
 export {
   createAnthropicModel,
   detectThinkingFormat,
+  toWireTools,
+  type WireTool,
   type ModelClient,
   type ModelRequest,
   type AnthropicModelConfig,
@@ -36,10 +38,5 @@ export {
   translateDeepSeekError,
   type DeepSeekErrorInfo,
 } from "./deepseek-errors.js";
-export {
-  agentLoop,
-  LoopTerminatedError,
-  type AgentLoopOptions,
-  type LoopResult,
-} from "./loop.js";
+export { agentLoop, LoopTerminatedError, type AgentLoopOptions, type LoopResult } from "./loop.js";
 export { xmlEscape, xmlAttr } from "./xml.js";

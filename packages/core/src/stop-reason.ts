@@ -3,6 +3,13 @@ import type { StopReason } from "./types.js";
 export type StopDecision =
   | { kind: "continue" }
   | { kind: "return"; reason: StopReason }
+  /**
+   * The response was cut off by the per-response output cap. The loop MAY
+   * re-prompt the model to continue (bounded by `maxTokensContinuations`);
+   * if continuation is disabled or exhausted it falls back to `message` as a
+   * terminating error — same surface as `kind: "error"`.
+   */
+  | { kind: "truncated"; reason: StopReason; message: string }
   | { kind: "error"; reason: StopReason; message: string };
 
 export function decide(reason: StopReason): StopDecision {
@@ -15,10 +22,10 @@ export function decide(reason: StopReason): StopDecision {
       return { kind: "continue" };
     case "max_tokens":
       return {
-        kind: "error",
+        kind: "truncated",
         reason,
         message:
-          "Model hit max_tokens before finishing. Increase maxTokens or have the model produce a shorter response.",
+          "Model hit max_tokens before finishing. Increase maxTokens, raise maxTokensContinuations, or have the model produce a shorter response.",
       };
     case "stop_sequence":
       return { kind: "return", reason };

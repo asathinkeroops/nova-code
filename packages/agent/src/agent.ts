@@ -26,6 +26,11 @@ import { persistMessages, type PersistCursor } from "./persistence.js";
 export interface AgentSettingsSlice {
   maxTokens: number;
   maxTurns: number;
+  /**
+   * Consecutive max_tokens continuations the loop may grant before giving up.
+   * Omit or `0` to hard-stop on the first truncation. Forwarded to `agentLoop`.
+   */
+  maxTokensContinuations?: number;
   /** When true, skips transcript.append for every advisory hook. */
   noTranscript: boolean;
   /**
@@ -263,6 +268,9 @@ export function createAgent(deps: AgentDeps): Agent {
         messages: baseMessages,
         maxTokens: settings.maxTokens,
         maxTurns: settings.maxTurns,
+        ...(settings.maxTokensContinuations !== undefined
+          ? { maxTokensContinuations: settings.maxTokensContinuations }
+          : {}),
         toolContext: {
           cwd: deps.workspace,
           signal: controller.signal,

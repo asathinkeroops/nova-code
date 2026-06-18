@@ -224,6 +224,14 @@ export const settingsSchema = z.object({
   // the loop's max_tokens hard-stop. DeepSeek's Anthropic-compatible endpoint
   // caps output at 8192 — DeepSeek users should lower this in nova.config.json.
   maxTokens: z.number().int().positive().default(32768),
+  // When a single response is truncated by the `maxTokens` output cap
+  // (stop_reason: "max_tokens"), the loop can re-prompt the model to continue
+  // from where it left off instead of hard-stopping the whole turn. This caps
+  // how many *consecutive* continuations are allowed before the loop gives up
+  // and surfaces the max_tokens termination. 0 = disabled (hard-stop on the
+  // first truncation, the legacy behavior). Especially relevant for DeepSeek,
+  // whose endpoint caps output at 8192 and so trips this often on long replies.
+  maxTokensContinuations: z.number().int().nonnegative().default(3),
   contextWindowTokens: z.number().int().positive().default(1_000_000),
   maxTurns: z.number().int().positive().default(50),
   // Max tool executions to run concurrently within a single turn. Calls beyond

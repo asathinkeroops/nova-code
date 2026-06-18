@@ -1,4 +1,5 @@
 import type { ToolResultBlock, ToolUseBlock } from "@nova/core";
+import { aliasedPath } from "@nova/tools";
 import type { SubAgentDetail } from "@nova/subagent";
 import wrapAnsi from "wrap-ansi";
 import {
@@ -17,11 +18,16 @@ import {
   useTruecolor,
   type Rgb,
 } from "../colors.js";
-import { compactBody, readExisting, renderDiff, renderFileContent, splitDisplayLines } from "./diff.js";
+import {
+  compactBody,
+  readExisting,
+  renderDiff,
+  renderFileContent,
+  splitDisplayLines,
+} from "./diff.js";
 import { renderMarkdown } from "./markdown.js";
 import type { Card, CardKind } from "./store.js";
 import type { BannerProps, RenderItem } from "./render-item.js";
-
 
 const cardColor: Record<CardKind, (s: string) => string> = {
   info: blue,
@@ -93,11 +99,12 @@ function displayCwd(cwd: string, home: string | undefined): string {
 function formatModel(b: BannerProps): string {
   const base = b.contextWindowTokens
     ? (() => {
-        const window = b.contextWindowTokens >= 1_000_000
-          ? `${Math.round(b.contextWindowTokens / 1_000_000)}m`
-          : b.contextWindowTokens >= 1_000
-          ? `${Math.round(b.contextWindowTokens / 1_000)}k`
-          : `${b.contextWindowTokens}`;
+        const window =
+          b.contextWindowTokens >= 1_000_000
+            ? `${Math.round(b.contextWindowTokens / 1_000_000)}m`
+            : b.contextWindowTokens >= 1_000
+              ? `${Math.round(b.contextWindowTokens / 1_000)}k`
+              : `${b.contextWindowTokens}`;
         return `${b.model}[${window}]`;
       })()
     : b.model;
@@ -111,9 +118,7 @@ function renderBanner(b: BannerProps, width: number): string {
   lines.push("");
   LOGO.forEach((l, i) => lines.push(bannerLine(l, i)));
   lines.push("");
-  lines.push(
-    dim("The coding agent tuned to the metal for DeepSeek — 90%+ cache hits."),
-  );
+  lines.push(dim("The coding agent tuned to the metal for DeepSeek — 90%+ cache hits."));
   lines.push("");
   lines.push(`${dim("model:")}     ${formatModel(b)}`);
   lines.push(`${dim("workspace:")} ${displayCwd(b.cwd, b.home)}`);
@@ -226,9 +231,7 @@ function renderCommandBody(cmd: string, width: number): string {
       ...wrapAnsi(logical, bodyWidth, { hard: true, wordWrap: false, trim: false }).split("\n"),
     );
   }
-  return visual
-    .map((line, i) => `${dim(i === 0 ? "  ⎿  " : THINKING_INDENT)}${line}`)
-    .join("\n");
+  return visual.map((line, i) => `${dim(i === 0 ? "  ⎿  " : THINKING_INDENT)}${line}`).join("\n");
 }
 
 type ToolState = "pending" | "ok" | "err";
@@ -298,7 +301,7 @@ const tools: Record<string, ToolStr> = {
   read: {
     inline: true,
     use: (input) => {
-      const path = typeof input.path === "string" ? input.path : "?";
+      const path = aliasedPath(input) ?? "?";
       const off = typeof input.offset === "number" ? input.offset : undefined;
       const lim = typeof input.limit === "number" ? input.limit : undefined;
       const rangeStr =
@@ -319,7 +322,7 @@ const tools: Record<string, ToolStr> = {
   write: {
     inline: true,
     use: (input) => {
-      const path = typeof input.path === "string" ? input.path : "?";
+      const path = aliasedPath(input) ?? "?";
       const content = typeof input.content === "string" ? input.content : "";
       const existing = readExisting(path);
       const lines = content.length === 0 ? 0 : content.split("\n").length;
@@ -328,9 +331,7 @@ const tools: Record<string, ToolStr> = {
       const h = header(verb, `${path} ${dim(meta)}`);
       if (content.length === 0 && existing === null) return { header: h };
       const body =
-        existing !== null
-          ? renderDiff(existing, content, path)
-          : renderFileContent(content, path);
+        existing !== null ? renderDiff(existing, content, path) : renderFileContent(content, path);
       return { header: h, body };
     },
     result: (result) => {
@@ -360,7 +361,7 @@ const tools: Record<string, ToolStr> = {
   edit: {
     inline: true,
     use: (input) => {
-      const path = typeof input.path === "string" ? input.path : "?";
+      const path = aliasedPath(input) ?? "?";
       const oldStr = typeof input.old_string === "string" ? input.old_string : "";
       const newStr = typeof input.new_string === "string" ? input.new_string : "";
       const replaceAll = input.replace_all === true;
@@ -496,8 +497,7 @@ const tools: Record<string, ToolStr> = {
   createSubAgent: {
     inline: true,
     use: (input) => {
-      const description =
-        typeof input.description === "string" ? input.description : "sub-agent";
+      const description = typeof input.description === "string" ? input.description : "sub-agent";
       const type = typeof input.type === "string" ? input.type : "";
       const label = type ? `${type} · ${description}` : description;
       return { header: header("agent", trim(label, 120)) };

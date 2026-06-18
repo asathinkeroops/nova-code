@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import { createAgent, emptyCursor, type AgentSettingsSlice } from "@nova/agent";
+import { createAgent, emptyCursor, type AgentSettingsSlice, type TurnResult } from "@nova/agent";
 import type { MemoryBundle } from "@nova/context";
 import {
   blocksOf,
@@ -154,6 +154,15 @@ export interface SubAgentDeps {
    * No-op when the parent tool_use id is unavailable.
    */
   onDetail?: (toolUseId: string, entries: SubAgentDetail[], done: boolean) => void;
+  /**
+   * Optional sink for the sub-agent's cumulative token usage, called once when
+   * the run finishes (success, failure, OR abort) with the totals across every
+   * model request the sub-agent made. The host folds these into the parent
+   * session's usage counters so the status line / `/usage` / cost reflect
+   * sub-agent spend too. Tokens are billed even on abort or error, so it is
+   * called in every terminal branch whenever any were consumed.
+   */
+  onUsage?: (usage: TurnResult["totalUsage"]) => void;
 }
 
 export function createSubAgentTool(deps: SubAgentDeps): ToolHandler {
@@ -278,6 +287,17 @@ export function createSubAgentTool(deps: SubAgentDeps): ToolHandler {
         input.prompt,
         ctx.signal ? { signal: ctx.signal } : {},
       );
+
+      // Surface the sub-agent's token spend to the host before branching on the
+      // outcome — tokens are billed even on abort/error, so report them in every
+      // terminal path. Guard on a non-zero total so a no-request run is a no-op.
+      const u = result.totalUsage;
+      if (
+        deps.onUsage &&
+        (u.inputTokens || u.outputTokens || u.cacheReadInputTokens || u.cacheCreationInputTokens)
+      ) {
+        deps.onUsage(u);
+      }
 
       if (result.aborted) {
         emit(true);

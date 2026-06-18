@@ -78,6 +78,11 @@ export const DEFAULT_PERMISSION_RULES: readonly PermissionRule[] = [
   { tool: "loadSkill", effect: "allow" },
   // The lsp tool is read-only (queries language servers; never mutates files).
   { tool: "lsp", effect: "allow" },
+  // Managing a command we already launched is safe to auto-allow: reading its
+  // buffered output is read-only, and killing only targets a child nova spawned.
+  // (runInBackground itself stays `ask` — it spawns arbitrary shell, like bash.)
+  { tool: "getBackgroundOutput", effect: "allow" },
+  { tool: "killBackground", effect: "allow" },
   // Spawning a sub-agent is itself safe to auto-allow: the sub-agent's own tool
   // calls run through this same PermissionEngine, so its bash/write/edit still
   // hit `ask`. Allowing the spawn just avoids a prompt for the delegation step.

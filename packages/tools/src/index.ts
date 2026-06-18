@@ -21,6 +21,7 @@ import { writeTool } from "./builtin/write.js";
 
 export { ToolRegistry } from "./registry.js";
 export { createDispatcher, type DispatcherDeps } from "./dispatcher.js";
+export { withAliases, aliasedPath, PATH_ALIASES } from "./schema.js";
 export {
   InMemoryFileAccessLedger,
   createInvariants,

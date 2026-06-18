@@ -62,4 +62,42 @@ describe("makeLongRunningNotifier", () => {
     const second = await hook(basePayload(messages));
     expect(second).toBeUndefined();
   });
+
+  it("does not re-push output already consumed via read()", async () => {
+    const mgr = new LongRunningCommandManager();
+    // Output ("42") is computed, so it appears nowhere in the command string —
+    // letting us assert it is absent from the completion push.
+    const { id } = mgr.start({ command: "echo $((6 * 7))", cwd: process.cwd() });
+    await waitFor(() => mgr.get(id)?.status !== "running");
+
+    // The model already streamed the output via getBackgroundOutput.
+    expect(mgr.read(id).output).toContain("42");
+
+    const hook = makeLongRunningNotifier(mgr);
+    const out = await hook(basePayload([{ role: "user", content: "hi" }]));
+    const blocks = out!.messages![1]!.content as Array<{ text: string }>;
+    const text = blocks[0]!.text;
+    expect(text).toContain('status="completed"');
+    expect(text).not.toContain("42");
+    expect(text).toContain("[no new output]");
+  });
+
+  it("still pushes the unread tail and exit marker on completion", async () => {
+    const mgr = new LongRunningCommandManager();
+    const { id } = mgr.start({
+      command: "echo first; echo second; exit 2",
+      cwd: process.cwd(),
+    });
+    await waitFor(() => mgr.get(id)?.status !== "running");
+
+    // Read only enough to consume some, then completion delivers the rest.
+    // (Here we read nothing first, so the full tail plus the marker arrive.)
+    const hook = makeLongRunningNotifier(mgr);
+    const out = await hook(basePayload([{ role: "user", content: "hi" }]));
+    const blocks = out!.messages![1]!.content as Array<{ text: string }>;
+    const text = blocks[0]!.text;
+    expect(text).toContain("first");
+    expect(text).toContain("second");
+    expect(text).toContain("exited with code 2");
+  });
 });

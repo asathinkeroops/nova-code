@@ -26,11 +26,12 @@ export function runInBackgroundTool(
     definition: {
       name: "runInBackground",
       description:
-        "Spawn a shell command in the background and return its id immediately. " +
-        "Use this for dev servers, watchers, or any work that should keep running " +
-        "across multiple tool calls. When the command finishes, its captured " +
-        "output is delivered to you automatically — you do not need to poll. " +
-        "Children are killed when the nova session exits.",
+        "Spawn a shell command in the background and return its id and pid " +
+        "immediately. Use this for dev servers, watchers, or any work that should " +
+        "keep running across multiple tool calls. When the command finishes, its " +
+        "captured output is delivered to you automatically — you do not need to " +
+        "poll. Terminate one early with killBackground; all children are killed " +
+        "when the nova session exits.",
       inputSchema,
     },
     async run(rawInput, ctx) {
@@ -44,12 +45,12 @@ export function runInBackgroundTool(
         const command = ctx.sandbox
           ? await ctx.sandbox.wrapCommand(input.command, ctx.signal)
           : input.command;
-        const { id } = manager.start({
+        const { id, pid } = manager.start({
           command,
           cwd: input.cwd ?? ctx.cwd,
           ...(input.env ? { env: input.env } : {}),
         });
-        return { output: JSON.stringify({ id }) };
+        return { output: JSON.stringify({ id, pid }) };
       } catch (err) {
         const msg =
           err instanceof LongRunningCommandError

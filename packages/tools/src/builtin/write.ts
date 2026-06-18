@@ -2,15 +2,23 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { z } from "zod";
 import type { ToolHandler } from "@nova/core";
+import { PATH_ALIASES, withAliases } from "../schema.js";
 
-const inputSchema = z.object({
-  path: z.string().min(1).describe("Absolute or cwd-relative file path."),
-  content: z.string().describe("Full file contents. Overwrites any existing file at this path."),
-  create_dirs: z
-    .boolean()
-    .default(true)
-    .describe("Create missing parent directories if true (default)."),
-});
+// `withAliases` tolerates `filePath`/`file_path`/`file` as synonyms for `path`
+// (a common model slip). For write/edit this also matters for safety: the
+// invariants gate keys off `path`, so the alias must be normalized before it
+// runs — see schema.ts and the dispatcher's normalizedUse handoff.
+const inputSchema = withAliases(
+  z.object({
+    path: z.string().min(1).describe("Absolute or cwd-relative file path."),
+    content: z.string().describe("Full file contents. Overwrites any existing file at this path."),
+    create_dirs: z
+      .boolean()
+      .default(true)
+      .describe("Create missing parent directories if true (default)."),
+  }),
+  { path: PATH_ALIASES },
+);
 
 export const writeTool: ToolHandler = {
   definition: {

@@ -134,6 +134,32 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
+/** A tool serialized to the exact wire shape sent to the model. */
+export interface WireTool {
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
+}
+
+/**
+ * Serialize tool definitions to the `tools` payload sent to the model: each
+ * tool's `input_schema` is its `inputJsonSchema` when present (MCP servers
+ * publish native JSON Schema) or derived from its zod `inputSchema` otherwise.
+ * Exported so callers can size the tool schemas against the exact bytes the
+ * model receives — the CLI's `/context` breakdown estimates this way.
+ */
+export function toWireTools(tools: ToolDefinition[]): WireTool[] {
+  return tools.map((t) => ({
+    name: t.name,
+    description: t.description,
+    input_schema: (t.inputJsonSchema ??
+      zodToJsonSchema(t.inputSchema, {
+        target: "jsonSchema7",
+        $refStrategy: "none",
+      })) as Record<string, unknown>,
+  }));
+}
+
 export function createAnthropicModel(config: AnthropicModelConfig): ModelClient {
   const client = new Anthropic({
     apiKey: config.apiKey,
@@ -143,15 +169,7 @@ export function createAnthropicModel(config: AnthropicModelConfig): ModelClient 
 
   return {
     async call(req: ModelRequest): Promise<AssistantTurn> {
-      const tools = req.tools.map((t) => ({
-        name: t.name,
-        description: t.description,
-        input_schema: (t.inputJsonSchema ??
-          zodToJsonSchema(t.inputSchema, {
-            target: "jsonSchema7",
-            $refStrategy: "none",
-          })) as Record<string, unknown>,
-      }));
+      const tools = toWireTools(req.tools);
 
       const budget = req.thinkingBudgetTokens ?? 0;
       const thinkingEnabled = budget > 0;
@@ -277,8 +295,7 @@ export function createAnthropicModel(config: AnthropicModelConfig): ModelClient 
       // transient ones (429 rate limit, 500/503 server) are retried internally
       // with backoff; the rest (400/401/402/422) and all non-DeepSeek errors
       // are re-thrown — translated into actionable guidance for DeepSeek.
-      const maxAttempts =
-        format === "deepseek" ? DEEPSEEK_RETRY.maxAttempts : 1;
+      const maxAttempts = format === "deepseek" ? DEEPSEEK_RETRY.maxAttempts : 1;
       let res: Anthropic.Message;
       let streamedThinking = "";
       let attempt = 0;

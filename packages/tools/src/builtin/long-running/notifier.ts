@@ -1,5 +1,5 @@
 import { xmlAttr, xmlEscape, type MessageParam, type ToolDefinition } from "@nova/core";
-import type { CommandRecord, LongRunningCommandManager } from "./manager.js";
+import type { CommandStatus, LongRunningCommandManager } from "./manager.js";
 
 interface PreRequestPayload {
   system: string;
@@ -17,8 +17,13 @@ export type LongRunningNotifierHook = (
   payload: PreRequestPayload,
 ) => Promise<PreRequestOverride | undefined> | PreRequestOverride | undefined;
 
-function renderRecord(r: CommandRecord): string {
-  const body = xmlEscape(r.result ?? "no data");
+function renderRecord(r: {
+  id: string;
+  command: string;
+  status: CommandStatus;
+  body: string;
+}): string {
+  const body = xmlEscape(r.body);
   return (
     `<background-command id="${xmlAttr(r.id)}" command="${xmlAttr(r.command)}"` +
     ` status="${xmlAttr(r.status)}">${body}</background-command>`
@@ -40,7 +45,7 @@ export function makeLongRunningNotifier(
 
     const rendered: string[] = [];
     for (const id of ids) {
-      const record = manager.get(id);
+      const record = manager.takeCompletion(id);
       if (!record) continue;
       rendered.push(renderRecord(record));
     }
