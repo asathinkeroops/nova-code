@@ -761,7 +761,7 @@ export async function createContext(
     if (!settings.stream.enabled) return;
     if (delta.text) liveBuf.text += delta.text;
     if (delta.thinking) liveBuf.thinking += delta.thinking;
-    if (!liveTimer) liveTimer = setTimeout(flushLive, 50);
+    if (!liveTimer) liveTimer = setTimeout(flushLive, 80);
   };
   const resetLiveStream = (): void => {
     if (liveTimer) {

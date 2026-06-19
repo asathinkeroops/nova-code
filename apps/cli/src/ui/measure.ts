@@ -69,6 +69,15 @@ export interface VisibleSlice {
 }
 
 /**
+ * Return the last `n` visual lines of `items` at the given width.
+ * Convenience wrapper over `sliceLines`; O(items) + O(n) with cache.
+ */
+export function tailLines(items: RenderItem[], width: number, n: number): string[] {
+  if (n <= 0 || items.length === 0) return [];
+  return sliceLines(items, width, Number.MAX_SAFE_INTEGER, n).lines;
+}
+
+/**
  * Slice `items` to the visual rows [offset, offset+viewportRows). Clamps
  * `offset` defensively so a stale store value never produces out-of-bounds
  * output. O(items) plus O(viewportRows).

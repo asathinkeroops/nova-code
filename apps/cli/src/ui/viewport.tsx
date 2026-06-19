@@ -55,7 +55,7 @@ export function Viewport({ store, rows, resolveModal }: ViewportProps): React.Re
     termCols,
     scrollOffset,
     stickToBottom,
-    spinner,
+    hasSpinner,
     liveDraft,
     modal,
     todos,
@@ -72,7 +72,10 @@ export function Viewport({ store, rows, resolveModal }: ViewportProps): React.Re
       termCols: s.termCols,
       scrollOffset: s.scrollOffset,
       stickToBottom: s.stickToBottom,
-      spinner: s.spinner,
+      // Only track spinner existence, not its internal frame/token counters.
+      // The <Spinner> component animates independently; token-count updates
+      // (store.setSpinnerTokens) no longer re-render the entire Viewport.
+      hasSpinner: s.spinner !== null,
       liveDraft: s.liveDraft,
       modal: s.modal,
       todos: s.todos,
@@ -126,7 +129,7 @@ export function Viewport({ store, rows, resolveModal }: ViewportProps): React.Re
   // than the viewport (very short terminal) is the only case this bites.
   const chromeRows = Math.min(
     usable - 1,
-    chromeRowsFor(spinner, inStreamModal, todos.length, tasks.length, innerWidth),
+    chromeRowsFor(hasSpinner, inStreamModal, todos.length, tasks.length, innerWidth),
   );
   const textRows = Math.max(1, usable - chromeRows);
   const effectiveOffset = stickToBottom ? Number.MAX_SAFE_INTEGER : scrollOffset;
@@ -213,8 +216,8 @@ export function Viewport({ store, rows, resolveModal }: ViewportProps): React.Re
           one; route on whether either footer will actually render (>= 2 items),
           not on whether any todo/task exists — otherwise a lone item suppresses
           the standalone spinner without drawing a footer to take its place. */}
-      {spinner && !anyFooterVisible ? <Spinner spec={spinner} /> : null}
-      {spinner && anyFooterVisible ? (
+      {hasSpinner && !anyFooterVisible ? <SpinnerWrapper store={store} /> : null}
+      {hasSpinner && anyFooterVisible ? (
         <>
           <TaskFooter tasks={tasks} />
           <TodoFooter todos={todos} />
@@ -226,12 +229,27 @@ export function Viewport({ store, rows, resolveModal }: ViewportProps): React.Re
 }
 
 /**
+ * Thin wrapper that subscribes to the full spinner spec so token-count
+ * updates (pushSpinnerTokens) re-render only this component. The Viewport
+ * tracks only spinner *existence* and stays stable across spinner ticks.
+ */
+function SpinnerWrapper({
+  store,
+}: {
+  store: AppStoreApi;
+}): React.ReactElement | null {
+  const spec = store((s) => s.spinner);
+  if (!spec) return null;
+  return <Spinner spec={spec} />;
+}
+
+/**
  * Conservative row estimate for the in-stream chrome region. Matches the
  * components' actual render heights closely enough that the bottom of the
  * text region lands right above them; off-by-one is absorbed by alt-screen.
  */
 function chromeRowsFor(
-  spinner: { id: number } | null,
+  hasSpinner: boolean,
   modal: ModalState | null,
   todos: number,
   tasks: number,
@@ -262,7 +280,7 @@ function chromeRowsFor(
   const showTodos = todos >= MIN_VISIBLE_TODOS;
   const showTasks = tasks >= MIN_VISIBLE_TASKS;
   let n = 0;
-  if (spinner) {
+  if (hasSpinner) {
     // The standalone spinner line carries a blank above and below (marginTop +
     // marginBottom); when a footer renders instead, only its top spacing
     // applies since the footer replaces the line.
