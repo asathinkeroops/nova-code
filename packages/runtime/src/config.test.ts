@@ -23,7 +23,7 @@ import {
 describe("settingsSchema", () => {
   it("applies defaults when empty input is given", () => {
     const s = parseSettings({});
-    expect(s.model).toBe("deepseek-v4-pro");
+    expect(s.model).toBe("pro");
     expect(s.maxTurns).toBe(100);
     expect(s.permissions.defaultEffect).toBe("ask");
     expect(s.permissions.rules).toEqual([]);
@@ -187,8 +187,8 @@ describe("loadSettings", () => {
   it("falls back to defaults when config file is missing", async () => {
     const dir = await mkdtemp(join(tmpdir(), "nova-config-"));
     const s = await loadSettings(join(dir, "nova.config.json"));
-    expect(s.model).toBe("deepseek-v4-pro");
-    expect(s.baseURL).toBeUndefined();
+    expect(s.model).toBe("pro");
+    expect(s.baseURL).toBe("https://api.deepseek.com/anthropic");
     expect(s.apiKey).toBeUndefined();
     expect(s.sessionDir).toBeUndefined();
   });
