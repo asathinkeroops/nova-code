@@ -233,7 +233,7 @@ export const settingsSchema = z.object({
   // whose endpoint caps output at 8192 and so trips this often on long replies.
   maxTokensContinuations: z.number().int().nonnegative().default(3),
   contextWindowTokens: z.number().int().positive().default(1_000_000),
-  maxTurns: z.number().int().positive().default(50),
+  maxTurns: z.number().int().positive().default(100),
   // Max tool executions to run concurrently within a single turn. Calls beyond
   // this cap queue and start as slots free up. 1 = fully sequential.
   toolConcurrency: z.number().int().positive().default(3),
@@ -401,7 +401,7 @@ export const settingsSchema = z.object({
       projectDirs: z.array(z.string().min(1)).optional(),
       userPaths: z.array(z.string().min(1)).optional(),
       extraDirs: z.array(z.string().min(1)).optional(),
-      maxTurns: z.number().int().positive().default(50),
+      maxTurns: z.number().int().positive().default(100),
       // Per-response output cap for the sub-agent loop, tunable independently
       // of the top-level maxTokens. A sub-agent's final message is a single
       // consolidated report, so a small budget risks the loop's max_tokens
@@ -409,7 +409,7 @@ export const settingsSchema = z.object({
       // Anthropic-compatible endpoint caps output at 8192 — lower it there.
       maxTokens: z.number().int().positive().default(32768),
     })
-    .default({ enabled: true, maxTurns: 50, maxTokens: 32768 }),
+    .default({ enabled: true, maxTurns: 100, maxTokens: 32768 }),
   // OS-level command sandbox (@anthropic-ai/sandbox-runtime). Opt-out
   // (default ON). When enabled, tools that spawn a subprocess (bash,
   // runLongRunningCommand) run inside a platform sandbox — macOS Seatbelt via

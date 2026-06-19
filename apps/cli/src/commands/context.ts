@@ -9,11 +9,14 @@ import { contextBar, formatPercent, formatTokenCount } from "../ui/status-format
 const TITLE = "/context";
 const MCP_PREFIX = "mcp__";
 
-/** Rough token estimate for a serialized string (~4 chars / token), matching
- *  `@nova/context`'s `estimateTokens` methodology so the breakdown lines up
- *  with the auto-compact threshold. */
+/**
+ * Rough token estimate for a serialized string using DeepSeek's documented
+ * ratio (English ≈ 0.3 tokens/char), matching `@nova/context`'s
+ * `estimateTokens` methodology so the breakdown lines up with the auto-compact
+ * threshold.
+ */
 function estimateChars(s: string): number {
-  return Math.ceil(s.length / 4);
+  return Math.ceil(s.length * 0.3);
 }
 
 interface Row {

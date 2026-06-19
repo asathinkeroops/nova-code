@@ -258,11 +258,11 @@ export function createAgent(deps: AgentDeps): Agent {
         system: deps.getSystemPrompt
           ? deps.getSystemPrompt()
           : buildSystemPrompt(
-              deps.workspace,
-              deps.memory,
-              deps.getSessionId(),
-              deps.skillsBlock,
-            ),
+            deps.workspace,
+            deps.memory,
+            deps.getSessionId(),
+            deps.skillsBlock,
+          ),
         tools: deps.getTools(),
         executeTool: deps.dispatch,
         messages: baseMessages,
@@ -291,8 +291,12 @@ export function createAgent(deps: AgentDeps): Agent {
       activeController = null;
     }
 
-    const finalMessages = result?.messages ?? baseMessages;
+    let finalMessages = result?.messages ?? baseMessages;
     const totalUsage = result?.totalUsage ?? zeroUsage();
+
+    if (aborted) {
+      finalMessages = [...finalMessages, { role: "user", content: [{ type: "text", text: "<interrupted-by-user>The previous operation was cancelled by the user.</interrupted-by-user>" }] }];
+    }
 
     if (result) {
       try {

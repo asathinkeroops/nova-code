@@ -1,4 +1,4 @@
-import { modelDescription, resolveModelId } from "@nova/runtime";
+import { modelDescription, resolveModelId, saveSettings } from "@nova/runtime";
 import { dim, green } from "../colors.js";
 import { refreshBanner, type CliContext } from "../context.js";
 import { pickerArrow } from "../ui/picker.js";
@@ -6,13 +6,12 @@ import { pickerArrow } from "../ui/picker.js";
 const TITLE = "/model";
 
 /**
- * Switch the active model for THIS SESSION only. `name` is a key in
+ * Switch the active model and persist to nova.config.json. `name` is a key in
  * settings.models (a configured tier like "flash"/"pro") or a bare model id. We
  * rebuild both the tracked main model and the non-tracked predict mirror and
- * refresh the banner — but intentionally do NOT persist to nova.config.json, so
- * the user's configured default is left untouched (next launch reverts to it).
- * Sub-agents read ctx.settings.model lazily, so they follow the switch when
- * nothing more specific is set.
+ * refresh the banner — and also write the new default to nova.config.json so the
+ * choice survives restarts. Sub-agents read ctx.settings.model lazily, so they
+ * follow the switch when nothing more specific is set.
  */
 function applyModel(ctx: CliContext, name: string): void {
   ctx.settings.model = name;
@@ -21,7 +20,11 @@ function applyModel(ctx: CliContext, name: string): void {
   refreshBanner(ctx);
   const resolved = resolveModelId(ctx.settings, name);
   const suffix = resolved === name ? "" : dim(` (${resolved})`);
-  ctx.screen.card(`${dim("model set to")} ${name}${suffix} ${dim("(this session)")}`, {
+  saveSettings({ model: name }).catch((err) => {
+    const msg = err instanceof Error ? err.message : String(err);
+    ctx.screen.card(`failed to save settings: ${msg}`, { kind: "error", title: TITLE });
+  });
+  ctx.screen.card(`${dim("model set to")} ${name}${suffix}`, {
     title: TITLE,
   });
 }

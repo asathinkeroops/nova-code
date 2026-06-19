@@ -5,7 +5,7 @@ import {
   type ModelPrice,
   type ModelRates,
 } from "@nova/observability";
-import { DEFAULT_MODEL_PRICING } from "@nova/runtime";
+import { DEFAULT_MODEL_PRICING, resolveModelId } from "@nova/runtime";
 import { bold, cyan, dim } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { cacheHitRate, formatPercent, formatTokenCount } from "../ui/status-format.js";
@@ -35,7 +35,8 @@ function priceTable(ctx: CliContext): ModelPrice[] {
  */
 export function resolveSessionRates(ctx: CliContext): ModelRates | undefined {
   if (!ctx.settings.pricing.enabled) return undefined;
-  return resolveModelRates(ctx.settings.model, priceTable(ctx));
+  const modelId = resolveModelId(ctx.settings, ctx.settings.model);
+  return resolveModelRates(modelId, priceTable(ctx));
 }
 
 /**

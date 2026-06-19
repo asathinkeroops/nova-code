@@ -20,9 +20,9 @@ import {
 describe("settingsSchema", () => {
   it("applies defaults when empty input is given", () => {
     const s = parseSettings({});
-    expect(s.model).toBe("claude-sonnet-4-5");
+    expect(s.model).toBe("deepseek-v4-pro");
     expect(s.maxTokens).toBe(32768);
-    expect(s.maxTurns).toBe(50);
+    expect(s.maxTurns).toBe(100);
     expect(s.permissions.defaultEffect).toBe("ask");
     expect(s.permissions.rules).toEqual([]);
     expect(s.transcript.enabled).toBe(true);
@@ -34,7 +34,7 @@ describe("settingsSchema", () => {
     expect(s.slash.projectDirs).toBeUndefined();
     expect(s.slash.userPaths).toBeUndefined();
     expect(s.subagent.enabled).toBe(true);
-    expect(s.subagent.maxTurns).toBe(50);
+    expect(s.subagent.maxTurns).toBe(100);
     expect(s.subagent.maxTokens).toBe(32768);
   });
 
@@ -165,7 +165,7 @@ describe("loadSettings", () => {
   it("falls back to defaults when config file is missing", async () => {
     const dir = await mkdtemp(join(tmpdir(), "nova-config-"));
     const s = await loadSettings(join(dir, "nova.config.json"));
-    expect(s.model).toBe("claude-sonnet-4-5");
+    expect(s.model).toBe("deepseek-v4-pro");
     expect(s.baseURL).toBeUndefined();
     expect(s.apiKey).toBeUndefined();
     expect(s.sessionDir).toBeUndefined();

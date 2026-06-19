@@ -5,6 +5,15 @@ export const textBlockSchema = z.object({
   text: z.string(),
 });
 
+export const imageBlockSchema = z.object({
+  type: z.literal("image"),
+  source: z.object({
+    type: z.literal("base64"),
+    media_type: z.enum(["image/jpeg", "image/png", "image/gif", "image/webp"]),
+    data: z.string(),
+  }),
+});
+
 export const toolUseBlockSchema = z.object({
   type: z.literal("tool_use"),
   id: z.string(),
@@ -15,7 +24,10 @@ export const toolUseBlockSchema = z.object({
 export const toolResultBlockSchema = z.object({
   type: z.literal("tool_result"),
   tool_use_id: z.string(),
-  content: z.union([z.string(), z.array(textBlockSchema)]),
+  content: z.union([
+    z.string(),
+    z.array(z.union([textBlockSchema, imageBlockSchema])),
+  ]),
   is_error: z.boolean().optional(),
 });
 
@@ -34,6 +46,7 @@ export const redactedThinkingBlockSchema = z.object({
 
 export const contentBlockSchema = z.discriminatedUnion("type", [
   textBlockSchema,
+  imageBlockSchema,
   toolUseBlockSchema,
   toolResultBlockSchema,
   thinkingBlockSchema,
@@ -41,6 +54,7 @@ export const contentBlockSchema = z.discriminatedUnion("type", [
 ]);
 
 export type TextBlock = z.infer<typeof textBlockSchema>;
+export type ImageBlock = z.infer<typeof imageBlockSchema>;
 export type ToolUseBlock = z.infer<typeof toolUseBlockSchema>;
 export type ToolResultBlock = z.infer<typeof toolResultBlockSchema>;
 export type ThinkingBlock = z.infer<typeof thinkingBlockSchema>;
@@ -181,6 +195,13 @@ export interface ToolHandler {
 export interface ToolRunResult {
   output: string;
   isError?: boolean;
+  /**
+   * Optional structured content blocks (images, etc.) that accompany the text
+   * output. When present, the dispatcher emits them alongside a wrapping text
+   * block derived from `output` — the model sees the text metadata first, then
+   * the rich content.
+   */
+  blocks?: ContentBlock[];
 }
 
 export type ToolExecutor = (

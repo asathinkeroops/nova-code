@@ -285,7 +285,7 @@ export function createAnthropicModel(config: AnthropicModelConfig): ModelClient 
               other++;
             }
           }
-          onProgress({ inputTokens, outputTokens: Math.ceil(cjk * 0.6 + other / 4) });
+          onProgress({ inputTokens, outputTokens: Math.ceil(cjk * 0.6 + other * 0.3) });
         });
         const message = await stream.finalMessage();
         return { message, thinkingText };

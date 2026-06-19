@@ -55,16 +55,21 @@ export function registerUiHooks(ctx: CliContext): void {
 
   ctx.agent.on("post_request", ({ durationMs, error, usage }) => {
     if (error) {
-      const seconds = (durationMs / 1000).toFixed(1);
-      const word = ctx.spinner?.label() ?? "working";
       stopSpinner(ctx);
       // No post_messages follows a failed/aborted request, so drop the partial
       // draft here — otherwise half-streamed text would hang under the error.
       ctx.resetLiveStream();
-      ctx.screen.card(`${word} · ${seconds}s · ${error}`, {
-        kind: "error",
-        title: "request failed",
-      });
+      // User-initiated interruptions (permission denial, Ctrl+C) are normal
+      // interaction, not errors — don't clutter the feed with a red card.
+      const isUserAction = /denied at prompt|aborted|interrupted/i.test(error);
+      if (!isUserAction) {
+        const seconds = (durationMs / 1000).toFixed(1);
+        const word = ctx.spinner?.label() ?? "working";
+        ctx.screen.card(`${word} · ${seconds}s · ${error}`, {
+          kind: "error",
+          title: "request failed",
+        });
+      }
     } else {
       stopSpinner(ctx);
     }

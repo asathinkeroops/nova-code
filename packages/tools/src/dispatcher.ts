@@ -84,7 +84,10 @@ export function createDispatcher(deps: DispatcherDeps): ToolExecutor {
       const block: ToolResultBlock = {
         type: "tool_result",
         tool_use_id: use.id,
-        content: result.output,
+        content:
+          result.blocks && result.blocks.length > 0
+            ? [{ type: "text" as const, text: result.output }, ...result.blocks]
+            : result.output,
         ...(result.isError ? { is_error: true } : {}),
       };
       if (invariants) {

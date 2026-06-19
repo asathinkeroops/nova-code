@@ -106,7 +106,7 @@ describe("createAnthropicModel thinking params", () => {
 
   it("estimates live output tokens from streamed deltas (not end-of-stream usage)", async () => {
     mockCreate.mockResolvedValueOnce(okResponse());
-    // 8 latin chars (~2 tok) + 4 CJK chars (~2.4 tok) → ceil = 5, and crucially
+    // 8 latin chars (~2.4 tok) + 4 CJK chars (~2.4 tok) → ceil = 5, and crucially
     // > 0 even though usage.output_tokens only lands in the final message.
     streamEvents = [delta("hello wo"), delta("世界你好")];
     const seen: number[] = [];

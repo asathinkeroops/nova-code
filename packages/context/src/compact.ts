@@ -94,9 +94,14 @@ export function microCompact(
 // Threshold helpers
 // ────────────────────────────────────────────────────────────────────────────
 
-/** Rough token estimate (~4 chars / token), matching the reference implementation. */
+/**
+ * Rough token estimate using DeepSeek's documented ratios: English chars ≈ 0.3
+ * tokens/char, CJK chars ≈ 0.6 tokens/char. We use 0.3 for the whole
+ * JSON-serialized blob as a conservative single-pass approximation (the
+ * structural JSON overhead is ASCII, and most message content is Latin).
+ */
 export function estimateTokens(messages: MessageParam[]): number {
-  return Math.ceil(JSON.stringify(messages).length / 4);
+  return Math.ceil(JSON.stringify(messages).length * 0.3);
 }
 
 export interface ThresholdOptions {

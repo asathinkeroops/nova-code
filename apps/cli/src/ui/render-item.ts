@@ -71,7 +71,8 @@ function isSystemInjectionText(text: string): boolean {
   const trimmed = text.trimStart();
   return (
     trimmed.startsWith("<reminder>") ||
-    trimmed.startsWith("<background-command")
+    trimmed.startsWith("<background-command") ||
+    trimmed.startsWith("<interrupted-by-user>")
   );
 }
 
