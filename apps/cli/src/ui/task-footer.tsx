@@ -151,7 +151,7 @@ export function TaskFooter({ tasks }: TaskFooterProps): React.ReactElement | nul
     : null;
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" marginTop={1}>
       {spinnerSpec ? <Spinner spec={spinnerSpec} /> : null}
       {visible.map((t, i) => (
         <TaskRow key={t.id} task={t} isFirst={i === 0} />

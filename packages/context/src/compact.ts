@@ -108,19 +108,19 @@ export interface ThresholdOptions {
   /** Hard token ceiling. Wins if set. */
   thresholdTokens?: number;
   /** Otherwise: compute from context window × percent. */
-  contextWindowTokens?: number;
+  contextWindowSize?: number;
   /** Percent of context window that triggers compaction. Default 0.5. */
   contextWindowPercent?: number;
 }
 
 export function computeThreshold(t: ThresholdOptions): number {
   if (t.thresholdTokens && t.thresholdTokens > 0) return t.thresholdTokens;
-  if (t.contextWindowTokens && t.contextWindowTokens > 0) {
+  if (t.contextWindowSize && t.contextWindowSize > 0) {
     const pct = t.contextWindowPercent ?? DEFAULT_CONTEXT_WINDOW_PERCENT;
-    return Math.floor(t.contextWindowTokens * pct);
+    return Math.floor(t.contextWindowSize * pct);
   }
   throw new Error(
-    "computeThreshold requires either thresholdTokens or contextWindowTokens",
+    "computeThreshold requires either thresholdTokens or contextWindowSize",
   );
 }
 

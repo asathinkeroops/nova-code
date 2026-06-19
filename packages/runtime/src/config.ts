@@ -157,34 +157,43 @@ export const DEFAULT_MODEL_PRICING: ModelPriceDefault[] = [
   { match: "deepseek-v4-pro", input: 3, output: 6, cacheRead: 0.025, cacheWrite: 3, currency: "CNY" },
 ];
 
+/** Default per-response output cap when neither the model profile nor the
+ *  top-level override specifies one. 32768 suits Anthropic models; DeepSeek's
+ *  Anthropic-compatible endpoint caps output at 8192 — set per-tier maxTokens
+ *  for those tiers. */
+export const DEFAULT_MAX_TOKENS = 32768;
+
+/** Default context-window budget when the model profile doesn't set one. */
+export const DEFAULT_CONTEXT_WINDOW_SIZE = 1_000_000;
+
 // A named model "profile" / performance tier (flash / pro / …) in the `models`
-// table. The bare-string form is just a model id. The object form is reserved
-// for richer per-tier overrides (its own maxTokens / baseURL / apiKey); the
-// schema accepts it today so forward-written configs stay valid, but only `id`
-// is honored for now — resolveModelId() reads it and the rest is ignored until
-// the per-tier plumbing lands.
+// table. Every entry is an object; the `id` is the concrete model id sent to
+// the provider. Per-tier overrides (maxTokens, contextWindowSize, baseURL,
+// apiKey) are all honored — maxTokens and contextWindowSize fall back to
+// DEFAULT_MAX_TOKENS / DEFAULT_CONTEXT_WINDOW_SIZE when not set.
 export const modelProfileSchema = z.object({
   id: z.string().min(1).describe("Concrete model id sent to the provider."),
   description: z.string().min(1).optional().describe("One-line blurb shown in the /model picker."),
-  // Per-tier context-window budget; overrides the top-level
-  // settings.contextWindowTokens while this tier is active (drives the
-  // status-line gauge and the auto-compaction threshold). Honored now (unlike
-  // the reserved fields below).
-  contextWindowTokens: z
+  contextWindowSize: z
     .number()
     .int()
     .positive()
-    .optional()
-    .describe("Per-tier context-window budget; overrides the top-level value while active."),
-  maxTokens: z.number().int().positive().optional().describe("Reserved: per-tier output cap (not yet honored)."),
-  baseURL: z.string().url().optional().describe("Reserved: per-tier endpoint (not yet honored)."),
-  apiKey: z.string().min(1).optional().describe("Reserved: per-tier API key (not yet honored)."),
+    .default(DEFAULT_CONTEXT_WINDOW_SIZE)
+    .describe("Per-tier context-window budget (drives the status-line gauge and auto-compaction threshold)."),
+  maxTokens: z
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_MAX_TOKENS)
+    .describe("Per-tier per-response output cap."),
+  baseURL: z.string().url().optional().describe("Per-tier endpoint override."),
+  apiKey: z.string().min(1).optional().describe("Per-tier API key override."),
 });
 
 export type ModelProfile = z.infer<typeof modelProfileSchema>;
 
-/** A `models` table entry: a bare model id, or a (reserved) profile object. */
-export const modelEntrySchema = z.union([z.string().min(1), modelProfileSchema]);
+/** A `models` table entry: a profile object keyed by tier name. */
+export const modelEntrySchema = modelProfileSchema;
 
 export type ModelEntry = z.infer<typeof modelEntrySchema>;
 
@@ -192,9 +201,9 @@ export type ModelEntry = z.infer<typeof modelEntrySchema>;
 // config. DeepSeek-flavoured to match this build's tuning (the same two ids the
 // built-in pricing table carries); override by setting `models` in
 // nova.config.json — providing the key REPLACES this default wholesale.
-export const DEFAULT_MODELS: Record<string, string> = {
-  flash: "deepseek-v4-flash",
-  pro: "deepseek-v4-pro",
+export const DEFAULT_MODELS: Record<string, ModelProfile> = {
+  flash: { id: "deepseek-v4-flash", maxTokens: 384_000, contextWindowSize: 1_000_000 },
+  pro: { id: "deepseek-v4-pro", maxTokens: 384_000, contextWindowSize: 1_000_000 },
 };
 
 // One-line blurbs for the built-in tiers, shown next to each row in the /model
@@ -208,22 +217,17 @@ export const DEFAULT_MODEL_DESCRIPTIONS: Record<string, string> = {
 export const settingsSchema = z.object({
   apiKey: z.string().min(1).optional(),
   model: z.string().default("deepseek-v4-pro"),
-  // Named model tiers, e.g. { "flash": "deepseek-v4-flash", "pro": "deepseek-v4-pro" }.
+  // Named model tiers, e.g. { "flash": { id: "deepseek-v4-flash", ... }, "pro": { ... } }.
   // The `model` field above may be either a bare model id OR a key into this
   // table; resolveModelId() maps a name to its concrete id and passes unknown
-  // names through unchanged, so existing single-id configs keep working. Values
-  // are bare id strings today; the object form (per-tier maxTokens/baseURL/
-  // apiKey) is accepted but not yet honored. Switch tiers at runtime with /model.
+  // names through unchanged, so existing single-id configs keep working.
+  // Every value is a profile object carrying its own maxTokens / contextWindowSize
+  // (and optionally baseURL / apiKey). Switch tiers at runtime with /model.
   // Defaults to DEFAULT_MODELS (flash/pro) so /model works with no config;
   // setting this key REPLACES that default wholesale.
   models: z.record(modelEntrySchema).default({ ...DEFAULT_MODELS }),
   baseURL: z.string().url().optional(),
   sessionDir: z.string().min(1).optional(),
-  // Per-response output cap. 32768 suits the default Claude model, which can
-  // emit long single turns (writing a file, a thorough report) without tripping
-  // the loop's max_tokens hard-stop. DeepSeek's Anthropic-compatible endpoint
-  // caps output at 8192 — DeepSeek users should lower this in nova.config.json.
-  maxTokens: z.number().int().positive().default(32768),
   // When a single response is truncated by the `maxTokens` output cap
   // (stop_reason: "max_tokens"), the loop can re-prompt the model to continue
   // from where it left off instead of hard-stopping the whole turn. This caps
@@ -231,8 +235,8 @@ export const settingsSchema = z.object({
   // and surfaces the max_tokens termination. 0 = disabled (hard-stop on the
   // first truncation, the legacy behavior). Especially relevant for DeepSeek,
   // whose endpoint caps output at 8192 and so trips this often on long replies.
+  // (maxTokens itself now lives per-tier in `models` — see resolveMaxTokens().)
   maxTokensContinuations: z.number().int().nonnegative().default(3),
-  contextWindowTokens: z.number().int().positive().default(1_000_000),
   maxTurns: z.number().int().positive().default(100),
   // Max tool executions to run concurrently within a single turn. Calls beyond
   // this cap queue and start as slots free up. 1 = fully sequential.
@@ -554,36 +558,35 @@ export type Settings = z.infer<typeof settingsSchema>;
  * Resolve a model name — either a key in `settings.models` or a bare model id —
  * to the concrete id sent to the provider. Unknown names pass through unchanged,
  * so a raw id in `settings.model` (or a `--model <id>` override) still works
- * even with no `models` table. The object form of a `models` entry contributes
- * only its `id` today; its reserved overrides are ignored.
+ * even with no `models` table.
  */
 export function resolveModelId(settings: Settings, name: string): string {
   const entry = settings.models[name];
   if (entry === undefined) return name;
-  return typeof entry === "string" ? entry : entry.id;
+  return entry.id;
 }
 
 /**
  * The context-window budget in effect for a given model tier: the tier's own
- * `contextWindowTokens` when set (profile-object form), else the top-level
- * `settings.contextWindowTokens`. `name` is a tier key or a bare id; a bare id
+ * `contextWindowSize` when set (profile-object form), else the top-level
+ * `DEFAULT_CONTEXT_WINDOW_SIZE`. `name` is a tier key or a bare id; a bare id
  * also matches a profile tier that resolves to the same concrete model, so a
  * config with `model: "deepseek-v4-pro"` still picks up the "pro" tier's window.
- * The top-level value stays the single fallback and is never mutated, so this
+ * The default value stays the single fallback and is never mutated, so this
  * can be called fresh at each read site as /model switches the active tier.
  */
-export function resolveContextWindowTokens(settings: Settings, name: string): number {
+export function resolveContextWindowSize(settings: Settings, name: string): number {
   const direct = settings.models[name];
-  if (direct && typeof direct === "object" && direct.contextWindowTokens) {
-    return direct.contextWindowTokens;
+  if (direct?.contextWindowSize) {
+    return direct.contextWindowSize;
   }
   const id = resolveModelId(settings, name);
   for (const entry of Object.values(settings.models)) {
-    if (typeof entry === "object" && entry.id === id && entry.contextWindowTokens) {
-      return entry.contextWindowTokens;
+    if (entry.id === id && entry.contextWindowSize) {
+      return entry.contextWindowSize;
     }
   }
-  return settings.contextWindowTokens;
+  return DEFAULT_CONTEXT_WINDOW_SIZE;
 }
 
 /**
@@ -593,8 +596,27 @@ export function resolveContextWindowTokens(settings: Settings, name: string): nu
  */
 export function modelDescription(settings: Settings, name: string): string {
   const entry = settings.models[name];
-  if (entry && typeof entry === "object" && entry.description) return entry.description;
+  if (entry?.description) return entry.description;
   return DEFAULT_MODEL_DESCRIPTIONS[name] ?? "";
+}
+
+/**
+ * The per-response output cap in effect for a given model tier, resolved the
+ * same way as {@link resolveContextWindowSize}: the tier's own `maxTokens`
+ * first, then a same-id profile match, then {@link DEFAULT_MAX_TOKENS}.
+ */
+export function resolveMaxTokens(settings: Settings, name: string): number {
+  const direct = settings.models[name];
+  if (direct?.maxTokens) {
+    return direct.maxTokens;
+  }
+  const id = resolveModelId(settings, name);
+  for (const entry of Object.values(settings.models)) {
+    if (entry.id === id && entry.maxTokens) {
+      return entry.maxTokens;
+    }
+  }
+  return DEFAULT_MAX_TOKENS;
 }
 
 const DEFAULT_DENY_BASH = [

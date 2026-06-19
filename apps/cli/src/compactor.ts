@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { autoCompact, microCompact, shouldAutoCompact } from "@nova/context";
 import type { MessageParam, ModelClient } from "@nova/core";
-import { resolveContextWindowTokens, type Settings } from "@nova/runtime";
+import { resolveContextWindowSize, type Settings } from "@nova/runtime";
 
 export interface BuildCompactorOptions {
   settings: Settings;
@@ -95,7 +95,7 @@ export function buildCompactor(
 
     const trigger = shouldAutoCompact(next, {
       // Read live: follows the active model tier's window after a /model switch.
-      contextWindowTokens: resolveContextWindowTokens(settings, settings.model),
+      contextWindowSize: resolveContextWindowSize(settings, settings.model),
       ...(auto.thresholdTokens !== undefined ? { thresholdTokens: auto.thresholdTokens } : {}),
       ...(auto.contextWindowPercent !== undefined
         ? { contextWindowPercent: auto.contextWindowPercent }

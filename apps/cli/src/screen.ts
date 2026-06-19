@@ -263,7 +263,7 @@ export class Screen {
   setStatusMeta(meta: {
     sessionStartedAt: number;
     gitBranch: string | null;
-    contextWindowTokens: number;
+    contextWindowSize: number;
   }): void {
     this.store.getState().setStatusMeta(meta);
   }

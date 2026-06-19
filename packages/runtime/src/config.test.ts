@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_MAX_TOKENS,
+  DEFAULT_CONTEXT_WINDOW_SIZE,
   DEFAULT_MODELS,
   DEFAULT_SANDBOX_ALLOW_WRITE,
   hooksConfigSchema,
@@ -11,7 +13,8 @@ import {
   loadSettings,
   mergeHooks,
   parseSettings,
-  resolveContextWindowTokens,
+  resolveContextWindowSize,
+  resolveMaxTokens,
   resolveModelId,
   settingsSchema,
   type HooksConfig,
@@ -21,7 +24,6 @@ describe("settingsSchema", () => {
   it("applies defaults when empty input is given", () => {
     const s = parseSettings({});
     expect(s.model).toBe("deepseek-v4-pro");
-    expect(s.maxTokens).toBe(32768);
     expect(s.maxTurns).toBe(100);
     expect(s.permissions.defaultEffect).toBe("ask");
     expect(s.permissions.rules).toEqual([]);
@@ -73,19 +75,27 @@ describe("model tiers", () => {
   });
 
   it("a provided models table replaces the default wholesale", () => {
-    const s = parseSettings({ models: { mini: "some-mini" } });
-    expect(s.models).toEqual({ mini: "some-mini" });
+    const s = parseSettings({ models: { mini: { id: "some-mini" } } });
+    expect(s.models).toEqual({ mini: { id: "some-mini", maxTokens: DEFAULT_MAX_TOKENS, contextWindowSize: DEFAULT_CONTEXT_WINDOW_SIZE } });
   });
 
-  it("accepts bare-id and (reserved) profile-object entries", () => {
+  it("accepts profile-object entries with per-tier overrides", () => {
     const s = parseSettings({
       models: {
-        flash: "deepseek-v4-flash",
-        pro: { id: "deepseek-v4-pro", maxTokens: 8192 },
+        flash: { id: "deepseek-v4-flash" },
+        pro: { id: "deepseek-v4-pro", maxTokens: 8192, contextWindowSize: 128_000 },
       },
     });
-    expect(s.models.flash).toBe("deepseek-v4-flash");
-    expect(s.models.pro).toEqual({ id: "deepseek-v4-pro", maxTokens: 8192 });
+    expect(s.models.flash).toEqual({
+      id: "deepseek-v4-flash",
+      maxTokens: DEFAULT_MAX_TOKENS,
+      contextWindowSize: DEFAULT_CONTEXT_WINDOW_SIZE,
+    });
+    expect(s.models.pro).toEqual({
+      id: "deepseek-v4-pro",
+      maxTokens: 8192,
+      contextWindowSize: 128_000,
+    });
   });
 
   it("rejects a profile object missing id", () => {
@@ -93,51 +103,63 @@ describe("model tiers", () => {
   });
 
   it("resolves an alias key to its concrete id", () => {
-    const s = parseSettings({ models: { flash: "deepseek-v4-flash" } });
+    const s = parseSettings({ models: { flash: { id: "deepseek-v4-flash" } } });
     expect(resolveModelId(s, "flash")).toBe("deepseek-v4-flash");
   });
 
-  it("resolves the id of a profile-object entry", () => {
-    const s = parseSettings({ models: { pro: { id: "deepseek-v4-pro" } } });
-    expect(resolveModelId(s, "pro")).toBe("deepseek-v4-pro");
-  });
-
   it("passes an unknown name through unchanged (bare id)", () => {
-    const s = parseSettings({ models: { flash: "deepseek-v4-flash" } });
+    const s = parseSettings({ models: { flash: { id: "deepseek-v4-flash" } } });
     expect(resolveModelId(s, "claude-sonnet-4-5")).toBe("claude-sonnet-4-5");
-  });
-
-  it("accepts a per-tier contextWindowTokens override", () => {
-    const s = parseSettings({
-      models: { pro: { id: "deepseek-v4-pro", contextWindowTokens: 500_000 } },
-    });
-    const entry = s.models.pro;
-    expect(typeof entry === "object" && entry.contextWindowTokens).toBe(500_000);
   });
 });
 
-describe("resolveContextWindowTokens", () => {
+describe("resolveMaxTokens", () => {
   const base = (extra: Record<string, unknown> = {}) =>
-    parseSettings({ contextWindowTokens: 256_000, ...extra });
+    parseSettings({ ...extra });
 
-  it("falls back to the top-level value when the tier has no override", () => {
-    const s = base({ models: { flash: "deepseek-v4-flash" } });
-    expect(resolveContextWindowTokens(s, "flash")).toBe(256_000);
+  it("falls back to DEFAULT_MAX_TOKENS when the tier has no override", () => {
+    const s = base({ models: { flash: { id: "deepseek-v4-flash" } } });
+    expect(resolveMaxTokens(s, "flash")).toBe(DEFAULT_MAX_TOKENS);
   });
 
-  it("uses the tier's own contextWindowTokens when set (by tier key)", () => {
-    const s = base({ models: { pro: { id: "deepseek-v4-pro", contextWindowTokens: 800_000 } } });
-    expect(resolveContextWindowTokens(s, "pro")).toBe(800_000);
+  it("uses the tier's own maxTokens when set (by tier key)", () => {
+    const s = base({ models: { pro: { id: "deepseek-v4-pro", maxTokens: 8192 } } });
+    expect(resolveMaxTokens(s, "pro")).toBe(8192);
   });
 
   it("matches a profile tier by resolved id when given a bare model id", () => {
-    const s = base({ models: { pro: { id: "deepseek-v4-pro", contextWindowTokens: 800_000 } } });
-    expect(resolveContextWindowTokens(s, "deepseek-v4-pro")).toBe(800_000);
+    const s = base({ models: { pro: { id: "deepseek-v4-pro", maxTokens: 8192 } } });
+    expect(resolveMaxTokens(s, "deepseek-v4-pro")).toBe(8192);
   });
 
   it("falls back for an unknown name with no matching tier", () => {
-    const s = base({ models: { pro: { id: "deepseek-v4-pro", contextWindowTokens: 800_000 } } });
-    expect(resolveContextWindowTokens(s, "claude-sonnet-4-5")).toBe(256_000);
+    const s = base({ models: { pro: { id: "deepseek-v4-pro", maxTokens: 8192 } } });
+    expect(resolveMaxTokens(s, "claude-sonnet-4-5")).toBe(DEFAULT_MAX_TOKENS);
+  });
+});
+
+describe("resolveContextWindowSize", () => {
+  const base = (extra: Record<string, unknown> = {}) =>
+    parseSettings({ ...extra });
+
+  it("falls back to DEFAULT_CONTEXT_WINDOW_SIZE when the tier has no override", () => {
+    const s = base({ models: { flash: { id: "deepseek-v4-flash" } } });
+    expect(resolveContextWindowSize(s, "flash")).toBe(DEFAULT_CONTEXT_WINDOW_SIZE);
+  });
+
+  it("uses the tier's own contextWindowSize when set (by tier key)", () => {
+    const s = base({ models: { pro: { id: "deepseek-v4-pro", contextWindowSize: 800_000 } } });
+    expect(resolveContextWindowSize(s, "pro")).toBe(800_000);
+  });
+
+  it("matches a profile tier by resolved id when given a bare model id", () => {
+    const s = base({ models: { pro: { id: "deepseek-v4-pro", contextWindowSize: 800_000 } } });
+    expect(resolveContextWindowSize(s, "deepseek-v4-pro")).toBe(800_000);
+  });
+
+  it("falls back for an unknown name with no matching tier", () => {
+    const s = base({ models: { pro: { id: "deepseek-v4-pro", contextWindowSize: 800_000 } } });
+    expect(resolveContextWindowSize(s, "claude-sonnet-4-5")).toBe(DEFAULT_CONTEXT_WINDOW_SIZE);
   });
 });
 
@@ -169,6 +191,20 @@ describe("loadSettings", () => {
     expect(s.baseURL).toBeUndefined();
     expect(s.apiKey).toBeUndefined();
     expect(s.sessionDir).toBeUndefined();
+  });
+
+  it("accepts per-tier maxTokens in models", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "nova-config-"));
+    const path = join(dir, "nova.config.json");
+    await writeFile(
+      path,
+      JSON.stringify({
+        models: { pro: { id: "deepseek-v4-pro", maxTokens: 4096 } },
+      }),
+      "utf8",
+    );
+    const s = await loadSettings(path);
+    expect(s.models.pro?.maxTokens).toBe(4096);
   });
 });
 

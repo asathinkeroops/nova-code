@@ -15,11 +15,12 @@ interface StubOpts {
   /** Tool names; each gets a small wire schema so its tokens are non-zero. */
   toolNames?: string[];
   autoCompact?: { enabled: boolean; contextWindowPercent?: number };
-  contextWindowTokens?: number;
+  contextWindowSize?: number;
 }
 
 function makeCtx(cards: Card[], o: StubOpts = {}): CliContext {
   const toolNames = o.toolNames ?? ["read", "write", "mcp__srv__do"];
+  const windowTokens = o.contextWindowSize ?? 128_000;
   return {
     workspace: "/tmp/ws",
     session: { id: "test-session" },
@@ -27,8 +28,7 @@ function makeCtx(cards: Card[], o: StubOpts = {}): CliContext {
     skillsBlock: o.skillsBlock ?? "",
     settings: {
       model: "test-model",
-      models: {},
-      contextWindowTokens: o.contextWindowTokens ?? 128_000,
+      models: { "test-model": { id: "test-model", contextWindowSize: windowTokens } },
       compact: { auto: o.autoCompact ?? { enabled: true } },
     },
     tools: {

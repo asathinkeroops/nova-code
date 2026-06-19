@@ -69,7 +69,7 @@ export function StatusLine({ store, shellMode = false }: StatusLineProps): React
     banner,
     gitBranch,
     contextTokens,
-    contextWindowTokens,
+    contextWindowSize,
     cacheReadTokens,
     cacheCreationTokens,
     uncachedInputTokens,
@@ -83,7 +83,7 @@ export function StatusLine({ store, shellMode = false }: StatusLineProps): React
       banner: s.banner,
       gitBranch: s.gitBranch,
       contextTokens: s.contextTokens,
-      contextWindowTokens: s.contextWindowTokens,
+      contextWindowSize: s.contextWindowSize,
       cacheReadTokens: s.cacheReadTokens,
       cacheCreationTokens: s.cacheCreationTokens,
       uncachedInputTokens: s.uncachedInputTokens,
@@ -127,11 +127,11 @@ export function StatusLine({ store, shellMode = false }: StatusLineProps): React
   // First row: model / context / workspace / branch / directory.
   const main: StatusSegment[] = [];
   if (banner?.model) {
-    const window = contextWindowTokens > 0 ? ` (${formatTokenCount(contextWindowTokens)})` : "";
+    const window = contextWindowSize > 0 ? ` (${formatTokenCount(contextWindowSize)})` : "";
     main.push({ icon: "◆", text: `${banner.model.toUpperCase()}${window}`, color: "magenta" });
   }
-  if (contextWindowTokens > 0) {
-    const pct = Math.min(100, Math.round((contextTokens / contextWindowTokens) * 100));
+  if (contextWindowSize > 0) {
+    const pct = Math.min(100, Math.round((contextTokens / contextWindowSize) * 100));
     main.push({ icon: "○", text: `${contextBar(pct)} ${pct}%`, color: "yellow" });
   }
   if (banner?.cwd) {

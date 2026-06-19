@@ -97,14 +97,14 @@ function displayCwd(cwd: string, home: string | undefined): string {
 }
 
 function formatModel(b: BannerProps): string {
-  const base = b.contextWindowTokens
+  const base = b.contextWindowSize
     ? (() => {
         const window =
-          b.contextWindowTokens >= 1_000_000
-            ? `${Math.round(b.contextWindowTokens / 1_000_000)}m`
-            : b.contextWindowTokens >= 1_000
-              ? `${Math.round(b.contextWindowTokens / 1_000)}k`
-              : `${b.contextWindowTokens}`;
+          b.contextWindowSize >= 1_000_000
+            ? `${Math.round(b.contextWindowSize / 1_000_000)}m`
+            : b.contextWindowSize >= 1_000
+              ? `${Math.round(b.contextWindowSize / 1_000)}k`
+              : `${b.contextWindowSize}`;
         return `${b.model}[${window}]`;
       })()
     : b.model;

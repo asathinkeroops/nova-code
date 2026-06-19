@@ -268,8 +268,8 @@ function chromeRowsFor(
     // applies since the footer replaces the line.
     n += showTodos || showTasks ? 2 : 3;
   }
-  if (showTodos) n += todos;
-  if (showTasks) n += tasks;
+  if (showTodos) n += 1 + todos;
+  if (showTasks) n += 1 + tasks;
   return n;
 }
 

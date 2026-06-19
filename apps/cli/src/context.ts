@@ -37,7 +37,8 @@ import {
   createLogger,
   loadProjectHooks,
   mergeHooks,
-  resolveContextWindowTokens,
+  resolveContextWindowSize,
+  resolveMaxTokens,
   resolveModelId,
   type Logger,
   type Session,
@@ -227,21 +228,21 @@ function currentGitBranch(cwd: string): string | null {
 
 export function refreshBanner(ctx: CliContext): void {
   // Effective window follows the active model tier (a tier may override the
-  // top-level contextWindowTokens); recomputed here so /model switches it live.
-  const contextWindowTokens = resolveContextWindowTokens(ctx.settings, ctx.settings.model);
+  // top-level contextWindowSize); recomputed here so /model switches it live.
+  const contextWindowSize = resolveContextWindowSize(ctx.settings, ctx.settings.model);
   ctx.screen.setBanner({
     version: ctx.version,
     model: ctx.settings.model,
     cwd: ctx.workspace,
     home: homedir(),
     sessionId: ctx.session.id,
-    contextWindowTokens,
+    contextWindowSize,
     thinkingLabel: thinkingLevelLabel(ctx),
   });
   ctx.screen.setStatusMeta({
     sessionStartedAt: ctx.session.createdAt.getTime(),
     gitBranch: currentGitBranch(ctx.workspace),
-    contextWindowTokens,
+    contextWindowSize,
   });
   ctx.screen.setCostRates(resolveSessionRates(ctx) ?? null);
 }
@@ -1007,7 +1008,7 @@ export async function createContext(
     getModel: () => ctx.model,
     getThinkingBudget: () => currentThinkingBudget(ctx),
     getSettings: () => ({
-      maxTokens: ctx.settings.maxTokens,
+      maxTokens: resolveMaxTokens(ctx.settings, ctx.settings.model),
       maxTurns: ctx.settings.maxTurns,
       maxTokensContinuations: ctx.settings.maxTokensContinuations,
       noTranscript: ctx.noTranscript,

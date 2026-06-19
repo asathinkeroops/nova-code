@@ -144,7 +144,7 @@ export function TodoFooter({ todos }: TodoFooterProps): React.ReactElement | nul
     : null;
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" marginTop={1}>
       {spinnerSpec ? <Spinner spec={spinnerSpec} /> : null}
       {visible.map((t, i) => (
         <TodoRow key={t.id} todo={t} isFirst={i === 0} />

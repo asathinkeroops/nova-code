@@ -213,7 +213,7 @@ export interface AppState {
    * Configured context-window size in tokens, used as the denominator for the
    * StatusLine usage meter. Set by `setStatusMeta`; survives `reset()`.
    */
-  contextWindowTokens: number;
+  contextWindowSize: number;
   /**
    * Session-cumulative prompt tokens served from cache (hits), summed across
    * every model request. Numerator of the cache-hit-rate meter. Reset to 0 on
@@ -361,7 +361,7 @@ export interface AppActions {
   setStatusMeta: (meta: {
     sessionStartedAt: number;
     gitBranch: string | null;
-    contextWindowTokens: number;
+    contextWindowSize: number;
   }) => void;
   /** Update the latest-request token count shown by the StatusLine meter. */
   setContextTokens: (tokens: number) => void;
@@ -530,7 +530,7 @@ export function createAppStore(): AppStoreApi {
       sessionStartedAt: null,
       gitBranch: null,
       contextTokens: 0,
-      contextWindowTokens: 0,
+      contextWindowSize: 0,
       cacheReadTokens: 0,
       cacheCreationTokens: 0,
       uncachedInputTokens: 0,
@@ -749,7 +749,7 @@ export function createAppStore(): AppStoreApi {
           toolDetails: {},
         });
         // banner, thinkingLabel, and the session-level status meta
-        // (sessionStartedAt / gitBranch / contextWindowTokens) are intentionally
+        // (sessionStartedAt / gitBranch / contextWindowSize) are intentionally
         // preserved across reset — they track process/session state, not
         // conversation history. Only contextTokens resets, since /clear empties
         // the context window.
@@ -825,14 +825,14 @@ export function createAppStore(): AppStoreApi {
         if (
           s.sessionStartedAt === meta.sessionStartedAt &&
           s.gitBranch === meta.gitBranch &&
-          s.contextWindowTokens === meta.contextWindowTokens
+          s.contextWindowSize === meta.contextWindowSize
         ) {
           return;
         }
         set({
           sessionStartedAt: meta.sessionStartedAt,
           gitBranch: meta.gitBranch,
-          contextWindowTokens: meta.contextWindowTokens,
+          contextWindowSize: meta.contextWindowSize,
         });
       },
 

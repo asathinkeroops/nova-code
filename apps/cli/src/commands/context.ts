@@ -1,7 +1,7 @@
 import { buildSystemPrompt } from "@nova/agent";
 import { computeThreshold, estimateTokens } from "@nova/context";
 import { toWireTools } from "@nova/core";
-import { resolveContextWindowTokens } from "@nova/runtime";
+import { resolveContextWindowSize } from "@nova/runtime";
 import { accent, blue, bold, cyan, dim, green, magenta, yellow } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { contextBar, formatPercent, formatTokenCount } from "../ui/status-format.js";
@@ -40,7 +40,7 @@ interface Row {
  * "autocompact buffer" above it.
  */
 export function handleContext(ctx: CliContext): void {
-  const windowTokens = resolveContextWindowTokens(ctx.settings, ctx.settings.model);
+  const windowTokens = resolveContextWindowSize(ctx.settings, ctx.settings.model);
 
   // System prompt = core instructions + memory bundle + skills block. We size
   // the whole thing, then attribute memory/skills to their own rows and treat
@@ -74,7 +74,7 @@ export function handleContext(ctx: CliContext): void {
   const auto = ctx.settings.compact.auto;
   const threshold = auto.enabled
     ? computeThreshold({
-        contextWindowTokens: windowTokens,
+        contextWindowSize: windowTokens,
         thresholdTokens: auto.thresholdTokens,
         contextWindowPercent: auto.contextWindowPercent,
       })

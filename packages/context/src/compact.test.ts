@@ -116,21 +116,21 @@ describe("microCompact", () => {
 });
 
 describe("shouldAutoCompact / computeThreshold", () => {
-  it("throws when neither thresholdTokens nor contextWindowTokens is provided", () => {
-    expect(() => computeThreshold({})).toThrow(/thresholdTokens or contextWindowTokens/);
+  it("throws when neither thresholdTokens nor contextWindowSize is provided", () => {
+    expect(() => computeThreshold({})).toThrow(/thresholdTokens or contextWindowSize/);
   });
 
   it("uses thresholdTokens when set", () => {
     expect(computeThreshold({ thresholdTokens: 1234 })).toBe(1234);
   });
 
-  it("computes 50% of contextWindowTokens by default", () => {
-    expect(computeThreshold({ contextWindowTokens: 200_000 })).toBe(100_000);
+  it("computes 50% of contextWindowSize by default", () => {
+    expect(computeThreshold({ contextWindowSize: 200_000 })).toBe(100_000);
   });
 
   it("respects contextWindowPercent override", () => {
     expect(
-      computeThreshold({ contextWindowTokens: 100_000, contextWindowPercent: 0.8 }),
+      computeThreshold({ contextWindowSize: 100_000, contextWindowPercent: 0.8 }),
     ).toBe(80_000);
   });
 
