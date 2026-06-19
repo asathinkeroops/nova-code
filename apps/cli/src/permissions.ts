@@ -87,6 +87,11 @@ export const DEFAULT_PERMISSION_RULES: readonly PermissionRule[] = [
   // calls run through this same PermissionEngine, so its bash/write/edit still
   // hit `ask`. Allowing the spawn just avoids a prompt for the delegation step.
   { tool: "createSubAgent", effect: "allow" },
+  // Fetching a URL is read-only and respects robots.txt by default. Auto-allow
+  // so the model can pull docs, references, and APIs without per-call prompts.
+  // Outbound requests are still subject to sandbox network confinement when
+  // configured (sandbox.network.*).
+  { tool: "webfetch", effect: "allow" },
 ];
 
 // Read-only tools fenced to the workspace by `path` containment. All take a
