@@ -151,7 +151,10 @@ async function run(positional: string[], opts: CliOptions): Promise<void> {
   }
 
   const initialPrompt = positional.join(" ").trim();
-  const screen = new Screen();
+  const screen = new Screen({
+    syncOutput: settings.terminal.syncOutput,
+    cursorFollow: settings.terminal.cursorFollow,
+  });
   screen.mount();
 
   try {

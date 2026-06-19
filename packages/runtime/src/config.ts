@@ -369,6 +369,24 @@ export const settingsSchema = z.object({
       enabled: z.boolean().default(true),
     })
     .default({ enabled: true }),
+  // Terminal rendering behavior for the interactive TUI.
+  terminal: z
+    .object({
+      // Synchronized Output (DEC private mode 2026): wrap each Ink frame write
+      // in BSU/ESU so the terminal composites it atomically. Ink repaints by
+      // erasing the previous frame and redrawing; without this guard a fast
+      // stream (notably DeepSeek's long reasoning + spinner) shows the
+      // half-erased intermediate state as flicker. Terminals that don't
+      // implement 2026 ignore the sequence per the DEC convention, so this is
+      // safe to leave on; disable only if a terminal mishandles it.
+      syncOutput: z.boolean().default(true),
+      // Park the real terminal cursor on the InputBox caret each frame (via
+      // DECSC/DECRC + cursor move) so the cursor — and IME composition popups
+      // anchored to it — follow typing instead of sitting at the home corner.
+      // Disable only if a terminal mishandles save/restore-cursor.
+      cursorFollow: z.boolean().default(true),
+    })
+    .default({ syncOutput: true, cursorFollow: true }),
   // Next-user-input prediction shown as the input box placeholder. The CLI
   // runs this once after each successful agent turn using the main model.
   predict: z

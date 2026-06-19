@@ -10,6 +10,7 @@ import {
   BYPASS_PERMISSIONS_INDICATOR,
   PERMISSION_MODE_HINT,
 } from "./status-format.js";
+import { setCursorTarget } from "./cursor-target.js";
 import type { AppStoreApi } from "./store.js";
 import { Viewport } from "./viewport.js";
 
@@ -95,6 +96,13 @@ export function App({ store }: AppProps): React.ReactElement {
     [store],
   );
 
+  // The permanent InputBox owns the real-cursor target; while setup commandeers
+  // the screen it isn't mounted, so clear the target ourselves so the cursor
+  // doesn't park at a stale caret from before the wizard opened.
+  React.useEffect(() => {
+    if (setup) setCursorTarget(null);
+  }, [setup]);
+
   // Setup mode commandeers the whole screen — everything else (banner,
   // messages, cards, spinner, footer) is suppressed until the wizard finishes.
   // It still drives input through the modal prompt rather than the queue.
@@ -163,6 +171,10 @@ export function App({ store }: AppProps): React.ReactElement {
           onMeasure={onMeasureInput}
           onCyclePermissionMode={onCyclePermissionMode}
           onShellModeChange={setShellMode}
+          cursorTracking={{
+            termRows,
+            bottomChromeRows: STATUS_LINE_ROWS + indicatorRows,
+          }}
         />
       </Box>
       <Box flexShrink={0} flexDirection="column">

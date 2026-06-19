@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Box, Text } from "ink";
 import { bold, type Rgb, useTruecolor } from "../colors.js";
+import { UI_FRAME_MS } from "./frame.js";
 import { formatTokenCount } from "./status-format.js";
 import type { SpinnerSpec } from "./store.js";
 
@@ -34,7 +35,9 @@ export function Spinner({ spec }: SpinnerProps): React.ReactElement {
   const tint = isStatic ? undefined : label.tint;
   const colorize = !isStatic && label.colorize ? label.colorize : (s: string): string => s;
   const canShimmer = !!tint && useTruecolor;
-  const tickMs = canShimmer ? 60 : 80;
+  // One shared cadence with the live-draft flush so the two full-frame repaint
+  // drivers stay in phase and coalesce instead of interleaving (see frame.ts).
+  const tickMs = UI_FRAME_MS;
 
   useEffect(() => {
     const id = setInterval(() => {

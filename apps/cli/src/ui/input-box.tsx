@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Box, Text, useInput, useStdout } from "ink";
 import { ACCENT_HEX, BASH_HEX } from "../colors.js";
+import { setCursorTarget } from "./cursor-target.js";
 import { charDisplayWidth, truncateToWidth, visibleWidth } from "./width.js";
 
 export interface SlashCommand {
@@ -302,6 +303,14 @@ export interface InputBoxProps {
    * leave it unset (their `!` is just a literal character).
    */
   onShellModeChange?: (active: boolean) => void;
+  /**
+   * When set, the real terminal cursor is parked on this box's caret each frame
+   * (so IME popups follow typing). Carries the layout context the box can't see
+   * on its own: total terminal rows and the chrome rows below the box (status +
+   * mode indicator). Only the permanent, bottom-pinned InputBox wires this;
+   * modal/setup boxes leave it unset and don't drive the real cursor.
+   */
+  cursorTracking?: { termRows: number; bottomChromeRows: number };
 }
 
 export function InputBox({
@@ -313,6 +322,7 @@ export function InputBox({
   onEscape,
   onCyclePermissionMode,
   onShellModeChange,
+  cursorTracking,
 }: InputBoxProps): React.ReactElement {
   const [buffer, setBuffer] = useState("");
   const [cursor, setCursor] = useState(0);
@@ -572,7 +582,9 @@ export function InputBox({
     onShellModeChange?.(bashMode);
   }, [onShellModeChange, bashMode]);
   const lines = wrapBuffer(buffer, width);
-  const { row: cursorRow } = isEmpty ? { row: 0 } : findCursorPosition(lines, cursor);
+  const { row: cursorRow, col: cursorCol } = isEmpty
+    ? { row: 0, col: 0 }
+    : findCursorPosition(lines, cursor);
 
   const popupVisible = Math.min(POPUP_MAX_ROWS, Math.max(0, matches.length - safeOffset));
   const popupTopMore = matches.length > 0 && safeOffset > 0 ? 1 : 0;
@@ -588,6 +600,35 @@ export function InputBox({
   useEffect(() => {
     onMeasure?.(totalRows);
   }, [onMeasure, totalRows]);
+
+  // Park the real terminal cursor on the caret so IME composition popups follow
+  // typing. Computed during render (not an effect) so the value is in place for
+  // the very frame Ink serializes from this tree — the stdout wrapper reads it
+  // when it writes that frame. Coordinates are absolute and 1-indexed.
+  //
+  // Row: the box is pinned to the bottom, so we count up from the frame's last
+  // row (termRows-1) past the chrome below the box (status + indicator) and the
+  // box rows below the caret line — `bodyRows - cursorRow` covers the body lines
+  // after the caret plus the bottom rule. Counting from the bottom keeps this
+  // stable while the Viewport above reflows during streaming.
+  // Col: leading space (col 1) + prompt (only on the first body line) + the
+  // display width of the text before the caret, +1 to land on the caret cell.
+  if (cursorTracking) {
+    if (active) {
+      const cols = stdout?.columns ?? width;
+      const promptOffset = cursorRow === 0 ? PROMPT_LEN : 0;
+      const row = cursorTracking.termRows - 1 - cursorTracking.bottomChromeRows - (bodyRows - cursorRow);
+      const col = 2 + promptOffset + cursorCol;
+      setCursorTarget({
+        row: Math.max(1, Math.min(row, cursorTracking.termRows - 1)),
+        col: Math.max(1, Math.min(col, cols)),
+      });
+    } else {
+      // Permanent box still mounted but a modal owns input — drop the caret so
+      // the cursor hides instead of lingering at a stale spot.
+      setCursorTarget(null);
+    }
+  }
 
   const renderContentLine = (line: DisplayLine, idx: number): React.ReactElement => {
     const isCursorLine = idx === cursorRow;

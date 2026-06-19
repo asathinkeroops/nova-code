@@ -87,6 +87,7 @@ import {
   resolveSessionRates,
 } from "./commands/index.js";
 import { TOOL_SPINNER_DELAY_MS, WORKING_WORDS } from "./constants.js";
+import { UI_FRAME_MS } from "./ui/frame.js";
 import { fetchDeepSeekBalance } from "./deepseek-balance.js";
 import { appendToolDetail, loadDisplaySidecar } from "./display-sidecar.js";
 import { registerUiHooks } from "./hooks.js";
@@ -761,7 +762,7 @@ export async function createContext(
     if (!settings.stream.enabled) return;
     if (delta.text) liveBuf.text += delta.text;
     if (delta.thinking) liveBuf.thinking += delta.thinking;
-    if (!liveTimer) liveTimer = setTimeout(flushLive, 80);
+    if (!liveTimer) liveTimer = setTimeout(flushLive, UI_FRAME_MS);
   };
   const resetLiveStream = (): void => {
     if (liveTimer) {

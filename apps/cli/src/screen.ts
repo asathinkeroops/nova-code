@@ -16,6 +16,8 @@ import { type BannerProps } from "./ui/render-item.js";
 import { type BoxedInputOptions, type SlashCommand } from "./ui/input-box.js";
 import { copyToClipboard } from "./ui/clipboard.js";
 import { attachFilteredStdin } from "./ui/mouse.js";
+import { wrapStdout } from "./ui/sync-output.js";
+import { getCursorTarget } from "./ui/cursor-target.js";
 import { extractSelection } from "./ui/selection.js";
 import { H_PAD } from "./ui/viewport.js";
 import { type SetupEntry, type SetupState } from "./ui/setup-view.js";
@@ -71,6 +73,21 @@ interface InkInstance {
  * subclass that no-ops `mount()` and the interactive prompts, so the agent
  * loop runs without ever touching the terminal.
  */
+export interface ScreenOptions {
+  /**
+   * Wrap Ink's frame writes in Synchronized Output (DEC 2026) so each repaint
+   * lands atomically and the erase→redraw flicker disappears. Defaults to on;
+   * seeded from `settings.terminal.syncOutput`.
+   */
+  syncOutput?: boolean;
+  /**
+   * Park the real terminal cursor on the InputBox caret after each frame so it
+   * — and any IME composition popup anchored to it — follows typing instead of
+   * sitting at home. Defaults to on; seeded from `settings.terminal.cursorFollow`.
+   */
+  cursorFollow?: boolean;
+}
+
 export class Screen {
   private store: AppStoreApi = createAppStore();
   private instance: InkInstance | null = null;
@@ -78,6 +95,13 @@ export class Screen {
   private detachResize: (() => void) | null = null;
   private detachMouse: (() => void) | null = null;
   private detachAltScreen: (() => void) | null = null;
+  private readonly syncOutput: boolean;
+  private readonly cursorFollow: boolean;
+
+  constructor(opts: ScreenOptions = {}) {
+    this.syncOutput = opts.syncOutput ?? true;
+    this.cursorFollow = opts.cursorFollow ?? true;
+  }
 
   mount(): void {
     if (this.mounted) return;
@@ -164,20 +188,37 @@ export class Screen {
     });
     this.detachMouse = filtered.detach;
 
+    // Wrap stdout so each Ink frame repaints atomically (Synchronized Output,
+    // kills streaming flicker) and parks the real cursor on the InputBox caret
+    // (so IME popups follow typing). Only meaningful on a TTY; the alt-screen
+    // guard above already gates interactive output on isTTY. When both are off
+    // there's nothing to add, so pass the raw stream.
+    const wrap = this.syncOutput || this.cursorFollow;
+    const stdout =
+      wrap && process.stdout.isTTY
+        ? wrapStdout(process.stdout, {
+            sync: this.syncOutput,
+            ...(this.cursorFollow ? { getCursor: getCursorTarget } : {}),
+          })
+        : process.stdout;
     this.instance = render(React.createElement(App, { store: this.store }), {
       stdin: filtered.stream,
+      stdout,
       exitOnCtrlC: false,
     }) as InkInstance;
     this.mounted = true;
 
-    // Re-show the cursor after Ink's first paint hid it via cli-cursor.
-    // Ink's log-update only hides once (gated by an internal `hasHiddenCursor`
-    // flag), so a one-time re-show is enough — Ink will not re-hide on later
-    // frames. A visible cursor anchors IME composition popups (Chinese / JP /
-    // etc.) to the actual typing row instead of defaulting to row 1 col 1.
-    setImmediate(() => {
-      if (process.stdout.isTTY) process.stdout.write("\x1b[?25h");
-    });
+    // When cursor-follow is on, the stdout wrapper owns cursor visibility per
+    // frame (shows it on the caret, hides it when no caret) — re-showing here
+    // would just race that. When it's off, fall back to the old behavior: Ink's
+    // log-update hides the cursor once on first paint (gated by an internal
+    // `hasHiddenCursor` flag), so a one-time re-show keeps a visible cursor for
+    // IME anchoring; Ink won't re-hide on later frames.
+    if (!this.cursorFollow) {
+      setImmediate(() => {
+        if (process.stdout.isTTY) process.stdout.write("\x1b[?25h");
+      });
+    }
 
     // Keep the store's view of the terminal size current; the viewport reads
     // these to compute slice width and row budget.
