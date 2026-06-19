@@ -425,6 +425,10 @@ export class Screen {
     return this.store.getState().startSpinner(label, hint);
   }
 
+  updateSpinnerLabel(label: SpinnerLabel): void {
+    this.store.getState().updateSpinnerLabel(label);
+  }
+
   setEscHandler(fn: (() => void) | null): void {
     this.store.getState().setEscHandler(fn);
   }

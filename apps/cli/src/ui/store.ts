@@ -321,6 +321,8 @@ export interface AppActions {
   setSpinnerTokens: (progress: { inputTokens?: number; outputTokens: number }) => void;
   /** Set/clear the active spinner's trailing hint (no-op if none). */
   setSpinnerHint: (hint: string | undefined) => void;
+  /** Replace the active spinner's label in place (no-op if no spinner). */
+  updateSpinnerLabel: (label: SpinnerLabel) => void;
   /** Append streamed assistant deltas to the live draft (starts one if none). */
   appendLiveDraft: (delta: { text?: string; thinking?: string }) => void;
   /** Drop the live draft — called when the final message replaces it. */
@@ -629,6 +631,17 @@ export function createAppStore(): AppStoreApi {
         if (hint === undefined) delete next.hint;
         else next.hint = hint;
         set({ spinner: next });
+      },
+
+      updateSpinnerLabel(label) {
+        const cur = get().spinner;
+        if (!cur) return;
+        const activeWord =
+          typeof label === "string"
+            ? label
+            : (label.words[Math.floor(Math.random() * label.words.length)] ?? "working");
+        if (cur.activeWord === activeWord) return;
+        set({ spinner: { ...cur, label, activeWord } });
       },
 
       appendLiveDraft({ text, thinking }) {

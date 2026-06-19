@@ -70,8 +70,6 @@ export function registerUiHooks(ctx: CliContext): void {
           title: "request failed",
         });
       }
-    } else {
-      stopSpinner(ctx);
     }
     // Snapshot how full the context window is from the request's token usage.
     // The input side is the full prompt sent; output is appended for next turn.
