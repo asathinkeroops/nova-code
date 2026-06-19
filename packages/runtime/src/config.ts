@@ -431,15 +431,16 @@ export const settingsSchema = z.object({
   // runLongRunningCommand) run inside a platform sandbox — macOS Seatbelt via
   // sandbox-exec, Linux bubblewrap — that confines filesystem *writes* to the
   // workspace roots (the same allowed roots the permission engine uses) plus a
-  // few system defaults. Reads stay open and the network is left UNRESTRICTED
-  // (only the filesystem is enforced). This is defense-in-depth layered on top
-  // of the permission engine, not a replacement for it. Unsupported platforms
-  // (Windows) or missing host deps (ripgrep; Linux also bubblewrap/socat)
-  // degrade silently to no sandboxing, so default-ON is safe to ship. Common
-  // out-of-workspace caches (npm/pnpm/cargo/go/…) are seeded into
-  // filesystem.allowWrite by default (see DEFAULT_SANDBOX_ALLOW_WRITE) so the
-  // usual commands work; add more paths there for anything else, or set
-  // `enabled: false` to turn the sandbox off entirely.
+  // few system defaults. Reads stay open and the network is UNRESTRICTED by
+  // default; set `network.allowedDomains` to lock down outbound connections.
+  // This is defense-in-depth layered on top of the permission engine, not a
+  // replacement for it. Unsupported platforms (Windows) or missing host deps
+  // (ripgrep; Linux also bubblewrap/socat) degrade silently to no sandboxing, so
+  // default-ON is safe to ship. Common out-of-workspace caches
+  // (npm/pnpm/cargo/go/…) are seeded into filesystem.allowWrite by default (see
+  // DEFAULT_SANDBOX_ALLOW_WRITE) so the usual commands work; add more paths
+  // there for anything else, or set `enabled: false` to turn the sandbox off
+  // entirely.
   sandbox: z
     .object({
       enabled: z.boolean().default(true),
@@ -477,6 +478,45 @@ export const settingsSchema = z.object({
           denyRead: [],
           allowGitConfig: true,
         }),
+      // Network confinement: UNRESTRICTED by default (undefined). Set
+      // `allowedDomains` to restrict outbound connections to a
+      // domain allowlist; `deniedDomains` to block specific domains on top
+      // of that. `filterRequest` (the SDK callback) is not exposed — it
+      // can't be expressed in JSON. All other SDK NetworkConfig fields are
+      // surfaced here; see the @anthropic-ai/sandbox-runtime docs for
+      // details.
+      network: z
+        .object({
+          allowedDomains: z.array(z.string().min(1)).default([]),
+          deniedDomains: z.array(z.string().min(1)).default([]),
+          allowUnixSockets: z.array(z.string().min(1)).optional(),
+          allowAllUnixSockets: z.boolean().optional(),
+          allowLocalBinding: z.boolean().optional(),
+          allowMachLookup: z.array(z.string().min(1)).optional(),
+          httpProxyPort: z.number().int().positive().optional(),
+          socksProxyPort: z.number().int().positive().optional(),
+          mitmProxy: z
+            .object({
+              socketPath: z.string().min(1),
+              domains: z.array(z.string().min(1)).min(1),
+            })
+            .optional(),
+          tlsTerminate: z
+            .object({
+              caCertPath: z.string().min(1).optional(),
+              caKeyPath: z.string().min(1).optional(),
+            })
+            .optional(),
+          parentProxy: z
+            .object({
+              http: z.string().min(1).optional(),
+              https: z.string().min(1).optional(),
+              noProxy: z.string().min(1).optional(),
+            })
+            .optional(),
+        })
+        .optional()
+        .describe("Network confinement config; omit for unrestricted network (default)."),
     })
     .default({
       enabled: true,

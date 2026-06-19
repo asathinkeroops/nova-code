@@ -11,6 +11,26 @@ export interface SandboxLogger {
   warn(obj: unknown, msg?: string): void;
 }
 
+/**
+ * Network configuration subset surfacing the SDK's NetworkConfig fields that are
+ * expressible in JSON. `filterRequest` (a runtime callback) is excluded — it must
+ * be wired in-code if needed. When `undefined`, the network stays UNRESTRICTED
+ * (the default and backward-compatible behavior).
+ */
+export interface SandboxNetworkConfig {
+  allowedDomains?: string[];
+  deniedDomains?: string[];
+  allowUnixSockets?: string[];
+  allowAllUnixSockets?: boolean;
+  allowLocalBinding?: boolean;
+  allowMachLookup?: string[];
+  httpProxyPort?: number;
+  socksProxyPort?: number;
+  mitmProxy?: { socketPath: string; domains: string[] };
+  tlsTerminate?: { caCertPath?: string; caKeyPath?: string };
+  parentProxy?: { http?: string; https?: string; noProxy?: string };
+}
+
 export interface CreateSandboxOptions {
   /** Master switch — `settings.sandbox.enabled`. When false the control is inactive. */
   enabled: boolean;
@@ -37,6 +57,11 @@ export interface CreateSandboxOptions {
   allowGitConfig?: boolean;
   /** Capture violations via the platform log monitor so `annotateOutput` has data. */
   monitorViolations?: boolean;
+  /**
+   * Network confinement; omit (undefined) to leave the network unrestricted
+   * (the default). Set `allowedDomains` to lock down outbound connections.
+   */
+  network?: SandboxNetworkConfig;
   logger?: SandboxLogger;
 }
 
@@ -60,9 +85,8 @@ function inactive(reason: string): SandboxControl {
 /**
  * Initialize the OS command sandbox (@anthropic-ai/sandbox-runtime) and return
  * a control handle. Confines filesystem **writes** to `writeRoots` (+ extras and
- * SDK defaults); reads stay open and the network is left UNRESTRICTED — the
- * config omits `network.allowedDomains`, which the SDK reads as "no network
- * restriction" (the macOS profile emits `(allow network*)` and no proxy runs).
+ * SDK defaults); reads stay open. The network is UNRESTRICTED by default; pass
+ * `network` to lock down outbound domains, local binding, etc.
  *
  * Never throws: any setup failure (disabled, unsupported platform, missing host
  * deps, init error) yields an inactive control with `bridge: undefined`, so the
@@ -80,6 +104,28 @@ export async function createSandbox(opts: CreateSandboxOptions): Promise<Sandbox
   }
 
   const allowWrite = [...opts.writeRoots, ...(opts.extraAllowWrite ?? [])];
+
+  // Build the network config from opts; undefined → unrestricted ({}).
+  const network = opts.network
+    ? ({
+        allowedDomains: opts.network.allowedDomains ?? [],
+        deniedDomains: opts.network.deniedDomains ?? [],
+        ...(opts.network.allowUnixSockets && { allowUnixSockets: opts.network.allowUnixSockets }),
+        ...(opts.network.allowAllUnixSockets !== undefined && {
+          allowAllUnixSockets: opts.network.allowAllUnixSockets,
+        }),
+        ...(opts.network.allowLocalBinding !== undefined && {
+          allowLocalBinding: opts.network.allowLocalBinding,
+        }),
+        ...(opts.network.allowMachLookup && { allowMachLookup: opts.network.allowMachLookup }),
+        ...(opts.network.httpProxyPort !== undefined && { httpProxyPort: opts.network.httpProxyPort }),
+        ...(opts.network.socksProxyPort !== undefined && { socksProxyPort: opts.network.socksProxyPort }),
+        ...(opts.network.mitmProxy && { mitmProxy: opts.network.mitmProxy }),
+        ...(opts.network.tlsTerminate && { tlsTerminate: opts.network.tlsTerminate }),
+        ...(opts.network.parentProxy && { parentProxy: opts.network.parentProxy }),
+      } as NetworkConfig)
+    : ({} as NetworkConfig);
+
   const config: SandboxRuntimeConfig = {
     filesystem: {
       allowWrite,
@@ -87,10 +133,7 @@ export async function createSandbox(opts: CreateSandboxOptions): Promise<Sandbox
       denyRead: [...(opts.denyRead ?? [])],
       allowGitConfig: opts.allowGitConfig ?? false,
     },
-    // No `allowedDomains` → the SDK applies no network restriction (see above).
-    // The public type marks network's domain arrays required, but initialize()
-    // only reads network's optional proxy/tls fields, so `{}` is safe at runtime.
-    network: {} as NetworkConfig,
+    network,
   };
 
   try {
@@ -138,7 +181,12 @@ export async function createSandbox(opts: CreateSandboxOptions): Promise<Sandbox
     },
   };
 
-  log?.info({ allowWrite }, "sandbox active (filesystem write-confinement, network open)");
+  log?.info(
+    { allowWrite, networkRestricted: opts.network !== undefined },
+    "sandbox active (filesystem write-confinement, network " +
+      (opts.network ? "restricted" : "open") +
+      ")",
+  );
   return {
     bridge,
     active: true,

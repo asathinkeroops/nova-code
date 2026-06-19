@@ -862,10 +862,11 @@ export async function createContext(
   (ctx as { permission: PermissionEngine }).permission = permission;
 
   // OS command sandbox (opt-in). Confines subprocess writes to the same
-  // allowedRoots the permission engine uses; network stays open. createSandbox
-  // never throws — on an unsupported platform / missing deps / disabled it
-  // returns an inactive control and tools run unsandboxed. The bridge is read
-  // by the dispatch closure above via the `sandboxBridge` variable.
+  // allowedRoots the permission engine uses; network is unrestricted by default
+  // unless the user sets `sandbox.network.allowedDomains`. createSandbox never
+  // throws — on an unsupported platform / missing deps / disabled it returns an
+  // inactive control and tools run unsandboxed. The bridge is read by the
+  // dispatch closure above via the `sandboxBridge` variable.
   const sandboxControl = await createSandbox({
     enabled: settings.sandbox.enabled,
     writeRoots: allowedRoots,
@@ -874,6 +875,7 @@ export async function createContext(
     denyRead: settings.sandbox.filesystem.denyRead,
     allowGitConfig: settings.sandbox.filesystem.allowGitConfig,
     monitorViolations: settings.sandbox.monitorViolations,
+    network: settings.sandbox.network,
     logger,
   });
   (ctx as { sandbox: SandboxControl }).sandbox = sandboxControl;

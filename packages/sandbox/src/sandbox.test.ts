@@ -47,7 +47,7 @@ describe("createSandbox", () => {
     expect(mock.initialize).not.toHaveBeenCalled();
   });
 
-  it("initializes with workspace write roots and an unrestricted network", async () => {
+  it("initializes with workspace write roots and an unrestricted network when network is omitted", async () => {
     const ctl = await createSandbox({
       enabled: true,
       writeRoots: ["/ws", "/extra-root"],
@@ -78,10 +78,34 @@ describe("createSandbox", () => {
     expect(config.filesystem.denyWrite).toEqual([".env"]);
     expect(config.filesystem.denyRead).toEqual(["~/.ssh"]);
     expect(config.filesystem.allowGitConfig).toBe(true);
-    // No allowedDomains => the SDK applies no network restriction.
+    // No network → SDK applies no network restriction.
     expect(config.network.allowedDomains).toBeUndefined();
     expect(ask).toBeUndefined();
     expect(monitor).toBe(true);
+  });
+
+  it("passes network config through to the SDK when set", async () => {
+    const ctl = await createSandbox({
+      enabled: true,
+      writeRoots: ["/ws"],
+      network: {
+        allowedDomains: ["api.example.com"],
+        deniedDomains: ["bad.example.com"],
+        allowLocalBinding: true,
+        httpProxyPort: 8080,
+      },
+    });
+    expect(ctl.active).toBe(true);
+
+    const [config] = mock.initialize.mock.calls[0]! as unknown as [
+      { network: { allowedDomains: string[]; deniedDomains: string[]; allowLocalBinding?: boolean; httpProxyPort?: number } },
+      unknown,
+      boolean,
+    ];
+    expect(config.network.allowedDomains).toEqual(["api.example.com"]);
+    expect(config.network.deniedDomains).toEqual(["bad.example.com"]);
+    expect(config.network.allowLocalBinding).toBe(true);
+    expect(config.network.httpProxyPort).toBe(8080);
   });
 
   it("bridge.wrapCommand wraps via the SDK and passes the abort signal", async () => {
