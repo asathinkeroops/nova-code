@@ -118,7 +118,7 @@ function renderBanner(b: BannerProps, width: number): string {
   lines.push("");
   LOGO.forEach((l, i) => lines.push(bannerLine(l, i)));
   lines.push("");
-  lines.push(dim("The coding agent tuned to the metal for DeepSeek — 90%+ cache hits."));
+  lines.push(dim("The coding agent purpose-built for DeepSeek — 95%+ cache hits · OS-sandboxed · tool-complete"));
   lines.push("");
   lines.push(`${dim("model:")}     ${formatModel(b)}`);
   lines.push(`${dim("workspace:")} ${displayCwd(b.cwd, b.home)}`);
