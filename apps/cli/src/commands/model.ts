@@ -62,8 +62,11 @@ export async function handleModel(ctx: CliContext, arg: string): Promise<void> {
       const resolved = resolveModelId(ctx.settings, name);
       const marker = resolved === activeId ? green("*") : " ";
       const desc = modelDescription(ctx.settings, name);
-      // Prefer the human blurb; fall back to the raw id when a tier has none.
-      const detail = desc ? `  ${dim(`— ${desc}`)}` : resolved === name ? "" : `  ${dim(resolved)}`;
+      // Always show the resolved model id (when different from alias) AND the
+      // description so the user sees all three: alias, concrete model, and blurb.
+      let detail = "";
+      if (resolved !== name) detail += `  ${dim(resolved)}`;
+      if (desc) detail += `  ${dim(`— ${desc}`)}`;
       return `${pickerArrow(isSelected)} ${marker} ${name}${detail}`;
     },
   });
