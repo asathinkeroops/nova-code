@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { extname, resolve } from "node:path";
 import { z } from "zod";
-import type { ToolHandler } from "@nova/core";
+import type { ImageBlock, ToolHandler } from "@nova/core";
 import * as XLSX from "xlsx";
 import { PATH_ALIASES, withAliases } from "../schema.js";
 
@@ -32,6 +32,32 @@ const LINE_NO_WIDTH = 6;
 // file twice.  The list is a subset of what `xlsx` supports — the ones users
 // realistically encounter (xls, xlsx, xlsm, xlsb, ods).
 const EXCEL_EXTENSIONS = new Set([".xlsx", ".xls", ".xlsm", ".xlsb", ".ods"]);
+
+// ── image support ────────────────────────────────────────────────────────────
+
+/** File extensions that the model API can consume as image blocks. */
+const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp"]);
+
+/** Max file size for image reads (20 MB). Larger images are rejected. */
+const MAX_IMAGE_BYTES = 20_000_000;
+
+/** Magic bytes for verifying that a file's content matches its extension. */
+const IMAGE_MAGIC: Record<string, readonly number[]> = {
+  ".png": [0x89, 0x50, 0x4e, 0x47],
+  ".jpg": [0xff, 0xd8, 0xff],
+  ".jpeg": [0xff, 0xd8, 0xff],
+  ".gif": [0x47, 0x49, 0x46],
+  ".webp": [0x52, 0x49, 0x46, 0x46],
+};
+
+/** Extension -> MIME type for the model API's `media_type` field. */
+const IMAGE_MIME: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+};
 
 // `withAliases` lets the model name the path field `filePath`/`file_path`/`file`
 // instead of `path` without failing validation — a frequent DeepSeek slip,
@@ -293,19 +319,98 @@ async function readExcel(abs: string, input: ExcelInput, path: string) {
   return { output: `${meta}\n${body}` };
 }
 
+// ── image path ───────────────────────────────────────────────────────────────
+
+function checkMagic(buf: Buffer, ext: string): boolean {
+  const magic = IMAGE_MAGIC[ext];
+  if (!magic) return true; // unknown extension — let it through
+  if (buf.length < magic.length) return false;
+  for (let i = 0; i < magic.length; i++) {
+    if (buf[i] !== magic[i]) return false;
+  }
+  return true;
+}
+
+async function readImage(
+  abs: string,
+  ext: string,
+  path: string,
+): Promise<{ output: string; isError?: boolean; blocks?: ImageBlock[] }> {
+  let buf: Buffer;
+  try {
+    buf = await readFile(abs);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") {
+      return {
+        output: `read failed: no such file: ${path}. It may not exist at this path (or anywhere) — use glob/grep to locate it rather than guessing another path.`,
+        isError: true,
+      };
+    }
+    if (code === "EISDIR") {
+      return {
+        output: `read failed: ${path} is a directory, not a file. Use glob to list its contents or grep to search inside it.`,
+        isError: true,
+      };
+    }
+    const msg = err instanceof Error ? err.message : String(err);
+    return { output: `read failed: ${msg}`, isError: true };
+  }
+
+  // Size guard — base64 will be ~33% larger, keep it reasonable.
+  if (buf.length > MAX_IMAGE_BYTES) {
+    const mb = (buf.length / 1_000_000).toFixed(1);
+    const cap = (MAX_IMAGE_BYTES / 1_000_000).toFixed(0);
+    return {
+      output: `read failed: ${path} is ${mb} MB (cap is ${cap} MB). Use bash with a command-line tool to resize or inspect it.`,
+      isError: true,
+    };
+  }
+
+  // Verify magic bytes match the extension; if not, the file is mislabeled.
+  // Still serve it — the API will reject a wrong media_type, but that's better
+  // than silently sending garbled text from the text-reader fallback.
+  const magicOk = checkMagic(buf, ext);
+  const mediaType = (IMAGE_MIME[ext] ?? "image/png") as ImageBlock["source"]["media_type"];
+
+  const base64 = buf.toString("base64");
+  const sizeKB = (buf.length / 1_000).toFixed(1);
+
+  let output = `Image: ${path}\n  format: ${ext.slice(1).toUpperCase()}${mediaType ? ` (${mediaType})` : ""}, ${sizeKB} KB`;
+  if (!magicOk) {
+    output += `\n  ⚠ magic bytes do not match ${ext} extension — file may be mislabeled`;
+  }
+
+  const block: ImageBlock = {
+    type: "image",
+    source: { type: "base64", media_type: mediaType, data: base64 },
+  };
+
+  return { output, blocks: [block] };
+}
+
 // ── tool definition ─────────────────────────────────────────────────────────
 
 export const readTool: ToolHandler = {
   definition: {
     name: "read",
     description:
-      "Read a text file or spreadsheet from disk. For text files, output is line-numbered (`<line>\\t<text>`, `cat -n` style, 1-based); returns up to `limit` lines (and at most ~200K characters) per call. If more remains, the result tells you the exact read(path, offset) call to continue from. The line-number prefix is display only — strip it before passing text to `edit`. For Excel files (.xlsx/.xls/.xlsm/.xlsb/.ods), each row is rendered as a TSV line with a metadata header; use the optional `sheet` parameter to select a sheet.",
+      "Read a text file, spreadsheet, or image from disk. For text files, output is line-numbered (`<line>\\t<text>`, `cat -n` style, 1-based); returns up to `limit` lines (and at most ~200K characters) per call. If more remains, the result tells you the exact read(path, offset) call to continue from. The line-number prefix is display only — strip it before passing text to `edit`. For Excel files (.xlsx/.xls/.xlsm/.xlsb/.ods), each row is rendered as a TSV line with a metadata header; use the optional `sheet` parameter to select a sheet. For image files (.png/.jpg/.jpeg/.gif/.webp), returns the image as a base64 block alongside metadata — only when the active model supports image input; capped at 20 MB.",
     inputSchema,
   },
   async run(rawInput, ctx) {
     const input = inputSchema.parse(rawInput);
     const abs = resolve(ctx.cwd, input.path);
     const ext = extname(abs).toLowerCase();
+
+    // Image: when the model supports images AND the extension looks like one,
+    // read as image. Otherwise images fall through to text (current behaviour).
+    if (
+      IMAGE_EXTENSIONS.has(ext) &&
+      ctx.modelModalities?.input.includes("image")
+    ) {
+      return readImage(abs, ext, input.path);
+    }
 
     if (EXCEL_EXTENSIONS.has(ext)) {
       return readExcel(abs, input, input.path);

@@ -76,7 +76,9 @@ describe("model tiers", () => {
 
   it("a provided models table replaces the default wholesale", () => {
     const s = parseSettings({ models: { mini: { id: "some-mini" } } });
-    expect(s.models).toEqual({ mini: { id: "some-mini", maxTokens: DEFAULT_MAX_TOKENS, contextWindowSize: DEFAULT_CONTEXT_WINDOW_SIZE } });
+    expect(s.models).toEqual({
+      mini: { id: "some-mini", maxTokens: DEFAULT_MAX_TOKENS, contextWindowSize: DEFAULT_CONTEXT_WINDOW_SIZE, modalities: { input: ["text"] } },
+    });
   });
 
   it("accepts profile-object entries with per-tier overrides", () => {
@@ -90,11 +92,13 @@ describe("model tiers", () => {
       id: "deepseek-v4-flash",
       maxTokens: DEFAULT_MAX_TOKENS,
       contextWindowSize: DEFAULT_CONTEXT_WINDOW_SIZE,
+      modalities: { input: ["text"] },
     });
     expect(s.models.pro).toEqual({
       id: "deepseek-v4-pro",
       maxTokens: 8192,
       contextWindowSize: 128_000,
+      modalities: { input: ["text"] },
     });
   });
 

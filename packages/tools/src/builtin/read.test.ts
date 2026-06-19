@@ -1,6 +1,7 @@
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { crc32 } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import type { ToolContext } from "@nova/core";
 import * as XLSX from "xlsx";
@@ -9,6 +10,7 @@ import { readTool } from "./read.js";
 // Mirrors read.ts's MAX_LINE_CHARS. Kept local so the test pins the contract
 // rather than re-importing the constant.
 const MAX_LINE_CHARS = 16_000;
+const MAX_IMAGE_BYTES = 20_000_000;
 
 async function writeFixture(name: string, content: string): Promise<{ cwd: string; path: string }> {
   const cwd = await mkdtemp(join(tmpdir(), "nova-read-"));
@@ -16,7 +18,75 @@ async function writeFixture(name: string, content: string): Promise<{ cwd: strin
   return { cwd, path: name };
 }
 
-const ctx = (cwd: string) => ({ cwd }) as unknown as ToolContext;
+/** Write a binary buffer to a temp file. */
+async function writeBinaryFixture(name: string, buf: Buffer): Promise<{ cwd: string; path: string }> {
+  const cwd = await mkdtemp(join(tmpdir(), "nova-read-"));
+  await writeFile(join(cwd, name), buf);
+  return { cwd, path: name };
+}
+
+/** A minimal valid PNG header (signature + IHDR chunk with CRC). */
+function minimalPngBytes(): Buffer {
+  // PNG signature
+  const sig = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  // IHDR: 1x1 8-bit RGB
+  const ihdrData = Buffer.alloc(13);
+  ihdrData.writeUInt32BE(1, 0); // width
+  ihdrData.writeUInt32BE(1, 4); // height
+  ihdrData[8] = 8; // bit depth
+  ihdrData[9] = 2; // color type (RGB)
+  // compression=0, filter=0, interlace=0 (already zero-filled)
+
+  const ihdrType = Buffer.from("IHDR");
+  const ihdrLen = Buffer.alloc(4);
+  ihdrLen.writeUInt32BE(13, 0);
+  const ihdrCrc = crc32(Buffer.concat([ihdrType, ihdrData]));
+  const ihdrCrcBuf = Buffer.alloc(4);
+  ihdrCrcBuf.writeUInt32BE(ihdrCrc, 0);
+
+  // IDAT: minimal zlib-compressed 1x1 RGB pixel (red = FF 00 00, filtered with 0)
+  // zlib header (78 01), raw deflate: 63 60 60 F8 4F 00 00 04 00 01, adler32
+  const idatRaw = Buffer.from([0x78, 0x01, 0x63, 0x60, 0x60, 0xf8, 0x4f, 0x00, 0x00, 0x04, 0x00, 0x01]);
+  const idatType = Buffer.from("IDAT");
+  const idatLen = Buffer.alloc(4);
+  idatLen.writeUInt32BE(idatRaw.length, 0);
+  const idatCrc = crc32(Buffer.concat([idatType, idatRaw]));
+  const idatCrcBuf = Buffer.alloc(4);
+  idatCrcBuf.writeUInt32BE(idatCrc, 0);
+
+  // IEND
+  const iendType = Buffer.from("IEND");
+  const iendLen = Buffer.alloc(4);
+  iendLen.writeUInt32BE(0, 0);
+  const iendCrc = crc32(iendType);
+  const iendCrcBuf = Buffer.alloc(4);
+  iendCrcBuf.writeUInt32BE(iendCrc, 0);
+
+  return Buffer.concat([sig, ihdrLen, ihdrType, ihdrData, ihdrCrcBuf, idatLen, idatType, idatRaw, idatCrcBuf, iendLen, iendType, iendCrcBuf]);
+}
+
+/** Minimal JPEG bytes: SOI marker (FF D8 FF) + dummy data. */
+function minimalJpegBytes(): Buffer {
+  // SOI marker + APP0 marker header + minimal payload
+  const soi = Buffer.from([0xff, 0xd8, 0xff, 0xe0]);
+  // APP0 length = 16
+  const len = Buffer.alloc(2);
+  len.writeUInt16BE(16, 0);
+  const jfif = Buffer.from("JFIF\0");
+  const ver = Buffer.from([1, 1]); // version 1.1
+  const units = Buffer.from([0]); // no units
+  const density = Buffer.alloc(4); // zero density
+  const thumb = Buffer.from([0, 0]); // no thumbnail
+  const app0 = Buffer.concat([len, jfif, ver, units, density, thumb]);
+  // SOS marker
+  const sos = Buffer.from([0xff, 0xda, 0x00, 0x08, 0x01, 0x01, 0x00, 0x00, 0x3f, 0x00]);
+  // EOI marker
+  const eoi = Buffer.from([0xff, 0xd9]);
+  return Buffer.concat([soi, app0, sos, eoi]);
+}
+
+const ctx = (cwd: string, opts?: { modelModalities?: { input: readonly ("text" | "image")[] } }) =>
+  ({ cwd, ...opts }) as unknown as ToolContext;
 
 // ── text-file tests (existing) ──────────────────────────────────────────────
 
@@ -208,5 +278,181 @@ describe("read: Excel files", () => {
     // csv is NOT in the Excel extension set → treated as plain text
     expect(res.output).toContain("a,b,c");
     expect(res.output).toContain("1,2,3");
+  });
+});
+
+// ── image-read tests ─────────────────────────────────────────────────────────
+
+describe("read: image files", () => {
+  it("returns an image block when the model accepts images (PNG)", async () => {
+    const { cwd, path } = await writeBinaryFixture("test.png", minimalPngBytes());
+
+    const res = await readTool.run(
+      { path },
+      ctx(cwd, { modelModalities: { input: ["text", "image"] } }),
+    );
+
+    expect(res.isError).toBeUndefined();
+    expect(res.output).toContain("Image:");
+    expect(res.output).toContain("test.png");
+    expect(res.output).toContain("PNG");
+    expect(res.output).toContain("image/png");
+    expect(res.blocks).toHaveLength(1);
+    const block = res.blocks![0]!;
+    expect(block.type).toBe("image");
+    if (block.type === "image") {
+      expect(block.source.type).toBe("base64");
+      expect(block.source.media_type).toBe("image/png");
+      expect(block.source.data).toBeTruthy();
+    }
+  });
+
+  it("returns an image block for JPEG", async () => {
+    const { cwd, path } = await writeBinaryFixture("photo.jpeg", minimalJpegBytes());
+
+    const res = await readTool.run(
+      { path },
+      ctx(cwd, { modelModalities: { input: ["text", "image"] } }),
+    );
+
+    expect(res.isError).toBeUndefined();
+    expect(res.output).toContain("image/jpeg");
+    expect(res.blocks).toHaveLength(1);
+    const block = res.blocks![0]!;
+    if (block.type === "image") {
+      expect(block.source.media_type).toBe("image/jpeg");
+    }
+  });
+
+  it("returns an image block for .jpg extension", async () => {
+    const { cwd, path } = await writeBinaryFixture("photo.jpg", minimalJpegBytes());
+
+    const res = await readTool.run(
+      { path },
+      ctx(cwd, { modelModalities: { input: ["text", "image"] } }),
+    );
+
+    expect(res.isError).toBeUndefined();
+    expect(res.blocks).toHaveLength(1);
+    const block = res.blocks![0]!;
+    if (block.type === "image") {
+      expect(block.source.media_type).toBe("image/jpeg");
+    }
+  });
+
+  it("falls back to text when the model does NOT support images", async () => {
+    const { cwd, path } = await writeBinaryFixture("test.png", minimalPngBytes());
+
+    const res = await readTool.run(
+      { path },
+      ctx(cwd, { modelModalities: { input: ["text"] } }),
+    );
+
+    // Should NOT have image blocks — treated as plain text (garbled binary)
+    expect(res.blocks).toBeUndefined();
+    // The output will be gibberish UTF-8 from the binary PNG, but the tool
+    // shouldn't error out.
+    expect(res.isError).toBeUndefined();
+  });
+
+  it("falls back to text when modelModalities is undefined (backward compat)", async () => {
+    const { cwd, path } = await writeBinaryFixture("test.png", minimalPngBytes());
+
+    const res = await readTool.run({ path }, ctx(cwd));
+
+    expect(res.blocks).toBeUndefined();
+    expect(res.isError).toBeUndefined();
+  });
+
+  it("rejects an oversized image", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "nova-read-"));
+    const filePath = join(cwd, "big.png");
+    // Write a file with valid PNG magic but claimed size > MAX_IMAGE_BYTES.
+    // We write a sparse file via seeking — but writeFile writes actual bytes.
+    // Instead, just write a buffer slightly over the limit.
+    const sig = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    const large = Buffer.alloc(MAX_IMAGE_BYTES + 1); // 1 byte over
+    sig.copy(large);
+    await writeFile(filePath, large);
+
+    const res = await readTool.run(
+      { path: "big.png" },
+      ctx(cwd, { modelModalities: { input: ["text", "image"] } }),
+    );
+
+    expect(res.isError).toBe(true);
+    expect(res.output).toContain("MB");
+    expect(res.blocks).toBeUndefined();
+  });
+
+  it("warns on magic-byte mismatch but still returns the image", async () => {
+    // A .png file whose content starts with JPEG magic → mismatch
+    const jpegBytes = minimalJpegBytes();
+    const { cwd, path } = await writeBinaryFixture("fake.png", jpegBytes);
+
+    const res = await readTool.run(
+      { path },
+      ctx(cwd, { modelModalities: { input: ["text", "image"] } }),
+    );
+
+    expect(res.isError).toBeUndefined();
+    expect(res.output).toContain("magic bytes do not match");
+    // Still returns a block — the caller decides what to do
+    expect(res.blocks).toHaveLength(1);
+  });
+
+  it("reads .webp and .gif extensions", async () => {
+    // GIF magic: 47 49 46
+    const gifBuf = Buffer.from([0x47, 0x49, 0x46, 0x38, 0x39, 0x61]); // GIF89a
+    const gifFixture = await writeBinaryFixture("anim.gif", gifBuf);
+    const gifRes = await readTool.run(
+      { path: gifFixture.path },
+      ctx(gifFixture.cwd, { modelModalities: { input: ["text", "image"] } }),
+    );
+    expect(gifRes.blocks).toHaveLength(1);
+    const gifBlock = gifRes.blocks![0]!;
+    if (gifBlock.type === "image") {
+      expect(gifBlock.source.media_type).toBe("image/gif");
+    }
+
+    // WebP magic: 52 49 46 46
+    const webpBuf = Buffer.from([0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50]); // RIFF....WEBP
+    const webpFixture = await writeBinaryFixture("img.webp", webpBuf);
+    const webpRes = await readTool.run(
+      { path: webpFixture.path },
+      ctx(webpFixture.cwd, { modelModalities: { input: ["text", "image"] } }),
+    );
+    expect(webpRes.blocks).toHaveLength(1);
+    const webpBlock = webpRes.blocks![0]!;
+    if (webpBlock.type === "image") {
+      expect(webpBlock.source.media_type).toBe("image/webp");
+    }
+  });
+
+  it("does not treat .svg as image (model can't consume SVG as image block)", async () => {
+    const { cwd, path } = await writeFixture(
+      "icon.svg",
+      '<svg xmlns="http://www.w3.org/2000/svg"><circle cx="5" cy="5" r="4"/></svg>',
+    );
+
+    const res = await readTool.run(
+      { path },
+      ctx(cwd, { modelModalities: { input: ["text", "image"] } }),
+    );
+
+    // SVG is NOT in IMAGE_EXTENSIONS → treated as text
+    expect(res.blocks).toBeUndefined();
+    expect(res.output).toContain("svg");
+  });
+
+  it("errors for a non-existent image file", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "nova-read-"));
+    const res = await readTool.run(
+      { path: "nope.png" },
+      ctx(cwd, { modelModalities: { input: ["text", "image"] } }),
+    );
+
+    expect(res.isError).toBe(true);
+    expect(res.output).toContain("no such file");
   });
 });

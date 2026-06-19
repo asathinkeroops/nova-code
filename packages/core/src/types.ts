@@ -185,6 +185,12 @@ export interface ToolContext {
    * can attach them to the right tool-call card and survive `/resume`.
    */
   toolUseId?: string;
+  /**
+   * The active model's input modalities. Read tools consult this to decide
+   * whether to return image content; when unset or missing "image", image
+   * files fall back to the text reader (current behavior).
+   */
+  modelModalities?: { input: readonly ("text" | "image")[] };
 }
 
 export interface ToolHandler {

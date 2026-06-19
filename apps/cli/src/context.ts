@@ -40,6 +40,7 @@ import {
   resolveContextWindowSize,
   resolveMaxTokens,
   resolveModelId,
+  resolveModelModalities,
   type Logger,
   type Session,
   type Settings,
@@ -1013,6 +1014,7 @@ export async function createContext(
       maxTokensContinuations: ctx.settings.maxTokensContinuations,
       noTranscript: ctx.noTranscript,
       toolConcurrency: ctx.settings.toolConcurrency,
+      modelModalities: resolveModelModalities(ctx.settings, ctx.settings.model),
     }),
     getTools: () => ctx.tools.definitions(),
     dispatch: ctx.dispatch,
@@ -1087,6 +1089,7 @@ export async function createContext(
           maxTokensContinuations: ctx.settings.maxTokensContinuations,
           noTranscript: ctx.noTranscript,
           toolConcurrency: ctx.settings.toolConcurrency,
+          modelModalities: resolveModelModalities(ctx.settings, ctx.settings.model),
         }),
       }),
     );

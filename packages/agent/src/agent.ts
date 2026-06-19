@@ -38,6 +38,8 @@ export interface AgentSettingsSlice {
    * for unbounded. Forwarded to `agentLoop`.
    */
   toolConcurrency?: number;
+  /** The active model's input modalities. Forwarded to ToolContext for tools that need it. */
+  modelModalities?: { input: readonly ("text" | "image")[] };
 }
 
 /**
@@ -276,6 +278,7 @@ export function createAgent(deps: AgentDeps): Agent {
           signal: controller.signal,
           fileLedger: deps.fileLedger,
           askUser: deps.askUser,
+          modelModalities: settings.modelModalities,
         },
         hooks,
         ...(budget > 0 ? { thinkingBudgetTokens: budget } : {}),

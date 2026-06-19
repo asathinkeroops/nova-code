@@ -166,6 +166,17 @@ export const DEFAULT_MAX_TOKENS = 32768;
 /** Default context-window budget when the model profile doesn't set one. */
 export const DEFAULT_CONTEXT_WINDOW_SIZE = 1_000_000;
 
+/** Supported input/output modalities for a model tier. */
+export const modelModalitiesSchema = z.object({
+  input: z
+    .array(z.enum(["text", "image"]))
+    .nonempty()
+    .default(["text"])
+    .describe("Input modalities the model accepts (e.g. text, image)."),
+});
+
+export type ModelModalities = z.infer<typeof modelModalitiesSchema>;
+
 // A named model "profile" / performance tier (flash / pro / …) in the `models`
 // table. Every entry is an object; the `id` is the concrete model id sent to
 // the provider. Per-tier overrides (maxTokens, contextWindowSize, baseURL,
@@ -188,6 +199,7 @@ export const modelProfileSchema = z.object({
     .describe("Per-tier per-response output cap."),
   baseURL: z.string().url().optional().describe("Per-tier endpoint override."),
   apiKey: z.string().min(1).optional().describe("Per-tier API key override."),
+  modalities: modelModalitiesSchema.default({ input: ["text"] }),
 });
 
 export type ModelProfile = z.infer<typeof modelProfileSchema>;
@@ -202,8 +214,8 @@ export type ModelEntry = z.infer<typeof modelEntrySchema>;
 // built-in pricing table carries); override by setting `models` in
 // nova.config.json — providing the key REPLACES this default wholesale.
 export const DEFAULT_MODELS: Record<string, ModelProfile> = {
-  flash: { id: "deepseek-v4-flash", maxTokens: 384_000, contextWindowSize: 1_000_000 },
-  pro: { id: "deepseek-v4-pro", maxTokens: 384_000, contextWindowSize: 1_000_000 },
+  flash: { id: "deepseek-v4-flash", maxTokens: 384_000, contextWindowSize: 1_000_000, modalities: { input: ["text"] } },
+  pro: { id: "deepseek-v4-pro", maxTokens: 384_000, contextWindowSize: 1_000_000, modalities: { input: ["text"] } },
 };
 
 // One-line blurbs for the built-in tiers, shown next to each row in the /model
@@ -617,6 +629,24 @@ export function resolveMaxTokens(settings: Settings, name: string): number {
     }
   }
   return DEFAULT_MAX_TOKENS;
+}
+
+/**
+ * The input/output modalities for a given model tier, resolved the same way as
+ * {@link resolveMaxTokens}: the tier's own `modalities` first, then a same-id
+ * profile match, then a text-only fallback.
+ */
+export function resolveModelModalities(
+  settings: Settings,
+  name: string,
+): ModelModalities {
+  const direct = settings.models[name];
+  if (direct?.modalities) return direct.modalities;
+  const id = resolveModelId(settings, name);
+  for (const entry of Object.values(settings.models)) {
+    if (entry.id === id && entry.modalities) return entry.modalities;
+  }
+  return { input: ["text"] };
 }
 
 const DEFAULT_DENY_BASH = [
