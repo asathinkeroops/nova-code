@@ -199,9 +199,10 @@ export interface ToolRunResult {
    * Optional structured content blocks (images, etc.) that accompany the text
    * output. When present, the dispatcher emits them alongside a wrapping text
    * block derived from `output` — the model sees the text metadata first, then
-   * the rich content.
+   * the rich content. Only text and image blocks are valid inside a tool_result;
+   * tool_use / thinking blocks are not.
    */
-  blocks?: ContentBlock[];
+  blocks?: (TextBlock | ImageBlock)[];
 }
 
 export type ToolExecutor = (

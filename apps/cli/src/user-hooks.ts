@@ -135,7 +135,7 @@ export function selectHooks(
 /** Flatten a tool result's content to a plain string. */
 export function resultText(result: ToolResultBlock): string {
   if (typeof result.content === "string") return result.content;
-  return result.content.map((b) => b.text).join("");
+  return result.content.map((b) => (b.type === "text" ? b.text : "")).join("");
 }
 
 /** Absolute path(s) a write/edit touched, for `file_paths`; undefined otherwise. */
