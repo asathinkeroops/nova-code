@@ -64,6 +64,12 @@ First launch walks through an interactive setup (API key, model, etc.) → `~/.n
 - `@path` fuzzy autocomplete
 - Live status line — token usage, cache hit rate, estimated cost, DeepSeek account balance
 
+## Architecture
+
+At Nova's core is a single model loop (`agentLoop`) with **one extension point** — a typed `HookRegistry`. Permission gating, compaction, transcript writing, and UI updates all attach as hooks at named lifecycle points; `@nova/core` itself imports no model SDK, tool implementation, or UI. Blocking hooks (◆) can rewrite or veto a step; advisory hooks (○) only observe.
+
+![Nova agent loop & hook mechanism](docs/agent-loop.svg)
+
 ## Repository layout
 
 ```

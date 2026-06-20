@@ -1,0 +1,5 @@
+
+
+# --- 在上方第一行写提交标题 (<type>(<scope>): <subject>),空一行后写正文 ---
+# 下面的 Co-authored-by 尾注会自动带上,让 Claude 进入 GitHub Contributors。
+Co-authored-by: Claude <81847+claude@users.noreply.github.com>

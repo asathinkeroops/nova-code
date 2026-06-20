@@ -64,6 +64,12 @@ pnpm dev -p "解释这段代码"           # headless 模式：只跑一轮，�
 - `@path` 模糊文件补全
 - 实时状态行 — token 用量、缓存命中率、花费估算、DeepSeek 账户余额
 
+## 架构
+
+Nova 的核心是一个模型循环（`agentLoop`），只有**一个扩展点**——类型化的 `HookRegistry`。权限闸门、上下文压缩、transcript 写入、UI 刷新都以 hook 的形式挂在具名生命周期点上；`@nova/core` 本身不导入任何模型 SDK、工具实现或 UI。阻塞型 hook（◆）可改写 / 否决某一步，通知型 hook（○）只观察。
+
+![Nova agent loop 与 hook 机制](docs/agent-loop.svg)
+
 ## 仓库结构
 
 ```

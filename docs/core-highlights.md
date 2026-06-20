@@ -2,6 +2,10 @@
 
 > 本文从技术实现角度提炼 Nova 最独特、最具创新性的三个核心能力。每一节都解释 **做了什么、为什么这么做、怎么做出来的**，让开发者理解 Nova 与其他 AI 编程工具的实质性差异。
 
+**项目地址**：<https://github.com/asathinkeroops/nova-code>
+
+![Nova 截图](../snapshots/screen.png)
+
 ---
 
 ## 亮点一：DeepSeek 一等公民 —— 全链路深度适配
@@ -177,6 +181,10 @@ Hook 是 Nova 事件系统的另一面——JSON 定义而非 Markdown，但同�
 `@nova/core` 的 `agentLoop` 有且只有一个 `HookRegistry`。权限门控、上下文压缩、转录写入、UI 更新、工具拦截——全部以 hook 形式接入。阻塞型 hook（`pre_*`）可返回决策让循环服从（先返回者胜出）；咨询型 hook（`post_*`）尽最大努力执行，出错不影响主流程。
 
 > 这意味着：想加一个新能力？写一个 hook，挂上去。不需要改动循环的源代码。
+
+下图展示了 `agentLoop` 的完整生命周期与 hook 扩展机制——每个生命周期点触发具名事件流入 `HookRegistry`，再分发给订阅者（◆ 阻塞型可改写 / 否决，○ 通知型只观察）：
+
+![Nova agent loop 与 hook 机制](./agent-loop.svg)
 
 ### 严格的单向依赖
 
