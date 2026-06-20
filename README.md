@@ -1,104 +1,104 @@
 # Nova
 
-![Nova screenshot](snapshots/screen.png)
+![Nova 截图](snapshots/screen.png)
 
-> A terminal AI coding agent deeply tuned for DeepSeek. Cache-friendly, sandbox-on, zero config.
+> 为 DeepSeek 深度调优的终端 AI 编程代理。缓存友好，沙箱默开，开箱即用。
 
-Nova reads code, runs commands, edits files — and drives your task to done through tool use. It's built around **DeepSeek**: thinking maps to effort (not `budget_tokens`), the wire format is auto-detected from the model id, and the entire request pipeline is tuned so DeepSeek's automatic context cache keeps hitting. Other Anthropic-compatible endpoints work too; DeepSeek gets first-class care.
+Nova 读代码、跑命令、改文件——通过工具调用把任务推到完成。模型层围绕 **DeepSeek** 构建：thinking 映射到 effort（而非 `budget_tokens`）、wire format 按模型 id 自动判别、整个请求管线为 DeepSeek 的自动上下文缓存做了调优，让缓存持续命中。其他 Anthropic 兼容端点也能跑，DeepSeek 是第一优先级。
 
-## Why Nova
+## 为什么选 Nova
 
-**DeepSeek-native, zero config.**
-No `cache_control` to tweak, no wire format to guess, no error-code docs to dig through. Install, drop in your key, go. Thinking levels, cache hits, and error messages are all tuned for DeepSeek out of the box.
+**DeepSeek 原生适配，零配置。**
+不用调 `cache_control`、不用猜 wire format、不用翻错误码文档。装好，填 key，开干。thinking 等级、缓存命中、错误提示——全部围绕 DeepSeek 调过，开箱即用。
 
-**Cache-friendly by design.**
-History is append-only, keeping the byte-stable prefix DeepSeek's server-side cache depends on — faster responses, fewer tokens billed. Micro-compaction is off by default (it breaks the cache prefix); auto-compaction only fires under real window pressure.
+**缓存友好刻在骨子里。**
+历史 append-only，前缀逐字节稳定，让 DeepSeek 的服务端缓存每轮都命中——响应更快、token 更省。micro 压缩默认关闭（它会破坏缓存前缀），auto 压缩只在窗口真正吃紧时才触发。
 
-**Sandbox-on, defense in depth.**
-Subprocess writes are confined to the workspace by an OS-level sandbox (macOS Seatbelt / Linux bubblewrap), layered on top of the permission engine. Unsupported platforms degrade silently — you get protection with zero config.
+**沙箱默认开启，纵深防御。**
+子进程文件写入被 OS 级沙箱限制在工作区（macOS Seatbelt / Linux bubblewrap），叠在权限引擎之上。不支持的平台静默降级——无需配置即有防护。
 
-**Extend with markdown.**
-Define custom sub-agents, slash commands, skills, or lifecycle hooks — drop a `.md` file with frontmatter and you're done. No code changes, ships with the repo.
+**用 Markdown 扩展一切。**
+自定义子 agent、slash 命令、skills、生命周期 hooks——一个 `.md` 文件、frontmatter 写配置、正文写指令，即刻生效。不需改代码，可随仓库分发。
 
-## Quick start
+## 快速开始
 
-Requires **Node ≥ 20** and **pnpm 10.28.2**.
+环境要求：**Node ≥ 20**，**pnpm 10.28.2**。
 
 ```bash
 pnpm install
-pnpm dev                           # launch the REPL
-pnpm dev "add unit tests"          # run a prompt, then stay in the REPL
-pnpm dev -p "explain this code"    # headless: one turn, print & exit
+pnpm dev                           # 启动 REPL
+pnpm dev "帮我加单测"               # 先跑一轮 prompt，再留在 REPL
+pnpm dev -p "解释这段代码"           # headless 模式：只跑一轮，输出后退出
 ```
 
-First launch walks through an interactive setup (API key, model, etc.) → `~/.nova/nova.config.json`.
+首次启动进入交互式配置向导，写入 `~/.nova/nova.config.json`（API key、模型、session 目录等）。
 
-## Features
+## 功能概览
 
-**Agent loop**
-- Multi-turn tool use with bounded concurrency (default 3)
-- Sub-agents with fresh context — `explore`, `plan`, `general-purpose`, plus custom `.md` types
-- Plan mode — `/plan` runs a read-only investigation before touching anything
-- Resumable sessions with append-only persistence, `/rewind` to roll back
-- `/model` to switch models mid-session; `/compact` to summarize long history
+**Agent 循环**
+- 多轮工具调用，同轮内独立调用以有界并发运行（默认 3 个）
+- 子 agent 带全新上下文 — `explore`、`plan`、`general-purpose`，外加自定义 `.md` 类型
+- Plan 模式 — `/plan` 先做只读调查，再动手
+- 可恢复会话，append-only 持久化，`/rewind` 可回退
+- `/model` 会话内换模型，`/compact` 压缩长历史
 
-**Code intelligence**
-- LSP tool — go-to-definition, references, hover, diagnostics, workspace symbols (scope- and type-aware)
-- `read` (line-numbered + paginated, with `.xlsx` / `.ods` support), `write`, `edit`
-- `glob` + `grep` search, `webfetch` + `websearch`
+**代码智能**
+- LSP 工具 — 定义跳转、引用查找、hover、diagnostics、符号搜索（懂作用域和类型）
+- `read`（带行号 + 分页，支持 `.xlsx` / `.ods`）、`write`、`edit`
+- `glob` + `grep` 搜索，`webfetch` + `websearch`
 
-**Safety**
-- Permission engine — one-key mode cycling (shift+tab: `default` → `acceptEdits` → `plan`)
-- OS-level sandbox — write confinement, network open, default-on, auto-degrade
-- Lifecycle hooks — shell-scriptable events for auto-formatting, tool guarding, context injection
+**安全**
+- 权限引擎 — 一键切换模式（shift+tab：`default` → `acceptEdits` → `plan`）
+- OS 级沙箱 — 写入隔离、网络放行、默认开启、不支持的平台自动降级
+- 生命周期 hooks — 用 shell 脚本做自动格式化、工具拦截、上下文注入
 
-**Extensibility**
-- Custom sub-agents — drop a `.md` into `.nova/agents/`, declare tools & model in frontmatter
-- Custom slash commands — `.md` files in `.nova/commands/`
-- Skills — `SKILL.md` files discovered on startup, pulled on demand via `loadSkill`
-- MCP — connect external servers (stdio / HTTP / SSE), bridge tools to the model
+**可扩展性**
+- 自定义子 agent — 丢一个 `.md` 到 `.nova/agents/`，frontmatter 声明工具和模型
+- 自定义 slash 命令 — `.md` 文件放入 `.nova/commands/`
+- Skills — 启动时扫描 `SKILL.md`，按需 `loadSkill` 拉全文
+- MCP — 连接外部服务器（stdio / HTTP / SSE），桥接工具给模型
 
-**TUI**
-- Full-screen Ink/React REPL with live streaming output & mouse support
-- `!` shell escape — `!git status` runs locally, no permission prompt
-- `@path` fuzzy autocomplete
-- Live status line — token usage, cache hit rate, estimated cost, DeepSeek account balance
+**交互体验**
+- 全屏 Ink/React REPL，实时流式输出，支持鼠标
+- `!` shell 直通 — `!git status` 本地执行，不弹权限确认
+- `@path` 模糊文件补全
+- 实时状态行 — token 用量、缓存命中率、花费估算、DeepSeek 账户余额
 
-## Architecture
+## 架构
 
-At Nova's core is a single model loop (`agentLoop`) with **one extension point** — a typed `HookRegistry`. Permission gating, compaction, transcript writing, and UI updates all attach as hooks at named lifecycle points; `@nova/core` itself imports no model SDK, tool implementation, or UI. Blocking hooks (◆) can rewrite or veto a step; advisory hooks (○) only observe.
+Nova 的核心是一个模型循环（`agentLoop`），只有**一个扩展点**——类型化的 `HookRegistry`。权限闸门、上下文压缩、transcript 写入、UI 刷新都以 hook 的形式挂在具名生命周期点上；`@nova/core` 本身不导入任何模型 SDK、工具实现或 UI。阻塞型 hook（◆）可改写 / 否决某一步，通知型 hook（○）只观察。
 
-![Nova agent loop & hook mechanism](docs/agent-loop.svg)
+![Nova agent loop 与 hook 机制](docs/agent-loop.svg)
 
-## Repository layout
+## 仓库结构
 
 ```
 packages/
-  core           agent loop · model client · HookRegistry · message/stop-reason types
-  agent          createAgent: per-turn driver + persistence + transcript wiring
-  runtime        settings (zod) · pino logger · session storage
-  tools          ToolRegistry · dispatcher · built-in tools
-  subagent       createSubAgent tool · sub-agent definitions/registry/loader
-  context        3-layer memory (NOVA.md > CLAUDE.md > AGENTS.md) · auto compact
-  safety         PermissionEngine · approval prompts
-  sandbox        OS-level command sandbox (write isolation)
-  lsp            LSP client/manager (JSON-RPC over stdio)
-  external       SlashRegistry · .md command loader · MCP client
+  core           agent loop · model client · HookRegistry · message/stop-reason 类型
+  agent          createAgent：按 turn 跑的驱动 + 持久化 + transcript 接线
+  runtime        settings (zod) · pino logger · session 存储
+  tools          ToolRegistry · dispatcher · 内置工具
+  subagent       createSubAgent 工具 · 子 agent 定义/注册表/加载器
+  context        三层记忆（NOVA.md > CLAUDE.md > AGENTS.md）· auto compact
+  safety         PermissionEngine · approval 提示
+  sandbox        OS 级命令沙箱（文件写入隔离）
+  lsp            LSP 客户端/管理器（JSON-RPC over stdio）
+  external       SlashRegistry · .md 命令加载 · MCP 客户端
   observability  Transcript (JSONL)
 apps/
-  cli            the `nova` binary (Ink/React REPL, only active app)
-  http, vscode   placeholders, not yet implemented
-eval/            replay harness + golden cases (excluded from main build)
-docs/            design notes & user manual
+  cli            `nova` 二进制入口（Ink/React REPL，唯一在跑的应用）
+  http, vscode   占位，未实现
+eval/            replay harness + 黄金 case（不走主构建）
+docs/            设计笔记 & 使用手册
 ```
 
-Dependency direction: `runtime` / `core` / `observability` / `lsp` are leaves (no `@nova/*` source imports); `safety` → `runtime`; `context` → `core` + `runtime`; `tools` → `core` + `runtime` + `lsp`; `sandbox` / `external` → `core` (type-only); `agent` → `core` + `runtime` + `context` + `observability`; `subagent` → `agent` + `context` + `core` + `observability` + `runtime`; `cli` depends on all of the above.
+依赖方向单向不可逆：`runtime` / `core` / `observability` / `lsp` 是叶子层（不 import `@nova/*` 源码）；`safety` → `runtime`；`context` → `core` + `runtime`；`tools` → `core` + `runtime` + `lsp`；`sandbox` / `external` → `core`（type-only）；`agent` → `core` + `runtime` + `context` + `observability`；`subagent` → `agent` + `context` + `core` + `observability` + `runtime`；`cli` 在最上层，依赖以上全部。
 
-## Development
+## 开发
 
 ```bash
-pnpm build                 # build all packages and apps (tsup, recursive)
-pnpm typecheck             # tsc --noEmit across the workspace
+pnpm build                 # 全量构建（tsup，递归）
+pnpm typecheck             # tsc --noEmit
 pnpm test                  # vitest run
 pnpm test:watch
 pnpm vitest run path/to/file.test.ts
@@ -107,11 +107,11 @@ pnpm lint / pnpm lint:fix
 pnpm format / pnpm format:check
 ```
 
-Per-package scripts: `pnpm --filter @nova/<name> <script>`. Tests live next to source: `packages/*/src/**/*.test.ts(x)`.
+单包脚本：`pnpm --filter @nova/<name> <script>`。测试文件和源码并排放：`packages/*/src/**/*.test.ts(x)`。
 
-New contributors should start with:
-- `CLAUDE.md` — architecture invariants, loop contract, ESM conventions
-- `agent-harness-loop-architecture.html` — architecture diagram and overview
+新贡献者请先读：
+- `CLAUDE.md` — 架构约定、loop 契约、ESM 规范
+- `agent-harness-loop-architecture.html` — 架构总图
 
 ## License
 
