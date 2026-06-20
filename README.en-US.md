@@ -1,4 +1,8 @@
-# Nova
+<p align="center">
+  <img src="docs/logo.en.svg" alt="NOVA-CODE" width="600">
+</p>
+
+[简体中文](README.md) · **English**
 
 ![Nova screenshot](snapshots/screen.png)
 
