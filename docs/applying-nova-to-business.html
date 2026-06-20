@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Nova Coding Agent · 在业务系统中的应用</title>
+<style>
+  :root {
+    --bg: #fafafa;
+    --surface: #ffffff;
+    --ink: #111111;
+    --ink-soft: #555555;
+    --line: #e5e5e5;
+    --line-strong: #d4d4d4;
+    --accent: #ff6a3d;
+    --accent-soft: #fff1ec;
+    --muted: #888888;
+    --tag-bg: #f4f4f4;
+    --radius: 14px;
+    --shadow: 0 1px 2px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.04);
+    --mono: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--bg); color: var(--ink);
+    font-family: var(--sans); font-size: 15px; line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1400px; margin: 0 auto; padding: 56px 32px 80px; }
+
+  /* Header */
+  .eyebrow {
+    font-family: var(--mono); font-size: 12px; color: var(--muted);
+    letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 12px;
+  }
+  h1 { font-size: 40px; line-height: 1.1; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 10px; }
+  h1 .accent { color: var(--accent); }
+  .subtitle { color: var(--ink-soft); font-size: 16px; margin-bottom: 48px; }
+
+  /* ====== Connector arrows ====== */
+  .conn-down {
+    display: flex; flex-direction: column; align-items: center;
+    padding: 4px 0;
+  }
+  .conn-down .conn-line { width: 2px; height: 20px; background: var(--line-strong); }
+  .conn-down .conn-label {
+    font-family: var(--mono); font-size: 10px; color: var(--muted);
+    letter-spacing: 0.04em;
+    padding: 2px 10px; border-radius: 999px; margin: 4px 0;
+    white-space: nowrap;
+  }
+  .conn-down .conn-arrow {
+    width: 0; height: 0;
+    border-left: 5px solid transparent; border-right: 5px solid transparent;
+    border-top: 6px solid var(--line-strong);
+  }
+
+  /* ====== Central Loop ====== */
+  .loop-nucleus {
+    background: var(--surface); color: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: 20px; padding: 32px 36px 28px;
+    box-shadow: var(--shadow);
+    position: relative; z-index: 2;
+  }
+  .loop-header {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 22px;
+  }
+  .loop-header .lh-label {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--accent); font-weight: 600;
+  }
+  .loop-header .lh-mods {
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+  }
+  .loop-steps {
+    display: flex; flex-direction: column; align-items: stretch; gap: 4px;
+  }
+  .lstep {
+    border-radius: 12px; padding: 10px 16px;
+    display: flex; align-items: center; justify-content: center; gap: 12px;
+  }
+  .lstep.dark { background: var(--tag-bg); border: 1px solid var(--line); }
+  .lstep.lit  { background: rgba(255,255,255,0.95); color: var(--ink); border: 1px solid var(--line); }
+  .lstep .ls-num {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em;
+    text-transform: uppercase; opacity: 0.5;
+    flex-shrink: 0;
+  }
+  .lstep .ls-name { font-weight: 600; font-size: 14px; white-space: nowrap; }
+  .lstep .ls-hint { font-size: 11px; opacity: 0.6; white-space: nowrap; }
+  .lstep.lit .ls-num { color: var(--accent); opacity: 1; }
+  .larrow {
+    text-align: center; font-family: var(--mono); font-size: 16px;
+    color: var(--line-strong); padding: 2px 0;
+  }
+  .loop-return {
+    margin-top: 16px; display: flex; align-items: center; justify-content: center; gap: 8px;
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+  }
+  .loop-return .pill {
+    border: 1px dashed var(--line-strong);
+    padding: 2px 10px; border-radius: 999px;
+    color: var(--ink-soft);
+  }
+
+  /* ====== Main 3-column Layout ====== */
+  .middle-band {
+    display: grid;
+    grid-template-columns: 240px 1fr 280px;
+    gap: 0; align-items: stretch; margin-top: 0;
+    position: relative;
+  }
+  .mid-left, .mid-right {
+    display: flex; flex-direction: column; gap: 16px; padding-top: 0;
+    position: relative;
+  }
+  .mid-left { padding-right: 16px; }
+  .mid-right { padding-left: 16px; }
+  .mid-center { display: flex; flex-direction: column; align-items: stretch; }
+  .mid-center .loop-nucleus { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+
+  /* Horizontal flow arrows between side planes and the loop */
+  .flow-h {
+    position: absolute; top: 50%; transform: translateY(-50%);
+    font-family: var(--mono); font-size: 10px;
+    color: var(--accent); font-weight: 600;
+    background: var(--bg);
+    padding: 3px 8px; border-radius: 999px;
+    border: 1px dashed var(--accent);
+    white-space: nowrap; z-index: 3;
+    letter-spacing: 0.04em;
+  }
+  .flow-h.from-left  { right: 0; transform: translate(50%, -50%); }
+  .flow-h.from-right { left: 0;  transform: translate(-50%, -50%); }
+
+  /* "Extension / custom" badge for non-baseline modules */
+  .ext-badge {
+    display: inline-block;
+    font-family: var(--mono); font-size: 9px; font-weight: 600;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border: 1px solid var(--accent);
+    padding: 0 5px; border-radius: 4px;
+    margin-left: 6px;
+    letter-spacing: 0.04em;
+    vertical-align: middle;
+    line-height: 1.5;
+  }
+
+  /* ====== Plane Card (matches reference: white bg, gray border, shadow) ====== */
+  .pcard {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 18px 20px;
+    box-shadow: var(--shadow);
+  }
+  .pcard .pc-head {
+    display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px;
+  }
+  .pcard .pc-icon {
+    font-family: var(--mono); font-size: 11px; font-weight: 600;
+    color: var(--accent); letter-spacing: 0.08em; text-transform: uppercase;
+    min-width: 16px;
+  }
+  .pcard .pc-name { font-weight: 600; font-size: 14px; }
+  .pcard .pc-desc { font-size: 12px; color: var(--ink-soft); margin-bottom: 10px; }
+  .pcard .pc-attach {
+    font-family: var(--mono); font-size: 9.5px; color: var(--muted);
+    letter-spacing: 0.04em;
+    display: block; margin-bottom: 10px;
+  }
+
+  /* Module chip (matches reference .mod: white bg, gray border) */
+  .pcard .mods { display: flex; flex-direction: column; gap: 6px; }
+  .mod-chip {
+    background: #fff; border: 1px solid var(--line); border-radius: 10px;
+    padding: 8px 12px;
+    transition: border-color .12s ease;
+  }
+  .mod-chip:hover { border-color: var(--ink); }
+  .mod-chip .mhead {
+    display: flex; align-items: baseline; justify-content: space-between;
+  }
+  .mod-chip .mc-id {
+    font-family: var(--mono); font-size: 10.5px;
+    color: var(--muted); letter-spacing: 0.04em;
+  }
+  .mod-chip .mc-name { font-weight: 600; font-size: 13px; margin: 1px 0; }
+  .mod-chip .mc-func { font-size: 11.5px; color: var(--ink-soft); line-height: 1.4; }
+
+  /* ====== Bottom rows ====== */
+  .bottom-band {
+    display: grid; grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px; margin-top: 16px;
+  }
+
+  /* ====== Cross-cutting frame (Observability + Runtime as visual envelope) ====== */
+  .cross-frame {
+    margin-top: 32px;
+    border: 1px dashed var(--line-strong);
+    border-radius: var(--radius);
+    padding: 18px;
+    position: relative;
+    background:
+      repeating-linear-gradient(
+        135deg,
+        rgba(255,106,61,0.015) 0 8px,
+        transparent 8px 16px
+      );
+  }
+  .cross-frame .cf-tag {
+    position: absolute; top: -10px; left: 24px;
+    background: var(--bg); padding: 0 10px;
+    font-family: var(--mono); font-size: 11px;
+    color: var(--accent); font-weight: 600; letter-spacing: 0.08em;
+  }
+  .cross-frame .cf-note {
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+    margin-bottom: 12px;
+  }
+
+  /* Observability — left vertical band */
+  .obs-strip {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 18px 20px;
+    box-shadow: var(--shadow);
+    margin-bottom: 16px;
+  }
+  .obs-strip .os-head {
+    display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px;
+  }
+  .obs-strip .os-head .os-icon {
+    font-family: var(--mono); font-size: 11px; font-weight: 600;
+    color: var(--accent); letter-spacing: 0.08em;
+  }
+  .obs-strip .os-head .os-title { font-weight: 600; font-size: 14px; }
+  .obs-strip .os-head .os-desc { font-size: 12px; color: var(--muted); margin-left: 8px; }
+  .obs-strip .os-mods {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+  }
+
+  /* Foundation: Runtime — bottom band, with up-arrow indicating "支撑上方所有面" */
+  .runtime-strip {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 18px 20px;
+    box-shadow: var(--shadow);
+    position: relative;
+  }
+  .runtime-strip::before {
+    content: "▲ 被所有面依赖";
+    position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
+    background: var(--bg); padding: 0 10px;
+    font-family: var(--mono); font-size: 10px; color: var(--muted);
+    letter-spacing: 0.06em;
+  }
+  .runtime-strip .rs-head {
+    display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px;
+  }
+  .runtime-strip .rs-head .rs-label {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--accent); font-weight: 600;
+  }
+  .runtime-strip .rs-head .rs-desc {
+    font-size: 12px; color: var(--muted); margin-left: 8px;
+  }
+  .runtime-strip .rs-mods {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+  }
+
+  /* ====== Legend ====== */
+  .legend {
+    margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--line);
+    display: flex; flex-wrap: wrap; gap: 20px;
+    font-size: 12px; color: var(--ink-soft);
+    font-family: var(--mono);
+  }
+
+  footer {
+    margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--line);
+    color: var(--muted); font-size: 12px; font-family: var(--mono);
+    display: flex; justify-content: space-between;
+  }
+
+  /* ====== Roadmap section ====== */
+  .roadmap-divider {
+    height: 1px; background: var(--line);
+    margin: 64px 0 48px;
+  }
+  .roadmap-header { margin-bottom: 32px; }
+  .roadmap-title {
+    font-size: 32px; line-height: 1.1; font-weight: 600;
+    letter-spacing: -0.02em; margin: 6px 0 10px;
+  }
+  .roadmap-sub { color: var(--ink-soft); font-size: 15px;  }
+
+  .stack-card { margin-bottom: 24px; }
+  .stack-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+  }
+  .stack-grid .mod-chip .mc-id { color: var(--accent); font-weight: 600; }
+
+  .phases-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
+    margin-bottom: 24px;
+  }
+  .phase-card {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 18px 20px;
+    box-shadow: var(--shadow);
+    display: flex; flex-direction: column;
+  }
+  .phase-card .ph-id {
+    font-family: var(--mono); font-size: 11px;
+    color: var(--accent); font-weight: 600; letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .phase-card .ph-name {
+    font-weight: 600; font-size: 15px; margin: 4px 0 6px;
+  }
+  .phase-card .ph-weeks-range {
+    font-family: var(--mono); font-size: 10px; color: var(--muted);
+    margin-bottom: 10px;
+  }
+  .phase-card .ph-goal {
+    font-family: var(--mono); font-size: 11px; color: var(--ink);
+    background: #fff; border: 1px solid var(--line);
+    padding: 6px 10px; border-radius: 6px; margin-bottom: 12px;
+    text-align: center; font-weight: 500;
+  }
+  .phase-card .weeks {
+    display: flex; flex-direction: column; gap: 10px; flex: 1;
+  }
+  .phase-card .week-row {
+    display: grid; grid-template-columns: 28px 1fr; gap: 8px;
+    font-size: 12px; line-height: 1.5;
+  }
+  .phase-card .week-num {
+    font-family: var(--mono); font-size: 10px; color: var(--accent);
+    font-weight: 600; letter-spacing: 0.04em; padding-top: 2px;
+  }
+  .phase-card .week-body { color: var(--ink-soft); }
+  .phase-card .week-body .wb-mod {
+    color: var(--ink); font-weight: 600;
+    font-family: var(--mono); font-size: 10.5px;
+    display: block; margin-bottom: 1px;
+  }
+  .verify {
+    margin-top: 14px; padding: 12px 14px;
+    background: #fff; border: 1px solid var(--line); border-radius: 10px;
+    font-size: 11.5px; color: var(--ink); line-height: 1.55;
+  }
+  .verify-label {
+    font-family: var(--mono); font-size: 9.5px; font-weight: 600;
+    color: var(--muted); letter-spacing: 0.08em;
+    text-transform: uppercase; display: block; margin-bottom: 4px;
+  }
+  .phase-card .verify { margin-top: 14px; }
+
+  .milestones-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+  }
+  .ms-chip {
+    background: #fff; border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px 14px;
+  }
+  .ms-chip .ms-when {
+    font-family: var(--mono); font-size: 10px; color: var(--accent);
+    font-weight: 600; letter-spacing: 0.06em;
+  }
+  .ms-chip .ms-title { font-weight: 600; font-size: 13px; margin: 3px 0 2px; }
+  .ms-chip .ms-desc { font-size: 11.5px; color: var(--ink-soft); line-height: 1.45; }
+
+  .risks-grid {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;
+  }
+  .risk-chip {
+    background: #fff; border: 1px solid var(--line); border-radius: 10px;
+    padding: 10px 14px;
+    display: grid; grid-template-columns: 1fr 1.4fr; gap: 14px;
+    font-size: 12px; line-height: 1.5;
+  }
+  .risk-chip .risk-title { font-weight: 600; color: var(--ink); }
+  .risk-chip .risk-mit { color: var(--ink-soft); }
+  .risk-chip .risk-mit::before {
+    content: "→ "; color: var(--accent); font-weight: 700;
+  }
+
+  .v2-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+  }
+  .v2-chip {
+    background: #fff; border: 1px dashed var(--line-strong); border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 11.5px; color: var(--ink-soft);
+  }
+  .v2-chip strong {
+    font-family: var(--mono); font-size: 10.5px; color: var(--ink);
+    font-weight: 600; display: block; margin-bottom: 1px;
+  }
+
+  /* ====== Premise grid (top of roadmap) ====== */
+  .premise-card { margin-bottom: 24px; }
+  .premise-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+  }
+  .premise-cell {
+    padding: 14px 16px;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+  }
+  .premise-cell .pm-label {
+    font-family: var(--mono); font-size: 10px;
+    color: var(--muted); font-weight: 600;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .premise-cell .pm-value {
+    font-weight: 600; font-size: 13.5px; color: var(--ink);
+    line-height: 1.4; margin-bottom: 6px;
+  }
+  .premise-cell .pm-extra {
+    font-size: 11px; color: var(--ink-soft); line-height: 1.55;
+  }
+  @media (max-width: 1100px) {
+    .premise-grid { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 700px) {
+    .premise-grid { grid-template-columns: 1fr; }
+  }
+
+  /* ====== Directory tree ====== */
+  .tree-block {
+    background: #0e0e10; color: #e6e6e6;
+    border-radius: 12px; padding: 22px 26px;
+    font-family: var(--mono); font-size: 12px;
+    line-height: 1.7; white-space: pre;
+    overflow-x: auto; margin-bottom: 24px;
+    box-shadow: var(--shadow);
+  }
+  .tree-block .cmt   { color: #7a7a7a; }
+  .tree-block .plane { color: #ff9d7a; font-weight: 600; }
+  .tree-block .dir   { color: #9ec5ff; }
+  .tree-block .deferred { color: #b6e3a0; }
+
+  .pkg-grid {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px;
+    margin-bottom: 24px;
+  }
+  .pkg-card {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 14px 18px;
+    box-shadow: var(--shadow);
+  }
+  .pkg-card-head {
+    display: flex; align-items: baseline; gap: 10px;
+    padding-bottom: 8px; margin-bottom: 10px;
+    border-bottom: 1px dashed var(--line);
+  }
+  .pkg-card-head .pk-plane {
+    font-family: var(--mono); font-size: 10px; font-weight: 700;
+    color: var(--accent); letter-spacing: 0.06em;
+    background: var(--accent-soft); padding: 2px 7px;
+    border-radius: 4px; border: 1px solid var(--accent);
+    flex-shrink: 0;
+  }
+  .pkg-card-head .pk-name {
+    font-family: var(--mono); font-size: 13px; font-weight: 600;
+    color: var(--ink);
+  }
+  .pkg-card-head .pk-tag {
+    font-family: var(--mono); font-size: 10px;
+    color: var(--muted); margin-left: auto;
+  }
+  .pkg-tree {
+    margin: 0; padding: 0; font-family: var(--mono);
+    font-size: 11.5px; line-height: 1.7;
+    color: var(--ink); white-space: pre; overflow-x: auto;
+  }
+  .pkg-tree .cmt { color: var(--muted); }
+  .pkg-tree .dir { color: var(--ink); font-weight: 600; }
+
+  .deps-block {
+    background: #0e0e10; color: #e6e6e6;
+    border-radius: 12px; padding: 18px 22px;
+    font-family: var(--mono); font-size: 11.5px;
+    line-height: 1.75; white-space: pre;
+    overflow-x: auto; box-shadow: var(--shadow);
+  }
+  .deps-block .arr   { color: #ff9d7a; font-weight: 700; }
+  .deps-block .cmt   { color: #7a7a7a; }
+  .deps-block .tag   { color: #9ec5ff; }
+
+  /* ====== Responsive ====== */
+  @media (max-width: 1100px) {
+    .middle-band { grid-template-columns: 1fr; }
+    .mid-left, .mid-right { padding: 0; padding-top: 16px; }
+    .loop-steps { gap: 6px; }
+    .flow-h { display: none; }
+    .phases-grid { grid-template-columns: 1fr 1fr; }
+    .stack-grid { grid-template-columns: 1fr 1fr; }
+    .milestones-grid { grid-template-columns: 1fr 1fr; }
+    .v2-grid { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 900px) {
+    .bottom-band { grid-template-columns: 1fr; }
+    .obs-strip .os-mods { grid-template-columns: 1fr 1fr; }
+    .runtime-strip .rs-mods { grid-template-columns: 1fr; }
+    .risks-grid { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 700px) {
+    .phases-grid, .stack-grid, .milestones-grid, .v2-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+  @media (max-width: 600px) {
+    .wrap { padding: 32px 16px 48px; }
+    h1 { font-size: 28px; }
+    .roadmap-title { font-size: 24px; }
+    .obs-strip .os-mods { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="roadmap-header">
+    <p class="eyebrow">Nova Coding Agent · Application</p>
+    <h1>把这套 agent 架构<span class="accent">套到业务系统上</span></h1>
+    <p class="subtitle">
+      Agent 框架是壳，业务是肉 —— 把领域能力通过工具暴露给模型，而不是把模型塞进业务代码里。
+      本文是 <a href="../nova-architecture.html" style="color:var(--accent);">Nova 架构设计</a> 的配套篇：讲怎么把同一套 loop + 工具 + 上下文的范式落到真实业务。
+    </p>
+  </div>
+
+  <!-- ① 应用路径 -->
+  <div class="pcard" style="margin-bottom: 24px;">
+    <div class="pc-head">
+      <span class="pc-icon">①</span>
+      <span class="pc-name">应用路径 — 把 agent 框架套到业务上</span>
+    </div>
+    <span class="pc-attach">薄壳厚业务 · Tool Adapter 是唯一耦合面</span>
+    <div class="premise-grid">
+      <div class="premise-cell">
+        <div class="pm-label">A · 保持薄壳</div>
+        <div class="pm-value">业务逻辑不入框架</div>
+        <div class="pm-extra">框架只做循环 + 上下文管理 + 工具调用；业务实现继续留在原 service / API。</div>
+      </div>
+      <div class="premise-cell">
+        <div class="pm-label">B · 场景先收窄</div>
+        <div class="pm-value">选一个有边界的子场景</div>
+        <div class="pm-extra">「客服查单 + 改单」「运维诊断」这类闭环场景先做透 — 不要一上来就做全能助理。</div>
+      </div>
+      <div class="premise-cell">
+        <div class="pm-label">C · Tool Adapter 层</div>
+        <div class="pm-value">原 API 包一层暴露给模型</div>
+        <div class="pm-extra">不动业务 service，写薄适配把现有 API 翻译成 tool description，独立部署独立演进。</div>
+      </div>
+      <div class="premise-cell">
+        <div class="pm-label">D · 领域知识外置</div>
+        <div class="pm-value">知识载体随 runtime 能力变</div>
+        <div class="pm-extra">不要硬编码进框架或 tool 实现 — 分 C 端 / B 端 / CLI 三档，详见下方专题。</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ①·补 知识载体三档 -->
+  <div class="pcard" style="margin-bottom: 24px;">
+    <div class="pc-head">
+      <span class="pc-icon">⋯</span>
+      <span class="pc-name">知识载体三档 — 跟着 runtime 能力走</span>
+    </div>
+    <span class="pc-attach">D 项展开 · 能跑代码就让知识带代码，不能跑就让知识当资料</span>
+    <div class="premise-grid" style="grid-template-columns: repeat(3, 1fr);">
+      <div class="premise-cell">
+        <div class="pm-label">TIER · 1 · C 端受限</div>
+        <div class="pm-value">system prompt + RAG doc</div>
+        <div class="pm-extra">
+          聊天框 / H5 widget / 商品页助手 — 没 shell、没 fs，工具是窄而稳的几个 API。<br/>
+          知识只能内嵌进 prompt 或走 RAG 检索；模型扮演「读资料的人」。
+        </div>
+      </div>
+      <div class="premise-cell">
+        <div class="pm-label">TIER · 2 · B 端工作台</div>
+        <div class="pm-value">playbook 化的结构 doc</div>
+        <div class="pm-extra">
+          坐席台 / 运维控制台 — 工具丰富，但安全上禁 shell。<br/>
+          markdown SOP 写明「先 A · 再判 B · 最后 C」，本质是结构化提示词包。<strong>多数 B 端 agent 该走这档，最被低估</strong>。
+        </div>
+      </div>
+      <div class="premise-cell">
+        <div class="pm-label">TIER · 3 · 可运行 CLI</div>
+        <div class="pm-value">skill — md + script + ref</div>
+        <div class="pm-extra">
+          Claude Code 类 / 内部研发 agent — 有 shell、fs、可装包。<br/>
+          <span class="pk-name" style="font-family: var(--mono);">SKILL.md</span>（何时用）+ 可执行脚本（怎么做）+ 引用文件（按需加载） — 渐进披露，<strong>把「怎么做」固化进代码</strong>。
+        </div>
+      </div>
+    </div>
+    <div class="verify" style="margin: 14px 4px 4px;">
+      <span class="verify-label">CORE INSIGHT</span>
+      <strong>doc 是「告诉模型怎么做」，skill 是「替模型做掉」。</strong>前者是信息，后者是固化的过程 — 能用 skill 就别用 doc，可执行性带来确定性。
+    </div>
+  </div>
+
+  <!-- ② 最小工具集 -->
+  <div class="pcard" style="margin-bottom: 24px;">
+    <div class="pc-head">
+      <span class="pc-icon">②</span>
+      <span class="pc-name">最小工具集 — 5 类覆盖 80% 场景</span>
+    </div>
+    <span class="pc-attach">先压到 10 个以内 · 工具越多模型选择质量越差</span>
+    <div class="milestones-grid">
+      <div class="ms-chip">
+        <div class="ms-when">TOOL · 01</div>
+        <div class="ms-title">search / list</div>
+        <div class="ms-desc">发现实体 — 按条件检索订单、用户、单据，输出 id 列表给后续 get 用。</div>
+      </div>
+      <div class="ms-chip">
+        <div class="ms-when">TOOL · 02</div>
+        <div class="ms-title">get</div>
+        <div class="ms-desc">读详情 — 拿到 id 之后取完整对象，是模型做判断的主要数据源。</div>
+      </div>
+      <div class="ms-chip">
+        <div class="ms-when">TOOL · 03</div>
+        <div class="ms-title">act / mutate</div>
+        <div class="ms-desc">执行写操作 — 改单、退款、发通知等，必须带二次确认或权限拦截。</div>
+      </div>
+      <div class="ms-chip">
+        <div class="ms-when">TOOL · 04</div>
+        <div class="ms-title">ask_user</div>
+        <div class="ms-desc">信息不足反问用户 — 防止模型乱猜参数。优先级高于继续 search。</div>
+      </div>
+    </div>
+    <div class="milestones-grid" style="margin-top: 10px;">
+      <div class="ms-chip">
+        <div class="ms-when">TOOL · 05</div>
+        <div class="ms-title">finish / handoff</div>
+        <div class="ms-desc">明确结束或转人工 — 让模型知道有体面的退出路径，避免死循环。</div>
+      </div>
+      <div class="ms-chip" style="border-style: dashed;">
+        <div class="ms-when">OPT · +1</div>
+        <div class="ms-title">lookup_doc</div>
+        <div class="ms-desc">RAG 检索业务知识库 / SOP / 政策文档，配上述 5 类基本完备。</div>
+      </div>
+      <div class="ms-chip" style="border-style: dashed; opacity: 0.7;">
+        <div class="ms-when">RULE</div>
+        <div class="ms-title">先少后多</div>
+        <div class="ms-desc">别一上来把 30 个内部接口全做成工具，先 5–7 个跑通再加。</div>
+      </div>
+      <div class="ms-chip" style="border-style: dashed; opacity: 0.7;">
+        <div class="ms-when">RULE</div>
+        <div class="ms-title">粒度对齐意图</div>
+        <div class="ms-desc">一次调用解决一个用户意图，而不是让模型自己拼 3 个底层 API。</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ③ 工具 vs 传统 API -->
+  <div class="pcard" style="margin-bottom: 24px;">
+    <div class="pc-head">
+      <span class="pc-icon">③</span>
+      <span class="pc-name">工具的标准 — 区别于传统 API</span>
+    </div>
+    <span class="pc-attach">调用者从「程序员」变成「模型」，所有设计都要为此重做</span>
+    <div class="premise-grid">
+      <div class="premise-cell">
+        <div class="pm-label">DIM · 调用者</div>
+        <div class="pm-value">程序员 → 模型</div>
+        <div class="pm-extra">传统 API 给程序员看，模型工具给 LLM 看 — description 是核心，不是签名。</div>
+      </div>
+      <div class="premise-cell">
+        <div class="pm-label">DIM · 描述</div>
+        <div class="pm-value">类型签名 → 自然语言</div>
+        <div class="pm-extra">description 必须包含「何时该用 / 何时不该用」，而不是只是参数说明。</div>
+      </div>
+      <div class="premise-cell">
+        <div class="pm-label">DIM · 粒度</div>
+        <div class="pm-value">细 → 粗</div>
+        <div class="pm-extra">传统 API 靠代码组合；模型工具一次调用对齐一个用户意图。</div>
+      </div>
+      <div class="premise-cell">
+        <div class="pm-label">DIM · 错误</div>
+        <div class="pm-value">异常码 → 可读文本</div>
+        <div class="pm-extra">错误信息要告诉模型「怎么纠正」，而不是只扔一个 4xx 或堆栈。</div>
+      </div>
+      <div class="premise-cell">
+        <div class="pm-label">DIM · 状态</div>
+        <div class="pm-value">常带 session → 尽量无状态</div>
+        <div class="pm-extra">每次调用自包含；上下文压缩时仍能被复述、重放、单独审计。</div>
+      </div>
+      <div class="premise-cell">
+        <div class="pm-label">DIM · 返回</div>
+        <div class="pm-value">结构化 JSON → 可读文本</div>
+        <div class="pm-extra">结构化也行，但要模型能直接理解；不要返回内部枚举码或对象引用。</div>
+      </div>
+      <div class="premise-cell">
+        <div class="pm-label">DIM · 幂等</div>
+        <div class="pm-value">可选 → 强烈建议</div>
+        <div class="pm-extra">模型会重试、会改主意；写操作没有幂等键，会留下脏数据。</div>
+      </div>
+      <div class="premise-cell">
+        <div class="pm-label">DIM · 边界</div>
+        <div class="pm-value">上层兜底 → 工具内强校验</div>
+        <div class="pm-extra">不能假设「上层会过滤」— 模型直连，每个 mutate 工具自检权限 / 审批 / 审计。</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ④ 核心判据 -->
+  <div class="pcard">
+    <div class="pc-head">
+      <span class="pc-icon">✓</span>
+      <span class="pc-name">核心判据 — 一句话验收</span>
+    </div>
+    <span class="pc-attach">把这条贴在工具评审会议室门口</span>
+    <div class="verify" style="margin: 14px 4px 4px;">
+      <span class="verify-label">RULE OF THUMB</span>
+      把 description 写完后，<strong>一个从未看过代码的人</strong>能不能判断「什么时候该调这个工具」？<br/>
+      不能 → 说明粒度和语义还没对齐 LLM，回炉重做。<strong>不是模型不会用，是工具没写好。</strong>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

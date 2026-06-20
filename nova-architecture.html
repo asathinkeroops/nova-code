@@ -1,0 +1,1150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Nova Coding Agent · 以 Loop 为核心的架构设计</title>
+<style>
+  :root {
+    --bg: #fafafa;
+    --surface: #ffffff;
+    --ink: #111111;
+    --ink-soft: #555555;
+    --line: #e5e5e5;
+    --line-strong: #d4d4d4;
+    --accent: #ff6a3d;
+    --accent-soft: #fff1ec;
+    --muted: #888888;
+    --tag-bg: #f4f4f4;
+    --radius: 14px;
+    --shadow: 0 1px 2px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.04);
+    --mono: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--bg); color: var(--ink);
+    font-family: var(--sans); font-size: 15px; line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1400px; margin: 0 auto; padding: 56px 32px 80px; }
+
+  /* Header */
+  .eyebrow {
+    font-family: var(--mono); font-size: 12px; color: var(--muted);
+    letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 12px;
+  }
+  h1 { font-size: 40px; line-height: 1.1; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 10px; }
+  h1 .accent { color: var(--accent); }
+  .subtitle { color: var(--ink-soft); font-size: 16px; margin-bottom: 48px; }
+
+  /* ====== Connector arrows ====== */
+  .conn-down {
+    display: flex; flex-direction: column; align-items: center;
+    padding: 4px 0;
+  }
+  .conn-down .conn-line { width: 2px; height: 20px; background: var(--line-strong); }
+  .conn-down .conn-label {
+    font-family: var(--mono); font-size: 10px; color: var(--muted);
+    letter-spacing: 0.04em;
+    padding: 2px 10px; border-radius: 999px; margin: 4px 0;
+    white-space: nowrap;
+  }
+  .conn-down .conn-arrow {
+    width: 0; height: 0;
+    border-left: 5px solid transparent; border-right: 5px solid transparent;
+    border-top: 6px solid var(--line-strong);
+  }
+
+  /* ====== Central Loop ====== */
+  .loop-nucleus {
+    background: var(--surface); color: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: 20px; padding: 32px 36px 28px;
+    box-shadow: var(--shadow);
+    position: relative; z-index: 2;
+  }
+  .loop-header {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 22px;
+  }
+  .loop-header .lh-label {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--accent); font-weight: 600;
+  }
+  .loop-header .lh-mods {
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+  }
+  .loop-steps {
+    display: flex; flex-direction: column; align-items: stretch; gap: 4px;
+  }
+  .lstep {
+    border-radius: 12px; padding: 10px 16px;
+    display: flex; align-items: center; justify-content: center; gap: 12px;
+  }
+  .lstep.dark { background: var(--tag-bg); border: 1px solid var(--line); }
+  .lstep.lit  { background: rgba(255,255,255,0.95); color: var(--ink); border: 1px solid var(--line); }
+  .lstep .ls-num {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em;
+    text-transform: uppercase; opacity: 0.5;
+    flex-shrink: 0;
+  }
+  .lstep .ls-name { font-weight: 600; font-size: 14px; white-space: nowrap; }
+  .lstep .ls-hint { font-size: 11px; opacity: 0.6; white-space: nowrap; }
+  .lstep.lit .ls-num { color: var(--accent); opacity: 1; }
+  .larrow {
+    text-align: center; font-family: var(--mono); font-size: 16px;
+    color: var(--line-strong); padding: 2px 0;
+  }
+  .loop-return {
+    margin-top: 16px; display: flex; align-items: center; justify-content: center; gap: 8px;
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+  }
+  .loop-return .pill {
+    border: 1px dashed var(--line-strong);
+    padding: 2px 10px; border-radius: 999px;
+    color: var(--ink-soft);
+  }
+
+  /* ====== Main 3-column Layout ====== */
+  .middle-band {
+    display: grid;
+    grid-template-columns: 240px 1fr 280px;
+    gap: 0; align-items: stretch; margin-top: 0;
+    position: relative;
+  }
+  .mid-left, .mid-right {
+    display: flex; flex-direction: column; gap: 16px; padding-top: 0;
+    position: relative;
+  }
+  .mid-left { padding-right: 16px; }
+  .mid-right { padding-left: 16px; }
+  .mid-center { display: flex; flex-direction: column; align-items: stretch; }
+  .mid-center .loop-nucleus { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+
+  /* Horizontal flow arrows between side planes and the loop */
+  .flow-h {
+    position: absolute; top: 50%; transform: translateY(-50%);
+    font-family: var(--mono); font-size: 10px;
+    color: var(--accent); font-weight: 600;
+    background: var(--bg);
+    padding: 3px 8px; border-radius: 999px;
+    border: 1px dashed var(--accent);
+    white-space: nowrap; z-index: 3;
+    letter-spacing: 0.04em;
+  }
+  .flow-h.from-left  { right: 0; transform: translate(50%, -50%); }
+  .flow-h.from-right { left: 0;  transform: translate(-50%, -50%); }
+
+  /* "Extension / custom" badge for non-baseline modules */
+  .ext-badge {
+    display: inline-block;
+    font-family: var(--mono); font-size: 9px; font-weight: 600;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border: 1px solid var(--accent);
+    padding: 0 5px; border-radius: 4px;
+    margin-left: 6px;
+    letter-spacing: 0.04em;
+    vertical-align: middle;
+    line-height: 1.5;
+  }
+
+  /* ====== Plane Card (matches reference: white bg, gray border, shadow) ====== */
+  .pcard {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 18px 20px;
+    box-shadow: var(--shadow);
+  }
+  .pcard .pc-head {
+    display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px;
+  }
+  .pcard .pc-icon {
+    font-family: var(--mono); font-size: 11px; font-weight: 600;
+    color: var(--accent); letter-spacing: 0.08em; text-transform: uppercase;
+    min-width: 16px;
+  }
+  .pcard .pc-name { font-weight: 600; font-size: 14px; }
+  .pcard .pc-desc { font-size: 12px; color: var(--ink-soft); margin-bottom: 10px; }
+  .pcard .pc-attach {
+    font-family: var(--mono); font-size: 9.5px; color: var(--muted);
+    letter-spacing: 0.04em;
+    display: block; margin-bottom: 10px;
+  }
+
+  /* Module chip (matches reference .mod: white bg, gray border) */
+  .pcard .mods { display: flex; flex-direction: column; gap: 6px; }
+  .mod-chip {
+    background: #fff; border: 1px solid var(--line); border-radius: 10px;
+    padding: 8px 12px;
+    transition: border-color .12s ease;
+  }
+  .mod-chip:hover { border-color: var(--ink); }
+  .mod-chip .mhead {
+    display: flex; align-items: baseline; justify-content: space-between;
+  }
+  .mod-chip .mc-id {
+    font-family: var(--mono); font-size: 10.5px;
+    color: var(--muted); letter-spacing: 0.04em;
+  }
+  .mod-chip .mc-name { font-weight: 600; font-size: 13px; margin: 1px 0; }
+  .mod-chip .mc-func { font-size: 11.5px; color: var(--ink-soft); line-height: 1.4; }
+
+  /* ====== Bottom rows ====== */
+  .bottom-band {
+    display: grid; grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px; margin-top: 16px;
+  }
+
+  /* ====== Cross-cutting frame (Observability + Runtime as visual envelope) ====== */
+  .cross-frame {
+    margin-top: 32px;
+    border: 1px dashed var(--line-strong);
+    border-radius: var(--radius);
+    padding: 18px;
+    position: relative;
+    background:
+      repeating-linear-gradient(
+        135deg,
+        rgba(255,106,61,0.015) 0 8px,
+        transparent 8px 16px
+      );
+  }
+  .cross-frame .cf-tag {
+    position: absolute; top: -10px; left: 24px;
+    background: var(--bg); padding: 0 10px;
+    font-family: var(--mono); font-size: 11px;
+    color: var(--accent); font-weight: 600; letter-spacing: 0.08em;
+  }
+  .cross-frame .cf-note {
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+    margin-bottom: 12px;
+  }
+
+  /* Observability — left vertical band */
+  .obs-strip {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 18px 20px;
+    box-shadow: var(--shadow);
+    margin-bottom: 16px;
+  }
+  .obs-strip .os-head {
+    display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px;
+  }
+  .obs-strip .os-head .os-icon {
+    font-family: var(--mono); font-size: 11px; font-weight: 600;
+    color: var(--accent); letter-spacing: 0.08em;
+  }
+  .obs-strip .os-head .os-title { font-weight: 600; font-size: 14px; }
+  .obs-strip .os-head .os-desc { font-size: 12px; color: var(--muted); margin-left: 8px; }
+  .obs-strip .os-mods {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+  }
+
+  /* Foundation: Runtime — bottom band, with up-arrow indicating "支撑上方所有面" */
+  .runtime-strip {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 18px 20px;
+    box-shadow: var(--shadow);
+    position: relative;
+  }
+  .runtime-strip::before {
+    content: "▲ 被所有面依赖";
+    position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
+    background: var(--bg); padding: 0 10px;
+    font-family: var(--mono); font-size: 10px; color: var(--muted);
+    letter-spacing: 0.06em;
+  }
+  .runtime-strip .rs-head {
+    display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px;
+  }
+  .runtime-strip .rs-head .rs-label {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--accent); font-weight: 600;
+  }
+  .runtime-strip .rs-head .rs-desc {
+    font-size: 12px; color: var(--muted); margin-left: 8px;
+  }
+  .runtime-strip .rs-mods {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+  }
+
+  /* ====== Legend ====== */
+  .legend {
+    margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--line);
+    display: flex; flex-wrap: wrap; gap: 20px;
+    font-size: 12px; color: var(--ink-soft);
+    font-family: var(--mono);
+  }
+
+  footer {
+    margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--line);
+    color: var(--muted); font-size: 12px; font-family: var(--mono);
+    display: flex; justify-content: space-between;
+  }
+
+  /* ====== Roadmap section ====== */
+  .roadmap-divider {
+    height: 1px; background: var(--line);
+    margin: 64px 0 48px;
+  }
+  .roadmap-header { margin-bottom: 32px; }
+  .roadmap-title {
+    font-size: 32px; line-height: 1.1; font-weight: 600;
+    letter-spacing: -0.02em; margin: 6px 0 10px;
+  }
+  .roadmap-sub { color: var(--ink-soft); font-size: 15px;  }
+
+  .stack-card { margin-bottom: 24px; }
+  .stack-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+  }
+  .stack-grid .mod-chip .mc-id { color: var(--accent); font-weight: 600; }
+
+  .phases-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
+    margin-bottom: 24px;
+  }
+  .phase-card {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 18px 20px;
+    box-shadow: var(--shadow);
+    display: flex; flex-direction: column;
+  }
+  .phase-card .ph-id {
+    font-family: var(--mono); font-size: 11px;
+    color: var(--accent); font-weight: 600; letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .phase-card .ph-name {
+    font-weight: 600; font-size: 15px; margin: 4px 0 6px;
+  }
+  .phase-card .ph-weeks-range {
+    font-family: var(--mono); font-size: 10px; color: var(--muted);
+    margin-bottom: 10px;
+  }
+  .phase-card .ph-goal {
+    font-family: var(--mono); font-size: 11px; color: var(--ink);
+    background: #fff; border: 1px solid var(--line);
+    padding: 6px 10px; border-radius: 6px; margin-bottom: 12px;
+    text-align: center; font-weight: 500;
+  }
+  .phase-card .weeks {
+    display: flex; flex-direction: column; gap: 10px; flex: 1;
+  }
+  .phase-card .week-row {
+    display: grid; grid-template-columns: 28px 1fr; gap: 8px;
+    font-size: 12px; line-height: 1.5;
+  }
+  .phase-card .week-num {
+    font-family: var(--mono); font-size: 10px; color: var(--accent);
+    font-weight: 600; letter-spacing: 0.04em; padding-top: 2px;
+  }
+  .phase-card .week-body { color: var(--ink-soft); }
+  .phase-card .week-body .wb-mod {
+    color: var(--ink); font-weight: 600;
+    font-family: var(--mono); font-size: 10.5px;
+    display: block; margin-bottom: 1px;
+  }
+  .verify {
+    margin-top: 14px; padding: 12px 14px;
+    background: #fff; border: 1px solid var(--line); border-radius: 10px;
+    font-size: 11.5px; color: var(--ink); line-height: 1.55;
+  }
+  .verify-label {
+    font-family: var(--mono); font-size: 9.5px; font-weight: 600;
+    color: var(--muted); letter-spacing: 0.08em;
+    text-transform: uppercase; display: block; margin-bottom: 4px;
+  }
+  .phase-card .verify { margin-top: 14px; }
+
+  .milestones-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+  }
+  .ms-chip {
+    background: #fff; border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px 14px;
+  }
+  .ms-chip .ms-when {
+    font-family: var(--mono); font-size: 10px; color: var(--accent);
+    font-weight: 600; letter-spacing: 0.06em;
+  }
+  .ms-chip .ms-title { font-weight: 600; font-size: 13px; margin: 3px 0 2px; }
+  .ms-chip .ms-desc { font-size: 11.5px; color: var(--ink-soft); line-height: 1.45; }
+
+  .risks-grid {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;
+  }
+  .risk-chip {
+    background: #fff; border: 1px solid var(--line); border-radius: 10px;
+    padding: 10px 14px;
+    display: grid; grid-template-columns: 1fr 1.4fr; gap: 14px;
+    font-size: 12px; line-height: 1.5;
+  }
+  .risk-chip .risk-title { font-weight: 600; color: var(--ink); }
+  .risk-chip .risk-mit { color: var(--ink-soft); }
+  .risk-chip .risk-mit::before {
+    content: "→ "; color: var(--accent); font-weight: 700;
+  }
+
+  .v2-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+  }
+  .v2-chip {
+    background: #fff; border: 1px dashed var(--line-strong); border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 11.5px; color: var(--ink-soft);
+  }
+  .v2-chip strong {
+    font-family: var(--mono); font-size: 10.5px; color: var(--ink);
+    font-weight: 600; display: block; margin-bottom: 1px;
+  }
+
+  /* ====== Premise grid (top of roadmap) ====== */
+  .premise-card { margin-bottom: 24px; }
+  .premise-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+  }
+  .premise-cell {
+    padding: 14px 16px;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+  }
+  .premise-cell .pm-label {
+    font-family: var(--mono); font-size: 10px;
+    color: var(--muted); font-weight: 600;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .premise-cell .pm-value {
+    font-weight: 600; font-size: 13.5px; color: var(--ink);
+    line-height: 1.4; margin-bottom: 6px;
+  }
+  .premise-cell .pm-extra {
+    font-size: 11px; color: var(--ink-soft); line-height: 1.55;
+  }
+  @media (max-width: 1100px) {
+    .premise-grid { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 700px) {
+    .premise-grid { grid-template-columns: 1fr; }
+  }
+
+  /* ====== Directory tree ====== */
+  .tree-block {
+    background: #0e0e10; color: #e6e6e6;
+    border-radius: 12px; padding: 22px 26px;
+    font-family: var(--mono); font-size: 12px;
+    line-height: 1.7; white-space: pre;
+    overflow-x: auto; margin-bottom: 24px;
+    box-shadow: var(--shadow);
+  }
+  .tree-block .cmt   { color: #7a7a7a; }
+  .tree-block .plane { color: #ff9d7a; font-weight: 600; }
+  .tree-block .dir   { color: #9ec5ff; }
+  .tree-block .deferred { color: #b6e3a0; }
+
+  .pkg-grid {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px;
+    margin-bottom: 24px;
+  }
+  .pkg-card {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 14px 18px;
+    box-shadow: var(--shadow);
+  }
+  .pkg-card-head {
+    display: flex; align-items: baseline; gap: 10px;
+    padding-bottom: 8px; margin-bottom: 10px;
+    border-bottom: 1px dashed var(--line);
+  }
+  .pkg-card-head .pk-plane {
+    font-family: var(--mono); font-size: 10px; font-weight: 700;
+    color: var(--accent); letter-spacing: 0.06em;
+    background: var(--accent-soft); padding: 2px 7px;
+    border-radius: 4px; border: 1px solid var(--accent);
+    flex-shrink: 0;
+  }
+  .pkg-card-head .pk-name {
+    font-family: var(--mono); font-size: 13px; font-weight: 600;
+    color: var(--ink);
+  }
+  .pkg-card-head .pk-tag {
+    font-family: var(--mono); font-size: 10px;
+    color: var(--muted); margin-left: auto;
+  }
+  .pkg-tree {
+    margin: 0; padding: 0; font-family: var(--mono);
+    font-size: 11.5px; line-height: 1.7;
+    color: var(--ink); white-space: pre; overflow-x: auto;
+  }
+  .pkg-tree .cmt { color: var(--muted); }
+  .pkg-tree .dir { color: var(--ink); font-weight: 600; }
+
+  .deps-block {
+    background: #0e0e10; color: #e6e6e6;
+    border-radius: 12px; padding: 18px 22px;
+    font-family: var(--mono); font-size: 11.5px;
+    line-height: 1.75; white-space: pre;
+    overflow-x: auto; box-shadow: var(--shadow);
+  }
+  .deps-block .arr   { color: #ff9d7a; font-weight: 700; }
+  .deps-block .cmt   { color: #7a7a7a; }
+  .deps-block .tag   { color: #9ec5ff; }
+
+  /* ====== Responsive ====== */
+  @media (max-width: 1100px) {
+    .middle-band { grid-template-columns: 1fr; }
+    .mid-left, .mid-right { padding: 0; padding-top: 16px; }
+    .loop-steps { gap: 6px; }
+    .flow-h { display: none; }
+    .phases-grid { grid-template-columns: 1fr 1fr; }
+    .stack-grid { grid-template-columns: 1fr 1fr; }
+    .milestones-grid { grid-template-columns: 1fr 1fr; }
+    .v2-grid { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 900px) {
+    .bottom-band { grid-template-columns: 1fr; }
+    .obs-strip .os-mods { grid-template-columns: 1fr 1fr; }
+    .runtime-strip .rs-mods { grid-template-columns: 1fr; }
+    .risks-grid { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 700px) {
+    .phases-grid, .stack-grid, .milestones-grid, .v2-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+  @media (max-width: 600px) {
+    .wrap { padding: 32px 16px 48px; }
+    h1 { font-size: 28px; }
+    .roadmap-title { font-size: 24px; }
+    .obs-strip .os-mods { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="eyebrow">Nova Coding Agent · Loop-Centric Architecture</div>
+  <h1>Nova <span class="accent">Coding Agent</span> 架构</h1>
+  <p class="subtitle">
+    Nova 是一个深度面向 DeepSeek 调优的终端编码 agent。所有模块都附着在同一个 Agent Loop 之上——这张图展示每个模块在循环中的位置：它在哪个阶段介入、做什么、依赖谁。
+  </p>
+
+  <!-- ============================================================ -->
+  <!-- LAYER 1: Context Injection — feeds INTO the loop             -->
+  <!-- ============================================================ -->
+  <div>
+    <div class="pcard">
+      <div class="pc-head">
+        <span class="pc-icon">C</span>
+        <span class="pc-name">上下文管理 Context Injection</span>
+      </div>
+      <span class="pc-attach">附着点 → ① 组装 system prompt &amp; messages 之前</span>
+      <div class="pc-desc">在 LLM 看到 messages 之前，把知识拼进上下文窗口</div>
+      <div class="mods" style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;">
+        <div class="mod-chip">
+          <div class="mc-id">ctx/memory</div>
+          <div class="mc-name">Memory</div>
+          <div class="mc-func">全局→用户→项目分层；每目录 NOVA.md &gt; CLAUDE.md &gt; AGENTS.md 取最高优先级（不合并）注入 system prompt</div>
+        </div>
+        <div class="mod-chip">
+          <div class="mc-id">ctx/compact</div>
+          <div class="mc-name">Compaction</div>
+          <div class="mc-func">microCompact / autoCompact —— 经 pre_compact hook 整段重写 messages[] 防溢出</div>
+        </div>
+        <div class="mod-chip">
+          <div class="mc-id">ctx/cache</div>
+          <div class="mc-name">Prompt Cache</div>
+          <div class="mc-func">DeepSeek 服务端自动前缀缓存；命中/写入 token 计入 usage，由 obs/cost 统计命中率</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Connector: Context → Loop -->
+  <div class="conn-down">
+    <div class="conn-line"></div>
+    <div class="conn-label">注入 system prompt / messages[] / cache breakpoints</div>
+    <div class="conn-arrow"></div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- LAYER 2: The Loop + Flanking Planes                          -->
+  <!-- ============================================================ -->
+  <div class="middle-band">
+
+    <!-- LEFT: External Interface -->
+    <div class="mid-left">
+      <span class="flow-h from-left">ext/* → ② tool defs ↗</span>
+      <div class="pcard" style="height:100%;">
+        <div class="pc-head">
+          <span class="pc-icon">G</span>
+          <span class="pc-name">外部接入</span>
+        </div>
+        <span class="pc-attach">附着点 → 工具注册 &amp; 传输层</span>
+        <div class="pc-desc">把外部能力注册进 loop，提供多前端传输</div>
+        <div class="mods">
+          <div class="mod-chip">
+            <div class="mc-id">ext/mcp</div>
+            <div class="mc-name">MCP Client</div>
+            <div class="mc-func">stdio / HTTP / SSE 协议接入外部工具</div>
+          </div>
+          <div class="mod-chip">
+            <div class="mc-id">ext/slash</div>
+            <div class="mc-name">Slash Commands</div>
+            <div class="mc-func">.commands/*.md 用户工作流</div>
+          </div>
+          <div class="mod-chip">
+            <div class="mc-id">ext/transport</div>
+            <div class="mc-name">Transport</div>
+            <div class="mc-func">REPL（CLI 主入口，已落地）· HTTP / IDE 传输骨架（apps/http · apps/vscode 仍占位）</div>
+          </div>
+          <div class="mod-chip">
+            <div class="mc-id">ext/skills</div>
+            <div class="mc-name">Skills</div>
+            <div class="mc-func">SKILL.md 索引 → 模型调用 load-skill 工具时按需返回内容（渐进披露）</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CENTER: The Agent Loop -->
+    <div class="mid-center">
+      <div class="loop-nucleus" style="width:100%;">
+        <div class="loop-header">
+          <span class="lh-label">A · 执行核心 — Agent Loop</span>
+          <span class="lh-mods">core/loop · core/model · core/messages · core/hooks　|　@nova/agent 装配默认 hook</span>
+        </div>
+        <div class="loop-steps">
+          <div class="lstep lit">
+            <div class="ls-num">①</div>
+            <div class="ls-name">System & User Prompt</div>
+            <div class="ls-hint">pre_request → messages[]（append-only）</div>
+          </div>
+          <div class="larrow">↓</div>
+          <div class="lstep lit">
+            <div class="ls-num">②</div>
+            <div class="ls-name">Model Call</div>
+            <div class="ls-hint">model.call() · DeepSeek（Anthropic 兼容 wire）· 流式 + thinking</div>
+          </div>
+          <div class="larrow">↓</div>
+          <div class="lstep lit">
+            <div class="ls-num">③</div>
+            <div class="ls-name">Tool Execute</div>
+            <div class="ls-hint">dispatch → pre_tool_use 钩子（权限 + 不变量）→ run</div>
+          </div>
+          <div class="larrow">↓</div>
+          <div class="lstep lit">
+            <div class="ls-num">④</div>
+            <div class="ls-name">Tool Result</div>
+            <div class="ls-hint">每个 tool_use 必配一个 tool_result → messages[]</div>
+          </div>
+        </div>
+        <div class="loop-return" style="flex-wrap:wrap; row-gap:6px;">
+          <span class="pill">tool_use</span> → 继续循环
+          <span style="margin:0 2px;">·</span>
+          <span class="pill">end_turn / stop_sequence</span> → 返回
+          <span style="margin:0 2px;">·</span>
+          <span class="pill">pause_turn</span> → continue
+          <span style="margin:0 2px;">·</span>
+          <span class="pill">max_tokens</span> → 可恢复续接（maxTokensContinuations，耗尽才报错）
+          <span style="margin:0 2px;">·</span>
+          <span class="pill">refusal</span> → 终止
+        </div>
+
+<pre style="margin:16px 0 0;background:#0e0e10;color:#e6e6e6;border-radius:12px;padding:18px 20px;font-family:var(--mono);font-size:12px;line-height:1.65;overflow-x:auto;"><span style="color:#7a7a7a">// 唯一扩展点：hooks。权限 / 压缩 / transcript / UI 全部挂在这里。</span>
+<span style="color:#ff9d7a">async function</span> <span style="color:#9ec5ff">runLoop</span>(messages, { model, tools, hooks }) {
+  <span style="color:#ff9d7a">while</span> (<span style="color:#ff9d7a">true</span>) {
+    messages = <span style="color:#ff9d7a">await</span> hooks.runBlocking(<span style="color:#b6e3a0">"pre_compact"</span>, messages);   <span style="color:#7a7a7a">// 整段替换历史</span>
+    <span style="color:#ff9d7a">await</span> hooks.runBlocking(<span style="color:#b6e3a0">"pre_request"</span>, { messages });
+
+    <span style="color:#ff9d7a">const</span> turn = <span style="color:#ff9d7a">await</span> model.<span style="color:#9ec5ff">call</span>({ system, messages, tools });  <span style="color:#7a7a7a">// DeepSeek</span>
+    messages = <span style="color:#9ec5ff">appendMessage</span>(messages, turn.message);          <span style="color:#7a7a7a">// append-only</span>
+
+    <span style="color:#ff9d7a">const</span> d = <span style="color:#9ec5ff">decide</span>(turn.stopReason);
+    <span style="color:#ff9d7a">if</span> (d.kind === <span style="color:#b6e3a0">"return"</span>) <span style="color:#ff9d7a">return</span>;                          <span style="color:#7a7a7a">// end_turn / stop_sequence</span>
+    <span style="color:#ff9d7a">if</span> (d.kind === <span style="color:#b6e3a0">"error"</span>) <span style="color:#ff9d7a">throw</span> <span style="color:#ff9d7a">new</span> LoopTerminatedError(d); <span style="color:#7a7a7a">// refusal</span>
+    <span style="color:#ff9d7a">if</span> (d.kind === <span style="color:#b6e3a0">"truncated"</span> &amp;&amp; noToolCalls(turn))         <span style="color:#7a7a7a">// max_tokens：可恢复</span>
+      { <span style="color:#ff9d7a">if</span> (++cont &gt; maxTokensContinuations) <span style="color:#ff9d7a">throw</span> …; <span style="color:#ff9d7a">continue</span>; }
+
+    <span style="color:#7a7a7a">// tool_use —— 每个 tool_use 必产出一个配对 tool_result（throw / 拒绝亦然）</span>
+    <span style="color:#ff9d7a">const</span> results = <span style="color:#ff9d7a">await</span> Promise.all(
+      toolUses(turn).map(use =&gt; dispatch(use, { hooks }))     <span style="color:#7a7a7a">// 必经 pre_tool_use</span>
+    );
+    messages = <span style="color:#9ec5ff">appendMessage</span>(messages, { role: <span style="color:#b6e3a0">"user"</span>, content: results });
+  }
+}</pre>
+      </div>
+    </div>
+
+    <!-- RIGHT: Tool Pipeline + Safety -->
+    <div class="mid-right">
+      <span class="flow-h from-right">↖ ② tool_use → ③ dispatch + safety</span>
+      <div class="pcard">
+        <div class="pc-head">
+          <span class="pc-icon">B</span>
+          <span class="pc-name">工具管线 Tool Pipeline</span>
+        </div>
+        <span class="pc-attach">附着点 → ②→③ tool_use 分发与执行</span>
+        <div class="mods">
+          <div class="mod-chip">
+            <div class="mc-id">tools/registry</div>
+            <div class="mc-name">Registry</div>
+            <div class="mc-func">带 zod input schema 统一注册 builtin + mcp</div>
+          </div>
+          <div class="mod-chip">
+            <div class="mc-id">tools/dispatcher</div>
+            <div class="mc-name">Dispatcher</div>
+            <div class="mc-func">校验 + 归一化输入（withAliases: filePath/file→path）→ pre_tool_use 钩子 → run；schema/解析错误转 is_error tool_result</div>
+          </div>
+          <div class="mod-chip">
+            <div class="mc-id">tools/builtin</div>
+            <div class="mc-name">Built-in Tools</div>
+            <div class="mc-func">bash · read / write / edit · glob / grep · lsp · webfetch / websearch · notebook-edit · ask-user · skills / load-skill · todo* · task* · run（long-running）</div>
+          </div>
+          <div class="mod-chip">
+            <div class="mc-id">tools/invariants</div>
+            <div class="mc-name">Tool Invariants</div>
+            <div class="mc-func">InMemoryFileAccessLedger —— read-before-edit · mtime 漂移检查 · 经 canonicalizePath 归一（别名 / symlink 同源）</div>
+          </div>
+          <div class="mod-chip">
+            <div class="mc-id">lsp/manager</div>
+            <div class="mc-name">Code Intelligence<span class="ext-badge" style="background:var(--tag-bg);color:var(--ink-soft);border-color:var(--line-strong);">@nova/lsp</span></div>
+            <div class="mc-func">LspManager 多路复用 language server → hover / 诊断 / 文档 + 工作区符号 / 定义，喂给 lsp 工具与 /lsp</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pcard">
+        <div class="pc-head">
+          <span class="pc-icon">!</span>
+          <span class="pc-name">安全拦截器 Safety</span>
+        </div>
+        <span class="pc-attach">附着点 → 以 hook 形式挂上 loop，非 dispatcher 内嵌</span>
+        <div class="mods">
+          <div class="mod-chip">
+            <div class="mc-id">safe/permission</div>
+            <div class="mc-name">Permission &amp; Approval</div>
+            <div class="mc-func">allow / deny / ask 规则机（canonicalizePath 归一）→ 命中 ask 触发交互（yes / no / always）。@nova/agent 把它接成 pre_tool_use 钩子</div>
+          </div>
+          <div class="mod-chip">
+            <div class="mc-id">core/hooks · safe/hooks</div>
+            <div class="mc-name">HookRegistry</div>
+            <div class="mc-func">loop 唯一扩展点。阻塞钩子（pre_request · pre_tool_use · post_tool_use · pre_compact · pre_continue · pre_user_prompt）可改判，首个非 undefined 决定生效；其余 advisory。safe/hooks 转译用户 hook 配置</div>
+          </div>
+          <div class="mod-chip">
+            <div class="mc-id">safe/sandbox-fs</div>
+            <div class="mc-name">FS &amp; Net Guard</div>
+            <div class="mc-func">工具级文件系统 / 网络访问白名单（与沙盒面 @nova/sandbox 协同）</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Connector: Loop → Bottom planes (split into 3 destinations) -->
+  <div class="conn-down">
+    <div class="conn-line"></div>
+    <div class="conn-label">D 跨轮次/跨会话状态　·　E spawn 子 agent　·　F 子进程写入隔离</div>
+    <div class="conn-arrow"></div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- LAYER 3: State + Multi-Agent + Isolation                     -->
+  <!-- ============================================================ -->
+  <div class="bottom-band">
+    <!-- Task Orchestration -->
+    <div class="pcard">
+      <div class="pc-head">
+        <span class="pc-icon">D</span>
+        <span class="pc-name">任务编排</span>
+      </div>
+      <span class="pc-attach">附着点 → 跨轮次 · 跨会话工作管理　|　实现于 @nova/tools/builtin</span>
+      <div class="pc-desc">编排 todo / task / 长时进程，让工作跨越单次循环（已并入工具面，无独立包）</div>
+      <div class="mods">
+        <div class="mod-chip">
+          <div class="mc-id">builtin/todo</div>
+          <div class="mc-name">Todo</div>
+          <div class="mc-func">单会话有序计划 —— create / update / list / clear + 提醒回注</div>
+        </div>
+        <div class="mod-chip">
+          <div class="mc-id">builtin/task</div>
+          <div class="mc-name">Task Store</div>
+          <div class="mc-func">跨会话任务图 —— 每任务一个 .json 持久化（~/.nova）· 依赖 + 提醒</div>
+        </div>
+        <div class="mod-chip">
+          <div class="mc-id">builtin/long-running</div>
+          <div class="mc-name">Long-running</div>
+          <div class="mc-func">run / kill / output —— 后台进程，输出回注 messages[]</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Multi-Agent -->
+    <div class="pcard">
+      <div class="pc-head">
+        <span class="pc-icon">E</span>
+        <span class="pc-name">多智能体</span>
+      </div>
+      <span class="pc-attach">附着点 → spawn 独立子 agent（独立 messages[] / system prompt）</span>
+      <div class="pc-desc">@nova/agent 装配 + @nova/subagent —— Task 工具 spawn 子 agent，摘要返回主 loop</div>
+      <div class="mods">
+        <div class="mod-chip">
+          <div class="mc-id">agent/createAgent</div>
+          <div class="mc-name">Agent 装配层</div>
+          <div class="mc-func">把权限 / 压缩 / transcript / persistence 注册成默认 hook，并组装 system-prompt —— 主 loop 与 CLI 之间的接线层</div>
+        </div>
+        <div class="mod-chip">
+          <div class="mc-id">subagent/subagent</div>
+          <div class="mc-name">Subagent</div>
+          <div class="mc-func">Task 工具 spawn 短命子 agent → 独立 messages[] → 摘要回主 loop（共用主仓 cwd）</div>
+        </div>
+        <div class="mod-chip">
+          <div class="mc-id">subagent/loader</div>
+          <div class="mc-name">Definitions</div>
+          <div class="mc-func">内置 + 从 .md 加载子 agent 定义（角色 / 工具集 / 专属 system-prompt）</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Isolation -->
+    <div class="pcard">
+      <div class="pc-head">
+        <span class="pc-icon">F</span>
+        <span class="pc-name">隔离边界</span>
+      </div>
+      <span class="pc-attach">附着点 → 子进程工具（bash / run）的运行环境</span>
+      <div class="pc-desc">@nova/sandbox 把子进程的文件写入限制在工作区 —— 默认开，不支持处降级 no-op</div>
+      <div class="mods">
+        <div class="mod-chip">
+          <div class="mc-id">sandbox/bridge</div>
+          <div class="mc-name">FS Write Confinement</div>
+          <div class="mc-func">createSandbox → SandboxBridge —— macOS Seatbelt / Linux bubblewrap 把写入锁在 workspace + settings.sandbox.filesystem.allowWrite</div>
+        </div>
+        <div class="mod-chip">
+          <div class="mc-id">sandbox/optout</div>
+          <div class="mc-name">Default-ON</div>
+          <div class="mc-func">settings.sandbox.enabled: false 可关；不支持的平台自动降级为 no-op</div>
+        </div>
+        <div class="mod-chip" style="border-style:dashed; opacity:0.85;">
+          <div class="mc-id">iso/worktree</div>
+          <div class="mc-name">Worktree<span class="ext-badge">计划</span></div>
+          <div class="mc-func">git worktree 与子 agent 绑定 —— 尚未落地</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- CROSS-CUTTING ENVELOPE: Observability (above) + Runtime (below) -->
+  <!-- The dashed frame indicates these two layers wrap / underpin    -->
+  <!-- every plane in the main diagram above.                         -->
+  <!-- ============================================================ -->
+  <div class="cross-frame">
+    <span class="cf-tag">⇅ 横切 / 基础层</span>
+    <div class="cf-note">↑ 横切：观测以 hook 形式穿透每个面　·　↓ 基础：所有面都依赖 Runtime 提供 config / logging / session / path-safety</div>
+
+    <!-- Observability (cross-cutting) -->
+    <div class="obs-strip">
+      <div class="os-head">
+        <span class="os-icon">H</span>
+        <span class="os-title">可观测性 Observability</span>
+        <span class="os-desc">每个 mod 都带观测埋点 — 这一条只是把同类埋点汇总展示</span>
+      </div>
+      <div class="os-mods">
+        <div class="mod-chip">
+          <div class="mc-id">obs/cost</div>
+          <div class="mc-name">Cost Tracker</div>
+          <div class="mc-func">读 ② usage —— uncached / cacheRead / cacheWrite token 分别计费，按会话/任务汇总</div>
+        </div>
+        <div class="mod-chip">
+          <div class="mc-id">obs/transcript</div>
+          <div class="mc-name">Transcript Log</div>
+          <div class="mc-func">以 advisory hook 把每个事件写进 transcript.jsonl</div>
+        </div>
+        <div class="mod-chip">
+          <div class="mc-id">obs/metrics</div>
+          <div class="mc-name">Metrics</div>
+          <div class="mc-func">② token / cache 命中 / 延迟　·　③ tool 调用 / 成功率 / 权限　·　loop 轮次 &amp; stop_reason　·　OTel / Prometheus</div>
+        </div>
+        <div class="mod-chip">
+          <div class="mc-id">obs/eval</div>
+          <div class="mc-name">Agent Eval</div>
+          <div class="mc-func">离线回放 transcript 跑黄金集（eval/ 目录，独立于主构建）</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Runtime Foundation (underneath all planes) -->
+    <div class="runtime-strip">
+      <div class="rs-head">
+        <span class="rs-label">Runtime Foundation</span>
+        <span class="rs-desc">无依赖、纯基础件 — 上方 A–H 全部建立在这一层之上</span>
+      </div>
+      <div class="rs-mods">
+        <div class="mod-chip">
+          <div class="mc-id">rt/config</div>
+          <div class="mc-name">Config &amp; Settings</div>
+          <div class="mc-func">~/.nova/nova.config.json · zod schema —— 每个可配置项必须先进 schema（带默认）再被读取</div>
+        </div>
+        <div class="mod-chip">
+          <div class="mc-id">rt/logging · path-safety</div>
+          <div class="mc-name">Logging &amp; Paths</div>
+          <div class="mc-func">结构化日志 + 路径归一/越界校验（path-safety）</div>
+        </div>
+        <div class="mod-chip">
+          <div class="mc-id">rt/session</div>
+          <div class="mc-name">Session</div>
+          <div class="mc-func">~/.nova/sessions/{id}/ · transcript.jsonl + messages.jsonl · resume / fork · 按 mtime 过期清理（活动会话保护）</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Legend -->
+  <div class="legend">
+    <span>A 执行核心</span><span>·</span>
+    <span>B 工具管线（含 LSP 代码智能）</span><span>·</span>
+    <span>C 上下文管理</span><span>·</span>
+    <span>D 任务编排</span><span>·</span>
+    <span>E 多智能体（agent 装配 + subagent）</span><span>·</span>
+    <span>F 沙盒隔离</span><span>·</span>
+    <span>G 外部接入</span><span>·</span>
+    <span>H 可观测性</span>
+  </div>
+
+  <footer>
+    <span>执行核心(loop) + Agent 装配层 · 7 个面(A–G) · 横切观测(H) · Runtime 基础</span>
+    <span>所有机制都以 hook 叠在同一个循环之上 — 而不动循环本身。</span>
+  </footer>
+
+  <!-- ============================================================ -->
+  <!-- PROJECT LAYOUT — pnpm monorepo, one package per plane        -->
+  <!-- ============================================================ -->
+  <div class="roadmap-divider"></div>
+
+  <div class="roadmap-header">
+    <div class="eyebrow">Project Layout · pnpm Workspace</div>
+    <h2 class="roadmap-title">工程目录<span class="accent">结构</span></h2>
+    <p class="roadmap-sub">
+      pnpm monorepo：库代码在 <code>packages/*</code>（<code>@nova/&lt;name&gt;</code>），可执行入口在
+      <code>apps/</code>，CLI 二进制为 <code>nova</code>。多数面一包对应，少数已合并 ——
+      任务编排进了 <code>tools/builtin</code>，多智能体拆成 <code>agent</code> + <code>subagent</code>，沙盒独立为 <code>sandbox</code>，并新增了代码智能 <code>lsp</code> 面。
+    </p>
+  </div>
+
+  <!-- 1. Top-level monorepo tree -->
+<pre class="tree-block">nova/                                      <span class="cmt"># pnpm workspace 根 · Node 20 · pnpm@10</span>
+├── pnpm-workspace.yaml                    <span class="cmt"># packages/* + apps/*</span>
+├── package.json                           <span class="cmt"># devDeps + scripts（root）</span>
+├── CLAUDE.md                              <span class="cmt"># 仓库自身的项目记忆（被 ctx/memory 加载）</span>
+│
+├── <span class="dir">apps/</span>                                  <span class="cmt"># 可执行入口（消费 packages/*）</span>
+│   ├── cli/                               <span class="cmt"># 唯一活跃入口 · bin: nova</span>
+│   ├── http/                              <span class="cmt"># 占位                          <span class="deferred">[placeholder]</span></span>
+│   └── vscode/                            <span class="cmt"># 占位                          <span class="deferred">[placeholder]</span></span>
+│
+├── <span class="dir">packages/</span>                              <span class="cmt"># 库代码 @nova/&lt;name&gt; · 看图找代码</span>
+│   ├── core/             <span class="plane">[A]</span>             <span class="cmt"># 执行核心 — loop · model(DeepSeek) · messages · hooks · stop-reason · thinking</span>
+│   ├── runtime/          <span class="plane">[rt]</span>            <span class="cmt"># 基础 — config · logging · session · path-safety（叶子）</span>
+│   ├── observability/    <span class="plane">[H]</span>             <span class="cmt"># 观测 — cost · transcript · metrics · eval（叶子）</span>
+│   ├── lsp/              <span class="plane">[L]</span>             <span class="cmt"># 代码智能 — LspManager 多路复用 language server（叶子）</span>
+│   ├── safety/           <span class="plane">[!]</span>             <span class="cmt"># 安全 — permission · hooks · sandbox-fs</span>
+│   ├── context/          <span class="plane">[C]</span>             <span class="cmt"># 上下文 — memory · compact（cache 走服务端）</span>
+│   ├── tools/            <span class="plane">[B]</span>             <span class="cmt"># 工具管线 — registry · dispatcher · invariants · builtin(含 todo/task/long-running)</span>
+│   ├── external/         <span class="plane">[G]</span>             <span class="cmt"># 外部 — mcp · slash · skills · transport</span>
+│   ├── sandbox/          <span class="plane">[F]</span>             <span class="cmt"># 沙盒 — SandboxBridge（Seatbelt / bubblewrap 写入隔离）</span>
+│   ├── agent/            <span class="plane">[E]</span>             <span class="cmt"># 装配 — createAgent 接默认 hook · system-prompt · persistence</span>
+│   └── subagent/         <span class="plane">[E]</span>             <span class="cmt"># 子 agent — Task spawn · 定义加载</span>
+│
+├── <span class="dir">eval/</span>                                  <span class="cmt"># obs/eval 回放黄金集（独立于主 eslint/tsconfig）</span>
+├── <span class="dir">docs/</span>                                  <span class="cmt"># 架构 · 安全模型 · 指南</span>
+└── README.md                              <span class="cmt"># 中文默认 + 英文版</span></pre>
+
+  <!-- 2. Per-package src/ details -->
+  <div class="pkg-grid">
+
+    <div class="pkg-card">
+      <div class="pkg-card-head">
+        <span class="pk-plane">A</span>
+        <span class="pk-name">packages/core</span>
+        <span class="pk-tag">模型无关循环</span>
+      </div>
+<pre class="pkg-tree">src/
+├── loop.ts          <span class="cmt"># 主循环 · 唯一扩展点 = hooks</span>
+├── model.ts         <span class="cmt"># DeepSeek（Anthropic 兼容 wire）</span>
+├── deepseek-errors.ts <span class="cmt"># 重试 / 错误翻译</span>
+├── thinking.ts      <span class="cmt"># thinking budget / effort</span>
+├── hooks.ts         <span class="cmt"># HookRegistry · HookSpec</span>
+├── messages.ts      <span class="cmt"># appendMessage（append-only）</span>
+├── stop-reason.ts   <span class="cmt"># decide() 状态机</span>
+├── xml.ts · types.ts
+└── index.ts</pre>
+    </div>
+
+    <div class="pkg-card">
+      <div class="pkg-card-head">
+        <span class="pk-plane">rt</span>
+        <span class="pk-name">packages/runtime</span>
+        <span class="pk-tag">叶子</span>
+      </div>
+<pre class="pkg-tree">src/
+├── config.ts        <span class="cmt"># zod schema · ~/.nova/nova.config.json</span>
+├── logging.ts       <span class="cmt"># 结构化日志</span>
+├── session.ts       <span class="cmt"># session 目录 · resume / fork · 清理</span>
+├── path-safety.ts   <span class="cmt"># 路径归一 / 越界校验</span>
+└── index.ts         <span class="cmt"># 无 @nova 源码 import</span></pre>
+    </div>
+
+    <div class="pkg-card">
+      <div class="pkg-card-head">
+        <span class="pk-plane">H</span>
+        <span class="pk-name">packages/observability</span>
+        <span class="pk-tag">叶子</span>
+      </div>
+<pre class="pkg-tree">src/
+├── cost.ts          <span class="cmt"># uncached / cacheRead / cacheWrite 计费</span>
+├── transcript.ts    <span class="cmt"># transcript.jsonl writer</span>
+├── metrics.ts       <span class="cmt"># OTel + Prometheus</span>
+├── eval.ts          <span class="cmt"># transcript replay</span>
+└── index.ts</pre>
+    </div>
+
+    <div class="pkg-card">
+      <div class="pkg-card-head">
+        <span class="pk-plane">L</span>
+        <span class="pk-name">packages/lsp</span>
+        <span class="pk-tag">叶子</span>
+      </div>
+<pre class="pkg-tree">src/
+├── manager.ts       <span class="cmt"># LspManager · spawn / 多路复用</span>
+├── client.ts        <span class="cmt"># 单个 language server 客户端</span>
+├── rpc.ts           <span class="cmt"># JSON-RPC 传输</span>
+├── servers.ts       <span class="cmt"># 语言 → server 映射</span>
+└── types.ts · index.ts</pre>
+    </div>
+
+    <div class="pkg-card">
+      <div class="pkg-card-head">
+        <span class="pk-plane">!</span>
+        <span class="pk-name">packages/safety</span>
+        <span class="pk-tag">→ runtime</span>
+      </div>
+<pre class="pkg-tree">src/
+├── permission.ts    <span class="cmt"># allow / deny / ask 规则机</span>
+├── hooks.ts         <span class="cmt"># 用户 hook 配置 → HookRegistry</span>
+├── sandbox-fs.ts    <span class="cmt"># 工具级 FS / 网络白名单</span>
+└── index.ts</pre>
+    </div>
+
+    <div class="pkg-card">
+      <div class="pkg-card-head">
+        <span class="pk-plane">C</span>
+        <span class="pk-name">packages/context</span>
+        <span class="pk-tag">→ core</span>
+      </div>
+<pre class="pkg-tree">src/
+├── memory.ts        <span class="cmt"># NOVA.md &gt; CLAUDE.md &gt; AGENTS.md 加载</span>
+├── compact.ts       <span class="cmt"># microCompact / autoCompact</span>
+└── index.ts         <span class="cmt"># cache 走服务端，不在此实现</span></pre>
+    </div>
+
+    <div class="pkg-card">
+      <div class="pkg-card-head">
+        <span class="pk-plane">B</span>
+        <span class="pk-name">packages/tools</span>
+        <span class="pk-tag">→ core · lsp</span>
+      </div>
+<pre class="pkg-tree">src/
+├── registry.ts · dispatcher.ts
+├── invariants.ts    <span class="cmt"># FileAccessLedger</span>
+├── schema.ts        <span class="cmt"># withAliases（filePath/file→path）</span>
+├── builtin/
+│   ├── bash · read · write · edit
+│   ├── glob · grep · lsp · notebook-edit
+│   ├── webfetch · websearch · ask-user
+│   ├── skills · load-skill
+│   ├── todo/ · task/   <span class="cmt"># 原编排面</span>
+│   └── long-running/   <span class="cmt"># run / kill / output</span>
+└── index.ts</pre>
+    </div>
+
+    <div class="pkg-card">
+      <div class="pkg-card-head">
+        <span class="pk-plane">G</span>
+        <span class="pk-name">packages/external</span>
+        <span class="pk-tag">→ core（type-only）</span>
+      </div>
+<pre class="pkg-tree">src/
+├── mcp/
+│   ├── client.ts · stdio.ts · http.ts <span class="cmt"># stdio / HTTP / SSE</span>
+│   └── tool.ts · types.ts
+├── slash.ts         <span class="cmt"># .commands/*.md 解析</span>
+├── transport/
+│   ├── repl.ts          <span class="cmt"># CLI REPL（活跃）</span>
+│   └── http.ts · ide.ts <span class="cmt"># 骨架（占位）</span>
+└── index.ts</pre>
+    </div>
+
+    <div class="pkg-card">
+      <div class="pkg-card-head">
+        <span class="pk-plane">F</span>
+        <span class="pk-name">packages/sandbox</span>
+        <span class="pk-tag">→ core（type-only）</span>
+      </div>
+<pre class="pkg-tree">src/
+├── sandbox.ts       <span class="cmt"># createSandbox → SandboxBridge</span>
+│                    <span class="cmt"># Seatbelt / bubblewrap 写入隔离</span>
+└── index.ts</pre>
+    </div>
+
+    <div class="pkg-card">
+      <div class="pkg-card-head">
+        <span class="pk-plane">E</span>
+        <span class="pk-name">packages/agent</span>
+        <span class="pk-tag">装配层</span>
+      </div>
+<pre class="pkg-tree">src/
+├── agent.ts         <span class="cmt"># createAgent · 接默认 hook</span>
+├── system-prompt.ts <span class="cmt"># 组装 system prompt</span>
+├── persistence.ts   <span class="cmt"># messages.jsonl append-fast-path</span>
+└── index.ts         <span class="cmt"># → core · context · observability · runtime</span></pre>
+    </div>
+
+    <div class="pkg-card">
+      <div class="pkg-card-head">
+        <span class="pk-plane">E</span>
+        <span class="pk-name">packages/subagent</span>
+        <span class="pk-tag">→ agent</span>
+      </div>
+<pre class="pkg-tree">src/
+├── subagent.ts      <span class="cmt"># Task 工具 spawn 子 agent</span>
+├── definitions.ts · loader.ts <span class="cmt"># 内置 + .md 子 agent 定义</span>
+├── system-prompt.ts <span class="cmt"># 子 agent 专属 prompt</span>
+└── index.ts</pre>
+    </div>
+
+  </div>
+
+  <!-- 3. Dependency rules -->
+<pre class="deps-block"><span class="cmt"># 依赖方向（按实际 source import · 绝不能反向）</span>
+<span class="cmt"># 注：部分 package.json 声明了超集（如 core / observability 列了 @nova/runtime），但源码并不 import —— 下面按真实 import 画</span>
+
+  <span class="tag">[rt]</span> runtime     <span class="arr">─→</span>  <span class="cmt">∅</span>
+  <span class="tag">[A]</span> core         <span class="arr">─→</span>  <span class="cmt">∅　（叶子层 · 不 import 任何 @nova/*，包括 SDK / 工具实现 / UI）</span>
+  <span class="tag">[H]</span> observability<span class="arr">─→</span>  <span class="cmt">∅</span>
+  <span class="tag">[L]</span> lsp          <span class="arr">─→</span>  <span class="cmt">∅</span>
+  <span class="tag">[!]</span> safety       <span class="arr">─→</span>  runtime
+  <span class="tag">[C]</span> context      <span class="arr">─→</span>  core · runtime
+  <span class="tag">[B]</span> tools        <span class="arr">─→</span>  core · runtime · lsp   <span class="cmt"># 注意：不依赖 safety</span>
+  <span class="tag">[F]</span> sandbox      <span class="arr">─→</span>  core   <span class="cmt"># type-only</span>
+  <span class="tag">[G]</span> external     <span class="arr">─→</span>  core   <span class="cmt"># type-only</span>
+  <span class="tag">[E]</span> agent        <span class="arr">─→</span>  core · runtime · context · observability
+  <span class="tag">[E]</span> subagent     <span class="arr">─→</span>  agent · core · runtime · context · observability
+  <span class="tag">apps/cli</span>          <span class="arr">─→</span>  <span class="cmt"># 唯一活跃入口 · 消费以上全部包，并接线权限 / 沙盒 / hook</span></pre>
+
+</div>
+</body>
+</html>
