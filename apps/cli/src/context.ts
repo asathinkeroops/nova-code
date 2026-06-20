@@ -1,8 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join, resolve } from "node:path";
 import {
   createAgent,
   emptyCursor,
@@ -63,6 +61,7 @@ import { buildMcpManager } from "./mcp.js";
 import { canonicalizePath, canonicalizeRoots, PATH_INPUT_TOOLS } from "./path-safety.js";
 import { resolveModeDecision, resolvePermissionRules } from "./permissions.js";
 import { loadAgents } from "./agents.js";
+import { readCliVersion } from "./version.js";
 import {
   handleClear,
   handleCommands,
@@ -200,18 +199,6 @@ export interface CliContext {
   // ===== Factory closures (close over apiKey / settings, etc.) =====
   readonly buildLogger: (destination: string) => Logger;
   readonly buildModel: (id: string, trackTokens?: boolean) => ModelClient;
-}
-
-async function readCliVersion(): Promise<string> {
-  try {
-    const here = dirname(fileURLToPath(import.meta.url));
-    const pkgPath = resolve(here, "../package.json");
-    const raw = await readFile(pkgPath, "utf8");
-    const pkg = JSON.parse(raw) as { version?: string };
-    return pkg.version ?? "0.0.0";
-  } catch {
-    return "0.0.0";
-  }
 }
 
 /** Current branch of the workspace repo, or null when not a repo / detached. */

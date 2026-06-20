@@ -226,9 +226,15 @@ export const DEFAULT_MODEL_DESCRIPTIONS: Record<string, string> = {
   pro: "most capable — hard reasoning, long tasks",
 };
 
+// Default selected tier (a key into DEFAULT_MODELS) and provider endpoint —
+// DeepSeek-flavoured to match this build's tuning. Exported so the setup
+// provider templates can reference the same source of truth.
+export const DEFAULT_MODEL_TIER = "pro";
+export const DEFAULT_BASE_URL = "https://api.deepseek.com/anthropic";
+
 export const settingsSchema = z.object({
   apiKey: z.string().min(1).optional(),
-  model: z.string().default("pro"),
+  model: z.string().default(DEFAULT_MODEL_TIER),
   // Named model tiers, e.g. { "flash": { id: "deepseek-v4-flash", ... }, "pro": { ... } }.
   // The `model` field above may be either a bare model id OR a key into this
   // table; resolveModelId() maps a name to its concrete id and passes unknown
@@ -238,7 +244,7 @@ export const settingsSchema = z.object({
   // Defaults to DEFAULT_MODELS (flash/pro) so /model works with no config;
   // setting this key REPLACES that default wholesale.
   models: z.record(modelEntrySchema).default({ ...DEFAULT_MODELS }),
-  baseURL: z.string().url().default("https://api.deepseek.com/anthropic"),
+  baseURL: z.string().url().default(DEFAULT_BASE_URL),
   sessionDir: z.string().min(1).optional(),
   // When a single response is truncated by the `maxTokens` output cap
   // (stop_reason: "max_tokens"), the loop can re-prompt the model to continue

@@ -1,6 +1,7 @@
 import React from "react";
 import { Box, Text } from "ink";
 import { ACCENT_HEX } from "../colors.js";
+import { LOGO, LOGO_ROW_HEX } from "./logo.js";
 
 export interface SetupEntry {
   kind: "ok" | "err";
@@ -9,6 +10,7 @@ export interface SetupEntry {
 
 export interface SetupState {
   header: {
+    version: string;
     configPath: string;
     missingCount: number;
     noteBaseURL: boolean;
@@ -22,7 +24,26 @@ export function SetupView({ state }: { state: SetupState }): React.ReactElement 
   const plural = header.missingCount === 1 ? "" : "s";
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" paddingLeft={1} paddingRight={1}>
+      <Box marginTop={1}>
+        <Text>
+          <Text color={ACCENT_HEX}>{">_"}</Text> Nova Code{" "}
+          <Text dimColor>{`(v${header.version})`}</Text>
+        </Text>
+      </Box>
+      <Box flexDirection="column" marginTop={1}>
+        {LOGO.map((line, i) => (
+          <Text key={i} color={LOGO_ROW_HEX[i] ?? ACCENT_HEX}>
+            {line}
+          </Text>
+        ))}
+      </Box>
+      <Box marginTop={1}>
+        <Text dimColor>
+          The coding agent purpose-built for DeepSeek — 95%+ cache hits ·
+          OS-sandboxed · tool-complete
+        </Text>
+      </Box>
       <Box marginTop={1}>
         <Text bold color={ACCENT_HEX}>
           Welcome to Nova!
