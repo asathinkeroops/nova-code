@@ -27,7 +27,6 @@ Requires **Node ≥ 20** and **pnpm 10.28.2**.
 ```bash
 pnpm install
 pnpm dev                           # launch the REPL
-pnpm dev "add unit tests"          # run a prompt, then stay in the REPL
 pnpm dev -p "explain this code"    # headless: one turn, print & exit
 ```
 

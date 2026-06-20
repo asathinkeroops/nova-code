@@ -27,7 +27,6 @@ Nova 读代码、跑命令、改文件——通过工具调用把任务推到完
 ```bash
 pnpm install
 pnpm dev                           # 启动 REPL
-pnpm dev "帮我加单测"               # 先跑一轮 prompt，再留在 REPL
 pnpm dev -p "解释这段代码"           # headless 模式：只跑一轮，输出后退出
 ```
 
