@@ -114,7 +114,7 @@ Per-package scripts: `pnpm --filter @nova/<name> <script>`. Tests live next to s
 
 New contributors should start with:
 - `CLAUDE.md` — architecture invariants, loop contract, ESM conventions
-- `agent-harness-loop-architecture.html` — architecture diagram and overview
+- `nova-architecture.html` — architecture diagram and overview
 
 ## License
 

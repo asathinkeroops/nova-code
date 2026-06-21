@@ -114,7 +114,7 @@ pnpm format / pnpm format:check
 
 新贡献者请先读：
 - `CLAUDE.md` — 架构约定、loop 契约、ESM 规范
-- `agent-harness-loop-architecture.html` — 架构总图
+- `nova-architecture.html` — 架构总图
 
 ## License
 
