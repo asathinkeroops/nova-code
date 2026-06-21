@@ -6,7 +6,7 @@
 
 ![Nova 截图](snapshots/screen.png)
 
-> 为 DeepSeek 深度调优的终端 AI 编程代理。缓存友好，沙箱默开，开箱即用。
+> 为 DeepSeek 量身打造的编程代理 — 95%+ 缓存命中 · OS 级沙箱 · 工具齐全 · 开箱即用。
 
 Nova 读代码、跑命令、改文件——通过工具调用把任务推到完成。模型层围绕 **DeepSeek** 构建：thinking 映射到 effort（而非 `budget_tokens`）、wire format 按模型 id 自动判别、整个请求管线为 DeepSeek 的自动上下文缓存做了调优，让缓存持续命中。其他 Anthropic 兼容端点也能跑，DeepSeek 是第一优先级。
 

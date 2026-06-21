@@ -6,7 +6,7 @@
 
 ![Nova screenshot](snapshots/screen.png)
 
-> A terminal AI coding agent deeply tuned for DeepSeek. Cache-friendly, sandbox-on, zero config.
+> The coding agent purpose-built for DeepSeek — 95%+ cache hits · OS-sandboxed · tool-complete · install-and-go. 
 
 Nova reads code, runs commands, edits files — and drives your task to done through tool use. It's built around **DeepSeek**: thinking maps to effort (not `budget_tokens`), the wire format is auto-detected from the model id, and the entire request pipeline is tuned so DeepSeek's automatic context cache keeps hitting. Other Anthropic-compatible endpoints work too; DeepSeek gets first-class care.
 
