@@ -1,11 +1,19 @@
 import type { MessageParam } from "@nova/core";
 import type { Settings } from "@nova/runtime";
 import { createContext, type CliRuntimeOptions } from "./context.js";
+import { emitInit, registerHeadlessStream } from "./headless-events.js";
 import { HeadlessScreen, type HeadlessApprovalPolicy } from "./headless-screen.js";
 import { pruneOldSessions } from "./session.js";
 import type { PermissionMode } from "./permissions.js";
 
-export type HeadlessOutputFormat = "text" | "json";
+/**
+ * - `text`  — print only the final assistant text (default).
+ * - `json`  — one JSON object with the run outcome plus the full `messages`
+ *   trajectory (tool calls and results included).
+ * - `jsonl` — stream one JSON event per line as each step happens, then a final
+ *   `result` line. Best for eval harnesses that consume the run live.
+ */
+export type HeadlessOutputFormat = "text" | "json" | "jsonl";
 
 export interface HeadlessOptions extends CliRuntimeOptions {
   prompt: string;
@@ -50,6 +58,15 @@ export async function runHeadless(settings: Settings, opts: HeadlessOptions): Pr
     ...(opts.noPretty !== undefined ? { noPretty: opts.noPretty } : {}),
   });
 
+  // `jsonl` streams intermediate events live; register the hooks and emit the
+  // opening `init` line before the turn starts so the trajectory is complete.
+  const streaming = opts.outputFormat === "jsonl";
+  const writeLine = (chunk: string): void => void process.stdout.write(chunk);
+  if (streaming) {
+    registerHeadlessStream(ctx, writeLine);
+    emitInit(writeLine, ctx, opts.permissionMode);
+  }
+
   let result;
   try {
     await pruneOldSessions(ctx);
@@ -65,17 +82,24 @@ export async function runHeadless(settings: Settings, opts: HeadlessOptions): Pr
   const text = finalAssistantText(result.messages);
   const errMsg = result.error ? result.error.message : result.aborted ? "aborted" : undefined;
 
-  if (opts.outputFormat === "json") {
-    const payload = {
-      ok: result.ok,
-      aborted: result.aborted,
-      text,
-      sessionId: ctx.session.id,
-      turns: result.turns,
-      ...(result.stopReason ? { stopReason: result.stopReason } : {}),
-      usage: result.totalUsage,
-      ...(errMsg ? { error: errMsg } : {}),
-    };
+  const outcome = {
+    ok: result.ok,
+    aborted: result.aborted,
+    text,
+    sessionId: ctx.session.id,
+    turns: result.turns,
+    ...(result.stopReason ? { stopReason: result.stopReason } : {}),
+    usage: result.totalUsage,
+    ...(errMsg ? { error: errMsg } : {}),
+  };
+
+  if (opts.outputFormat === "jsonl") {
+    // Close the stream with a single `result` line carrying the turn outcome;
+    // the intermediate events already streamed during the run.
+    process.stdout.write(`${JSON.stringify({ type: "result", ...outcome })}\n`);
+  } else if (opts.outputFormat === "json") {
+    // One object with the outcome plus the full trajectory (tool calls/results).
+    const payload = { ...outcome, messages: result.messages };
     process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
   } else {
     if (text) process.stdout.write(`${text}\n`);

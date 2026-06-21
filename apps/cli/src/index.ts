@@ -106,8 +106,11 @@ async function runHeadlessMode(
   }
 
   const outputFormat = (opts.outputFormat ?? "text") as HeadlessOutputFormat;
-  if (outputFormat !== "text" && outputFormat !== "json") {
-    dieHeadless(`invalid --output-format: ${opts.outputFormat} (expected text or json)`, 2);
+  if (!["text", "json", "jsonl"].includes(outputFormat)) {
+    dieHeadless(
+      `invalid --output-format: ${opts.outputFormat} (expected text, json, or jsonl)`,
+      2,
+    );
   }
 
   let permissionMode: PermissionMode;
@@ -211,7 +214,10 @@ program
   .option("--no-pretty", "disable pretty logging")
   .option("-c, --continue", "resume the most recent session")
   .option("--resume <id>", "resume a session by id")
-  .option("--output-format <fmt>", "headless output: text (default) or json")
+  .option(
+    "--output-format <fmt>",
+    "headless output: text (default) | json (outcome + full messages) | jsonl (streamed events)",
+  )
   .option(
     "--permission-mode <mode>",
     "initial permission mode: default | acceptEdits | plan",
