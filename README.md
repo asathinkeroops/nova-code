@@ -38,34 +38,53 @@ pnpm dev -p "解释这段代码"           # headless 模式：只跑一轮，�
 
 ## 功能概览
 
-**Agent 循环**
-- 多轮工具调用，同轮内独立调用以有界并发运行（默认 3 个）
-- 子 agent 带全新上下文 — `explore`、`plan`、`general-purpose`，外加自定义 `.md` 类型
-- Plan 模式 — `/plan` 先做只读调查，再动手
-- 可恢复会话，append-only 持久化，`/rewind` 可回退
-- `/model` 会话内换模型，`/compact` 压缩长历史
+### 内置工具
 
-**代码智能**
-- LSP 工具 — 定义跳转、引用查找、hover、diagnostics、符号搜索（懂作用域和类型）
-- `read`（带行号 + 分页，支持 `.xlsx` / `.ods`）、`write`、`edit`
-- `glob` + `grep` 搜索，`webfetch` + `websearch`
+模型能调用的工具，覆盖读写、搜索、执行、代码智能、联网：
 
-**安全**
-- 权限引擎 — 一键切换模式（shift+tab：`default` → `acceptEdits` → `plan`）
-- OS 级沙箱 — 写入隔离、网络放行、默认开启、不支持的平台自动降级
-- 生命周期 hooks — 用 shell 脚本做自动格式化、工具拦截、上下文注入
+| 工具 | 能力 |
+| --- | --- |
+| `read` / `write` / `edit` | 读文件（行号 + 分页，含 `.xlsx` / `.ods` 表格和图片）、整文件写、精确文本替换 |
+| `glob` / `grep` | 按文件名匹配、全文正则搜索 |
+| `bash` | 运行 shell 命令 |
+| `runInBackground` / `getBackgroundOutput` / `killBackground` | 后台跑 dev server、watcher 等长任务 |
+| `lsp` | 代码智能：定义跳转、引用查找、hover、diagnostics、符号搜索 |
+| `webfetch` / `websearch` | 抓取网页、联网搜索 |
+| `createTodo` / `updateTodo` / `getTodoList` / `clearTodoList` | 会话内多步清单 |
+| `createTask` / `updateTask` / `getTaskList` / `clearTaskList` | 跨会话任务计划，支持依赖 |
+| `askUserQuestion` | 向用户提多选问题并等待作答 |
+| `loadSkill` | 按需加载 skill |
 
-**可扩展性**
-- 自定义子 agent — 丢一个 `.md` 到 `.nova/agents/`，frontmatter 声明工具和模型
-- 自定义 slash 命令 — `.md` 文件放入 `.nova/commands/`
-- Skills — 启动时扫描 `SKILL.md`，按需 `loadSkill` 拉全文
-- MCP — 连接外部服务器（stdio / HTTP / SSE），桥接工具给模型
+### Slash 命令
 
-**交互体验**
-- 全屏 Ink/React REPL，实时流式输出，支持鼠标
-- `!` shell 直通 — `!git status` 本地执行，不弹权限确认
-- `@path` 模糊文件补全
-- 实时状态行 — token 用量、缓存命中率、花费估算、DeepSeek 账户余额
+| 命令 | 能力 |
+| --- | --- |
+| `/help` | 查看所有命令 |
+| `/model` · `/effort` | 切换模型、调整思考等级 |
+| `/compact` | 压缩长历史成摘要 |
+| `/clear` · `/resume` · `/rewind` | 开新会话、恢复历史会话、回退历史 |
+| `/plan` | 只读调研出实现方案，不动手 |
+| `/goal` | 设定成功条件后自动推进直到达成 |
+| `/diff` · `/review` | 浏览、评审未提交改动 |
+| `/init` | 分析代码库生成 `NOVA.md` |
+| `/agents` · `/agent` | 查看子 agent 类型、委派任务 |
+| `/commands` · `/skills` · `/mcp` · `/lsp` | 查看已注册命令、skills、MCP 服务器、语言服务器 |
+| `/usage` · `/context` | 查看 token 用量、缓存命中、上下文占用 |
+| `/predict` | 开关下一条输入预测 |
+| `/exit` · `/quit` | 退出 |
+
+### 核心特性
+
+| 特性 | 能力 |
+| --- | --- |
+| 子 agent | 带全新上下文、独立工具集干活：`explore` 只读检索、`plan` 只读规划、`general-purpose` 全权限，可自定义 |
+| 权限与沙箱 | `shift+tab` 切换 `default` / `acceptEdits` / `plan`；OS 级沙箱把子进程写入隔离在工作区（macOS Seatbelt / Linux bubblewrap），默认开启 |
+| 文件防护 | 改文件前强制先读、检测外部改动，避免误覆盖 |
+| MCP | 接入外部 MCP 服务器（`stdio` / `http` / `sse`），把它们的工具当内置工具用，同样受权限管控 |
+| Skills | 把可复用操作手册写成 `SKILL.md`，模型按需加载，省 token 又能随仓库分发 |
+| Markdown 扩展 | 自定义 slash 命令、子 agent、生命周期 hooks，丢 `.md` 进 `.nova/`、frontmatter 配置，免改代码 |
+| 三层记忆 | 全局 → 用户 → 项目，按 `NOVA.md` > `CLAUDE.md` > `AGENTS.md` 优先级加载 |
+| 交互体验 | 全屏 Ink/React REPL，流式输出 + 鼠标；`@path` / `/` 补全、`↑` `↓` 翻历史；实时状态行显示 token 用量、缓存命中、花费、DeepSeek 余额、git 分支、上下文占用 |
 
 ## 架构
 

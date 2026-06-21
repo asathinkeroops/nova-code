@@ -38,34 +38,53 @@ First launch walks through an interactive setup (API key, model, etc.) → `~/.n
 
 ## Features
 
-**Agent loop**
-- Multi-turn tool use with bounded concurrency (default 3)
-- Sub-agents with fresh context — `explore`, `plan`, `general-purpose`, plus custom `.md` types
-- Plan mode — `/plan` runs a read-only investigation before touching anything
-- Resumable sessions with append-only persistence, `/rewind` to roll back
-- `/model` to switch models mid-session; `/compact` to summarize long history
+### Built-in tools
 
-**Code intelligence**
-- LSP tool — go-to-definition, references, hover, diagnostics, workspace symbols (scope- and type-aware)
-- `read` (line-numbered + paginated, with `.xlsx` / `.ods` support), `write`, `edit`
-- `glob` + `grep` search, `webfetch` + `websearch`
+Tools the model can call — covering read/write, search, execution, code intelligence, and the web:
 
-**Safety**
-- Permission engine — one-key mode cycling (shift+tab: `default` → `acceptEdits` → `plan`)
-- OS-level sandbox — write confinement, network open, default-on, auto-degrade
-- Lifecycle hooks — shell-scriptable events for auto-formatting, tool guarding, context injection
+| Tool | Capability |
+| --- | --- |
+| `read` / `write` / `edit` | Read files (line-numbered + paginated, incl. `.xlsx` / `.ods` spreadsheets and images), whole-file write, exact-text replace |
+| `glob` / `grep` | Filename matching, full-text regex search |
+| `bash` | Run shell commands |
+| `runInBackground` / `getBackgroundOutput` / `killBackground` | Run long tasks (dev servers, watchers) in the background |
+| `lsp` | Code intelligence: go-to-definition, references, hover, diagnostics, symbol search |
+| `webfetch` / `websearch` | Fetch web pages, search the web |
+| `createTodo` / `updateTodo` / `getTodoList` / `clearTodoList` | In-session multi-step checklist |
+| `createTask` / `updateTask` / `getTaskList` / `clearTaskList` | Cross-session task plan with dependencies |
+| `askUserQuestion` | Ask the user multiple-choice questions and wait for answers |
+| `loadSkill` | Load a skill on demand |
 
-**Extensibility**
-- Custom sub-agents — drop a `.md` into `.nova/agents/`, declare tools & model in frontmatter
-- Custom slash commands — `.md` files in `.nova/commands/`
-- Skills — `SKILL.md` files discovered on startup, pulled on demand via `loadSkill`
-- MCP — connect external servers (stdio / HTTP / SSE), bridge tools to the model
+### Slash commands
 
-**TUI**
-- Full-screen Ink/React REPL with live streaming output & mouse support
-- `!` shell escape — `!git status` runs locally, no permission prompt
-- `@path` fuzzy autocomplete
-- Live status line — token usage, cache hit rate, estimated cost, DeepSeek account balance
+| Command | Capability |
+| --- | --- |
+| `/help` | See all commands |
+| `/model` · `/effort` | Switch models, adjust the thinking level |
+| `/compact` | Summarize long history |
+| `/clear` · `/resume` · `/rewind` | Start a fresh session, resume a past one, roll back history |
+| `/plan` | Investigate read-only and produce an implementation plan |
+| `/goal` | Set a success condition and auto-work toward it until met |
+| `/diff` · `/review` | Browse and review uncommitted changes |
+| `/init` | Analyze the codebase to generate `NOVA.md` |
+| `/agents` · `/agent` | See sub-agent types, delegate a task |
+| `/commands` · `/skills` · `/mcp` · `/lsp` | See registered commands, skills, MCP servers, language servers |
+| `/usage` · `/context` | See token usage, cache hits, context fill |
+| `/predict` | Toggle next-input prediction |
+| `/exit` · `/quit` | Quit |
+
+### Core capabilities
+
+| Capability | What it gives you |
+| --- | --- |
+| Sub-agents | Work with fresh context and their own tool set: `explore` (read-only retrieval), `plan` (read-only planning), `general-purpose` (full access), plus custom types |
+| Permissions & sandbox | `shift+tab` cycles `default` / `acceptEdits` / `plan`; an OS-level sandbox confines subprocess writes to the workspace (macOS Seatbelt / Linux bubblewrap), default-on |
+| File guarding | Files must be read before they're edited, and external changes are detected — no accidental clobbering |
+| MCP | Connect external MCP servers (`stdio` / `http` / `sse`) and use their tools like built-ins, under the same permission gating |
+| Skills | Write reusable playbooks as `SKILL.md`, loaded on demand by the model — token-cheap and distributable with the repo |
+| Markdown extensions | Custom slash commands, sub-agents, and lifecycle hooks: drop a `.md` into `.nova/`, configure via frontmatter, no code changes |
+| Three-layer memory | Global → user → project, loaded by `NOVA.md` > `CLAUDE.md` > `AGENTS.md` priority |
+| TUI | Full-screen Ink/React REPL, streaming output + mouse; `@path` / `/` completion, `↑` `↓` history; live status line with token usage, cache hits, cost, DeepSeek balance, git branch, context fill |
 
 ## Architecture
 
