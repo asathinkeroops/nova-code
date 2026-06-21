@@ -57,6 +57,7 @@ import {
 } from "@nova/tools";
 import { ACCENT_RGB, accent, dim } from "./colors.js";
 import { buildCompactor } from "./compactor.js";
+import { loadGoal, type GoalState } from "./goal.js";
 import { buildMcpManager } from "./mcp.js";
 import { canonicalizePath, canonicalizeRoots, PATH_INPUT_TOOLS } from "./path-safety.js";
 import { resolveModeDecision, resolvePermissionRules } from "./permissions.js";
@@ -68,6 +69,7 @@ import {
   handleCompact,
   handleContext,
   handleDiff,
+  handleGoal,
   handleHelp,
   handleInit,
   handleLsp,
@@ -135,6 +137,14 @@ export interface CliContext {
   predictModel: ModelClient;
   thinkingLevel: ThinkingLevel;
   thinkingBudgetOverride: number | undefined;
+
+  /**
+   * Active `/goal` for this session, or null. While set, the REPL auto-continues
+   * after each turn until the condition is met (judged by a fast model) or the
+   * continuation budget runs out. Persisted to `{session.dir}/goal.json`, so it
+   * is reloaded on resume / session switch.
+   */
+  goal: GoalState | null;
 
   // ===== Mutable: UI / per-turn state =====
   spinner: Spinner | null;
@@ -414,6 +424,13 @@ function registerBuiltinSlashCommands(ctx: CliContext): void {
     argHint: "[focus…]",
     source: { kind: "builtin" },
     run: (_c, args) => handleReview(args),
+  });
+  ctx.registry.register({
+    name: "goal",
+    description: "set, show, or clear a success condition Nova auto-works toward",
+    argHint: "[<condition>|clear]",
+    source: { kind: "builtin" },
+    run: (_c, args) => handleGoal(ctx, args.trim()),
   });
   ctx.registry.register({
     name: "predict",
@@ -788,6 +805,7 @@ export async function createContext(
     predictModel: buildModel(settings.model, false),
     thinkingLevel: settings.thinking.level,
     thinkingBudgetOverride: settings.thinking.budgetTokens,
+    goal: null,
     spinner: null,
     toolSpinnerTimer: null,
     nextPlaceholder: "",
@@ -1193,6 +1211,8 @@ export async function createContext(
       ctx.screen.setUserDisplayOverrides(sidecar.userOverrides);
       ctx.screen.setToolDetails(sidecar.toolDetails);
       ctx.screen.setMessages(msgs);
+      // Restore an active /goal so auto-continuation survives a restart.
+      ctx.goal = await loadGoal(session.dir);
       // Rebuild the session-cumulative token counters (cache hit rate / `/usage`)
       // from the transcript so they survive a restart.
       ctx.screen.seedUsage(

@@ -232,6 +232,15 @@ export const DEFAULT_MODEL_DESCRIPTIONS: Record<string, string> = {
 export const DEFAULT_MODEL_TIER = "pro";
 export const DEFAULT_BASE_URL = "https://api.deepseek.com/anthropic";
 
+// Default goal-mode knobs (the object-level fallback when `goal` is absent).
+// `evalModel` is intentionally omitted here so the schema default reuses the
+// active main model; provider templates may pin it to a cheaper tier.
+export const DEFAULT_GOAL = {
+  enabled: true,
+  maxContinuations: 25,
+  maxEvalTurns: 15,
+} as const;
+
 export const settingsSchema = z.object({
   apiKey: z.string().min(1).optional(),
   model: z.string().default(DEFAULT_MODEL_TIER),
@@ -402,6 +411,24 @@ export const settingsSchema = z.object({
       maxChars: z.number().int().positive().default(300),
     })
     .default({ enabled: true, timeoutMs: 8000, maxChars: 300 }),
+  // Goal mode (`/goal`): after each turn an evaluator AGENT judges whether the
+  // user's success condition is met; if not, the REPL auto-continues with that
+  // feedback until it is — or the continuation budget is exhausted. The judge
+  // runs the full tool set (read/grep/bash/webfetch/…) to verify against the
+  // live state, going through the normal permission prompts.
+  goal: z
+    .object({
+      enabled: z.boolean().default(true),
+      // Model tier (a key in `models`) or bare id the evaluator agent runs on.
+      // Omit to reuse the active main model; a cheap/fast tier is recommended.
+      evalModel: z.string().min(1).optional(),
+      // Hard cap on consecutive auto-continuations, so an unsatisfiable goal
+      // can't loop forever.
+      maxContinuations: z.number().int().nonnegative().default(25),
+      // Loop cap (turns) for one run of the evaluator agent's verification.
+      maxEvalTurns: z.number().int().positive().default(15),
+    })
+    .default({ ...DEFAULT_GOAL }),
   // Custom slash commands loaded from .md templates. Project layer
   // (.nova/commands → .claude/commands → .commands) wins over user layer
   // (~/.nova/commands → ~/.claude/commands); builtins always win on

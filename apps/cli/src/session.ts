@@ -11,6 +11,7 @@ import { Transcript } from "@nova/observability";
 import { red } from "./colors.js";
 import { refreshBanner, type CliContext } from "./context.js";
 import { loadDisplaySidecar } from "./display-sidecar.js";
+import { loadGoal } from "./goal.js";
 import { restoreUsageFromTranscript } from "./usage-restore.js";
 import { SnapshotStore } from "./snapshots.js";
 import { loadMessages, emptyCursor } from "@nova/agent";
@@ -190,6 +191,9 @@ export async function switchToSession(
   ctx.screen.setUserDisplayOverrides(sidecar.userOverrides);
   ctx.screen.setToolDetails(sidecar.toolDetails);
   ctx.screen.setMessages(newMessages);
+  // Carry the switched-in session's active /goal (or null for a fresh one), so
+  // auto-continuation follows the session rather than leaking across a switch.
+  ctx.goal = await loadGoal(newSession.dir);
   // Restore the cumulative token counters (cache hit rate / `/usage`) from the
   // switched-in session's transcript. `/clear` lands on a fresh empty session,
   // so its counters stay at the zero set by `screen.reset()` above.

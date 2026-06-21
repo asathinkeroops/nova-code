@@ -72,7 +72,8 @@ function isSystemInjectionText(text: string): boolean {
   return (
     trimmed.startsWith("<reminder>") ||
     trimmed.startsWith("<background-command") ||
-    trimmed.startsWith("<interrupted-by-user>")
+    trimmed.startsWith("<interrupted-by-user>") ||
+    trimmed.startsWith("<goal-eval>")
   );
 }
 

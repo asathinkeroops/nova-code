@@ -50,6 +50,18 @@ describe("userInputHistory", () => {
     expect(userInputHistory(messages)).toEqual(["do the thing"]);
   });
 
+  it("drops goal-eval auto-continuations (plain-string but user never typed them)", () => {
+    const messages: MessageParam[] = [
+      { role: "user", content: "build the feature" },
+      {
+        role: "user",
+        content:
+          "<goal-eval>\nYour goal is not complete yet. Evaluation: tests fail\n\nKeep working toward this goal: build the feature\n</goal-eval>",
+      },
+    ];
+    expect(userInputHistory(messages)).toEqual(["build the feature"]);
+  });
+
   it("drops the auto-compaction summary message", () => {
     const messages: MessageParam[] = [
       { role: "user", content: "before compaction" },

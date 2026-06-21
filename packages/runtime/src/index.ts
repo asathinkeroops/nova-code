@@ -22,6 +22,7 @@ export {
   DEFAULT_MODEL_DESCRIPTIONS,
   DEFAULT_MODEL_TIER,
   DEFAULT_BASE_URL,
+  DEFAULT_GOAL,
   modelProfileSchema,
   modelEntrySchema,
   type ModelProfile,

@@ -6,6 +6,15 @@ export function buildSystemPrompt(
   sessionId: string,
   skillsBlock = "",
 ): string {
+  // Day-level granularity only: stable within a day so it never busts the
+  // prompt cache, while still telling the model the current year/date (without
+  // it, models fall back to a training-era default like 2025). Local timezone
+  // (en-CA → YYYY-MM-DD) avoids the off-by-one a UTC date hits near midnight.
+  // One Date instance for both date and weekday so they can't straddle midnight.
+  const now = new Date();
+  const today = `${now.toLocaleDateString("en-CA")} (${now.toLocaleDateString("en-US", {
+    weekday: "long",
+  })})`;
   const base = `You are a coding agent at ${workspace}. Use tools to solve tasks.
 - For non-trivial work spanning several steps, track a short checklist with createTodo / updateTodo / getTodoList / clearTodoList — mark an item in_progress when you start it, completed when it's done. Skip this for single-step or trivial requests; just do them directly.
 - For larger multi-step plans worth persisting across sessions, track them with createTask / updateTask / getTaskList / clearTaskList — same in_progress/completed discipline. Don't create a task for a single step or for work a todo already covers.
@@ -25,7 +34,7 @@ Act, don't explain.
 
 <identity name="Nova"></identity>
 
-<system-info platform="${process.platform}"></system-info>
+<system-info platform="${process.platform}" date="${today}"></system-info>
 
 <session id="${sessionId}"></session> 
 `;

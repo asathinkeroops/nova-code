@@ -39,6 +39,19 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toMatch(/git log/);
   });
 
+  it("injects today's date + weekday at day granularity so the model knows the current year", () => {
+    // Without an injected date the model falls back to a training-era default
+    // (e.g. answering 2026 weather queries with 2025). Day granularity keeps the
+    // prompt stable within a day so it doesn't bust the prompt cache.
+    const now = new Date();
+    const date = now.toLocaleDateString("en-CA");
+    const weekday = now.toLocaleDateString("en-US", { weekday: "long" });
+    const prompt = buildSystemPrompt("/ws", emptyMemory, "sess-1");
+    expect(prompt).toContain(`date="${date} (${weekday})"`);
+    // No time-of-day component — that would change every request and defeat caching.
+    expect(prompt).not.toMatch(/date="\d{4}-\d{2}-\d{2}T/);
+  });
+
   it("does not name 'Chinese' anywhere — naming it primes a Chinese-prior model", () => {
     // The only language token that may appear is 'English' (in the langGuard,
     // as the positive example). 'Chinese' must not appear: Nova is tuned for

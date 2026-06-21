@@ -1,5 +1,6 @@
 import {
   DEFAULT_BASE_URL,
+  DEFAULT_GOAL,
   DEFAULT_MODELS,
   DEFAULT_MODEL_TIER,
   type ModelProfile,
@@ -29,6 +30,12 @@ export interface ProviderTemplate {
     baseURL?: string;
     model?: string;
     models?: Record<string, ModelProfile>;
+    goal?: {
+      enabled: boolean;
+      evalModel?: string;
+      maxContinuations: number;
+      maxEvalTurns: number;
+    };
   };
   /** One-line hint shown beneath the API-key prompt. */
   apiKeyHint: string;
@@ -48,6 +55,9 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
       baseURL: DEFAULT_BASE_URL,
       model: DEFAULT_MODEL_TIER,
       models: DEFAULT_MODELS,
+      // Goal mode on by default; judged by the cheap `flash` tier so the
+      // after-each-turn check stays inexpensive. Persisted to nova.config.json.
+      goal: { ...DEFAULT_GOAL, evalModel: "flash" },
     },
     apiKeyHint: "DeepSeek API key (input is masked)",
   },

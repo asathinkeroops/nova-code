@@ -14,10 +14,10 @@ describe("Transcript", () => {
     const t = new Transcript(join(dir, "transcript.jsonl"));
     await t.append({ kind: "session_start", data: { id: "abc" } });
     await t.append({ kind: "user_prompt", data: { text: "hi" } });
-    await t.append({ kind: "assistant", turn: 1, data: { blocks: [] } });
+    await t.append({ kind: "post_assistant", turn: 1, data: { blocks: [] } });
     await t.flush();
     const records = await t.readAll();
-    expect(records.map((r) => r.kind)).toEqual(["session_start", "user_prompt", "assistant"]);
+    expect(records.map((r) => r.kind)).toEqual(["session_start", "user_prompt", "post_assistant"]);
     expect(records[2]?.turn).toBe(1);
     expect(records.every((r) => typeof r.timestamp === "string")).toBe(true);
   });
@@ -25,7 +25,7 @@ describe("Transcript", () => {
   it("preserves write order under concurrent appends", async () => {
     const t = new Transcript(join(dir, "concurrent.jsonl"));
     const writes = Array.from({ length: 20 }, (_, i) =>
-      t.append({ kind: "assistant", turn: i, data: { i } }),
+      t.append({ kind: "post_assistant", turn: i, data: { i } }),
     );
     await Promise.all(writes);
     const records = await t.readAll();

@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
 import type { PermissionDecision, PermissionInput } from "@nova/safety";
 import { ACCENT_HEX } from "../colors.js";
+import { countWrappedLines } from "./measure.js";
 
 export type ApprovalAnswer = "yes" | "no" | "always-allow";
 
@@ -20,6 +21,46 @@ const TOOL_PROMPTS: Record<string, string> = {
 
 function promptFor(tool: string): string {
   return TOOL_PROMPTS[tool] ?? "Allow this operation?";
+}
+
+// Salient input fields, in priority order, used to summarize a tool call in the
+// prompt. The first present string wins; otherwise we fall back to pretty JSON.
+const DETAIL_KEYS = ["command", "path", "url", "pattern", "query", "description"];
+const MAX_DETAIL_LINES = 16;
+const MAX_DETAIL_CHARS = 1200;
+
+/**
+ * Human-readable summary of a tool call's input, shown in the approval modal so
+ * the user always sees WHAT is being approved. This matters for subagent / goal
+ * evaluator calls, whose tool_use blocks never appear in the main message feed
+ * (the main agent's do, but showing it here too is harmless).
+ */
+export function describeToolInput(input: PermissionInput["input"]): string {
+  for (const key of DETAIL_KEYS) {
+    const v = input[key];
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  try {
+    return JSON.stringify(input, null, 2);
+  } catch {
+    return String(input);
+  }
+}
+
+/** Clamp the detail to a bounded height so a huge input can't blow up the modal. */
+export function clampDetail(s: string): { text: string; truncated: boolean } {
+  let truncated = false;
+  let lines = s.split("\n");
+  if (lines.length > MAX_DETAIL_LINES) {
+    lines = lines.slice(0, MAX_DETAIL_LINES);
+    truncated = true;
+  }
+  let text = lines.join("\n");
+  if (text.length > MAX_DETAIL_CHARS) {
+    text = text.slice(0, MAX_DETAIL_CHARS);
+    truncated = true;
+  }
+  return { text, truncated };
 }
 
 interface Option {
@@ -42,6 +83,39 @@ const OPTIONS: Option[] = [
     color: ACCENT_HEX,
   },
 ];
+
+/**
+ * Exact rendered row count of {@link ApprovalPrompt} at a given terminal width,
+ * so the viewport can reserve the right number of chrome rows. Mirrors the JSX
+ * below — keep the two in sync, or the message text region under-reserves and
+ * paints over the modal (the bug a hardcoded constant caused: it ignored the
+ * border, the wrapped detail line, and the options' marginTop).
+ *
+ * Round border eats 2 columns and paddingX={1} another 2, so wrapping is
+ * measured against `cols - 4`. Vertical rows:
+ *   border top + bottom            = 2
+ *   outer marginTop + marginBottom = 2
+ *   prompt (wraps)                 = countWrappedLines(prompt)
+ *   blank gap line                 = 1
+ *   detail "tool + input" (wraps,  = countWrappedLines(detail)
+ *     up to MAX_DETAIL_LINES tall)
+ *   options box marginTop          = 1
+ *   one row per option             = OPTIONS.length
+ */
+export function approvalRows(input: PermissionInput, cols: number): number {
+  const inner = Math.max(1, cols - 4);
+  const { text: detail, truncated } = clampDetail(describeToolInput(input.input));
+  const detailLine = `${input.tool} ${detail}${truncated ? " … (truncated)" : ""}`;
+  return (
+    2 + // border top + bottom
+    2 + // outer marginTop + marginBottom
+    countWrappedLines(promptFor(input.tool), inner) +
+    1 + // blank gap line
+    countWrappedLines(detailLine, inner) +
+    1 + // options box marginTop
+    OPTIONS.length
+  );
+}
 
 export interface ApprovalPromptProps {
   decision: PermissionDecision;
@@ -99,9 +173,24 @@ export function ApprovalPrompt({
     if (match) onAnswer(match.value);
   });
 
+  const { text: detail, truncated } = clampDetail(describeToolInput(input.input));
+
   return (
-    <Box flexDirection="column" marginTop={1} marginBottom={1}>
+    <Box
+      flexDirection="column"
+      marginTop={1}
+      marginBottom={1}
+      paddingX={1}
+      borderStyle="round"
+      borderColor="gray"
+    >
       <Text>{promptFor(input.tool)}</Text>
+      <Text>{' '}</Text>
+      <Text>
+        <Text dimColor>{input.tool} </Text>
+        <Text color={ACCENT_HEX}>{detail}</Text>
+        {truncated ? <Text dimColor> … (truncated)</Text> : null}
+      </Text>
 
       <Box flexDirection="column" marginTop={1}>
         {OPTIONS.map((opt, i) => {
@@ -109,7 +198,7 @@ export function ApprovalPrompt({
           return (
             <Text key={opt.value} color={active ? opt.color : undefined}>
               {active ? "❯ " : "  "}
-              <Text bold={active}>{opt.label}</Text>
+              <Text>{opt.label}</Text>
               <Text dimColor> ({opt.hint})</Text>
             </Text>
           );

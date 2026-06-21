@@ -1,7 +1,7 @@
 import React from "react";
 import { Box, Text } from "ink";
 import { useShallow } from "zustand/react/shallow";
-import { ApprovalPrompt } from "./approval.js";
+import { ApprovalPrompt, approvalRows } from "./approval.js";
 import { AskPanel } from "./ask-user.js";
 import { countWrappedLines, sliceLines } from "./measure.js";
 import { highlightLines } from "./selection.js";
@@ -258,10 +258,11 @@ function chromeRowsFor(
   if (modal) {
     switch (modal.kind) {
       case "approval":
-        // Layout breakdown (see approval.tsx):
-        //   chrome:   marginTop(1) + marginBottom(1) = 2
-        //   content:  prompt(1) + gap(1)+3 options = 5
-        return 7;
+        // Exact, width-aware height (see approvalRows in approval.tsx). A
+        // hardcoded constant here under-reserved: it ignored the round border
+        // and the detail line, which wraps and can be up to MAX_DETAIL_LINES
+        // tall, so the message region painted over a multi-line modal.
+        return approvalRows(modal.input, cols);
       case "ask":
         return 10;
       case "pick":

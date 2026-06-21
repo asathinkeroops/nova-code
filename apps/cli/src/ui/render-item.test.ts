@@ -137,6 +137,28 @@ describe("buildRenderItems block ordering", () => {
   });
 });
 
+describe("buildRenderItems hides system-injected user messages", () => {
+  const firstUserText = (content: string) =>
+    buildRenderItems({
+      banner: null,
+      cards: [],
+      messages: [{ role: "user", content }],
+    }).find((i) => i.kind === "user-text");
+
+  it("renders a real typed prompt as a user bubble", () => {
+    expect(firstUserText("real prompt")).toMatchObject({ text: "real prompt" });
+  });
+
+  it.each([
+    "<reminder>Update your todos.</reminder>",
+    '<background-command id="1" status="done">x</background-command>',
+    "<interrupted-by-user></interrupted-by-user>",
+    "<goal-eval>\nYour goal is not complete yet. Evaluation: tests fail\n</goal-eval>",
+  ])("skips the bubble for injection %#", (content) => {
+    expect(firstUserText(content)).toBeUndefined();
+  });
+});
+
 describe("buildRenderItems user display overrides", () => {
   const userText = (overrides?: Record<string, string>) =>
     buildRenderItems({

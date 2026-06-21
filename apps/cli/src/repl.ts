@@ -1,7 +1,9 @@
 import { bashTool } from "@nova/tools";
-import { ACCENT_RGB, accent, dim } from "./colors.js";
+import { ACCENT_RGB, accent, dim, green } from "./colors.js";
 import { refreshBalance, stopSpinner, type CliContext } from "./context.js";
 import { appendUserOverride } from "./display-sidecar.js";
+import { evaluateGoalWithAgent } from "./goal-eval.js";
+import { clearGoal, saveGoal } from "./goal.js";
 import { listWorkspaceFiles } from "./file-index.js";
 import { predictNextInput } from "./predict.js";
 import { toUiSlashCommands } from "./slash.js";
@@ -182,28 +184,117 @@ function shouldAutoContinue(ctx: CliContext): boolean {
 /** Hard cap on Stop-hook forced continuations, so a misbehaving hook can't loop forever. */
 const MAX_STOP_CONTINUATIONS = 8;
 
+const GOAL_TITLE = "/goal";
+
 /**
- * Run a turn, then consult Stop hooks. A Stop hook that exits 2 forces the turn
- * to continue: its stderr becomes the next prompt and we run again, up to a hard
- * cap. The payload's `stop_continuation` (0-based) lets a hook see how many times
- * it has already forced a continue and bow out. Aborted turns are not continued.
+ * When a `/goal` is active, judge whether it is met and decide what to do next.
+ * Returns a continuation prompt to force another turn, or null to stop (goal met,
+ * budget exhausted, disabled, or the check failed/was skipped). Mutates and
+ * persists the goal's continuation counter and always surfaces a status card.
+ *
+ * The judge is a real, isolated agent with the full tool set (see
+ * evaluateGoalWithAgent), so it can verify against the live state — run tests,
+ * read files, fetch data — going through the normal permission prompts.
+ */
+async function maybeContinueForGoal(ctx: CliContext): Promise<string | null> {
+  const goal = ctx.goal;
+  if (!goal || !ctx.settings.goal.enabled) return null;
+
+  const controller = new AbortController();
+  ctx.spinner = ctx.screen.startSpinner(
+    { words: ["Verifying goal..."], tint: ACCENT_RGB, colorize: accent },
+    "esc to skip",
+  );
+  ctx.screen.setEscHandler(() => controller.abort());
+  let verdict;
+  try {
+    verdict = await evaluateGoalWithAgent(ctx, goal, controller.signal);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    ctx.logger.warn({ err: msg }, "goal evaluation failed");
+    ctx.screen.card(dim(`goal check skipped: ${msg}`), { kind: "warn", title: GOAL_TITLE });
+    return null;
+  } finally {
+    ctx.screen.setEscHandler(null);
+    stopSpinner(ctx);
+  }
+
+  ctx.logger.info({ met: verdict.met, continuations: goal.continuations }, "goal evaluated");
+
+  if (verdict.met) {
+    ctx.goal = null;
+    await clearGoal(ctx.session.dir);
+    ctx.screen.card(`${green("🎯 goal achieved:")} ${goal.condition}\n${dim(verdict.reason)}`, {
+      kind: "info",
+      title: GOAL_TITLE,
+    });
+    return null;
+  }
+
+  const max = ctx.settings.goal.maxContinuations;
+  if (goal.continuations >= max) {
+    ctx.goal = null;
+    await clearGoal(ctx.session.dir);
+    ctx.screen.card(
+      `goal not reached after ${goal.continuations} continuation(s); stopping.\n${dim(verdict.reason)}`,
+      { kind: "warn", title: GOAL_TITLE },
+    );
+    return null;
+  }
+
+  goal.continuations++;
+  try {
+    await saveGoal(ctx.session.dir, goal);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    ctx.logger.warn({ err: msg }, "failed to persist goal");
+  }
+  ctx.screen.card(
+    dim(`goal not yet met — continuing (${goal.continuations}/${max})\n${verdict.reason}`),
+    { title: GOAL_TITLE },
+  );
+  // Wrap in <goal-eval> so the UI hides this auto-injected continuation from the
+  // message stream (see isSystemInjectionText) and ↑/↓ recall (see
+  // userInputHistory) — it is the evaluator driving another turn, not something
+  // the user typed. The model still reads the tag's contents normally.
+  return (
+    `<goal-eval>\n` +
+    `Your goal is not complete yet. Evaluation: ${verdict.reason}\n\n` +
+    `Keep working toward this goal: ${goal.condition}\n` +
+    `</goal-eval>`
+  );
+}
+
+/**
+ * Run a turn, then keep it going while either a Stop hook or an active `/goal`
+ * asks for more. Each iteration: (1) Stop hooks — an exit-2 forces a continue
+ * with the hook's stderr as the next prompt (priority, since the user wired it
+ * explicitly); then (2) goal evaluation forces a continue with the judge's
+ * feedback until the condition is met or its budget is spent. Both paths are
+ * independently capped so neither can loop forever. Aborted turns are not
+ * continued (`ok` is false).
  */
 async function runTurnWithStopHooks(ctx: CliContext, prompt: string): Promise<boolean> {
   let ok = await runTurn(ctx, prompt);
-  for (let i = 0; ok; i++) {
-    const decision = await ctx.userHooks.runStop({ stop_continuation: i });
-    if (!decision.continue) break;
-    if (i >= MAX_STOP_CONTINUATIONS) {
-      ctx.screen.card(
-        `Stop hook kept blocking; stopping after ${MAX_STOP_CONTINUATIONS} continuations`,
-        {
-          kind: "warn",
-          title: "Stop hook",
-        },
-      );
-      break;
+  let stopContinuations = 0;
+  while (ok) {
+    const decision = await ctx.userHooks.runStop({ stop_continuation: stopContinuations });
+    if (decision.continue) {
+      if (stopContinuations >= MAX_STOP_CONTINUATIONS) {
+        ctx.screen.card(
+          `Stop hook kept blocking; stopping after ${MAX_STOP_CONTINUATIONS} continuations`,
+          { kind: "warn", title: "Stop hook" },
+        );
+        break;
+      }
+      stopContinuations++;
+      ok = await runTurn(ctx, decision.reason || "A Stop hook requested that you keep going.");
+      continue;
     }
-    ok = await runTurn(ctx, decision.reason || "A Stop hook requested that you keep going.");
+    // Stop hooks satisfied — consult an active /goal for one more turn.
+    const goalPrompt = await maybeContinueForGoal(ctx);
+    if (goalPrompt === null) break;
+    ok = await runTurn(ctx, goalPrompt);
   }
   return ok;
 }
