@@ -1,8 +1,9 @@
 import React, { useState } from "react";
-import { Box, Text, useInput } from "ink";
+import { Box, Text, useInput, useStdout } from "ink";
 import type { PermissionDecision, PermissionInput } from "@nova/safety";
-import { ACCENT_HEX } from "../colors.js";
+import { ACCENT_HEX, cyan } from "../colors.js";
 import { countWrappedLines } from "./measure.js";
+import { PENDING_DOT, renderCommandBody } from "./render-strings.js";
 
 export type ApprovalAnswer = "yes" | "no" | "always-allow";
 
@@ -22,6 +23,15 @@ const TOOL_PROMPTS: Record<string, string> = {
 function promptFor(tool: string): string {
   return TOOL_PROMPTS[tool] ?? "Allow this operation?";
 }
+
+// bash is rendered to mirror its message-stream display (render-strings.ts): a
+// `● bash` header with the command shown as `⎿`-gutter body rows, so the prompt
+// previews the command exactly as the transcript will print it. Other tools
+// keep the one-line `tool detail` summary.
+const BASH_HEADER = `${PENDING_DOT} ${cyan("bash")}`;
+// Indent that aligns continuation/notice rows under the `⎿` body gutter
+// (matches THINKING_INDENT in render-strings.ts).
+const BASH_BODY_INDENT = "     ";
 
 // Salient input fields, in priority order, used to summarize a tool call in the
 // prompt. The first present string wins; otherwise we fall back to pretty JSON.
@@ -98,23 +108,35 @@ const OPTIONS: Option[] = [
  *   prompt (wraps)                 = countWrappedLines(prompt)
  *   blank gap line                 = 1
  *   detail "tool + input" (wraps,  = countWrappedLines(detail)
- *     up to MAX_DETAIL_LINES tall)
+ *     up to MAX_DETAIL_LINES tall)   — non-bash tools
+ *   bash instead shows a `● bash`  = 1 + renderCommandBody rows (+1 if
+ *     header + `⎿`-gutter command       truncated), mirroring the message feed
  *   options box marginTop          = 1
  *   one row per option             = OPTIONS.length
  */
 export function approvalRows(input: PermissionInput, cols: number): number {
   const inner = Math.max(1, cols - 4);
   const { text: detail, truncated } = clampDetail(describeToolInput(input.input));
-  const detailLine = `${input.tool} ${detail}${truncated ? " … (truncated)" : ""}`;
-  return (
+  const base =
     2 + // border top + bottom
     2 + // outer marginTop + marginBottom
     countWrappedLines(promptFor(input.tool), inner) +
     1 + // blank gap line
-    countWrappedLines(detailLine, inner) +
     1 + // options box marginTop
-    OPTIONS.length
-  );
+    OPTIONS.length;
+  if (input.tool === "bash") {
+    // `● bash` header row + the command rendered as `⎿`-gutter body rows
+    // (renderCommandBody already wraps to `inner`, so each line is one row) +
+    // an optional truncation notice on its own row.
+    return (
+      base +
+      1 + // `● bash` header
+      renderCommandBody(detail, inner).split("\n").length +
+      (truncated ? 1 : 0)
+    );
+  }
+  const detailLine = `${input.tool} ${detail}${truncated ? " … (truncated)" : ""}`;
+  return base + countWrappedLines(detailLine, inner);
 }
 
 export interface ApprovalPromptProps {
@@ -173,6 +195,8 @@ export function ApprovalPrompt({
     if (match) onAnswer(match.value);
   });
 
+  const { stdout } = useStdout();
+  const inner = Math.max(1, (stdout?.columns ?? 80) - 4);
   const { text: detail, truncated } = clampDetail(describeToolInput(input.input));
 
   return (
@@ -186,11 +210,24 @@ export function ApprovalPrompt({
     >
       <Text>{promptFor(input.tool)}</Text>
       <Text>{' '}</Text>
-      <Text>
-        <Text dimColor>{input.tool} </Text>
-        <Text color={ACCENT_HEX}>{detail}</Text>
-        {truncated ? <Text dimColor> … (truncated)</Text> : null}
-      </Text>
+      {input.tool === "bash" ? (
+        // Mirror the message-stream bash rendering: `● bash` header with the
+        // command under a `⎿` gutter, so heredocs/long one-liners preview the
+        // way they'll print in the transcript instead of as a flat line.
+        <>
+          <Text>{BASH_HEADER}</Text>
+          <Text>{renderCommandBody(detail, inner)}</Text>
+          {truncated ? (
+            <Text dimColor>{`${BASH_BODY_INDENT}… (truncated)`}</Text>
+          ) : null}
+        </>
+      ) : (
+        <Text>
+          <Text dimColor>{input.tool} </Text>
+          <Text color={ACCENT_HEX}>{detail}</Text>
+          {truncated ? <Text dimColor> … (truncated)</Text> : null}
+        </Text>
+      )}
 
       <Box flexDirection="column" marginTop={1}>
         {OPTIONS.map((opt, i) => {

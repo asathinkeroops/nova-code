@@ -54,28 +54,41 @@ describe("approvalRows", () => {
   // gap(1) + options marginTop(1) + 3 options = 10, plus the detail's own rows.
   const BASE = 10;
 
-  it("reserves 11 rows for a one-line detail (the old hardcoded 7 was too small)", () => {
-    const rows = approvalRows(permInput("bash", { command: "pnpm test" }), 80);
+  it("reserves BASE+1 rows for a one-line generic detail (old hardcoded 7 was too small)", () => {
+    const rows = approvalRows(permInput("read", { path: "/tmp/x.ts" }), 80);
     expect(rows).toBe(BASE + 1);
     expect(rows).toBeGreaterThan(7);
   });
 
-  it("grows by one row per extra detail line (multi-line input)", () => {
-    const three = approvalRows(permInput("bash", { command: "a\nb\nc" }), 80);
-    expect(three).toBe(BASE + 3);
-  });
-
-  it("accounts for wrapping when the detail is wider than the terminal", () => {
-    // inner width = cols - 4 = 16. A 50-char command wraps to ceil(50/16)=4 rows
-    // (the "bash " tool prefix adds to the same logical line).
-    const wide = approvalRows(permInput("bash", { command: "x".repeat(50) }), 20);
+  it("accounts for wrapping when a generic detail is wider than the terminal", () => {
+    // inner width = cols - 4 = 16. A long path wraps onto multiple rows
+    // (the "read " tool prefix adds to the same logical line).
+    const wide = approvalRows(permInput("read", { path: "/" + "x".repeat(50) }), 20);
     expect(wide).toBeGreaterThan(BASE + 1);
   });
 
-  it("caps detail growth at MAX_DETAIL_LINES so a huge input can't blow up the modal", () => {
-    const huge = Array.from({ length: 100 }, (_, i) => `line ${i}`).join("\n");
-    const rows = approvalRows(permInput("bash", { command: huge }), 80);
-    // 16 clamped detail lines + 1 truncated-suffix stays on the last line.
-    expect(rows).toBe(BASE + 16);
+  describe("bash mirrors the message-stream layout (`● bash` header + `⎿` body)", () => {
+    it("one-line command: header row + one body row", () => {
+      const rows = approvalRows(permInput("bash", { command: "pnpm test" }), 80);
+      expect(rows).toBe(BASE + 2);
+      expect(rows).toBeGreaterThan(7);
+    });
+
+    it("grows by one body row per command line", () => {
+      const three = approvalRows(permInput("bash", { command: "a\nb\nc" }), 80);
+      expect(three).toBe(BASE + 1 + 3); // header + 3 body rows
+    });
+
+    it("wraps long command lines under the `⎿` gutter", () => {
+      const wide = approvalRows(permInput("bash", { command: "x".repeat(50) }), 20);
+      expect(wide).toBeGreaterThan(BASE + 2);
+    });
+
+    it("caps body growth at MAX_DETAIL_LINES and adds a truncated row", () => {
+      const huge = Array.from({ length: 100 }, (_, i) => `line ${i}`).join("\n");
+      const rows = approvalRows(permInput("bash", { command: huge }), 80);
+      // header(1) + 16 clamped body rows + truncated notice(1).
+      expect(rows).toBe(BASE + 1 + 16 + 1);
+    });
   });
 });

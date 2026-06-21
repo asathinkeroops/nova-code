@@ -191,7 +191,7 @@ interface ToolStr {
  * same indent. Wrapping at the body width keeps long lines aligned instead of
  * falling back to column 0 the way the caller's plain wrap would.
  */
-function renderCommandBody(cmd: string, width: number): string {
+export function renderCommandBody(cmd: string, width: number): string {
   const trimmed = cmd.replace(/\s+$/u, "");
   const bodyWidth = Math.max(1, width - THINKING_INDENT.length);
   const visual: string[] = [];
