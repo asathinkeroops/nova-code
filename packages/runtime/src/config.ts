@@ -319,12 +319,12 @@ export const settingsSchema = z.object({
     .default({ level: "info", pretty: true }),
   thinking: z
     .object({
-      level: z.enum(["off", "low", "medium", "high", "max"]).default("off"),
+      level: z.enum(["off", "low", "medium", "high", "max"]).default("max"),
       // Explicit override wins over the level mapping when set; lets users
       // dial in an exact `budget_tokens` without inventing a new level.
       budgetTokens: z.number().int().positive().optional(),
     })
-    .default({ level: "off" }),
+    .default({ level: "max" }),
   memory: z
     .object({
       filenames: z
