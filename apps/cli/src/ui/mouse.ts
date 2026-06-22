@@ -19,9 +19,76 @@ import { PassThrough } from "node:stream";
 // `?1002h` = button-event tracking (motion only while a button is held, which
 // is what we need for drag selection without spamming motion events when no
 // button is pressed). `?1006h` = SGR coordinate format (no col/row overflow
-// past 223).
-const ENABLE = "\x1b[?1002h\x1b[?1006h";
-const DISABLE = "\x1b[?1006l\x1b[?1002l";
+// past 223). `?2004h` = bracketed paste, so the terminal wraps a paste in
+// `\x1b[200~ … \x1b[201~` — letting us tell a paste from typing and detect an
+// empty (non-text, e.g. image) paste.
+const ENABLE = "\x1b[?1002h\x1b[?1006h\x1b[?2004h";
+const DISABLE = "\x1b[?2004l\x1b[?1006l\x1b[?1002l";
+
+const PASTE_START = "\x1b[200~";
+const PASTE_END = "\x1b[201~";
+// A paste with no text content is a non-text clipboard item (most commonly an
+// image): synthesize Ctrl+V so the InputBox's existing paste handler reads the
+// clipboard and attaches the image. `\x16` is the byte Ink decodes as Ctrl+V.
+const SYNTHETIC_CTRL_V = "\x16";
+
+/**
+ * Length of the longest suffix of `s` that is a proper prefix of `marker`, so a
+ * marker split across stdin chunks can be held back instead of leaking as text.
+ */
+function partialPrefixLen(s: string, marker: string): number {
+  const max = Math.min(s.length, marker.length - 1);
+  for (let k = max; k > 0; k--) {
+    if (s.endsWith(marker.slice(0, k))) return k;
+  }
+  return 0;
+}
+
+/**
+ * A stateful bracketed-paste resolver. Feed it raw stdin chunks; it returns the
+ * stream with paste markers stripped, where a text paste becomes its inner text
+ * and an *empty* paste (a non-text clipboard item, e.g. an image) becomes a
+ * synthetic Ctrl+V so the InputBox's paste handler reads the clipboard. State is
+ * carried across chunks, so markers and bodies split over reads resolve cleanly.
+ */
+export function createPasteResolver(): (raw: string) => string {
+  let scan = ""; // bytes not yet resolved (a possibly-incomplete marker)
+  let body = ""; // inner text of the paste currently being collected
+  let inPaste = false;
+  return (raw: string): string => {
+    scan += raw;
+    let out = "";
+    for (;;) {
+      if (!inPaste) {
+        const i = scan.indexOf(PASTE_START);
+        if (i === -1) {
+          // Flush all but a trailing fragment that could begin a start marker
+          // arriving in the next chunk.
+          const hold = partialPrefixLen(scan, PASTE_START);
+          out += scan.slice(0, scan.length - hold);
+          scan = scan.slice(scan.length - hold);
+          return out;
+        }
+        out += scan.slice(0, i);
+        scan = scan.slice(i + PASTE_START.length);
+        inPaste = true;
+      } else {
+        const j = scan.indexOf(PASTE_END);
+        if (j === -1) {
+          const hold = partialPrefixLen(scan, PASTE_END);
+          body += scan.slice(0, scan.length - hold);
+          scan = scan.slice(scan.length - hold);
+          return out;
+        }
+        body += scan.slice(0, j);
+        scan = scan.slice(j + PASTE_END.length);
+        inPaste = false;
+        out += body.length > 0 ? body : SYNTHETIC_CTRL_V;
+        body = "";
+      }
+    }
+  };
+}
 
 const WHEEL_LINES = 3;
 
@@ -115,9 +182,12 @@ export function attachFilteredStdin(handlers: MouseHandlers): FilteredStdin {
   let dragStart: MousePos | null = null;
   let dragLast: MousePos | null = null;
 
+  const resolvePastes = createPasteResolver();
+
   let pending = "";
   const onData = (chunk: Buffer | string): void => {
-    const s = typeof chunk === "string" ? chunk : chunk.toString("utf8");
+    const raw = typeof chunk === "string" ? chunk : chunk.toString("utf8");
+    const s = resolvePastes(raw);
     pending += s;
 
     let lastEnd = 0;

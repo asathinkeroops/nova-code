@@ -66,6 +66,7 @@ function SegmentRow({
 export function StatusLine({ store, shellMode = false }: StatusLineProps): React.ReactElement {
   const {
     copyNotice,
+    copyNoticeTone,
     banner,
     gitBranch,
     contextTokens,
@@ -80,6 +81,7 @@ export function StatusLine({ store, shellMode = false }: StatusLineProps): React
   } = store(
     useShallow((s) => ({
       copyNotice: s.copyNotice,
+      copyNoticeTone: s.copyNoticeTone,
       banner: s.banner,
       gitBranch: s.gitBranch,
       contextTokens: s.contextTokens,
@@ -115,7 +117,7 @@ export function StatusLine({ store, shellMode = false }: StatusLineProps): React
     return (
       <Box flexDirection="column">
         <Box>
-          <Text color="green">{` ${copyNotice}`}</Text>
+          <Text color={copyNoticeTone === "warn" ? "red" : "green"}>{` ${copyNotice}`}</Text>
         </Box>
         <Box>
           <Text>{" "}</Text>

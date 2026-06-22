@@ -45,6 +45,41 @@ export const ACCENT_HEX = "#ff3caa";
  */
 export const BASH_HEX = "#7fd99a";
 
+/**
+ * Candidate backgrounds for the session-name badge (`/rename`). A session name
+ * is hashed to one of these (see {@link sessionBadgeColor}) so each named window
+ * gets a stable, distinct colour — making it easy to tell several open sessions
+ * apart at a glance. All are saturated mid-dark tones chosen for contrast with
+ * the badge's white text.
+ */
+export const SESSION_BADGE_PALETTE = [
+  "#2563eb", // blue
+  "#7c3aed", // purple
+  "#0d9488", // teal
+  "#dc2626", // red
+  "#d97706", // amber
+  "#059669", // emerald
+  "#db2777", // pink
+  "#4f46e5", // indigo
+  "#0284c7", // sky
+  "#65a30d", // olive
+] as const;
+
+/**
+ * Map a session name to a stable palette colour. Deterministic (same name →
+ * same colour across windows and restarts) via a small djb2-style hash over the
+ * trimmed name. Empty name falls back to the first entry.
+ */
+export function sessionBadgeColor(name: string): string {
+  const key = name.trim();
+  let h = 5381;
+  for (let i = 0; i < key.length; i++) {
+    h = ((h << 5) + h + key.charCodeAt(i)) >>> 0;
+  }
+  const idx = h % SESSION_BADGE_PALETTE.length;
+  return SESSION_BADGE_PALETTE[idx] ?? SESSION_BADGE_PALETTE[0];
+}
+
 export const MAGENTA_RGB: Rgb = [220, 130, 220];
 
 // Diff row colours — kept in sync with the canonical renderer in ui/diff.ts so

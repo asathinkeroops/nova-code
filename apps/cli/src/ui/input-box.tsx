@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Box, Text, useInput, useStdout } from "ink";
-import { ACCENT_HEX, BASH_HEX } from "../colors.js";
+import { ACCENT_HEX, BASH_HEX, sessionBadgeColor } from "../colors.js";
+import { normalizeDroppedImagePath, type ClipboardPaste } from "../image-paste.js";
 import { setCursorTarget } from "./cursor-target.js";
 import { charDisplayWidth, truncateToWidth, visibleWidth } from "./width.js";
 
@@ -38,6 +39,12 @@ export interface BoxedInputOptions {
    * the input so the user can see what will run next; never editable here.
    */
   queued?: string[];
+  /**
+   * Custom name for the active session (`/rename`). When set, it's shown as a
+   * coloured badge on the right of the top frame. Only the permanent InputBox
+   * wires this; modal/setup boxes leave it unset.
+   */
+  sessionName?: string;
 }
 
 interface DisplayLine {
@@ -193,6 +200,44 @@ export function commandTokenRange(
 }
 
 /**
+ * Build the history-browse label embedded in a rule of exactly `width` columns:
+ * `┄┄┄┄ History n/N ┄┄…`. Used for the left portion of the top frame while
+ * walking ↑/↓ recall; sized to whatever width the session-name badge leaves.
+ */
+export function historyRule(width: number, pos: number, total: number): string {
+  const label = ` History ${pos}/${total} `;
+  const lead = Math.min(4, Math.max(0, width));
+  const trail = Math.max(0, width - lead - visibleWidth(label));
+  return RULE_CHAR.repeat(lead) + label + RULE_CHAR.repeat(trail);
+}
+
+/** Rule chars left after the session-name badge, so it isn't flush-right. */
+const SESSION_BADGE_TRAIL = 3;
+
+/**
+ * Lay out the session-name badge for the top frame: ` name ` padded by spaces,
+ * with the rule filling the width on its left (`lead`) and a short fixed run of
+ * rule chars on its right (`trail`) so it sits near — but not flush against —
+ * the right edge: `┄┄┄ name ┄┄`. The name is truncated so the lead always keeps
+ * at least one rule char, and lead + badge + trail span exactly `width` columns
+ * (so the measured row count and frame alignment are unchanged). Returns null
+ * when there's nothing to show.
+ */
+export function sessionNameBadge(
+  name: string,
+  width: number,
+): { lead: string; badge: string; trail: string } | null {
+  const trimmed = name.trim();
+  if (trimmed.length === 0) return null;
+  // Trail shrinks before the badge does on a narrow frame, and never eats the
+  // last rule char on the left.
+  const trailLen = Math.max(0, Math.min(SESSION_BADGE_TRAIL, width - 4));
+  const badge = ` ${truncateToWidth(trimmed, Math.max(1, width - 3 - trailLen))} `;
+  const lead = RULE_CHAR.repeat(Math.max(0, width - visibleWidth(badge) - trailLen));
+  return { lead, badge, trail: RULE_CHAR.repeat(trailLen) };
+}
+
+/**
  * Render one display line as styled spans: the `/command` token (when within
  * `hl`) in the flame accent, the cursor cell inverted, everything else plain.
  * Walks character by character and coalesces runs that share styling so we
@@ -311,6 +356,20 @@ export interface InputBoxProps {
    * modal/setup boxes leave it unset and don't drive the real cursor.
    */
   cursorTracking?: { termRows: number; bottomChromeRows: number };
+  /**
+   * Read the system clipboard for a Ctrl+V paste: an image (saved to a file, its
+   * path returned) or plain text. Returning text lets Ctrl+V double as a normal
+   * paste so it never eats input where Ctrl+V *is* the paste key (Windows). Host-
+   * provided so platform/session logic stays out of the component; when unset,
+   * Ctrl+V is a no-op.
+   */
+  onClipboardPaste?: () => Promise<ClipboardPaste | null>;
+  /**
+   * Called after an image path (clipboard or drag-drop) is inserted into the
+   * buffer, so the host can confirm the attachment and warn when the active
+   * model has no image-input modality. The path is still inserted regardless.
+   */
+  onImageAttached?: (path: string) => void;
 }
 
 export function InputBox({
@@ -323,6 +382,8 @@ export function InputBox({
   onCyclePermissionMode,
   onShellModeChange,
   cursorTracking,
+  onClipboardPaste,
+  onImageAttached,
 }: InputBoxProps): React.ReactElement {
   const [buffer, setBuffer] = useState("");
   const [cursor, setCursor] = useState(0);
@@ -331,6 +392,13 @@ export function InputBox({
   const [popupDismissed, setPopupDismissed] = useState(false);
   const { stdout } = useStdout();
 
+  // Latest buffer/cursor for async inserts (clipboard capture resolves after the
+  // keypress handler returns, so the closure's `buffer`/`cursor` would be stale).
+  const bufferRef = useRef(buffer);
+  const cursorRef = useRef(cursor);
+  bufferRef.current = buffer;
+  cursorRef.current = cursor;
+
   const width = Math.max(MIN_WIDTH, options.width ?? stdout?.columns ?? 80);
   const placeholderText = options.placeholder ?? "";
   const commands = options.commands ?? [];
@@ -338,12 +406,24 @@ export function InputBox({
   const mask = options.mask ?? false;
   const history = options.history ?? [];
   const queued = options.queued ?? [];
+  const sessionName = options.sessionName?.trim() ?? "";
 
   // Position into `history` for ↑/↓ recall. `history.length` means "not
   // browsing — the live draft buffer." `draft` preserves the in-progress text
   // while the user walks backward into older entries.
   const [historyPos, setHistoryPos] = useState(history.length);
   const [draft, setDraft] = useState("");
+
+  // `history` is now sourced from a persisted store: it arrives asynchronously
+  // at startup (empty → seeded) and grows on every submit. Re-pin the browse
+  // position to the end whenever it changes so the seeded list is reachable and
+  // the next ↑ always starts from the newest entry. History only changes via
+  // this user's own submit (or the one-time seed), never mid-browse, so this
+  // can't yank a recalled entry out from under them.
+  const historyLen = history.length;
+  useEffect(() => {
+    setHistoryPos(historyLen);
+  }, [historyLen]);
 
   // The completion popup is one of two kinds: slash commands when the buffer is
   // a command line, or `@path` file mentions when the cursor sits in an `@`
@@ -385,6 +465,31 @@ export function InputBox({
     setPopupOffset(0);
     // Any edit exits history-browse mode so the next ↑ starts from the newest.
     setHistoryPos(history.length);
+  };
+
+  // Insert text at the caret using the refs, so it stays correct when called
+  // from an async clipboard continuation (which resolves after the keypress
+  // handler returns, leaving the closed-over buffer/cursor stale).
+  const insertAtCaret = (text: string): void => {
+    const cur = bufferRef.current;
+    const pos = cursorRef.current;
+    replaceBuffer(cur.slice(0, pos) + text + cur.slice(pos), pos + text.length);
+  };
+
+  // Insert an image file path as a standalone, space-padded token so it reads as
+  // one path the model can `read`.
+  const insertImagePath = (path: string): void => {
+    const before = bufferRef.current.slice(0, cursorRef.current);
+    const lead = before.length > 0 && !before.endsWith(" ") ? " " : "";
+    insertAtCaret(`${lead}${path} `);
+  };
+
+  // Insert pasted clipboard text. Strip control chars (matches typed-paste
+  // handling below) so escape sequences never land in the buffer.
+  const insertClipboardText = (text: string): void => {
+    // eslint-disable-next-line no-control-regex
+    const clean = text.replace(/[\x00-\x1f]/g, "");
+    if (clean.length > 0) insertAtCaret(clean);
   };
 
   // Drop a recalled history entry into the buffer without disturbing the
@@ -563,7 +668,34 @@ export function InputBox({
       }
       return;
     }
+    // Ctrl+V: paste from the clipboard. An image (screenshot / copied image) is
+    // saved to a file and inserted as its path; otherwise we fall back to the
+    // clipboard text so Ctrl+V still works as a normal paste (notably on Windows,
+    // where Ctrl+V *is* the paste key). On macOS, Cmd+V is owned by the terminal
+    // and never reaches us, so Ctrl+V is the image gesture there.
+    if (key.ctrl && input === "v") {
+      if (onClipboardPaste) {
+        void onClipboardPaste().then((res) => {
+          if (!res) return;
+          if (res.kind === "image") {
+            insertImagePath(res.path);
+            onImageAttached?.(res.path);
+          } else {
+            insertClipboardText(res.text);
+          }
+        });
+      }
+      return;
+    }
     if (!input) return;
+    // A drag-and-dropped image file arrives as a single pasted path chunk;
+    // normalize it to a clean absolute path and treat it as an attachment.
+    const dropped = normalizeDroppedImagePath(input);
+    if (dropped) {
+      insertImagePath(dropped);
+      onImageAttached?.(dropped);
+      return;
+    }
     // eslint-disable-next-line no-control-regex
     const text = input.replace(/[\x00-\x1f]/g, "");
     if (text.length === 0) return;
@@ -595,6 +727,31 @@ export function InputBox({
   const queuedShown = queued.slice(0, QUEUED_MAX_ROWS);
   const queuedMoreRow = queued.length > QUEUED_MAX_ROWS ? 1 : 0;
   const queuedRows = queuedShown.length + queuedMoreRow;
+  // While walking recall (↑/↓), label the top frame line with a "History
+  // n/total" position — but not while a completion popup owns ↑/↓ (then they
+  // navigate it). Embedded in the existing rule, so it adds no rows.
+  const browsingHistory = matches.length === 0 && historyPos < history.length;
+  // Session name badge (`/rename`), pinned near the right of the top frame with a
+  // filled accent background and white text. Always shown when set — even while
+  // browsing history: the History label takes the left of the line and the badge
+  // the right. Suppressed only under mask (passwords).
+  const nameBadge = !mask ? sessionNameBadge(sessionName, width) : null;
+  // Left portion of the top frame: the History label while browsing, else a
+  // plain rule. Sized to the width the badge leaves (full width when no badge),
+  // so the label and the badge never overlap.
+  const topLeftWidth = nameBadge ? nameBadge.lead.length : width;
+  const topLeft = browsingHistory
+    ? historyRule(topLeftWidth, historyPos + 1, history.length)
+    : nameBadge
+      ? nameBadge.lead
+      : rule;
+  // Frame styling. Bash mode tints the whole frame green (functional signal, so
+  // it wins). Otherwise, when a session name is set, the frame rules adopt the
+  // badge's colour so the border matches its background; with no name they stay
+  // dim. `badgeColor` also fills the badge chip itself.
+  const badgeColor = nameBadge ? sessionBadgeColor(sessionName) : null;
+  const frameColor = bashMode ? BASH_HEX : (badgeColor ?? undefined);
+  const frameDim = !bashMode && !badgeColor;
   const totalRows = queuedRows + popupRows + 2 + bodyRows;
 
   useEffect(() => {
@@ -684,9 +841,23 @@ export function InputBox({
       {matches.length > 0 && safeOffset + POPUP_MAX_ROWS < matches.length ? (
         <Text dimColor> ↓ {matches.length - safeOffset - POPUP_MAX_ROWS} more</Text>
       ) : null}
-      <Text dimColor={!bashMode} color={bashMode ? BASH_HEX : undefined}>
-        {rule}
-      </Text>
+      {nameBadge ? (
+        <Box>
+          <Text dimColor={frameDim} color={frameColor}>
+            {topLeft}
+          </Text>
+          <Text backgroundColor={badgeColor ?? undefined} color="white" bold>
+            {nameBadge.badge}
+          </Text>
+          <Text dimColor={frameDim} color={frameColor}>
+            {nameBadge.trail}
+          </Text>
+        </Box>
+      ) : (
+        <Text dimColor={frameDim} color={frameColor}>
+          {topLeft}
+        </Text>
+      )}
       {isEmpty ? (
         <Box>
           <Text> </Text>
@@ -697,7 +868,7 @@ export function InputBox({
       ) : (
         lines.map(renderContentLine)
       )}
-      <Text dimColor={!bashMode} color={bashMode ? BASH_HEX : undefined}>
+      <Text dimColor={frameDim} color={frameColor}>
         {rule}
       </Text>
     </Box>

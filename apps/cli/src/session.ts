@@ -12,6 +12,7 @@ import { red } from "./colors.js";
 import { refreshBanner, type CliContext } from "./context.js";
 import { loadDisplaySidecar } from "./display-sidecar.js";
 import { loadGoal } from "./goal.js";
+import { loadSessionName } from "./session-name.js";
 import { restoreUsageFromTranscript } from "./usage-restore.js";
 import { SnapshotStore } from "./snapshots.js";
 import { loadMessages, emptyCursor } from "@nova/agent";
@@ -194,6 +195,10 @@ export async function switchToSession(
   // Carry the switched-in session's active /goal (or null for a fresh one), so
   // auto-continuation follows the session rather than leaking across a switch.
   ctx.goal = await loadGoal(newSession.dir);
+  // Re-point the session-name badge at the switched-in session (null for a fresh
+  // /clear session) so it tracks the live session rather than leaking across.
+  ctx.sessionName = await loadSessionName(newSession.id);
+  ctx.screen.setSessionName(ctx.sessionName);
   // Restore the cumulative token counters (cache hit rate / `/usage`) from the
   // switched-in session's transcript. `/clear` lands on a fresh empty session,
   // so its counters stay at the zero set by `screen.reset()` above.

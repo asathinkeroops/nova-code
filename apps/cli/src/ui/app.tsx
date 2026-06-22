@@ -2,7 +2,6 @@ import React from "react";
 import { Box, Text } from "ink";
 import { useShallow } from "zustand/react/shallow";
 import { InputBox } from "./input-box.js";
-import { userInputHistory } from "./input-history.js";
 import { SetupView } from "./setup-view.js";
 import { StatusLine } from "./status-line.js";
 import {
@@ -50,9 +49,12 @@ export function App({ store }: AppProps): React.ReactElement {
     mentionFiles,
     inputPlaceholder,
     inputQueue,
+    inputHistory,
+    sessionName,
     permissionMode,
     skipPermissions,
     termRows,
+    imagePaste,
   } = store(
     useShallow((s) => ({
       setup: s.setup,
@@ -61,9 +63,12 @@ export function App({ store }: AppProps): React.ReactElement {
       mentionFiles: s.mentionFiles,
       inputPlaceholder: s.inputPlaceholder,
       inputQueue: s.inputQueue,
+      inputHistory: s.inputHistory,
+      sessionName: s.sessionName,
       permissionMode: s.permissionMode,
       skipPermissions: s.skipPermissions,
       termRows: s.termRows,
+      imagePaste: s.imagePaste,
     })),
   );
   // Actions are stable across renders — grab them once via getState().
@@ -168,8 +173,9 @@ export function App({ store }: AppProps): React.ReactElement {
             commands: slashCommands,
             files: mentionFiles,
             placeholder: inputPlaceholder,
-            history: userInputHistory(store.getState().messages),
+            history: inputHistory,
             queued: inputQueue,
+            ...(sessionName ? { sessionName } : {}),
           }}
           active={modal === null}
           onSubmit={onSubmitInput}
@@ -182,6 +188,8 @@ export function App({ store }: AppProps): React.ReactElement {
             termRows,
             bottomChromeRows: STATUS_LINE_ROWS + indicatorRows,
           }}
+          onClipboardPaste={imagePaste?.capture}
+          onImageAttached={imagePaste?.attached}
         />
       </Box>
       <Box flexShrink={0} flexDirection="column">

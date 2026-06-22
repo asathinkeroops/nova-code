@@ -77,6 +77,7 @@ import {
   handlePlan,
   handleModel,
   handlePredict,
+  handleRename,
   handleAgent,
   handleAgents,
   handleResume,
@@ -97,6 +98,7 @@ import { UserHooks } from "./user-hooks.js";
 import { SnapshotStore } from "./snapshots.js";
 import { renderSkillsBlock } from "./skills-render.js";
 import { loadFileCommandsInto } from "./slash.js";
+import { loadSessionName } from "./session-name.js";
 import { resolveSession } from "./session.js";
 import { Screen, fatalExit, type Spinner } from "./screen.js";
 
@@ -145,6 +147,14 @@ export interface CliContext {
    * is reloaded on resume / session switch.
    */
   goal: GoalState | null;
+
+  /**
+   * User-assigned name for this session (`/rename`), or null when unset.
+   * Persisted to the shared `~/.nova/session-names.json` (keyed by session id)
+   * and shown as a badge on the InputBox top frame. Re-seeded from disk on
+   * session switch (`/resume`, `/clear`).
+   */
+  sessionName: string | null;
 
   // ===== Mutable: UI / per-turn state =====
   spinner: Spinner | null;
@@ -371,6 +381,16 @@ function registerBuiltinSlashCommands(ctx: CliContext): void {
     source: { kind: "builtin" },
     run: async (_c, args) => {
       await handleCompact(ctx, args.trim());
+      return handled;
+    },
+  });
+  ctx.registry.register({
+    name: "rename",
+    description: "give this session a custom name (shown on the input frame)",
+    argHint: "[<name>|clear]",
+    source: { kind: "builtin" },
+    run: async (_c, args) => {
+      await handleRename(ctx, args);
       return handled;
     },
   });
@@ -806,6 +826,7 @@ export async function createContext(
     thinkingLevel: settings.thinking.level,
     thinkingBudgetOverride: settings.thinking.budgetTokens,
     goal: null,
+    sessionName: null,
     spinner: null,
     toolSpinnerTimer: null,
     nextPlaceholder: "",
@@ -1185,6 +1206,9 @@ export async function createContext(
 
   ctx.screen.setThinkingLabel(thinkingLevelLabel(ctx));
   refreshBanner(ctx);
+  // Seed the session-name badge from disk (null for a fresh session).
+  ctx.sessionName = await loadSessionName(session.id);
+  ctx.screen.setSessionName(ctx.sessionName);
   logger.info(
     { sessionId: session.id, dir: session.dir, resumed },
     resumed ? "session resumed" : "session started",

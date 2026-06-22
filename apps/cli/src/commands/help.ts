@@ -34,6 +34,7 @@ export function handleHelp(ctx: CliContext): void {
     for (const c of group) sections.push(formatRow(c, nameWidth));
   }
   sections.push("");
+  sections.push(dim("Paste an image (Cmd/Ctrl+V) or drag a file in — it's inserted as a path the model reads."));
   sections.push(dim("Ctrl+D or /exit to leave. /commands lists everything; /commands reload re-scans files."));
   ctx.screen.card(sections.join("\n"), { title: "/help" });
 }

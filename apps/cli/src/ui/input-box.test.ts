@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   commandTokenRange,
+  historyRule,
   matchingFiles,
   mentionTokenAt,
+  sessionNameBadge,
   type SlashCommand,
 } from "./input-box.js";
 
@@ -87,6 +89,51 @@ describe("mentionTokenAt", () => {
   it("never fires on a slash command line", () => {
     const buf = "/agent @foo";
     expect(mentionTokenAt(buf, buf.length)).toBeNull();
+  });
+});
+
+describe("sessionNameBadge", () => {
+  it("returns null for an empty or whitespace-only name", () => {
+    expect(sessionNameBadge("", 80)).toBeNull();
+    expect(sessionNameBadge("   ", 80)).toBeNull();
+  });
+
+  it("pads the name and leaves a trailing rule so it isn't flush-right", () => {
+    const out = sessionNameBadge("api work", 40);
+    expect(out).not.toBeNull();
+    expect(out!.badge).toBe(" api work ");
+    // lead + badge + trail spans exactly `width` columns
+    expect(out!.lead.length + out!.badge.length + out!.trail.length).toBe(40);
+    // a few rule chars sit to the right of the badge
+    expect(out!.trail.length).toBe(3);
+    expect(out!.lead.length).toBe(27);
+  });
+
+  it("trims surrounding whitespace before badging", () => {
+    expect(sessionNameBadge("  hi  ", 40)?.badge).toBe(" hi ");
+  });
+
+  it("truncates a name too long for the frame, keeping one lead rule char", () => {
+    const out = sessionNameBadge("a".repeat(100), 20);
+    expect(out).not.toBeNull();
+    expect(out!.lead.length).toBeGreaterThanOrEqual(1);
+    expect(out!.lead.length + out!.badge.length + out!.trail.length).toBe(20);
+  });
+});
+
+describe("historyRule", () => {
+  it("embeds the position label and fills exactly `width` columns", () => {
+    const out = historyRule(40, 2, 7);
+    expect(out).toContain(" History 2/7 ");
+    expect(out.length).toBe(40);
+  });
+
+  it("coexists with the session-name badge: label fills the badge's lead width", () => {
+    const badge = sessionNameBadge("api work", 60)!;
+    const left = historyRule(badge.lead.length, 3, 9);
+    // left + badge + trail still spans the full frame width
+    expect(left.length + badge.badge.length + badge.trail.length).toBe(60);
+    expect(left).toContain(" History 3/9 ");
   });
 });
 

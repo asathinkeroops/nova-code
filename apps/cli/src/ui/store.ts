@@ -8,6 +8,7 @@ import type { SubAgentDetail } from "@nova/subagent";
 import type { PermissionDecision, PermissionInput } from "@nova/safety";
 import type { BannerProps } from "./render-item.js";
 import type { BoxedInputOptions, SlashCommand } from "./input-box.js";
+import { appendInputHistory } from "./input-history.js";
 import type {
   HorizontalPickerOptions,
   PickerOptions,
@@ -15,6 +16,7 @@ import type {
 } from "./picker.js";
 import type { SetupEntry, SetupState } from "./setup-view.js";
 import type { PermissionMode } from "../permissions.js";
+import type { ClipboardPaste } from "../image-paste.js";
 
 export type SpinnerLabel =
   | string
@@ -47,6 +49,9 @@ export interface LiveDraft {
 export type ApprovalAnswer = "yes" | "no" | "always-allow";
 
 export type CardKind = "info" | "warn" | "error";
+
+/** Tone for a transient input-box notice: green for success, red for a warning. */
+export type NoticeTone = "success" | "warn";
 
 /**
  * Inline UI entries that render in chronological place between messages but are
@@ -188,6 +193,23 @@ export interface AppState {
    */
   copyNotice: string | null;
   /**
+   * Tone for the active `copyNotice`: "success" renders green (e.g. "✓ copied"),
+   * "warn" renders red (e.g. an unsupported-model warning). Ignored when
+   * `copyNotice` is null.
+   */
+  copyNoticeTone: NoticeTone;
+  /**
+   * Host-provided image-paste handlers wired by the REPL once the session and
+   * model are known: `capture` reads the clipboard into a file (Ctrl+V) and
+   * returns its path; `attached` confirms the inserted path and warns when the
+   * active model lacks an image modality. Null until wired (modal/setup boxes
+   * never get it).
+   */
+  imagePaste: {
+    capture: () => Promise<ClipboardPaste | null>;
+    attached: (path: string) => void;
+  } | null;
+  /**
    * Active mouse-drag selection in viewport-line coordinates (0-indexed rows
    * into `visibleLines`, 0-indexed visual columns). Null when no drag is in
    * flight. Used by the viewport to paint inverse-video highlight on the
@@ -249,6 +271,22 @@ export interface AppState {
    * and never land here.
    */
   inputQueue: string[];
+  /**
+   * Recent prompts the user submitted from the permanent InputBox, oldest first,
+   * for ↑/↓ recall. Unlike the live message stream this is persisted to its own
+   * `~/.nova` file, so it survives `/clear` and carries across sessions. Seeded
+   * from disk at startup ({@link setInputHistory}) and extended on each submit
+   * ({@link enqueueInput}); capped to the newest few entries.
+   */
+  inputHistory: string[];
+  /**
+   * User-assigned name for the active session (`/rename`), or null when unset.
+   * Rendered as a coloured badge on the InputBox's top frame. Host-managed (not
+   * touched by `reset()`): the CLI seeds it from the session's persisted
+   * `name.txt` at startup and re-points it on every `/resume` / `/clear` session
+   * switch, so it always tracks the live session.
+   */
+  sessionName: string | null;
   /**
    * Slash commands offered by the permanent InputBox popup. Set once when the
    * REPL starts; the InputBox is always mounted now, so it can't read these
@@ -357,7 +395,9 @@ export interface AppActions {
   /** Snapshot of the visible text — written back by the viewport each render. */
   setVisibleLines: (lines: string[]) => void;
   /** Show a transient notice; auto-clears after `ttlMs` (default 1000). */
-  setCopyNotice: (text: string, ttlMs?: number) => void;
+  setCopyNotice: (text: string, ttlMs?: number, tone?: NoticeTone) => void;
+  /** Wire (or clear) the host's image-paste handlers. */
+  setImagePaste: (handlers: AppState["imagePaste"]) => void;
   setSelection: (rect: SelectionRect | null) => void;
   /** Set the session-level StatusLine metadata (clock origin, branch, window). */
   setStatusMeta: (meta: {
@@ -413,6 +453,10 @@ export interface AppActions {
    * covers a completion that lands while it's busy.
    */
   wake: () => void;
+  /** Replace the ↑/↓ recall history (used at startup to seed from disk). */
+  setInputHistory: (history: string[]) => void;
+  /** Set (or clear, with null) the active session's custom name badge. */
+  setSessionName: (name: string | null) => void;
   setSlashCommands: (commands: SlashCommand[]) => void;
   setMentionFiles: (files: string[]) => void;
   setInputPlaceholder: (text: string) => void;
@@ -454,7 +498,17 @@ interface ModalSlot {
  */
 export const CONTINUE_SENTINEL = "\x00__nova_continue__";
 
-export function createAppStore(): AppStoreApi {
+export interface AppStoreOptions {
+  /**
+   * Persist the ↑/↓ recall history after a submit extends it. Called with the
+   * full capped list (oldest first). Injected so the store stays free of file
+   * I/O; the CLI wires it to the `~/.nova` history file. Best-effort — the store
+   * does not await it.
+   */
+  persistInputHistory?: (history: string[]) => void;
+}
+
+export function createAppStore(opts: AppStoreOptions = {}): AppStoreApi {
   const slot: ModalSlot = { resolve: null, abortCleanup: null };
   // Non-reactive consumer slot for the input queue: when the REPL is blocked in
   // `takeInput`, `waiter` holds its resolver so a submit can hand off directly.
@@ -528,6 +582,8 @@ export function createAppStore(): AppStoreApi {
       viewportRows: 0,
       visibleLines: [],
       copyNotice: null,
+      copyNoticeTone: "success",
+      imagePaste: null,
       selection: null,
       sessionStartedAt: null,
       gitBranch: null,
@@ -540,6 +596,8 @@ export function createAppStore(): AppStoreApi {
       costRates: null,
       accountBalance: null,
       inputQueue: [],
+      inputHistory: [],
+      sessionName: null,
       slashCommands: [],
       mentionFiles: [],
       inputPlaceholder: "",
@@ -821,11 +879,15 @@ export function createAppStore(): AppStoreApi {
         set({ visibleLines: lines });
       },
 
-      setCopyNotice(text, ttlMs = 1000) {
-        set({ copyNotice: text });
+      setCopyNotice(text, ttlMs = 1000, tone = "success") {
+        set({ copyNotice: text, copyNoticeTone: tone });
         setTimeout(() => {
           if (get().copyNotice === text) set({ copyNotice: null });
         }, ttlMs);
+      },
+
+      setImagePaste(handlers) {
+        set({ imagePaste: handlers });
       },
 
       setSelection(rect) {
@@ -895,6 +957,13 @@ export function createAppStore(): AppStoreApi {
       },
 
       enqueueInput(line) {
+        // Record into ↑/↓ recall before dispatching, so every submitted line is
+        // captured whether it's handed straight to a waiting REPL or queued.
+        const nextHistory = appendInputHistory(get().inputHistory, line);
+        if (nextHistory !== get().inputHistory) {
+          set({ inputHistory: nextHistory });
+          opts.persistInputHistory?.(nextHistory);
+        }
         if (inputSlot.waiter) {
           const w = inputSlot.waiter;
           inputSlot.waiter = null;
@@ -936,6 +1005,15 @@ export function createAppStore(): AppStoreApi {
           inputSlot.waiter = null;
           w(CONTINUE_SENTINEL);
         }
+      },
+
+      setInputHistory(history) {
+        set({ inputHistory: history });
+      },
+
+      setSessionName(name) {
+        if (get().sessionName === name) return;
+        set({ sessionName: name });
       },
 
       setSlashCommands(commands) {

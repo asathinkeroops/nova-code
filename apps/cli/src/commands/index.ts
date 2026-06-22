@@ -13,6 +13,7 @@ export { handleMcp } from "./mcp.js";
 export { handleModel } from "./model.js";
 export { handlePlan } from "./plan.js";
 export { handlePredict } from "./predict.js";
+export { handleRename } from "./rename.js";
 export { handleResume } from "./resume.js";
 export { handleReview } from "./review.js";
 export { handleRewind } from "./rewind.js";

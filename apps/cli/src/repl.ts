@@ -1,7 +1,10 @@
+import { join } from "node:path";
 import { bashTool } from "@nova/tools";
+import { resolveModelModalities } from "@nova/runtime";
 import { ACCENT_RGB, accent, dim, green } from "./colors.js";
 import { refreshBalance, stopSpinner, type CliContext } from "./context.js";
 import { appendUserOverride } from "./display-sidecar.js";
+import { readClipboard } from "./image-paste.js";
 import { evaluateGoalWithAgent } from "./goal-eval.js";
 import { clearGoal, saveGoal } from "./goal.js";
 import { listWorkspaceFiles } from "./file-index.js";
@@ -254,9 +257,10 @@ async function maybeContinueForGoal(ctx: CliContext): Promise<string | null> {
     { title: GOAL_TITLE },
   );
   // Wrap in <goal-eval> so the UI hides this auto-injected continuation from the
-  // message stream (see isSystemInjectionText) and ↑/↓ recall (see
-  // userInputHistory) — it is the evaluator driving another turn, not something
-  // the user typed. The model still reads the tag's contents normally.
+  // message stream (see isSystemInjectionText) — it is the evaluator driving
+  // another turn, not something the user typed (it never flows through
+  // enqueueInput, so ↑/↓ recall never captures it). The model still reads the
+  // tag's contents normally.
   return (
     `<goal-eval>\n` +
     `Your goal is not complete yet. Evaluation: ${verdict.reason}\n\n` +
@@ -299,12 +303,49 @@ async function runTurnWithStopHooks(ctx: CliContext, prompt: string): Promise<bo
   return ok;
 }
 
+/**
+ * Wire the input box's image-paste handlers. Ctrl+V reads the clipboard: an
+ * image is saved into the session's `images/` dir and returned as a path, else
+ * it falls back to clipboard text (so Ctrl+V never eats a normal paste).
+ * Drag-dropped paths are normalized in the input box itself. Inserted image
+ * paths report through `attached`, which confirms the attachment and — per the
+ * model's live image modality — warns when the active model can't consume images
+ * (the path is still inserted, so it works once the user switches to an
+ * image-capable model). Modalities are re-read on each call so `/model` switches
+ * are reflected without re-wiring.
+ */
+function wireImagePaste(ctx: CliContext): void {
+  ctx.screen.setImagePaste({
+    capture: async () => {
+      const res = await readClipboard(join(ctx.session.dir, "images"));
+      if (!res) ctx.screen.notice("clipboard is empty", 1000, "warn");
+      return res;
+    },
+    attached: () => {
+      const supportsImage = resolveModelModalities(
+        ctx.settings,
+        ctx.settings.model,
+      ).input.includes("image");
+      if (supportsImage) {
+        ctx.screen.notice("📎 image attached");
+      } else {
+        ctx.screen.notice(
+          "⚠ current model can't read images — path inserted anyway",
+          4000,
+          "warn",
+        );
+      }
+    },
+  });
+}
+
 export async function runRepl(ctx: CliContext, initialPrompt: string): Promise<void> {
   // The InputBox is a permanent fixture that always enqueues; the REPL is the
   // single consumer. Prompts typed while a turn runs pile up in the queue and
   // are drained here one turn at a time.
   ctx.screen.setSlashCommands(toUiSlashCommands(ctx.registry.list()));
   await refreshMentionFiles(ctx);
+  wireImagePaste(ctx);
 
   const startSource = ctx.resumed ? "resume" : "startup";
   await ctx.userHooks.fire("SessionStart", {

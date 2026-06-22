@@ -22,6 +22,7 @@ import { extractSelection } from "./ui/selection.js";
 import { H_PAD } from "./ui/viewport.js";
 import { type SetupEntry, type SetupState } from "./ui/setup-view.js";
 import { type PermissionMode } from "./permissions.js";
+import { type ClipboardPaste } from "./image-paste.js";
 import {
   type HorizontalPickerOptions,
   type PickerOptions,
@@ -31,9 +32,11 @@ import {
   createAppStore,
   type AppStoreApi,
   type CardOptions,
+  type NoticeTone,
   type SpinnerHandle,
   type SpinnerLabel,
 } from "./ui/store.js";
+import { loadInputHistory, saveInputHistory } from "./ui/input-history.js";
 
 export type { SpinnerLabel } from "./ui/store.js";
 export type Spinner = SpinnerHandle;
@@ -89,7 +92,9 @@ export interface ScreenOptions {
 }
 
 export class Screen {
-  private store: AppStoreApi = createAppStore();
+  private store: AppStoreApi = createAppStore({
+    persistInputHistory: (history) => void saveInputHistory(history),
+  });
   private instance: InkInstance | null = null;
   private mounted = false;
   private detachResize: (() => void) | null = null;
@@ -101,6 +106,11 @@ export class Screen {
   constructor(opts: ScreenOptions = {}) {
     this.syncOutput = opts.syncOutput ?? true;
     this.cursorFollow = opts.cursorFollow ?? true;
+    // Seed ↑/↓ recall from the persisted `~/.nova` history. Fire-and-forget:
+    // the InputBox reads it reactively, so it lights up once the read resolves.
+    void loadInputHistory().then((history) => {
+      if (history.length > 0) this.store.getState().setInputHistory(history);
+    });
   }
 
   mount(): void {
@@ -385,6 +395,11 @@ export class Screen {
     this.store.getState().setSlashCommands(commands);
   }
 
+  /** Set (or clear, with null) the active session's `/rename` name badge. */
+  setSessionName(name: string | null): void {
+    this.store.getState().setSessionName(name);
+  }
+
   /** Replace the workspace file snapshot used for `@path` mention completion. */
   setMentionFiles(files: string[]): void {
     this.store.getState().setMentionFiles(files);
@@ -472,6 +487,20 @@ export class Screen {
 
   setEscHandler(fn: (() => void) | null): void {
     this.store.getState().setEscHandler(fn);
+  }
+
+  /** Wire (or clear) the input box's image-paste handlers. */
+  setImagePaste(
+    handlers:
+      | { capture: () => Promise<ClipboardPaste | null>; attached: (path: string) => void }
+      | null,
+  ): void {
+    this.store.getState().setImagePaste(handlers);
+  }
+
+  /** Show a transient notice near the input box (auto-clears after `ttlMs`). */
+  notice(text: string, ttlMs?: number, tone?: NoticeTone): void {
+    this.store.getState().setCopyNotice(text, ttlMs, tone);
   }
 
   beginSetup(state: SetupState): void {
