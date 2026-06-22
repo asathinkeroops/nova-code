@@ -24,6 +24,9 @@ Subprocess writes are confined to the workspace by an OS-level sandbox (macOS Se
 **Extend with markdown.**
 Define custom sub-agents, slash commands, skills, or lifecycle hooks — drop a `.md` file with frontmatter and you're done. No code changes, ships with the repo.
 
+**Bring your habits, not a manual.**
+Nova closely mirrors the Claude Code workflow — the same slash commands, keybindings, approval prompts, memory files, and replayable sessions. If you've used Claude Code there's nothing new to learn: install and keep working the way you already do, just on an engine tuned for DeepSeek underneath.
+
 ## Quick start
 
 Requires **Node ≥ 20** and **pnpm 10.28.2**.
