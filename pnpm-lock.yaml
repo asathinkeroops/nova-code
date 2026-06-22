@@ -41,6 +41,64 @@ importers:
 
   apps/cli:
     dependencies:
+      '@anthropic-ai/sandbox-runtime':
+        specifier: 0.0.52
+        version: 0.0.52
+      '@anthropic-ai/sdk':
+        specifier: ^0.27.0
+        version: 0.27.3
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.29.0
+        version: 1.29.0(zod@3.25.76)
+      '@vscode/ripgrep':
+        specifier: ^1.18.0
+        version: 1.18.0
+      cli-highlight:
+        specifier: ^2.1.11
+        version: 2.1.11
+      commander:
+        specifier: ^12.0.0
+        version: 12.1.0
+      execa:
+        specifier: ^9.0.0
+        version: 9.6.1
+      fast-glob:
+        specifier: ^3.3.3
+        version: 3.3.3
+      ignore:
+        specifier: ^5.3.2
+        version: 5.3.2
+      ink:
+        specifier: ^5.0.1
+        version: 5.2.1(@types/react@18.3.29)(react@18.3.1)
+      pino:
+        specifier: ^9.0.0
+        version: 9.14.0
+      pino-pretty:
+        specifier: ^11.0.0
+        version: 11.3.0
+      react:
+        specifier: ^18.3.0
+        version: 18.3.1
+      unpdf:
+        specifier: ^1.6.2
+        version: 1.6.2
+      wrap-ansi:
+        specifier: ^9.0.0
+        version: 9.0.2
+      xlsx:
+        specifier: ^0.18.5
+        version: 0.18.5
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
+      zod-to-json-schema:
+        specifier: ^3.23.0
+        version: 3.25.2(zod@3.25.76)
+      zustand:
+        specifier: ^5.0.2
+        version: 5.0.13(@types/react@18.3.29)(react@18.3.1)
+    devDependencies:
       '@nova/agent':
         specifier: workspace:*
         version: link:../../packages/agent
@@ -74,40 +132,15 @@ importers:
       '@nova/tools':
         specifier: workspace:*
         version: link:../../packages/tools
-      cli-highlight:
-        specifier: ^2.1.11
-        version: 2.1.11
-      commander:
-        specifier: ^12.0.0
-        version: 12.1.0
-      execa:
-        specifier: ^9.0.0
-        version: 9.6.1
-      fast-glob:
-        specifier: ^3.3.3
-        version: 3.3.3
-      ignore:
-        specifier: ^5.3.2
-        version: 5.3.2
-      ink:
-        specifier: ^5.0.1
-        version: 5.2.1(@types/react@18.3.29)(react@18.3.1)
-      react:
-        specifier: ^18.3.0
-        version: 18.3.1
-      tsx:
-        specifier: ^4.7.2
-        version: 4.22.3
-      wrap-ansi:
-        specifier: ^9.0.0
-        version: 9.0.2
-      zustand:
-        specifier: ^5.0.2
-        version: 5.0.13(@types/react@18.3.29)(react@18.3.1)
-    devDependencies:
       '@types/react':
         specifier: ^18.3.0
         version: 18.3.29
+      tsup:
+        specifier: ^8.0.2
+        version: 8.5.1(postcss@8.5.15)(tsx@4.22.3)(typescript@5.9.3)
+      tsx:
+        specifier: ^4.7.2
+        version: 4.22.3
 
   packages/agent:
     dependencies:

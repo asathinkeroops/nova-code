@@ -17,4 +17,4 @@ export default defineConfig({
       exclude: ["**/*.test.{ts,tsx}", "**/index.ts"],
     },
   },
-});
+}); 
