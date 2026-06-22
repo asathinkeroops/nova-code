@@ -39,6 +39,8 @@ export interface ProviderTemplate {
   };
   /** One-line hint shown beneath the API-key prompt. */
   apiKeyHint: string;
+  /** When true, the picker tags this provider as highly recommended. */
+  recommended?: boolean;
 }
 
 /**
@@ -60,5 +62,6 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
       goal: { ...DEFAULT_GOAL, evalModel: "flash" },
     },
     apiKeyHint: "DeepSeek API key (input is masked)",
+    recommended: true,
   },
 ];

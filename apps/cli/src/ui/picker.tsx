@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Box, Text, useInput, useStdout } from "ink";
-import { accent, diffTint, dim, useColor } from "../colors.js";
+import { ACCENT_HEX, accent, diffTint, dim, useColor } from "../colors.js";
 import { applyInverse } from "./selection.js";
 import { visibleWidth } from "./width.js";
 
@@ -262,6 +262,11 @@ export interface HorizontalPickerOptions<T> {
   items: T[];
   /** Plain label for each item; the selected one is highlighted automatically. */
   label: (item: T) => string;
+  /**
+   * Optional badge rendered after the label in the accent color (e.g. a
+   * "recommended" tag). Return null for items without one.
+   */
+  badge?: (item: T) => string | null;
   /** Optional header line shown above the row. */
   header?: string;
   /** Optional footer line shown below the row. */
@@ -312,21 +317,21 @@ export function PickHorizontal<T>({ opts, onResolve }: PickHorizontalProps<T>): 
 
   const cells: React.ReactNode[] = [];
   items.forEach((item, i) => {
-    const text = ` ${opts.label(item)} `;
+    const badge = opts.badge?.(item) ?? null;
+    const label = ` ${opts.label(item)} `;
     if (i > 0) cells.push(<Text key={`sep-${i}`}>{separator}</Text>);
-    if (i === selected) {
-      cells.push(
-        <Text key={i} inverse>
-          {text}
-        </Text>,
-      );
-    } else {
-      cells.push(
-        <Text key={i} dimColor>
-          {text}
-        </Text>,
-      );
-    }
+    cells.push(
+      <Text key={i}>
+        <Text inverse={i === selected} dimColor={i !== selected}>
+          {label}
+        </Text>
+        {badge ? (
+          <Text color={ACCENT_HEX} bold>
+            {` ${badge} `}
+          </Text>
+        ) : null}
+      </Text>,
+    );
   });
 
   return (

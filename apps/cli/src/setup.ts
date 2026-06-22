@@ -93,6 +93,8 @@ export async function ensureSettings(
     const choice = await screen.pickHorizontal<Choice>({
       items: choices,
       label: (it) => (it.kind === "other" ? "Other provider" : it.template.label),
+      badge: (it) =>
+        it.kind === "template" && it.template.recommended ? "★ recommended" : null,
       header: "Which provider are you connecting to?",
       footer: "←/→ to choose · Enter to confirm · Ctrl+C to abort",
     });
