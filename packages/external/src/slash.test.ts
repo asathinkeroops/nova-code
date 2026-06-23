@@ -8,8 +8,16 @@ import {
   fileCommandToSlash,
   loadFileCommands,
   parseCommandFile,
+  type FileCommandRaw,
   type SlashCommand,
 } from "./slash.js";
+
+/** Parse a command file and return its `ok` payload or throw the parse error. */
+function parseOk(path: string, md: string): FileCommandRaw {
+  const out = parseCommandFile(path, md, "project");
+  if (!("ok" in out)) throw new Error(`expected ok, got error: ${out.error}`);
+  return out.ok;
+}
 
 const projectKind = "project" as const;
 const userKind = "user" as const;
@@ -29,7 +37,7 @@ describe("parseCommandFile", () => {
       "---",
       "name: review",
       'description: "Audit the diff"',
-      "argHint: \"[focus]\"",
+      'argHint: "[focus]"',
       "args:",
       "  - { name: focus, required: false, default: safety }",
       "---",
@@ -68,6 +76,42 @@ describe("parseCommandFile", () => {
   });
 });
 
+describe("parseCommandFile front-matter YAML subset", () => {
+  it("parses a block-style array of bare-string args", () => {
+    const md = ["---", "name: x", "args:", "  - alpha", "  - beta", "---", "body"].join("\n");
+    expect(parseOk("/tmp/x.md", md).args).toEqual([{ name: "alpha" }, { name: "beta" }]);
+  });
+
+  it("parses a flow-style array of bare-string args", () => {
+    const md = ["---", "name: x", "args: [alpha, beta]", "---", "body"].join("\n");
+    expect(parseOk("/tmp/x.md", md).args).toEqual([{ name: "alpha" }, { name: "beta" }]);
+  });
+
+  it("keeps a quoted comma inside an inline-object default (splitFlowPairs)", () => {
+    const md = ["---", "name: x", "args:", '  - { name: msg, default: "a,b" }', "---", "body"].join(
+      "\n",
+    );
+    expect(parseOk("/tmp/x.md", md).args).toEqual([{ name: "msg", default: "a,b" }]);
+  });
+
+  it("ignores comments and blank lines in front-matter", () => {
+    const md = ["---", "# a comment", "name: x", "", "description: hi", "---", "body"].join("\n");
+    const ok = parseOk("/tmp/x.md", md);
+    expect(ok.name).toBe("x");
+    expect(ok.description).toBe("hi");
+  });
+
+  it("rejects args that are a scalar instead of an array", () => {
+    const md = ["---", "name: x", "args: nope", "---", "body"].join("\n");
+    expect("error" in parseCommandFile("/tmp/x.md", md, projectKind)).toBe(true);
+  });
+
+  it("rejects an arg object with an empty name", () => {
+    const md = ["---", "name: x", "args:", "  - { required: true }", "---", "body"].join("\n");
+    expect("error" in parseCommandFile("/tmp/x.md", md, projectKind)).toBe(true);
+  });
+});
+
 describe("expandPlaceholders", () => {
   it("substitutes declared positional args, last absorbs remainder", () => {
     const r = expandPlaceholders(
@@ -87,11 +131,7 @@ describe("expandPlaceholders", () => {
   });
 
   it("uses spec default when arg missing", () => {
-    const r = expandPlaceholders(
-      "focus={{focus}}",
-      [{ name: "focus", default: "perf" }],
-      "",
-    );
+    const r = expandPlaceholders("focus={{focus}}", [{ name: "focus", default: "perf" }], "");
     if (!("ok" in r)) throw new Error("expected ok");
     expect(r.ok).toBe("focus=perf");
   });
@@ -110,6 +150,18 @@ describe("expandPlaceholders", () => {
     const r = expandPlaceholders("you said: {{args}}", [], "  the quick brown fox  ");
     if (!("ok" in r)) throw new Error("expected ok");
     expect(r.ok).toBe("you said: the quick brown fox");
+  });
+
+  it("expands a missing optional arg (no default) to the empty string", () => {
+    const r = expandPlaceholders("x={{opt}}", [{ name: "opt" }], "");
+    if (!("ok" in r)) throw new Error("expected ok");
+    expect(r.ok).toBe("x=");
+  });
+
+  it("prefers the supplied value over an inline default", () => {
+    const r = expandPlaceholders("{{a|fallback}}", [{ name: "a" }], "given");
+    if (!("ok" in r)) throw new Error("expected ok");
+    expect(r.ok).toBe("given");
   });
 });
 
@@ -149,6 +201,34 @@ describe("SlashRegistry", () => {
     const cmd = r.resolve("/exit")?.cmd;
     expect(cmd?.source.kind).toBe("builtin");
     expect(cmd?.source.shadowedBy?.[0]?.path).toBe("/p/.commands/exit.md");
+  });
+
+  it("clearKind removes only commands of that kind", () => {
+    const r = new SlashRegistry();
+    r.register(builtin("keep"));
+    r.register({
+      name: "drop",
+      description: "file cmd",
+      source: { kind: projectKind, path: "/p/drop.md" },
+      run: () => ({ kind: "handled" }),
+    });
+    r.clearKind(projectKind);
+    expect(r.resolve("/keep")?.cmd.name).toBe("keep");
+    expect(r.resolve("/drop")).toBeNull();
+  });
+
+  it("lists commands sorted by name", () => {
+    const r = new SlashRegistry();
+    r.register(builtin("charlie"));
+    r.register(builtin("alpha"));
+    r.register(builtin("bravo"));
+    expect(r.list().map((c) => c.name)).toEqual(["alpha", "bravo", "charlie"]);
+  });
+
+  it("resolve preserves the exact arg string after the first whitespace", () => {
+    const r = new SlashRegistry();
+    r.register(builtin("cmd"));
+    expect(r.resolve("/cmd   x  y")?.args).toBe("  x  y");
   });
 });
 
@@ -207,15 +287,47 @@ describe("loadFileCommands", () => {
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0]?.path.endsWith("bad.md")).toBe(true);
   });
+
+  it("scans extraDirs (after user paths) and reports per-target counts", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "nova-slash-cwd-"));
+    const home = await mkdtemp(join(tmpdir(), "nova-slash-home-"));
+    const extra = await mkdtemp(join(tmpdir(), "nova-slash-extra-"));
+    await writeFile(join(extra, "extra-cmd.md"), "from extra dir\n");
+
+    const result = await loadFileCommands({
+      cwd,
+      home,
+      projectDirs: [],
+      userPaths: [],
+      extraDirs: [extra],
+    });
+    expect(result.commands.map((c) => c.name)).toEqual(["extra-cmd"]);
+    // extraDirs entries are reported under the "user" layer in `scanned`.
+    expect(result.scanned).toContainEqual({ kind: "user", path: extra, found: 1 });
+  });
+
+  it("drops a same-named file that loses the scan order, keeping the winner", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "nova-slash-cwd-"));
+    const home = await mkdtemp(join(tmpdir(), "nova-slash-home-"));
+    await mkdir(join(cwd, "a"), { recursive: true });
+    await mkdir(join(cwd, "b"), { recursive: true });
+    await writeFile(join(cwd, "a/dup.md"), "winner\n");
+    await writeFile(join(cwd, "b/dup.md"), "loser\n");
+
+    const result = await loadFileCommands({
+      cwd,
+      home,
+      projectDirs: ["a", "b"],
+      userPaths: [],
+    });
+    expect(result.commands).toHaveLength(1);
+    expect(result.commands[0]?.body.trim()).toBe("winner");
+  });
 });
 
 describe("fileCommandToSlash", () => {
   it("produces a prompt outcome with expanded body", async () => {
-    const parsed = parseCommandFile(
-      "/tmp/hello.md",
-      "Hello {{name|world}}!\n",
-      projectKind,
-    );
+    const parsed = parseCommandFile("/tmp/hello.md", "Hello {{name|world}}!\n", projectKind);
     if (!("ok" in parsed)) throw new Error("expected ok");
     const slash = fileCommandToSlash(parsed.ok);
     const outcome = await slash.run({ cwd: "/" }, "");
@@ -240,5 +352,29 @@ describe("fileCommandToSlash", () => {
     expect(outcome.kind).toBe("error");
     if (outcome.kind !== "error") return;
     expect(outcome.message).toContain('missing required arg "target"');
+  });
+
+  it("derives an argHint with <required> and [optional] markers", () => {
+    const raw: FileCommandRaw = {
+      name: "x",
+      description: "d",
+      args: [{ name: "target", required: true }, { name: "focus" }],
+      body: "{{target}} {{focus}}",
+      path: "/p/x.md",
+      kind: "project",
+    };
+    expect(fileCommandToSlash(raw).argHint).toBe("<target> [focus]");
+  });
+
+  it("omits argHint when the command declares no args", () => {
+    const raw: FileCommandRaw = {
+      name: "x",
+      description: "d",
+      args: [],
+      body: "no args",
+      path: "/p/x.md",
+      kind: "project",
+    };
+    expect(fileCommandToSlash(raw).argHint).toBeUndefined();
   });
 });

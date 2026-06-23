@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Box, Text, useInput, useStdout } from "ink";
+import { Box, Text, useInput } from "ink";
 import type { PermissionDecision, PermissionInput } from "@nova/safety";
 import { ACCENT_HEX, cyan } from "../colors.js";
 import { countWrappedLines } from "./measure.js";
@@ -114,8 +114,26 @@ const OPTIONS: Option[] = [
  *   options box marginTop          = 1
  *   one row per option             = OPTIONS.length
  */
+/**
+ * Modal content width given `cols` — the width available to the modal box,
+ * which is the viewport's inner width (terminal columns already minus the
+ * viewport's horizontal padding). The modal's own round border eats 2 columns
+ * and `paddingX={1}` another 2, so the wrappable content is `cols - 4`.
+ *
+ * Both the height reservation ({@link approvalRows}) and the render
+ * ({@link ApprovalPrompt}) derive their wrap width from this one helper, fed
+ * the same `cols`. If they diverged — e.g. the render measuring against the
+ * full terminal width while the reservation accounts for the viewport padding —
+ * the `⎿` body would be pre-wrapped wider than the real content box, Ink would
+ * re-wrap it, and the overflow would land at column 0 with no gutter (misaligned
+ * continuation rows) while overflowing the reserved height.
+ */
+export function approvalInnerWidth(cols: number): number {
+  return Math.max(1, cols - 4);
+}
+
 export function approvalRows(input: PermissionInput, cols: number): number {
-  const inner = Math.max(1, cols - 4);
+  const inner = approvalInnerWidth(cols);
   const { text: detail, truncated } = clampDetail(describeToolInput(input.input));
   const base =
     2 + // border top + bottom
@@ -142,6 +160,15 @@ export function approvalRows(input: PermissionInput, cols: number): number {
 export interface ApprovalPromptProps {
   decision: PermissionDecision;
   input: PermissionInput;
+  /**
+   * Width available to the modal box — the viewport's inner width (terminal
+   * columns minus the viewport's horizontal padding), the SAME value passed to
+   * {@link approvalRows}. Threaded in rather than read from `useStdout` so the
+   * render and the height reservation wrap against an identical content width
+   * (see {@link approvalInnerWidth}); deriving it independently from the full
+   * terminal width is what misaligned the `⎿` command body.
+   */
+  width: number;
   onAnswer: (answer: ApprovalAnswer) => void;
   onCancel?: () => void;
   /**
@@ -157,6 +184,7 @@ const SCROLL_PAGE_LINES = 10;
 
 export function ApprovalPrompt({
   input,
+  width,
   onAnswer,
   onCancel,
   onScroll,
@@ -195,8 +223,7 @@ export function ApprovalPrompt({
     if (match) onAnswer(match.value);
   });
 
-  const { stdout } = useStdout();
-  const inner = Math.max(1, (stdout?.columns ?? 80) - 4);
+  const inner = approvalInnerWidth(width);
   const { text: detail, truncated } = clampDetail(describeToolInput(input.input));
 
   return (

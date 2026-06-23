@@ -58,7 +58,7 @@ Tools the model can call — covering read/write, search, execution, code intell
 | `askUserQuestion` | Ask the user multiple-choice questions and wait for answers |
 | `loadSkill` | Load a skill on demand |
 
-### Slash commands
+### Built-in commands
 
 | Command | Capability |
 | --- | --- |
@@ -66,6 +66,7 @@ Tools the model can call — covering read/write, search, execution, code intell
 | `/model` · `/effort` | Switch models, adjust the thinking level |
 | `/compact` | Summarize long history |
 | `/clear` · `/resume` · `/rewind` | Start a fresh session, resume a past one, roll back history |
+| `/rename` | Give the current session a custom name (shown on the input frame) |
 | `/plan` | Investigate read-only and produce an implementation plan |
 | `/goal` | Set a success condition and auto-work toward it until met |
 | `/diff` · `/review` | Browse and review uncommitted changes |
@@ -73,6 +74,7 @@ Tools the model can call — covering read/write, search, execution, code intell
 | `/agents` · `/agent` | See sub-agent types, delegate a task |
 | `/commands` · `/skills` · `/mcp` · `/lsp` | See registered commands, skills, MCP servers, language servers |
 | `/usage` · `/context` | See token usage, cache hits, context fill |
+| `/tasks` | View and manage background commands (`runInBackground`) — list / stop |
 | `/predict` | Toggle next-input prediction |
 | `/exit` · `/quit` | Quit |
 

@@ -31,6 +31,7 @@ import {
 import {
   createAppStore,
   type AppStoreApi,
+  type Card,
   type CardOptions,
   type NoticeTone,
   type SpinnerHandle,
@@ -100,6 +101,13 @@ export class Screen {
   private detachResize: (() => void) | null = null;
   private detachMouse: (() => void) | null = null;
   private detachAltScreen: (() => void) | null = null;
+  /**
+   * Persistence hook for inline cards, wired by the CLI context. `append` is
+   * called for each pushed card (unless it opts out with `persist: false`);
+   * `clear` is called when {@link clearCards} drops the timeline (compaction),
+   * so the on-disk record is invalidated too. Null until wired / in tests.
+   */
+  private cardSink: { append: (card: Card) => void; clear: () => void } | null = null;
   private readonly syncOutput: boolean;
   private readonly cursorFollow: boolean;
 
@@ -300,11 +308,26 @@ export class Screen {
    */
   card(text: string, opts: CardOptions = {}): void {
     if (text.length === 0 && !opts.title) return;
-    this.store.getState().pushCard(text, opts);
+    const card = this.store.getState().pushCard(text, opts);
+    if (opts.persist !== false) this.cardSink?.append(card);
   }
 
   clearCards(): void {
     this.store.getState().clearCards();
+    this.cardSink?.clear();
+  }
+
+  /** Replace the on-screen cards (used to restore persisted cards on load). */
+  setCards(cards: Card[]): void {
+    this.store.getState().setCards(cards);
+  }
+
+  /**
+   * Wire card persistence. Passing null detaches it (e.g. before a session
+   * switch repoints the sink). See {@link cardSink}.
+   */
+  setCardSink(sink: { append: (card: Card) => void; clear: () => void } | null): void {
+    this.cardSink = sink;
   }
 
   setBanner(banner: BannerProps | null): void {
@@ -425,11 +448,13 @@ export class Screen {
   }
 
   /**
-   * Enable/disable the auto-approve bypass (`--dangerously-skip-permissions`).
-   * When on, `promptApproval` resolves to `always-allow` without opening a modal.
+   * Arm the auto-approve bypass (`--dangerously-skip-permissions`): switch into
+   * `bypassPermissions` mode and unlock it in the shift+tab cycle. While that
+   * mode is active, `promptApproval` resolves to `always-allow` without opening
+   * a modal; shift+tab can still cycle back out to a safe mode.
    */
-  setSkipPermissions(value: boolean): void {
-    this.store.getState().setSkipPermissions(value);
+  enableBypass(): void {
+    this.store.getState().enableBypass();
   }
 
   setTodos(todos: Todo[]): void {
@@ -532,7 +557,7 @@ export class Screen {
     // human, mirroring headless `approvalPolicy: "allow"`. Plan-mode denials
     // never reach here (they short-circuit in checkPermission), so the bypass
     // only covers tools that fall through to the engine's `ask`.
-    if (this.store.getState().skipPermissions) return "always-allow";
+    if (this.store.getState().permissionMode === "bypassPermissions") return "always-allow";
     return this.store.getState().openApprovalModal(decision, input, opts);
   }
 

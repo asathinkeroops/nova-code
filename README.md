@@ -58,7 +58,7 @@ pnpm dev -p "解释这段代码"           # headless 模式：只跑一轮，�
 | `askUserQuestion` | 向用户提多选问题并等待作答 |
 | `loadSkill` | 按需加载 skill |
 
-### Slash 命令
+### 内置命令
 
 | 命令 | 能力 |
 | --- | --- |
@@ -66,6 +66,7 @@ pnpm dev -p "解释这段代码"           # headless 模式：只跑一轮，�
 | `/model` · `/effort` | 切换模型、调整思考等级 |
 | `/compact` | 压缩长历史成摘要 |
 | `/clear` · `/resume` · `/rewind` | 开新会话、恢复历史会话、回退历史 |
+| `/rename` | 给当前会话起个名字（显示在输入框边框上） |
 | `/plan` | 只读调研出实现方案，不动手 |
 | `/goal` | 设定成功条件后自动推进直到达成 |
 | `/diff` · `/review` | 浏览、评审未提交改动 |
@@ -73,6 +74,7 @@ pnpm dev -p "解释这段代码"           # headless 模式：只跑一轮，�
 | `/agents` · `/agent` | 查看子 agent 类型、委派任务 |
 | `/commands` · `/skills` · `/mcp` · `/lsp` | 查看已注册命令、skills、MCP 服务器、语言服务器 |
 | `/usage` · `/context` | 查看 token 用量、缓存命中、上下文占用 |
+| `/tasks` | 查看和管理后台命令（`runInBackground`），支持 list / stop |
 | `/predict` | 开关下一条输入预测 |
 | `/exit` · `/quit` | 退出 |
 

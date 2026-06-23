@@ -16,8 +16,8 @@ export interface PermissionModeIndicator {
  * mode — the leading `!` runs the line in the shell instead of sending it to
  * the model. Coloured to match the bash-green input frame. Takes the indicator
  * slot ahead of the permission-mode label (a shell escape bypasses the model's
- * permission system, so that label would be misleading while it's active), but
- * still yields to the bypass-permissions safety warning.
+ * permission system, so that label — including the bypass-permissions warning —
+ * would be misleading while it's active, and is suppressed).
  */
 export const SHELL_MODE_INDICATOR: PermissionModeIndicator = {
   label: "! for shell mode",
@@ -28,8 +28,8 @@ export const SHELL_MODE_INDICATOR: PermissionModeIndicator = {
  * Colored label shown below the StatusLine for a non-default permission mode,
  * or null for `default` (no extra row). Each mode gets a distinct color for
  * at-a-glance distinction — green for accept-edits (writes flowing), cyan for
- * plan (read-only). The PERMISSION_MODE_HINT is rendered after it in the
- * StatusLine's dim color. Cycled with shift+tab.
+ * plan (read-only), red for the dangerous bypass. The PERMISSION_MODE_HINT is
+ * rendered after it in the StatusLine's dim color. Cycled with shift+tab.
  */
 export function permissionModeIndicator(mode: PermissionMode): PermissionModeIndicator | null {
   switch (mode) {
@@ -37,21 +37,12 @@ export function permissionModeIndicator(mode: PermissionMode): PermissionModeInd
       return { label: "⏵⏵ accept edits on", color: "green" };
     case "plan":
       return { label: "⏸ plan mode on", color: "cyan" };
+    case "bypassPermissions":
+      return { label: "⚠ bypass permissions on", color: "red" };
     default:
       return null;
   }
 }
-
-/**
- * Red warning shown below the StatusLine while `--dangerously-skip-permissions`
- * is armed (every approval auto-granted). Takes priority over the mode label —
- * the bypass is the more important safety fact — and carries no shift+tab hint
- * since it is a startup flag, not a cycled mode.
- */
-export const BYPASS_PERMISSIONS_INDICATOR: PermissionModeIndicator = {
-  label: "⚠ bypass permissions on",
-  color: "red",
-};
 
 /** `49h48m42s`, dropping leading units that are zero. */
 export function formatDuration(ms: number): string {

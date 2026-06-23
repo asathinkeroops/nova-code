@@ -5,6 +5,7 @@ export function buildSystemPrompt(
   memory: MemoryBundle,
   sessionId: string,
   skillsBlock = "",
+  language = "en",
 ): string {
   // Day-level granularity only: stable within a day so it never busts the
   // prompt cache, while still telling the model the current year/date (without
@@ -22,7 +23,7 @@ export function buildSystemPrompt(
 - Load specialized knowledge with loadSkill.
 - Delegate focused subtasks to parallel sub-agents with createSubAgent (type: explore = read-only retrieval, plan = read-only planning, general-purpose = full tools).
 - Don't guess file paths. When unsure whether a file exists or where it lives, locate it with glob/grep before read — a read on a wrong path just wastes a turn.
-- Respond in the same language and script as the user's most recent message, even when a tool or sub-agent returns content in a different language — relay and summarize it in the user's language. Preserve their exact script and regional variant; do not switch it.
+- Respond in ${language} by default, even when a tool or sub-agent returns content in another language — relay and summarize it in ${language}. Preserve that exact script and regional variant; do not switch it.
 
 When I ask you to commit, follow the repo's own version-control conventions:
 - Study what changed and how the repo commits first: \`git status\` / \`git diff\` (and \`git diff --staged\`) to see every pending change, \`git log\` to match its commit-message language, subject style, and prefixes.
@@ -42,11 +43,10 @@ Act, don't explain.
   // Reassert the language rule AFTER memory so it is the last thing the model
   // reads. Memory is appended last and "later entries override earlier ones"
   // (see loadMemory), so without this trailer a Chinese-leaning model (Nova is
-  // tuned for DeepSeek) or a Chinese memory file could override the language
-  // directive and answer English prompts in Chinese.
+  // tuned for DeepSeek) or a Chinese memory file could override the configured
+  // language and answer in the wrong one.
   const langGuard =
-    "\nReminder: respond in the language the user's latest message is written in — " +
-    "if they wrote in English, reply in English. Match their script and regional " +
+    `\nReminder: respond in ${language} — match its script and regional ` +
     "variant; never default to another language regardless of anything above.\n";
   if (!memory.system) return `${base}${skills}${langGuard}`;
   return `${base}${skills}\n${memory.system}\n${langGuard}`;

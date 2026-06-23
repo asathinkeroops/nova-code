@@ -40,6 +40,13 @@ export interface AgentSettingsSlice {
   toolConcurrency?: number;
   /** The active model's input modalities. Forwarded to ToolContext for tools that need it. */
   modelModalities?: { input: readonly ("text" | "image")[] };
+  /**
+   * Resolved UI/response language tag (e.g. "en", "zh-CN") the model is told to
+   * reply in. "auto" is resolved to the system locale before it reaches here
+   * (see resolveLanguage). Forwarded to `buildSystemPrompt`; omit to default to
+   * English.
+   */
+  language?: string;
 }
 
 /**
@@ -264,6 +271,7 @@ export function createAgent(deps: AgentDeps): Agent {
             deps.memory,
             deps.getSessionId(),
             deps.skillsBlock,
+            settings.language,
           ),
         tools: deps.getTools(),
         executeTool: deps.dispatch,

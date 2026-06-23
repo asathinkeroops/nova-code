@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { PermissionDeniedError, PermissionEngine, type AskCallback } from "./permission.js";
+import {
+  PermissionDeniedError,
+  PermissionEngine,
+  isWithin,
+  type AskCallback,
+} from "./permission.js";
 
 describe("PermissionEngine.evaluate", () => {
   it("falls back to defaultEffect when no rule matches", () => {
@@ -130,5 +135,76 @@ describe("PermissionEngine.check", () => {
     await expect(eng.check({ tool: "bash", input: { command: "ls" } })).rejects.toBeInstanceOf(
       PermissionDeniedError,
     );
+  });
+});
+
+describe("isWithin", () => {
+  it("treats a path as within itself", () => {
+    expect(isWithin("/ws/proj", "/ws/proj")).toBe(true);
+  });
+
+  it("treats a nested descendant as within", () => {
+    expect(isWithin("/ws/proj", "/ws/proj/src/a.ts")).toBe(true);
+  });
+
+  it("rejects a sibling that merely shares a string prefix", () => {
+    expect(isWithin("/ws/proj", "/ws/proj-other")).toBe(false);
+  });
+
+  it("rejects an ancestor of the parent", () => {
+    expect(isWithin("/ws/proj", "/ws")).toBe(false);
+  });
+
+  it("rejects when either side is not absolute", () => {
+    expect(isWithin("ws/proj", "/ws/proj/a")).toBe(false);
+    expect(isWithin("/ws/proj", "proj/a")).toBe(false);
+  });
+});
+
+describe("PermissionEngine rule evaluation details", () => {
+  it("honors first-match-wins ordering (deny before a later allow)", () => {
+    const eng = new PermissionEngine({
+      defaultEffect: "ask",
+      rules: [
+        { tool: "read", effect: "deny" },
+        { tool: "read", effect: "allow" },
+      ],
+    });
+    expect(eng.evaluate({ tool: "read", input: { path: "/x" } }).effect).toBe("deny");
+  });
+
+  it("requires every key in a multi-key match to match", () => {
+    const eng = new PermissionEngine({
+      defaultEffect: "ask",
+      rules: [{ tool: "t", effect: "allow", match: { a: "1", b: "2" } }],
+    });
+    expect(eng.evaluate({ tool: "t", input: { a: "1", b: "2" } }).effect).toBe("allow");
+    expect(eng.evaluate({ tool: "t", input: { a: "1", b: "3" } }).effect).toBe("ask");
+  });
+
+  it("matches a nested-object rule when the expected entries are a subset of actual", () => {
+    const eng = new PermissionEngine({
+      defaultEffect: "ask",
+      rules: [{ tool: "t", effect: "allow", match: { opts: { deep: "v" } } }],
+    });
+    expect(eng.evaluate({ tool: "t", input: { opts: { deep: "v", extra: 1 } } }).effect).toBe(
+      "allow",
+    );
+    expect(eng.evaluate({ tool: "t", input: { opts: { deep: "x" } } }).effect).toBe("ask");
+  });
+
+  it("only screens for dangerous commands on the bash tool", () => {
+    const eng = new PermissionEngine({
+      defaultEffect: "allow",
+      rules: [],
+    });
+    // A non-bash tool carrying a scary-looking "command" is never auto-denied.
+    expect(eng.evaluate({ tool: "shell", input: { command: "rm -rf /" } }).effect).toBe("allow");
+  });
+
+  it("does not crash on a bash call whose command is absent or non-string", () => {
+    const eng = new PermissionEngine({ defaultEffect: "allow", rules: [] });
+    expect(eng.evaluate({ tool: "bash", input: {} }).effect).toBe("allow");
+    expect(eng.evaluate({ tool: "bash", input: { command: 123 } }).effect).toBe("allow");
   });
 });

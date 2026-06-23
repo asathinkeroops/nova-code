@@ -1,25 +1,13 @@
-import { execFileSync } from "node:child_process";
-import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import {
-  createAgent,
-  emptyCursor,
-  loadMessages,
-  type Agent,
-  type PersistCursor,
-} from "@nova/agent";
-import { loadMemory, type MemoryBundle } from "@nova/context";
+import { createAgent, emptyCursor, loadMessages, type Agent } from "@nova/agent";
+import { loadMemory } from "@nova/context";
 import {
   createAnthropicModel,
-  resolveBudget,
   type AskUserFn,
-  type FileAccessLedger,
-  type MessageParam,
   type ModelClient,
-  type ThinkingLevel,
   type ToolExecutor,
 } from "@nova/core";
-import { SlashRegistry, type McpManager } from "@nova/external";
+import { SlashRegistry } from "@nova/external";
 import { LspManager, resolveServers } from "@nova/lsp";
 import { Transcript } from "@nova/observability";
 import {
@@ -35,12 +23,10 @@ import {
   createLogger,
   loadProjectHooks,
   mergeHooks,
-  resolveContextWindowSize,
   resolveMaxTokens,
   resolveModelId,
   resolveModelModalities,
   type Logger,
-  type Session,
   type Settings,
 } from "@nova/runtime";
 import { PermissionDeniedError, PermissionEngine } from "@nova/safety";
@@ -55,43 +41,17 @@ import {
   getSkillList,
   type SkillsOptions,
 } from "@nova/tools";
-import { ACCENT_RGB, accent, dim } from "./colors.js";
+import { dim } from "./colors.js";
 import { buildCompactor } from "./compactor.js";
-import { loadGoal, type GoalState } from "./goal.js";
+import { loadGoal } from "./goal.js";
 import { buildMcpManager } from "./mcp.js";
 import { canonicalizePath, canonicalizeRoots, PATH_INPUT_TOOLS } from "./path-safety.js";
 import { resolveModeDecision, resolvePermissionRules } from "./permissions.js";
 import { loadAgents } from "./agents.js";
 import { readCliVersion } from "./version.js";
-import {
-  handleClear,
-  handleCommands,
-  handleCompact,
-  handleContext,
-  handleDiff,
-  handleGoal,
-  handleHelp,
-  handleInit,
-  handleLsp,
-  handleMcp,
-  handlePlan,
-  handleModel,
-  handlePredict,
-  handleRename,
-  handleAgent,
-  handleAgents,
-  handleResume,
-  handleReview,
-  handleRewind,
-  handleSkills,
-  handleEffort,
-  handleUsage,
-  resolveSessionRates,
-} from "./commands/index.js";
-import { TOOL_SPINNER_DELAY_MS, WORKING_WORDS } from "./constants.js";
 import { UI_FRAME_MS } from "./ui/frame.js";
-import { fetchDeepSeekBalance } from "./deepseek-balance.js";
 import { appendToolDetail, loadDisplaySidecar } from "./display-sidecar.js";
+import { appendCard, appendCardsCleared, loadCards } from "./card-store.js";
 import { registerUiHooks } from "./hooks.js";
 import { restoreUsageFromTranscript } from "./usage-restore.js";
 import { UserHooks } from "./user-hooks.js";
@@ -100,183 +60,40 @@ import { renderSkillsBlock } from "./skills-render.js";
 import { loadFileCommandsInto } from "./slash.js";
 import { loadSessionName } from "./session-name.js";
 import { resolveSession } from "./session.js";
-import { Screen, fatalExit, type Spinner } from "./screen.js";
+import { Screen, fatalExit } from "./screen.js";
+import type { CliContext, CliRuntimeOptions } from "./ctx-types.js";
+import {
+  armToolSpinner,
+  clearToolSpinner,
+  currentThinkingBudget,
+  INTERRUPT_HINT,
+  persist,
+  refreshBalance,
+  refreshBanner,
+  refreshTaskFooter,
+  refreshTodoFooter,
+  stopSpinner,
+  thinkingLevelLabel,
+} from "./ctx-runtime.js";
+import { registerBuiltinSlashCommands } from "./builtin-commands.js";
 
-export interface CliRuntimeOptions {
-  cwd?: string;
-  resume?: string;
-  continue?: boolean;
-  noTranscript?: boolean;
-  noPretty?: boolean;
-}
-
-/**
- * The shared mutable state that the REPL, slash commands, and runTurn all
- * read and mutate. Everything that used to live in run()'s closure now lives
- * here. Helpers exported from this module take `ctx` as their first arg.
- */
-export interface CliContext {
-  // ===== Mutable: changes on /resume =====
-  session: Session;
-  logger: Logger;
-  logPath: string;
-  transcript: Transcript;
-  persistCursor: PersistCursor;
-  resumed: boolean;
-  /** Per-session file snapshotter backing `/rewind`. Rebuilt on /resume. */
-  snapshots: SnapshotStore;
-
-  // ===== Mutable: changes on /effort, /predict =====
-  settings: Settings;
-  model: ModelClient;
-  /**
-   * Non-tracked mirror of `model` used by next-input prediction. Predict is a
-   * silent background call; it must NOT carry the live-stream / spinner-token
-   * callbacks (`onStreamText` et al.), or its predicted task text leaks into the
-   * message feed as a phantom assistant draft. Same reasoning as sub-agents
-   * (see the `buildModel(id, false)` usage below).
-   */
-  predictModel: ModelClient;
-  thinkingLevel: ThinkingLevel;
-  thinkingBudgetOverride: number | undefined;
-
-  /**
-   * Active `/goal` for this session, or null. While set, the REPL auto-continues
-   * after each turn until the condition is met (judged by a fast model) or the
-   * continuation budget runs out. Persisted to `{session.dir}/goal.json`, so it
-   * is reloaded on resume / session switch.
-   */
-  goal: GoalState | null;
-
-  /**
-   * User-assigned name for this session (`/rename`), or null when unset.
-   * Persisted to the shared `~/.nova/session-names.json` (keyed by session id)
-   * and shown as a badge on the InputBox top frame. Re-seeded from disk on
-   * session switch (`/resume`, `/clear`).
-   */
-  sessionName: string | null;
-
-  // ===== Mutable: UI / per-turn state =====
-  spinner: Spinner | null;
-  toolSpinnerTimer: NodeJS.Timeout | null;
-  nextPlaceholder: string;
-  /**
-   * Carrier for the auto-compact summary card across the compactor →
-   * post_compact window. The compactor's onAutoCompact callback stashes the
-   * info here; the post_compact UI hook reads it back after the mandatory
-   * `clearCards()` and pushes the card, so the notice survives.
-   */
-  pendingAutoCompactNotice: { before: number; after: number; transcriptPath?: string } | null;
-
-  // ===== Read-only after init =====
-  readonly agent: Agent;
-  readonly apiKey: string;
-  readonly workspace: string;
-  readonly memory: MemoryBundle;
-  /**
-   * Pre-rendered `<available-skills>` block injected into the system prompt.
-   * Empty string when skills are disabled or no SKILL.md files were found.
-   */
-  readonly skillsBlock: string;
-  readonly version: string;
-  readonly noTranscript: boolean;
-  readonly noPretty: boolean;
-  readonly screen: Screen;
-  /**
-   * Drop the in-flight streaming draft AND cancel any pending throttled flush,
-   * so a late timer can't resurrect a draft the final message already replaced.
-   * Called at each turn handoff (post_messages) and on request error/abort.
-   */
-  readonly resetLiveStream: () => void;
-  readonly todoStore: TodoStore;
-  readonly taskStore: TaskStore;
-  readonly longRunningManager: LongRunningCommandManager;
-  /** LSP code-intelligence manager. Undefined when settings.lsp.enabled is false. */
-  readonly lspManager: LspManager | undefined;
-  /** OS command sandbox handle. Inactive (bridge undefined) unless opted in via settings.sandbox. */
-  readonly sandbox: SandboxControl;
-  /** User-configured shell hooks (settings.hooks). Lifecycle events fire via `userHooks.fire(...)`. */
-  readonly userHooks: UserHooks;
-  readonly registry: SlashRegistry;
-  readonly tools: ToolRegistry;
-  /**
-   * Available sub-agent definitions (built-ins + custom defs loaded from
-   * .nova/agents / .claude/agents). Seeded with built-ins even when sub-agents
-   * are disabled; `/agents` lists it and `/agents reload` refreshes it in place.
-   */
-  readonly agents: AgentRegistry;
-  /** Connected MCP servers (tools already bridged into `tools`), or null when disabled/none. */
-  readonly mcp: McpManager | null;
-  readonly dispatch: ToolExecutor;
-  readonly fileLedger: FileAccessLedger;
-  readonly permission: PermissionEngine;
-  readonly checkPermission: (
-    tool: string,
-    input: unknown,
-  ) => Promise<{ granted: boolean; reason?: string }>;
-  readonly compactor: (messages: MessageParam[]) => Promise<MessageParam[]>;
-
-  // ===== Factory closures (close over apiKey / settings, etc.) =====
-  readonly buildLogger: (destination: string) => Logger;
-  readonly buildModel: (id: string, trackTokens?: boolean) => ModelClient;
-}
-
-/** Current branch of the workspace repo, or null when not a repo / detached. */
-function currentGitBranch(cwd: string): string | null {
-  try {
-    const out = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
-      cwd,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
-    return out && out !== "HEAD" ? out : null;
-  } catch {
-    return null;
-  }
-}
-
-export function refreshBanner(ctx: CliContext): void {
-  // Effective window follows the active model tier (a tier may override the
-  // top-level contextWindowSize); recomputed here so /model switches it live.
-  const contextWindowSize = resolveContextWindowSize(ctx.settings, ctx.settings.model);
-  ctx.screen.setBanner({
-    version: ctx.version,
-    model: ctx.settings.model,
-    cwd: ctx.workspace,
-    home: homedir(),
-    sessionId: ctx.session.id,
-    contextWindowSize,
-    thinkingLabel: thinkingLevelLabel(ctx),
-  });
-  ctx.screen.setStatusMeta({
-    sessionStartedAt: ctx.session.createdAt.getTime(),
-    gitBranch: currentGitBranch(ctx.workspace),
-    contextWindowSize,
-  });
-  ctx.screen.setCostRates(resolveSessionRates(ctx) ?? null);
-}
-
-/**
- * Refresh the DeepSeek account balance shown on the StatusLine's second row.
- * No-op (clears nothing) unless the base URL points at DeepSeek's official API;
- * best-effort and self-contained — `fetchDeepSeekBalance` swallows its own
- * errors and returns null, which `setAccountBalance` treats as "hide". Always
- * call fire-and-forget so a slow request never delays a turn.
- */
-export async function refreshBalance(ctx: CliContext): Promise<void> {
-  const balance = await fetchDeepSeekBalance(ctx.settings);
-  // Leave a previously-fetched balance in place on a transient failure rather
-  // than blanking the segment; only overwrite when we actually got a figure.
-  if (balance) ctx.screen.setAccountBalance(balance);
-}
-
-export function refreshTodoFooter(ctx: CliContext): void {
-  ctx.screen.setTodos(ctx.todoStore.list());
-}
-
-export async function refreshTaskFooter(ctx: CliContext): Promise<void> {
-  ctx.screen.setTasks(await ctx.taskStore.list());
-}
+// Re-export the split-out types and ctx helpers so existing
+// `import … from "./context.js"` call sites keep working unchanged after the
+// split into ctx-types.ts / ctx-runtime.ts / builtin-commands.ts.
+export type { CliContext, CliRuntimeOptions } from "./ctx-types.js";
+export {
+  armToolSpinner,
+  clearToolSpinner,
+  currentThinkingBudget,
+  INTERRUPT_HINT,
+  persist,
+  refreshBalance,
+  refreshBanner,
+  refreshTaskFooter,
+  refreshTodoFooter,
+  stopSpinner,
+  thinkingLevelLabel,
+};
 
 /** Wire an `InterjectFn` onto the agent's `pre_continue` hook. */
 function registerInterject(agent: Agent, fn: InterjectFn): void {
@@ -285,277 +102,6 @@ function registerInterject(agent: Agent, fn: InterjectFn): void {
     if (!msgs || msgs.length === 0) return undefined;
     return { messages: msgs };
   });
-}
-
-/** Default spinner hint shown while a turn / tool is running. */
-export const INTERRUPT_HINT = "esc to interrupt";
-
-export function stopSpinner(ctx: CliContext): void {
-  if (ctx.spinner) {
-    ctx.spinner.stop();
-    ctx.spinner = null;
-  }
-}
-
-/**
- * Tool execution spinner: starts 300ms after a tool enters its execution
- * phase, stops on post_tool_use. The delay swallows the visual flash for fast
- * tools (Read of small files, Glob with few hits, etc.).
- */
-export function armToolSpinner(ctx: CliContext): void {
-  if (ctx.toolSpinnerTimer) clearTimeout(ctx.toolSpinnerTimer);
-  ctx.toolSpinnerTimer = setTimeout(() => {
-    ctx.toolSpinnerTimer = null;
-    ctx.spinner = ctx.screen.startSpinner(
-      { words: WORKING_WORDS, tint: ACCENT_RGB, colorize: accent },
-      INTERRUPT_HINT,
-    );
-  }, TOOL_SPINNER_DELAY_MS);
-}
-
-export function clearToolSpinner(ctx: CliContext): void {
-  if (ctx.toolSpinnerTimer) {
-    clearTimeout(ctx.toolSpinnerTimer);
-    ctx.toolSpinnerTimer = null;
-  }
-  stopSpinner(ctx);
-}
-
-export async function persist(ctx: CliContext): Promise<void> {
-  try {
-    await ctx.agent.persist();
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    ctx.screen.card(msg, { kind: "warn", title: "persist failed" });
-  }
-}
-
-export function currentThinkingBudget(ctx: CliContext): number {
-  return resolveBudget(ctx.thinkingLevel, ctx.thinkingBudgetOverride);
-}
-
-function registerBuiltinSlashCommands(ctx: CliContext): void {
-  const handled = { kind: "handled" as const };
-  ctx.registry.register({
-    name: "help",
-    description: "show this help",
-    source: { kind: "builtin" },
-    run: () => {
-      handleHelp(ctx);
-      return handled;
-    },
-  });
-  ctx.registry.register({
-    name: "effort",
-    description: "show or change the extended-thinking level",
-    argHint: "[<level>]",
-    source: { kind: "builtin" },
-    run: async (_c, args) => {
-      await handleEffort(ctx, args.trim());
-      return handled;
-    },
-  });
-  ctx.registry.register({
-    name: "model",
-    description: "show or switch the active model tier",
-    argHint: "[<name>|<id>]",
-    source: { kind: "builtin" },
-    run: async (_c, args) => {
-      await handleModel(ctx, args.trim());
-      return handled;
-    },
-  });
-  ctx.registry.register({
-    name: "clear",
-    description: "start a fresh session (the current one stays resumable)",
-    source: { kind: "builtin" },
-    run: async () => {
-      await handleClear(ctx);
-      return handled;
-    },
-  });
-  ctx.registry.register({
-    name: "compact",
-    description: "summarize history into a single message",
-    argHint: "[focus…]",
-    source: { kind: "builtin" },
-    run: async (_c, args) => {
-      await handleCompact(ctx, args.trim());
-      return handled;
-    },
-  });
-  ctx.registry.register({
-    name: "rename",
-    description: "give this session a custom name (shown on the input frame)",
-    argHint: "[<name>|clear]",
-    source: { kind: "builtin" },
-    run: async (_c, args) => {
-      await handleRename(ctx, args);
-      return handled;
-    },
-  });
-  ctx.registry.register({
-    name: "resume",
-    description: "switch to a saved session",
-    argHint: "[<id>]",
-    source: { kind: "builtin" },
-    run: async (_c, args) => {
-      await handleResume(ctx, args.trim());
-      return handled;
-    },
-  });
-  ctx.registry.register({
-    name: "rewind",
-    description: "rewind history to a previous message (history after it is discarded)",
-    argHint: "[<n>]",
-    source: { kind: "builtin" },
-    run: async (_c, args) => {
-      await handleRewind(ctx, args.trim());
-      return handled;
-    },
-  });
-  ctx.registry.register({
-    name: "init",
-    description: "generate or refresh NOVA.md by analyzing the codebase",
-    argHint: "[focus…]",
-    source: { kind: "builtin" },
-    run: (_c, args) => handleInit(args),
-  });
-  ctx.registry.register({
-    name: "plan",
-    description: "plan a task via a read-only plan sub-agent (no implementation)",
-    argHint: "<task goal>",
-    source: { kind: "builtin" },
-    run: (_c, args) => handlePlan(args),
-  });
-  ctx.registry.register({
-    name: "diff",
-    description: "browse uncommitted changes in a modal: file list → per-file diff",
-    argHint: "[pathspec]",
-    source: { kind: "builtin" },
-    run: async (_c, args) => {
-      await handleDiff(ctx, args.trim());
-      return handled;
-    },
-  });
-  ctx.registry.register({
-    name: "review",
-    description: "review the current uncommitted diff (read-only)",
-    argHint: "[focus…]",
-    source: { kind: "builtin" },
-    run: (_c, args) => handleReview(args),
-  });
-  ctx.registry.register({
-    name: "goal",
-    description: "set, show, or clear a success condition Nova auto-works toward",
-    argHint: "[<condition>|clear]",
-    source: { kind: "builtin" },
-    run: (_c, args) => handleGoal(ctx, args.trim()),
-  });
-  ctx.registry.register({
-    name: "predict",
-    description: "show or toggle next-input prediction",
-    argHint: "[on|off]",
-    source: { kind: "builtin" },
-    run: async (_c, args) => {
-      await handlePredict(ctx, args.trim());
-      return handled;
-    },
-  });
-  ctx.registry.register({
-    name: "commands",
-    description: "list registered slash commands; use `reload` to rescan files",
-    argHint: "[reload]",
-    source: { kind: "builtin" },
-    run: async (_c, args) => {
-      await handleCommands(ctx, args.trim());
-      return handled;
-    },
-  });
-  ctx.registry.register({
-    name: "skills",
-    description: "list discovered skills (SKILL.md)",
-    source: { kind: "builtin" },
-    run: () => {
-      handleSkills(ctx);
-      return handled;
-    },
-  });
-  ctx.registry.register({
-    name: "agents",
-    description: "list available sub-agent types; `reload` to rescan agent files",
-    argHint: "[reload]",
-    source: { kind: "builtin" },
-    run: async (_c, args) => {
-      await handleAgents(ctx, args.trim());
-      return handled;
-    },
-  });
-  ctx.registry.register({
-    name: "agent",
-    description: "delegate a task to a named sub-agent",
-    argHint: "<name> <task>",
-    source: { kind: "builtin" },
-    run: (_c, args) => handleAgent(ctx, args),
-  });
-  ctx.registry.register({
-    name: "mcp",
-    description: "show MCP server status; `tools` to list bridged tools",
-    argHint: "[tools]",
-    source: { kind: "builtin" },
-    run: (_c, args) => {
-      handleMcp(ctx, args);
-      return handled;
-    },
-  });
-  ctx.registry.register({
-    name: "lsp",
-    description: "show configured language servers and their status",
-    source: { kind: "builtin" },
-    run: () => {
-      handleLsp(ctx);
-      return handled;
-    },
-  });
-  ctx.registry.register({
-    name: "usage",
-    description: "show this session's token usage and cache hit rate",
-    source: { kind: "builtin" },
-    run: () => {
-      handleUsage(ctx);
-      return handled;
-    },
-  });
-  ctx.registry.register({
-    name: "context",
-    description: "visualize the context window: what fills it, by category",
-    source: { kind: "builtin" },
-    run: () => {
-      handleContext(ctx);
-      return handled;
-    },
-  });
-  ctx.registry.register({
-    name: "exit",
-    description: "leave the REPL",
-    source: { kind: "builtin" },
-    run: () => handled,
-  });
-  ctx.registry.register({
-    name: "quit",
-    description: "leave the REPL",
-    source: { kind: "builtin" },
-    run: () => handled,
-  });
-}
-
-export function thinkingLevelLabel(ctx: CliContext): string | undefined {
-  const budget = currentThinkingBudget(ctx);
-  if (budget <= 0) return undefined;
-  if (ctx.thinkingBudgetOverride && ctx.thinkingBudgetOverride > 0) {
-    return `${budget}t`;
-  }
-  return ctx.thinkingLevel;
 }
 
 export async function createContext(
@@ -1044,6 +590,7 @@ export async function createContext(
       noTranscript: ctx.noTranscript,
       toolConcurrency: ctx.settings.toolConcurrency,
       modelModalities: resolveModelModalities(ctx.settings, ctx.settings.model),
+      language: ctx.settings.language,
     }),
     getTools: () => ctx.tools.definitions(),
     dispatch: ctx.dispatch,
@@ -1217,6 +764,21 @@ export async function createContext(
     logger.info({ sources: memory.sources }, "memory loaded");
   }
 
+  // Persist inline cards so the timeline survives a resume / session switch.
+  // The closure reads `ctx.session.dir` lazily so it follows session switches.
+  // Wired here (after startup banners) so transient startup notices — project
+  // hooks, the "loaded N" notice below — don't get recorded; live cards do.
+  ctx.screen.setCardSink({
+    append: (card) =>
+      void appendCard(ctx.session.dir, card).catch((err) =>
+        ctx.logger.warn({ err: String(err) }, "failed to persist card"),
+      ),
+    clear: () =>
+      void appendCardsCleared(ctx.session.dir).catch((err) =>
+        ctx.logger.warn({ err: String(err) }, "failed to persist card clear"),
+      ),
+  });
+
   if (resumed) {
     await ctx.snapshots.load();
     try {
@@ -1228,12 +790,14 @@ export async function createContext(
               count: msgs.length,
               lastLine: JSON.stringify(msgs[msgs.length - 1]),
             };
-      // Push the "loaded N" card before setMessages so its anchor (-1) puts
-      // it above the restored history rather than below it.
-      ctx.screen.card(dim(`loaded ${msgs.length} message(s) from disk`));
       const sidecar = await loadDisplaySidecar(session.dir);
       ctx.screen.setUserDisplayOverrides(sidecar.userOverrides);
       ctx.screen.setToolDetails(sidecar.toolDetails);
+      // Restore persisted inline cards first, then push the ephemeral "loaded N"
+      // notice (persist:false so it isn't re-recorded). Both happen before
+      // setMessages so the notice's anchor (-1) puts it above the history.
+      ctx.screen.setCards(await loadCards(session.dir));
+      ctx.screen.card(dim(`loaded ${msgs.length} message(s) from disk`), { persist: false });
       ctx.screen.setMessages(msgs);
       // Restore an active /goal so auto-continuation survives a restart.
       ctx.goal = await loadGoal(session.dir);

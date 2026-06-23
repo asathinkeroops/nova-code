@@ -173,26 +173,41 @@ function renderCard(card: Card): string {
 
 interface UseView {
   header: string;
-  /** Multi-line body (diff / file content) printed below the header, blank line above. */
+  /**
+   * Raw multi-line body (command / diff / file content) shown as child rows
+   * under the header's `⎿` gutter. Rendered uniformly by {@link renderToolCall}
+   * via {@link gutterIndent}, so individual tools return it un-guttered; plain
+   * text should be pre-wrapped with {@link wrapBodyToWidth} for aligned wrapping.
+   */
   body?: string;
 }
 
 interface ToolStr {
   use?(input: Record<string, unknown>, width: number): UseView;
   result?(result: ToolResultBlock, input: Record<string, unknown> | undefined): string;
-  /** Collapse header+result onto one line (for summary-only tools). */
-  inline?: boolean;
 }
 
 /**
- * Render a command (long or multi-line) as child-node body rows under the `⎿`
- * gutter, mirroring the thinking block: the first visual row carries the
- * gutter, and every wrapped or explicit continuation row hangs under it at the
- * same indent. Wrapping at the body width keeps long lines aligned instead of
- * falling back to column 0 the way the caller's plain wrap would.
+ * Hang a multi-line body under a single `⎿` child gutter, mirroring the thinking
+ * block: the first row carries the elbow, every continuation row aligns under it
+ * at {@link THINKING_INDENT}. The body is taken as-is (already wrapped / styled);
+ * use {@link wrapBodyToWidth} first for plain text that needs aligned wrapping.
  */
-export function renderCommandBody(cmd: string, width: number): string {
-  const trimmed = cmd.replace(/\s+$/u, "");
+function gutterIndent(body: string): string {
+  return body
+    .split("\n")
+    .map((line, i) => `${dim(i === 0 ? "  ⎿  " : THINKING_INDENT)}${line}`)
+    .join("\n");
+}
+
+/**
+ * Hard-wrap each logical line of plain text to the gutter body width so long
+ * lines stay aligned under the gutter instead of falling back to column 0. ANSI
+ * styled bodies (diffs / highlighted file content) are already laid out and skip
+ * this — they go straight to {@link gutterIndent}.
+ */
+function wrapBodyToWidth(text: string, width: number): string {
+  const trimmed = text.replace(/\s+$/u, "");
   const bodyWidth = Math.max(1, width - THINKING_INDENT.length);
   const visual: string[] = [];
   for (const logical of trimmed.split("\n")) {
@@ -200,7 +215,15 @@ export function renderCommandBody(cmd: string, width: number): string {
       ...wrapAnsi(logical, bodyWidth, { hard: true, wordWrap: false, trim: false }).split("\n"),
     );
   }
-  return visual.map((line, i) => `${dim(i === 0 ? "  ⎿  " : THINKING_INDENT)}${line}`).join("\n");
+  return visual.join("\n");
+}
+
+/**
+ * Render a command (long or multi-line) as `⎿`-gutter child rows. Used by the
+ * approval prompt to preview a bash command exactly as the transcript prints it.
+ */
+export function renderCommandBody(cmd: string, width: number): string {
+  return gutterIndent(wrapBodyToWidth(cmd, width));
 }
 
 type ToolState = "pending" | "ok" | "err";
@@ -250,14 +273,14 @@ function errLine(result: ToolResultBlock): string {
 
 const tools: Record<string, ToolStr> = {
   bash: {
-    inline: true,
     use: (input, width) => {
       const cmd = typeof input.command === "string" ? input.command : JSON.stringify(input);
       // Keep the header a single clean row (`● bash`) and show the command as a
       // child node under the `⎿` gutter, like a thinking block. Heredocs and
       // long one-liners stay readable instead of being flattened/truncated into
-      // the header, and the one-row-per-header height accounting still holds.
-      return { header: header("bash"), body: renderCommandBody(cmd, width) };
+      // the header. Pre-wrap to the body width so continuation rows stay aligned;
+      // renderToolCall adds the gutter.
+      return { header: header("bash"), body: wrapBodyToWidth(cmd, width) };
     },
     result: (result) => {
       if (result.is_error) return errLine(result);
@@ -268,7 +291,6 @@ const tools: Record<string, ToolStr> = {
     },
   },
   read: {
-    inline: true,
     use: (input) => {
       const path = aliasedPath(input) ?? "?";
       const off = typeof input.offset === "number" ? input.offset : undefined;
@@ -289,7 +311,6 @@ const tools: Record<string, ToolStr> = {
     },
   },
   write: {
-    inline: true,
     use: (input) => {
       const path = aliasedPath(input) ?? "?";
       const content = typeof input.content === "string" ? input.content : "";
@@ -309,7 +330,6 @@ const tools: Record<string, ToolStr> = {
     },
   },
   askUserQuestion: {
-    inline: true,
     use: (input) => {
       const qs = Array.isArray(input.questions) ? input.questions : [];
       const headers = qs
@@ -328,7 +348,6 @@ const tools: Record<string, ToolStr> = {
     },
   },
   edit: {
-    inline: true,
     use: (input) => {
       const path = aliasedPath(input) ?? "?";
       const oldStr = typeof input.old_string === "string" ? input.old_string : "";
@@ -347,7 +366,6 @@ const tools: Record<string, ToolStr> = {
     },
   },
   grep: {
-    inline: true,
     use: (input) => {
       const pattern = typeof input.pattern === "string" ? input.pattern : "";
       const path = typeof input.path === "string" ? input.path : "";
@@ -380,7 +398,6 @@ const tools: Record<string, ToolStr> = {
     },
   },
   glob: {
-    inline: true,
     use: (input) => {
       const pattern = typeof input.pattern === "string" ? input.pattern : "";
       const path = typeof input.path === "string" ? input.path : "";
@@ -397,7 +414,6 @@ const tools: Record<string, ToolStr> = {
     },
   },
   webfetch: {
-    inline: true,
     use: (input) => {
       const url = typeof input.url === "string" ? input.url : "?";
       const format = typeof input.format === "string" ? input.format : "markdown";
@@ -412,7 +428,6 @@ const tools: Record<string, ToolStr> = {
     },
   },
   websearch: {
-    inline: true,
     use: (input) => {
       const query = typeof input.query === "string" ? input.query : "";
       const limit = typeof input.limit === "number" ? input.limit : undefined;
@@ -435,7 +450,6 @@ const tools: Record<string, ToolStr> = {
     },
   },
   loadSkill: {
-    inline: true,
     use: (input) => {
       const name = typeof input.name === "string" ? input.name : "?";
       return { header: header("skill", name) };
@@ -446,7 +460,6 @@ const tools: Record<string, ToolStr> = {
     },
   },
   runInBackground: {
-    inline: true,
     use: (input) => {
       const cmd = typeof input.command === "string" ? input.command : JSON.stringify(input);
       return { header: header("bg", dim(trim(flatten(cmd), 160))) };
@@ -464,7 +477,6 @@ const tools: Record<string, ToolStr> = {
     },
   },
   createSubAgent: {
-    inline: true,
     use: (input) => {
       const description = typeof input.description === "string" ? input.description : "sub-agent";
       const type = typeof input.type === "string" ? input.type : "";
@@ -518,32 +530,35 @@ function renderToolCall(
   const head = `${marker(toolState(result))} ${view.header}`;
   const detailRows = renderSubAgentDetails(details);
 
-  if (result === undefined) {
-    // Inline tools (bash / read / write / edit / ...) keep the header on a
-    // single row even while pending — skip the `⎿ …` placeholder row so the
-    // approval-time layout matches the post-result layout, and tuck the body
-    // right under the header (no blank row).
-    if (def?.inline) {
-      const body = view.body ? `\n${view.body}` : "";
-      return `${head}${body}${detailRows}`;
-    }
-    const body = view.body ? `\n\n${view.body}` : "";
-    return `${head}\n  ${dim("⎿")}  ${dim("…")}${body}${detailRows}`;
+  // Title + child nodes, mirroring a thinking block: a clean header row, with
+  // its detail (body and/or result) hanging underneath as children under a
+  // single `⎿` elbow. Nothing is ever collapsed onto the title line, so every
+  // tool call reads the same way.
+  const resultStr =
+    result === undefined
+      ? undefined
+      : def?.result
+        ? def.result(result, use.input as Record<string, unknown> | undefined)
+        : result.is_error
+          ? errLine(result)
+          : okLine(flatten(trim(contentToString(result.content), 200)));
+
+  // Body-bearing tools (bash command, edit/write diff or file content): hang the
+  // body under a single `⎿` gutter and let the result join it as one more
+  // aligned continuation row — one elbow total, exactly like a thinking block.
+  // The body collapses to a short preview once the call is done (compactBody);
+  // while pending it shows in full and the blinking marker dot signals progress.
+  if (view.body) {
+    const raw = resultStr === undefined ? view.body : compactBody(view.body);
+    const gut = gutterIndent(raw);
+    if (resultStr === undefined) return `${head}\n${gut}${detailRows}`;
+    return `${head}\n${gut}\n${THINKING_INDENT}${resultStr}${detailRows}`;
   }
 
-  const resultStr = def?.result
-    ? def.result(result, use.input as Record<string, unknown> | undefined)
-    : result.is_error
-      ? errLine(result)
-      : okLine(flatten(trim(contentToString(result.content), 200)));
-
-  if (def?.inline) {
-    const body = view.body ? `\n${compactBody(view.body)}` : "";
-    return `${head}  ${resultStr}${body}${detailRows}`;
-  }
-
-  const body = view.body ? `\n\n${compactBody(view.body)}` : "";
-  return `${head}\n  ${dim("⎿")}  ${resultStr}${body}${detailRows}`;
+  // Body-less tools: the result is the elbow child (a `⎿ …` placeholder while
+  // pending).
+  const child = resultStr === undefined ? dim("…") : resultStr;
+  return `${head}\n  ${dim("⎿")}  ${child}${detailRows}`;
 }
 
 // ─── read batch ────────────────────────────────────────────────────────────

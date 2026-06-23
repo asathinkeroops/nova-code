@@ -14,6 +14,7 @@ import {
   mergeHooks,
   parseSettings,
   resolveContextWindowSize,
+  resolveLanguage,
   resolveMaxTokens,
   resolveModelId,
   settingsSchema,
@@ -38,6 +39,10 @@ describe("settingsSchema", () => {
     expect(s.subagent.enabled).toBe(true);
     expect(s.subagent.maxTurns).toBe(100);
     expect(s.subagent.maxTokens).toBe(32768);
+  });
+
+  it("defaults language to auto", () => {
+    expect(parseSettings({}).language).toBe("auto");
   });
 
   it("accepts slash overrides", () => {
@@ -317,5 +322,44 @@ describe("isDangerousBash", () => {
     ["echo hello", false],
   ])("classifies %s -> %s", (cmd, expected) => {
     expect(isDangerousBash(cmd)).toBe(expected);
+  });
+});
+
+describe("resolveLanguage", () => {
+  const auto = parseSettings({});
+  const empty = {} as NodeJS.ProcessEnv;
+
+  it("returns a non-auto setting verbatim, ignoring the environment", () => {
+    const s = parseSettings({ language: "fr-CA" });
+    expect(resolveLanguage(s, { LANG: "zh_CN.UTF-8" } as NodeJS.ProcessEnv)).toBe("fr-CA");
+  });
+
+  it("normalizes a POSIX locale to a BCP-47-ish tag", () => {
+    expect(resolveLanguage(auto, { LANG: "zh_CN.UTF-8" } as NodeJS.ProcessEnv)).toBe("zh-CN");
+  });
+
+  it("prefers LC_ALL over LANG over LANGUAGE", () => {
+    expect(
+      resolveLanguage(auto, {
+        LANGUAGE: "de",
+        LANG: "ja_JP.UTF-8",
+        LC_ALL: "en_US.UTF-8",
+      } as NodeJS.ProcessEnv),
+    ).toBe("en-US");
+  });
+
+  it("treats C/POSIX as no-preference and falls back when env is the only source", () => {
+    // On non-macOS hosts (where there is no AppleLocale fallback) C.UTF-8
+    // resolves to the explicit fallback.
+    if (process.platform !== "darwin") {
+      expect(resolveLanguage(auto, { LANG: "C.UTF-8" } as NodeJS.ProcessEnv)).toBe("en");
+      expect(resolveLanguage(auto, empty)).toBe("en");
+    }
+  });
+
+  it("honours a custom fallback", () => {
+    if (process.platform !== "darwin") {
+      expect(resolveLanguage(auto, empty, "zh-CN")).toBe("zh-CN");
+    }
   });
 });

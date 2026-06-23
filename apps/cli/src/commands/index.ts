@@ -18,5 +18,6 @@ export { handleResume } from "./resume.js";
 export { handleReview } from "./review.js";
 export { handleRewind } from "./rewind.js";
 export { handleSkills } from "./skills.js";
+export { handleTasks } from "./tasks.js";
 export { handleEffort } from "./effort.js";
 export { handleUsage, resolveSessionRates } from "./usage.js";

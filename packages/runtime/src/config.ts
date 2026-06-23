@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -255,6 +256,11 @@ export const settingsSchema = z.object({
   models: z.record(modelEntrySchema).default({ ...DEFAULT_MODELS }),
   baseURL: z.string().url().default(DEFAULT_BASE_URL),
   sessionDir: z.string().min(1).optional(),
+  // UI / response language. "auto" (the default) follows the current system
+  // locale (resolved from $LANG / $LC_ALL / $LANGUAGE, see resolveLanguage());
+  // any other value is a BCP-47-ish language tag (e.g. "en", "zh-CN") used
+  // verbatim. Stored as a free string so new locales need no schema change.
+  language: z.string().min(1).default("auto"),
   // When a single response is truncated by the `maxTokens` output cap
   // (stop_reason: "max_tokens"), the loop can re-prompt the model to continue
   // from where it left off instead of hard-stopping the whole turn. This caps
@@ -740,6 +746,55 @@ export function resolveModelModalities(
   return { input: ["text"] };
 }
 
+/** Normalize a raw locale to a BCP-47-ish tag: take the part before any
+ * `.charset` / `:`-separated extra locale and swap `_` → `-`
+ * ("zh_CN.UTF-8" → "zh-CN"). Returns undefined for the no-preference locales
+ * (unset, "C", "POSIX"). */
+function normalizeLocale(raw: string | undefined): string | undefined {
+  const tag = raw?.split(/[.:]/)[0]?.trim().replace(/_/g, "-");
+  if (!tag || tag === "C" || tag === "POSIX") return undefined;
+  return tag;
+}
+
+/** The macOS UI language (`AppleLocale`, e.g. "zh_CN"), read via `defaults`.
+ * macOS keeps this OUTSIDE the POSIX env — a system set to Chinese still
+ * commonly exports `LANG=C.UTF-8` — so env detection alone reports the wrong
+ * language. Returns undefined off macOS or on any failure (missing binary,
+ * timeout). Synchronous, but only called once at startup from resolveLanguage. */
+function readMacOsLocale(): string | undefined {
+  if (process.platform !== "darwin") return undefined;
+  try {
+    const out = execFileSync("defaults", ["read", "-g", "AppleLocale"], {
+      encoding: "utf8",
+      timeout: 1_000,
+    }).trim();
+    return out || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Resolve the effective UI/response language. A non-"auto" `settings.language`
+ * is returned verbatim. For "auto" (the default) the system locale is detected:
+ * first the POSIX env ($LC_ALL → $LANG → $LANGUAGE; authoritative on Linux),
+ * then — when that is unset or "C"/"POSIX" — the macOS UI language via
+ * `AppleLocale`. Tags are normalized to a BCP-47-ish form ("zh_CN.UTF-8" →
+ * "zh-CN"). Falls back to `fallback` (default "en") when nothing is detectable.
+ */
+export function resolveLanguage(
+  settings: Settings,
+  env: NodeJS.ProcessEnv = process.env,
+  fallback = "en",
+): string {
+  if (settings.language !== "auto") return settings.language;
+  const fromEnv = normalizeLocale(env.LC_ALL || env.LANG || env.LANGUAGE);
+  if (fromEnv) return fromEnv;
+  const fromMac = normalizeLocale(readMacOsLocale());
+  if (fromMac) return fromMac;
+  return fallback;
+}
+
 const DEFAULT_DENY_BASH = [
   /(^|\s)rm\s+-r\w*\s+\//,
   /:\(\)\s*\{\s*:\|:\s*&\s*\}\s*;\s*:/,
@@ -760,7 +815,12 @@ export async function loadSettings(configPath: string = DEFAULT_CONFIG_PATH): Pr
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
   }
-  return settingsSchema.parse(raw);
+  const settings = settingsSchema.parse(raw);
+  // Resolve "auto" to the concrete system locale once, at load, so every
+  // downstream read sees a real language tag. Idempotent: a non-"auto" value
+  // (already-resolved or user-set) passes through unchanged.
+  settings.language = resolveLanguage(settings);
+  return settings;
 }
 
 export function parseSettings(raw: unknown): Settings {

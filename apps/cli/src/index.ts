@@ -168,7 +168,7 @@ async function run(positional: string[], opts: CliOptions): Promise<void> {
       // shift+tab-cycleable afterwards), and arm the auto-approve bypass from
       // --dangerously-skip-permissions so it works in the REPL, not just -p.
       screen.setPermissionMode(parsePermissionMode(opts.permissionMode));
-      if (opts.dangerouslySkipPermissions) screen.setSkipPermissions(true);
+      if (opts.dangerouslySkipPermissions) screen.enableBypass();
     } catch (err) {
       await fatalExit(screen, err instanceof Error ? err.message : String(err));
     }

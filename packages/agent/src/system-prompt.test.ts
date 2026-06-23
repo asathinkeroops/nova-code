@@ -5,11 +5,14 @@ import { buildSystemPrompt } from "./system-prompt.js";
 const emptyMemory: MemoryBundle = { system: "", sources: [] };
 
 describe("buildSystemPrompt", () => {
-  it("ends with the language guard when there is no memory", () => {
+  it("ends with the language guard naming the configured language", () => {
+    const prompt = buildSystemPrompt("/ws", emptyMemory, "sess-1", "", "zh-CN");
+    expect(prompt.trimEnd()).toMatch(/respond in zh-CN[\s\S]*$/i);
+  });
+
+  it("defaults the configured language to English", () => {
     const prompt = buildSystemPrompt("/ws", emptyMemory, "sess-1");
-    expect(prompt.trimEnd()).toMatch(
-      /respond in the language the user's latest message is written in[\s\S]*$/i,
-    );
+    expect(prompt.trimEnd()).toMatch(/respond in en[\s\S]*$/i);
   });
 
   it("reasserts the language guard AFTER injected memory", () => {
@@ -19,17 +22,17 @@ describe("buildSystemPrompt", () => {
       system: '<memory layer="project" path="/ws/CLAUDE.md">请始终用中文回答</memory>',
       sources: [{ layer: "project", path: "/ws/CLAUDE.md", filename: "CLAUDE.md" }],
     };
-    const prompt = buildSystemPrompt("/ws", memory, "sess-1");
+    const prompt = buildSystemPrompt("/ws", memory, "sess-1", "", "en");
 
     const memoryIdx = prompt.indexOf("请始终用中文回答");
-    const guardIdx = prompt.indexOf("respond in the language the user's latest message");
+    const guardIdx = prompt.indexOf("respond in en");
     expect(memoryIdx).toBeGreaterThanOrEqual(0);
     expect(guardIdx).toBeGreaterThan(memoryIdx);
   });
 
-  it("keeps an in-list language-matching bullet", () => {
-    const prompt = buildSystemPrompt("/ws", emptyMemory, "sess-1");
-    expect(prompt).toContain("Respond in the same language and script as the user");
+  it("anchors the in-list language bullet on the configured language", () => {
+    const prompt = buildSystemPrompt("/ws", emptyMemory, "sess-1", "", "fr");
+    expect(prompt).toContain("Respond in fr by default");
   });
 
   it("bakes in version-control guidance so committing needs no slash command", () => {

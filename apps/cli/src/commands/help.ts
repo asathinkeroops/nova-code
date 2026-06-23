@@ -1,5 +1,5 @@
 import type { SlashCommand, SlashCommandKind } from "@nova/external";
-import { dim } from "../colors.js";
+import { accent, cyan, dim } from "../colors.js";
 import type { CliContext } from "../context.js";
 
 const SECTION_TITLE: Record<SlashCommandKind, string> = {
@@ -10,8 +10,14 @@ const SECTION_TITLE: Record<SlashCommandKind, string> = {
 const SECTION_ORDER: SlashCommandKind[] = ["builtin", "project", "user"];
 
 function formatRow(cmd: SlashCommand, nameWidth: number): string {
-  const name = `/${cmd.name}${cmd.argHint ? ` ${cmd.argHint}` : ""}`.padEnd(nameWidth + 2, " ");
-  return `  ${name}${cmd.description}`;
+  // Colour the command name (accent) and its parameters (cyan) distinctly while
+  // the description keeps the default colour. Pad on the *visible* length so the
+  // invisible ANSI codes don't throw off column alignment.
+  const namePart = `/${cmd.name}`;
+  const argPart = cmd.argHint ? ` ${cmd.argHint}` : "";
+  const pad = " ".repeat(Math.max(0, nameWidth + 2 - namePart.length - argPart.length));
+  const coloured = `${accent(namePart)}${argPart ? cyan(argPart) : ""}`;
+  return `  ${coloured}${pad}${cmd.description}`;
 }
 
 export function handleHelp(ctx: CliContext): void {

@@ -9,12 +9,9 @@ import type { McpServerSpec } from "./types.js";
 /** A fresh in-memory MCP server exposing an `echo` tool and a `boom` tool. */
 function buildServer(): McpServer {
   const server = new McpServer({ name: "test-server", version: "0.0.0" });
-  server.tool(
-    "echo",
-    "Echo back the provided text.",
-    { text: z.string() },
-    async ({ text }) => ({ content: [{ type: "text", text }] }),
-  );
+  server.tool("echo", "Echo back the provided text.", { text: z.string() }, async ({ text }) => ({
+    content: [{ type: "text", text }],
+  }));
   server.tool("boom", "Always fails.", {}, async () => ({
     content: [{ type: "text", text: "kaboom" }],
     isError: true,
@@ -56,13 +53,22 @@ describe("mcp tool naming", () => {
     expect(parseMcpToolName("read")).toBeNull();
     expect(parseMcpToolName("mcp__only")).toBeNull();
   });
+
+  it("rejects a name with an empty server or tool segment", () => {
+    expect(parseMcpToolName("mcp____tool")).toBeNull();
+    expect(parseMcpToolName("mcp__srv__")).toBeNull();
+  });
 });
 
 describe("mcpToolToHandler", () => {
   it("carries native JSON schema and tags the server", () => {
     const handler = mcpToolToHandler(
       "git",
-      { name: "status", description: "show status", inputSchema: { type: "object", properties: { porcelain: { type: "boolean" } } } },
+      {
+        name: "status",
+        description: "show status",
+        inputSchema: { type: "object", properties: { porcelain: { type: "boolean" } } },
+      },
       async () => ({ output: "ok", isError: false }),
     );
     expect(handler.definition.name).toBe("mcp__git__status");
@@ -74,8 +80,53 @@ describe("mcpToolToHandler", () => {
   });
 
   it("falls back to a valid object schema when none is provided", () => {
-    const handler = mcpToolToHandler("x", { name: "t" }, async () => ({ output: "", isError: false }));
+    const handler = mcpToolToHandler("x", { name: "t" }, async () => ({
+      output: "",
+      isError: false,
+    }));
     expect(handler.definition.inputJsonSchema).toEqual({ type: "object", properties: {} });
+  });
+
+  it("synthesizes a description when the server provides none", () => {
+    const handler = mcpToolToHandler("git", { name: "status" }, async () => ({
+      output: "",
+      isError: false,
+    }));
+    expect(handler.definition.description).toBe(
+      '[MCP:git] tool "status" (no description provided)',
+    );
+  });
+
+  it("replaces a non-object schema with the object fallback", () => {
+    const handler = mcpToolToHandler(
+      "x",
+      { name: "t", inputSchema: { type: "string" } },
+      async () => ({ output: "", isError: false }),
+    );
+    expect(handler.definition.inputJsonSchema).toEqual({ type: "object", properties: {} });
+  });
+
+  it("backfills an empty properties bag while preserving the rest of the schema", () => {
+    const handler = mcpToolToHandler(
+      "x",
+      { name: "t", inputSchema: { type: "object", required: ["a"] } },
+      async () => ({ output: "", isError: false }),
+    );
+    expect(handler.definition.inputJsonSchema).toEqual({
+      type: "object",
+      properties: {},
+      required: ["a"],
+    });
+  });
+
+  it("coerces a non-object tool input to an empty args object", async () => {
+    const calls: Array<Record<string, unknown>> = [];
+    const handler = mcpToolToHandler("x", { name: "t" }, async (_name, args) => {
+      calls.push(args);
+      return { output: "ok", isError: false };
+    });
+    await handler.run(null as unknown as Record<string, unknown>, { cwd: process.cwd() });
+    expect(calls[0]).toEqual({});
   });
 });
 

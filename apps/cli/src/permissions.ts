@@ -10,8 +10,11 @@ import { isWithin } from "@nova/safety";
  *                  out-of-workspace write/edit still ask.
  * - `plan`       — read-only; write/edit/bash are denied (mirrors the read-only
  *                  `/plan` sub-agent), so the agent investigates and plans only.
+ * - `bypassPermissions` — every approval auto-granted (the
+ *                  `--dangerously-skip-permissions` bypass). Only reachable in
+ *                  the shift+tab cycle once that startup flag has armed it.
  */
-export type PermissionMode = "default" | "acceptEdits" | "plan";
+export type PermissionMode = "default" | "acceptEdits" | "plan" | "bypassPermissions";
 
 /**
  * Workspace-mutating tools, withheld in `plan` mode. Mirrors the read-only

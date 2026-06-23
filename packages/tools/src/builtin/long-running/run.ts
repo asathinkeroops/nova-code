@@ -47,6 +47,9 @@ export function runInBackgroundTool(
           : input.command;
         const { id, pid } = manager.start({
           command,
+          // Record the original command, not the sandbox-wrapped form, so
+          // `/tasks` and completion notices show what was actually requested.
+          label: input.command,
           cwd: input.cwd ?? ctx.cwd,
           ...(input.env ? { env: input.env } : {}),
         });

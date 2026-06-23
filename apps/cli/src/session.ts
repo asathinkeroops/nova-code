@@ -11,6 +11,7 @@ import { Transcript } from "@nova/observability";
 import { red } from "./colors.js";
 import { refreshBanner, type CliContext } from "./context.js";
 import { loadDisplaySidecar } from "./display-sidecar.js";
+import { loadCards } from "./card-store.js";
 import { loadGoal } from "./goal.js";
 import { loadSessionName } from "./session-name.js";
 import { restoreUsageFromTranscript } from "./usage-restore.js";
@@ -142,9 +143,12 @@ export async function switchToSession(
     newMessages = await loadMessages(newSession.messagesPath);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    // persist:false — the switch hasn't committed, so ctx.session still points
+    // at the old session; this transient error must not land in its cards file.
     ctx.screen.card(`failed to load messages from ${newSession.id}: ${msg}`, {
       kind: "error",
       title,
+      persist: false,
     });
     ctx.logger.error({ err: msg, target: newSession.id }, "session switch failed");
     return false;
@@ -187,10 +191,13 @@ export async function switchToSession(
     newMessages.length === 0 && opts.emptyCard
       ? opts.emptyCard
       : `${newSession.id}\nlog: ${ctx.logPath}\n${newMessages.length} message(s)`;
-  ctx.screen.card(card, { kind: "info", title });
   const sidecar = await loadDisplaySidecar(newSession.dir);
   ctx.screen.setUserDisplayOverrides(sidecar.userOverrides);
   ctx.screen.setToolDetails(sidecar.toolDetails);
+  // Restore the switched-in session's persisted cards, then push the ephemeral
+  // session-info notice (persist:false so it isn't re-recorded each switch).
+  ctx.screen.setCards(await loadCards(newSession.dir));
+  ctx.screen.card(card, { kind: "info", title, persist: false });
   ctx.screen.setMessages(newMessages);
   // Carry the switched-in session's active /goal (or null for a fresh one), so
   // auto-continuation follows the session rather than leaking across a switch.

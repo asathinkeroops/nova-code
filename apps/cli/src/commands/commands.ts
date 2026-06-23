@@ -1,5 +1,5 @@
 import type { SlashCommandKind } from "@nova/external";
-import { dim } from "../colors.js";
+import { accent, cyan, dim } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { reloadFileCommands } from "../slash.js";
 
@@ -40,8 +40,13 @@ export async function handleCommands(ctx: CliContext, arg: string): Promise<void
   const nameWidth = Math.min(20, Math.max(...cmds.map((c) => c.name.length + 1)));
   const lines = cmds.map((c) => {
     const tag = KIND_TAG[c.source.kind];
-    const name = `/${c.name}`.padEnd(nameWidth + 1, " ");
-    const hint = c.argHint ? ` ${dim(c.argHint)}` : "";
+    // Colour the command name (accent) and its parameters (cyan) distinctly
+    // while the description keeps the default colour. Pad on the *visible*
+    // length so the invisible ANSI codes don't throw off column alignment.
+    const namePart = `/${c.name}`;
+    const pad = " ".repeat(Math.max(0, nameWidth + 1 - namePart.length));
+    const name = `${accent(namePart)}${pad}`;
+    const hint = c.argHint ? ` ${cyan(c.argHint)}` : "";
     const shadowed = c.source.shadowedBy?.length
       ? dim(` (shadows ${c.source.shadowedBy.length})`)
       : "";

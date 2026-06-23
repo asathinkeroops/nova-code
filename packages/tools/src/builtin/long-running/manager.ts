@@ -16,6 +16,13 @@ export interface StartInput {
   command: string;
   cwd: string;
   env?: Record<string, string>;
+  /**
+   * Human-facing command recorded for display and completion notices. When the
+   * caller wraps `command` for execution (e.g. a sandbox prefix), pass the
+   * original here so records show what the user/model actually asked for rather
+   * than the wrapper boilerplate. Defaults to `command`.
+   */
+  label?: string;
 }
 
 export interface ManagerOptions {
@@ -178,6 +185,9 @@ export class LongRunningCommandManager extends EventEmitter {
     let id = generateId();
     while (this.records.has(id)) id = generateId();
 
+    // What gets recorded/shown — defaults to the executed command, but the
+    // caller can supply the original when `command` is a wrapped form.
+    const displayCommand = input.label ?? input.command;
     const env = input.env ? { ...process.env, ...input.env } : undefined;
     const buf: OutputBuffer = { chunks: [], bytes: 0, truncated: 0 };
 
@@ -197,7 +207,7 @@ export class LongRunningCommandManager extends EventEmitter {
       const record: InternalRecord = {
         id,
         pid: -1,
-        command: input.command,
+        command: displayCommand,
         status,
         result,
         buf,
@@ -215,7 +225,7 @@ export class LongRunningCommandManager extends EventEmitter {
     const record: InternalRecord = {
       id,
       pid: child.pid ?? -1,
-      command: input.command,
+      command: displayCommand,
       status: "running",
       buf,
       child,
@@ -356,6 +366,23 @@ export class LongRunningCommandManager extends EventEmitter {
   get(id: string): CommandRecord | undefined {
     const r = this.records.get(id);
     return r ? publicView(r) : undefined;
+  }
+
+  /**
+   * Snapshot the full retained output of a command without advancing the read
+   * cursor. Unlike `read`/`takeCompletion`, this is non-consuming: it never
+   * disturbs the incremental cursor the completion notifier relies on, so the
+   * UI can show a running command's output live without stealing bytes the
+   * model would otherwise receive on completion. Returns the whole ring buffer
+   * (with a `[truncated …]` prefix if earlier output scrolled out). Throws on an
+   * unknown id.
+   */
+  peek(id: string): { id: string; command: string; status: CommandStatus; output: string } {
+    const r = this.records.get(id);
+    if (!r) {
+      throw new LongRunningCommandError(`no background command with id ${id}`);
+    }
+    return { id: r.id, command: r.command, status: r.status, output: renderOutput(r.buf) };
   }
 
   list(): CommandRecord[] {

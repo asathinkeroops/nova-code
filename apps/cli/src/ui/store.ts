@@ -75,6 +75,13 @@ export interface Card {
 export interface CardOptions {
   kind?: CardKind;
   title?: string;
+  /**
+   * Whether this card should be persisted to `cards.jsonl` so it survives a
+   * resume / session switch. Defaults to true. Set false for cards that are
+   * regenerated on every load (session-load notices, project-hook banners) so
+   * they don't accumulate duplicates across restarts.
+   */
+  persist?: boolean;
 }
 
 export type ModalState =
@@ -330,13 +337,15 @@ export interface AppState {
    */
   permissionMode: PermissionMode;
   /**
-   * When true, every permission prompt that would otherwise open the approval
-   * modal is auto-approved (`--dangerously-skip-permissions`). Behavioural only:
-   * it short-circuits `promptApproval`, mirroring headless `approvalPolicy:
-   * "allow"`. Plan-mode denials still apply (they short-circuit before the
-   * approval flow). Session-only; surfaced as a red status-line warning.
+   * Whether the `bypassPermissions` mode is reachable in the shift+tab cycle.
+   * Armed once per session by the `--dangerously-skip-permissions` startup flag
+   * (see `enableBypass`); off otherwise so the dangerous mode can never be
+   * cycled into by accident. Session-only; preserved across `reset()` (`/clear`)
+   * like `permissionMode`. The bypass is *active* (every approval auto-granted,
+   * short-circuiting `promptApproval`) only while `permissionMode ===
+   * "bypassPermissions"`.
    */
-  skipPermissions: boolean;
+  bypassAllowed: boolean;
 }
 
 export interface SelectionRect {
@@ -347,8 +356,10 @@ export interface SelectionRect {
 }
 
 export interface AppActions {
-  pushCard: (text: string, opts?: CardOptions) => void;
+  pushCard: (text: string, opts?: CardOptions) => Card;
   clearCards: () => void;
+  /** Replace the card list wholesale (used to restore persisted cards on load). */
+  setCards: (cards: Card[]) => void;
   setBanner: (banner: BannerProps | null) => void;
   setMessages: (messages: MessageParam[]) => void;
   setThinkingLabel: (label: string | undefined) => void;
@@ -472,8 +483,12 @@ export interface AppActions {
   cyclePermissionMode: () => PermissionMode;
   /** Set the permission mode directly (e.g. seed the initial mode from a CLI flag). */
   setPermissionMode: (mode: PermissionMode) => void;
-  /** Toggle the auto-approve bypass (`--dangerously-skip-permissions`). */
-  setSkipPermissions: (value: boolean) => void;
+  /**
+   * Arm the `bypassPermissions` mode (`--dangerously-skip-permissions`): unlock
+   * it in the shift+tab cycle and switch into it now. shift+tab can still cycle
+   * back out to a safe mode afterwards.
+   */
+  enableBypass: () => void;
 }
 
 export type AppStoreState = AppState & AppActions;
@@ -604,7 +619,7 @@ export function createAppStore(opts: AppStoreOptions = {}): AppStoreApi {
       userDisplayOverrides: {},
       toolDetails: {},
       permissionMode: "default",
-      skipPermissions: false,
+      bypassAllowed: false,
 
       // ===== Actions =====
       pushCard(text, opts = {}) {
@@ -618,11 +633,19 @@ export function createAppStore(opts: AppStoreOptions = {}): AppStoreApi {
           ...(opts.title ? { title: opts.title } : {}),
         };
         set((s) => ({ cards: [...s.cards, card] }));
+        return card;
       },
 
       clearCards() {
         if (get().cards.length === 0) return;
         set({ cards: [] });
+      },
+
+      setCards(cards) {
+        // Keep the id counter ahead of restored ids so freshly pushed cards
+        // never collide with persisted ones.
+        for (const c of cards) if (c.id > cardCounter) cardCounter = c.id;
+        set({ cards: [...cards] });
       },
 
       setBanner(banner) {
@@ -1030,21 +1053,26 @@ export function createAppStore(opts: AppStoreOptions = {}): AppStoreApi {
       },
 
       cyclePermissionMode() {
-        const order: PermissionMode[] = ["default", "acceptEdits", "plan"];
+        // `bypassPermissions` joins the cycle only once `--dangerously-skip-permissions`
+        // has armed it (bypassAllowed); otherwise the dangerous mode is unreachable.
+        const order: PermissionMode[] = get().bypassAllowed
+          ? ["default", "acceptEdits", "plan", "bypassPermissions"]
+          : ["default", "acceptEdits", "plan"];
         const cur = get().permissionMode;
-        const next = order[(order.indexOf(cur) + 1) % order.length] ?? "default";
+        const idx = order.indexOf(cur);
+        const next = order[(idx + 1) % order.length] ?? "default";
         set({ permissionMode: next });
         return next;
       },
 
       setPermissionMode(mode) {
         if (get().permissionMode === mode) return;
-        set({ permissionMode: mode });
+        // Seeding bypass directly (e.g. --permission-mode) also unlocks it in the cycle.
+        set(mode === "bypassPermissions" ? { permissionMode: mode, bypassAllowed: true } : { permissionMode: mode });
       },
 
-      setSkipPermissions(value) {
-        if (get().skipPermissions === value) return;
-        set({ skipPermissions: value });
+      enableBypass() {
+        set({ bypassAllowed: true, permissionMode: "bypassPermissions" });
       },
 
       setUserDisplayOverrides(overrides) {

@@ -145,6 +145,42 @@ describe("LongRunningCommandManager", () => {
     expect(() => mgr.read("nope")).toThrow(LongRunningCommandError);
   });
 
+  it("peek() snapshots output without advancing the read cursor", async () => {
+    const mgr = new LongRunningCommandManager();
+    const { id } = mgr.start({ command: "echo hello", cwd: process.cwd() });
+    await waitFor(() => mgr.get(id)?.status !== "running");
+
+    const first = mgr.peek(id);
+    expect(first.output).toContain("hello");
+    expect(first.status).toBe("completed");
+    // A second peek still sees the same output — non-consuming.
+    expect(mgr.peek(id).output).toBe(first.output);
+    // And a subsequent read still receives the full output (peek didn't steal it).
+    expect(mgr.read(id).output).toContain("hello");
+  });
+
+  it("peek() throws on an unknown id", () => {
+    const mgr = new LongRunningCommandManager();
+    expect(() => mgr.peek("nope")).toThrow(LongRunningCommandError);
+  });
+
+  it("records `label` as the display command while executing `command`", async () => {
+    const mgr = new LongRunningCommandManager();
+    // `command` is a wrapped form; `label` is what the user/model asked for.
+    const { id } = mgr.start({
+      command: "/bin/echo wrapped-ran",
+      label: "echo original",
+      cwd: process.cwd(),
+    });
+    expect(mgr.get(id)?.command).toBe("echo original");
+    expect(mgr.peek(id).command).toBe("echo original");
+    await waitFor(() => mgr.get(id)?.status !== "running");
+    // The wrapped command is the one that actually executed.
+    expect(mgr.get(id)?.result).toContain("wrapped-ran");
+    // …but the display command is unchanged after completion.
+    expect(mgr.get(id)?.command).toBe("echo original");
+  });
+
   it("disposeAll() terminates running children into error status", async () => {
     const mgr = new LongRunningCommandManager();
     const { id } = mgr.start({ command: "sleep 10", cwd: process.cwd() });

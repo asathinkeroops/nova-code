@@ -132,6 +132,10 @@ export async function handleRewind(ctx: CliContext, arg: string): Promise<void> 
   ctx.screen.setMessages(truncated);
   await persist(ctx);
   await ctx.screen.reset();
+  // Truncating history invalidates every card anchored past the rewind point
+  // (same problem compaction has) — drop the persisted cards so stale-anchored
+  // ones don't resurface on resume. reset() only clears the in-memory copy.
+  ctx.screen.clearCards();
   const fileNote = fileCount > 0 ? ` restored ${fileCount} file(s).` : "";
   ctx.screen.card(
     dim(

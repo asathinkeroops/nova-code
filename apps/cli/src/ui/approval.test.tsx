@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { PermissionInput } from "@nova/safety";
-import { approvalRows, clampDetail, describeToolInput } from "./approval.js";
+import {
+  approvalInnerWidth,
+  approvalRows,
+  clampDetail,
+  describeToolInput,
+} from "./approval.js";
 
 const permInput = (tool: string, input: Record<string, unknown>): PermissionInput =>
   ({ tool, input }) as unknown as PermissionInput;
@@ -46,6 +51,24 @@ describe("clampDetail", () => {
     const { text, truncated } = clampDetail("x".repeat(5000));
     expect(truncated).toBe(true);
     expect(text.length).toBe(1200);
+  });
+});
+
+describe("approvalInnerWidth", () => {
+  // The modal box's round border (2) + paddingX={1} (2) shrink the wrappable
+  // content by 4. Both approvalRows and the ApprovalPrompt render derive their
+  // wrap width from this single helper, fed the SAME cols (the viewport's inner
+  // width). When the render instead measured against the full terminal width it
+  // pre-wrapped the `⎿` body too wide, Ink re-wrapped it, and continuation rows
+  // fell back to column 0 — the misalignment this guards against.
+  it("subtracts the modal border + padding from the available width", () => {
+    expect(approvalInnerWidth(80)).toBe(76);
+    expect(approvalInnerWidth(20)).toBe(16);
+  });
+
+  it("never drops below 1", () => {
+    expect(approvalInnerWidth(2)).toBe(1);
+    expect(approvalInnerWidth(0)).toBe(1);
   });
 });
 

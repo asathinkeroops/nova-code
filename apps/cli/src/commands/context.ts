@@ -50,6 +50,7 @@ export function handleContext(ctx: CliContext): void {
     ctx.memory,
     ctx.session.id,
     ctx.skillsBlock,
+    ctx.settings.language,
   );
   const memoryTokens = estimateChars(ctx.memory.system);
   const skillsTokens = estimateChars(ctx.skillsBlock);

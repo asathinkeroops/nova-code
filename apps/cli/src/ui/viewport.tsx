@@ -181,7 +181,12 @@ export function Viewport({ store, rows, resolveModal }: ViewportProps): React.Re
   // (spinner / modal / footers) immediately below the latest message.
   if (inStreamModal) {
     const modalEl = (
-      <InStreamModal modal={inStreamModal} resolveModal={resolveModal} onScroll={scrollBy} />
+      <InStreamModal
+        modal={inStreamModal}
+        width={innerWidth}
+        resolveModal={resolveModal}
+        onScroll={scrollBy}
+      />
     );
     // The approval prompt belongs to the pending tool_use at the tail of the
     // transcript, so it hugs the text (spacer *below* it) and reads as a direct
@@ -348,10 +353,15 @@ export function pickHorizontalRows(opts: HorizontalPickerOptions<unknown>, cols:
 
 function InStreamModal({
   modal,
+  width,
   resolveModal,
   onScroll,
 }: {
   modal: ModalState;
+  /** Width available to the modal box (viewport inner width). Threaded to the
+   *  approval prompt so its `⎿` body wraps against the same content width that
+   *  {@link approvalRows} reserved for. */
+  width: number;
   resolveModal: (value: unknown) => void;
   onScroll: (delta: number) => void;
 }): React.ReactElement | null {
@@ -361,6 +371,7 @@ function InStreamModal({
         <ApprovalPrompt
           decision={modal.decision}
           input={modal.input}
+          width={width}
           {...(modal.onCancel ? { onCancel: modal.onCancel } : {})}
           onAnswer={(value) => resolveModal(value)}
           onScroll={onScroll}

@@ -137,16 +137,40 @@ describe("permission mode", () => {
   });
 });
 
-describe("skip permissions (bypass)", () => {
-  it("defaults to off", () => {
-    expect(createAppStore().getState().skipPermissions).toBe(false);
+describe("bypass permissions mode", () => {
+  it("is not armed by default and stays out of the cycle", () => {
+    const store = createAppStore();
+    expect(store.getState().bypassAllowed).toBe(false);
+    store.getState().cyclePermissionMode(); // acceptEdits
+    store.getState().cyclePermissionMode(); // plan
+    expect(store.getState().cyclePermissionMode()).toBe("default"); // skips bypass
   });
 
-  it("setSkipPermissions toggles the bypass and survives reset", () => {
+  it("enableBypass arms the cycle and switches into bypass mode", () => {
     const store = createAppStore();
-    store.getState().setSkipPermissions(true);
-    expect(store.getState().skipPermissions).toBe(true);
+    store.getState().enableBypass();
+    expect(store.getState().bypassAllowed).toBe(true);
+    expect(store.getState().permissionMode).toBe("bypassPermissions");
+  });
+
+  it("once armed, shift+tab can cycle into and back out of bypass", () => {
+    const store = createAppStore();
+    store.getState().enableBypass(); // now in bypassPermissions
+    // bypass → default → acceptEdits → plan → bypass
+    expect(store.getState().cyclePermissionMode()).toBe("default");
+    expect(store.getState().cyclePermissionMode()).toBe("acceptEdits");
+    expect(store.getState().cyclePermissionMode()).toBe("plan");
+    expect(store.getState().cyclePermissionMode()).toBe("bypassPermissions");
+  });
+
+  it("the armed cycle survives reset (/clear)", () => {
+    const store = createAppStore();
+    store.getState().enableBypass();
+    store.getState().cyclePermissionMode(); // → default, but still armed
     store.getState().reset();
-    expect(store.getState().skipPermissions).toBe(true);
+    expect(store.getState().bypassAllowed).toBe(true);
+    expect(store.getState().cyclePermissionMode()).toBe("acceptEdits");
+    store.getState().cyclePermissionMode(); // plan
+    expect(store.getState().cyclePermissionMode()).toBe("bypassPermissions");
   });
 });
