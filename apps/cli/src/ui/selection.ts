@@ -56,10 +56,13 @@ export function normalizeDrag(rect: DragRect): DragRect {
 const SEL_BG_OPEN = "\x1b[48;2;45;80;130m";
 const SEL_BG_CLOSE = "\x1b[49m";
 
-// Lighter, cooler band for mouse hover on an interactive row (e.g. a collapsible
-// tool-batch title). Distinct from the selection blue so a hover never reads as
-// an active drag-selection.
-const HOVER_BG_OPEN = "\x1b[48;2;60;66;86m";
+// Foreground accent for mouse hover on an interactive row (e.g. a collapsible
+// tool-batch title). Hover recolours the text rather than painting a background
+// band: a fixed dark band hides dark text on a light terminal, but a single
+// accent foreground reads as "hovered/clickable" on both light and dark themes.
+// The accent pink (#ff3caa) matches the rest of the UI chrome.
+const HOVER_FG_OPEN = "\x1b[38;2;255;60;170m";
+const HOVER_FG_CLOSE = "\x1b[39m";
 
 /**
  * Wrap the visible chars in `[startCol, endCol)` of an ANSI line with a
@@ -107,11 +110,16 @@ export function applyInverse(
 }
 
 /**
- * Paint a hover background across the whole visible text of `line` — used to
- * highlight a collapsible tool-batch title row while the mouse is over it.
+ * Recolour the whole visible text of `line` in the hover accent — used to mark a
+ * collapsible tool-batch title row while the mouse is over it. The line's own
+ * colour/dim SGRs are stripped so it takes one uniform accent foreground (a
+ * band-free hover cue that reads on light and dark terminals alike); the visible
+ * width is unchanged.
  */
 export function highlightWholeLine(line: string): string {
-  return applyInverse(line, 0, Number.MAX_SAFE_INTEGER, HOVER_BG_OPEN);
+  const plain = stripAnsi(line);
+  if (plain.length === 0) return line;
+  return `${HOVER_FG_OPEN}${plain}${HOVER_FG_CLOSE}`;
 }
 
 export function extractSelection(

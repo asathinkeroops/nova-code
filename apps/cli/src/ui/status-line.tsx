@@ -188,8 +188,11 @@ export function StatusLine({ store, shellMode = false }: StatusLineProps): React
     );
     usage.push({
       icon: "●",
+      // A mid-tone amber hex rather than `yellowBright`: bright yellow is nearly
+      // white and washes out on a light terminal background. This amber keeps
+      // contrast on both light and dark themes (same tactic as ACCENT_HEX above).
       text: `${formatMoney(cost.total, costRates.currency)} cost`,
-      color: "yellowBright",
+      color: "#d97706",
     });
   }
 
