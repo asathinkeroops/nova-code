@@ -4,6 +4,7 @@ import {
   DEEPSEEK_RETRY,
   DeepSeekApiError,
   deepSeekRetryDelayMs,
+  isMalformedToolJsonError,
   translateDeepSeekError,
 } from "./deepseek-errors.js";
 import { THINKING_BUDGETS } from "./thinking.js";
@@ -76,8 +77,16 @@ export interface RetryNotice {
   maxAttempts: number;
   /** Milliseconds the adapter will wait before the next attempt. */
   delayMs: number;
-  /** The DeepSeek HTTP status that triggered the retry. */
-  status: number;
+  /**
+   * The DeepSeek HTTP status that triggered the retry. Absent for non-HTTP
+   * retries (see `reason`).
+   */
+  status?: number;
+  /**
+   * Machine-readable cause when the retry wasn't an HTTP error. Currently only
+   * "malformed-json": the model streamed unparseable tool-call arguments.
+   */
+  reason?: "malformed-json";
 }
 
 export interface StreamTextDelta {
@@ -291,11 +300,16 @@ export function createAnthropicModel(config: AnthropicModelConfig): ModelClient 
         return { message, thinkingText };
       };
 
-      // DeepSeek's documented HTTP errors arrive here as SDK APIErrors. The
-      // transient ones (429 rate limit, 500/503 server) are retried internally
-      // with backoff; the rest (400/401/402/422) and all non-DeepSeek errors
-      // are re-thrown — translated into actionable guidance for DeepSeek.
-      const maxAttempts = format === "deepseek" ? DEEPSEEK_RETRY.maxAttempts : 1;
+      // Two error classes are retried here with backoff:
+      //   1. DeepSeek's documented transient HTTP errors (429 rate limit,
+      //      500/503 server) — re-thrown otherwise (400/401/402/422 and all
+      //      non-DeepSeek errors), translated into actionable guidance.
+      //   2. Malformed tool-call JSON the SDK chokes on while accumulating the
+      //      stream — a model hiccup (any provider), not an API failure, so it
+      //      carries no status. Retrying almost always yields valid JSON.
+      // Each branch self-gates, so a generic non-DeepSeek error still throws on
+      // the first attempt even though the loop budget allows retries.
+      const maxAttempts = DEEPSEEK_RETRY.maxAttempts;
       let res: Anthropic.Message;
       let streamedThinking = "";
       let attempt = 0;
@@ -308,18 +322,23 @@ export function createAnthropicModel(config: AnthropicModelConfig): ModelClient 
           break;
         } catch (err) {
           const translated = translateDeepSeekError(err, config.model);
-          if (
-            translated instanceof DeepSeekApiError &&
-            translated.retryable &&
-            attempt < maxAttempts &&
-            !req.signal?.aborted
-          ) {
-            const delayMs = deepSeekRetryDelayMs(attempt, translated.retryAfterSeconds);
+          const retryableApi = translated instanceof DeepSeekApiError && translated.retryable;
+          // Match on the raw error: the JSON SyntaxError wording is what the SDK
+          // wrapped, and translateDeepSeekError leaves a status-less error as-is.
+          const retryableJson =
+            !(translated instanceof DeepSeekApiError) && isMalformedToolJsonError(err);
+          if ((retryableApi || retryableJson) && attempt < maxAttempts && !req.signal?.aborted) {
+            const retryAfter = retryableApi
+              ? (translated as DeepSeekApiError).retryAfterSeconds
+              : undefined;
+            const delayMs = deepSeekRetryDelayMs(attempt, retryAfter);
             config.onRetry?.({
               attempt,
               maxAttempts,
               delayMs,
-              status: translated.status,
+              ...(retryableApi
+                ? { status: (translated as DeepSeekApiError).status }
+                : { reason: "malformed-json" }),
             });
             await sleep(delayMs, req.signal);
             continue;

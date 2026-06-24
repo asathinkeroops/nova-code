@@ -97,8 +97,35 @@ const DEEPSEEK_ERROR_TABLE: Record<number, DeepSeekErrorInfo> = {
 };
 
 /**
- * Internal retry policy for DeepSeek's *transient* failures (429/500/503).
- * `maxAttempts` counts the first try, so 4 means "1 + up to 3 retries".
+ * Detect the SDK stream-accumulation failure that surfaces when the model emits
+ * malformed JSON for a tool call's arguments — a frequent DeepSeek slip (a
+ * missing comma between properties, an unterminated value). As the stream
+ * closes, the Anthropic SDK parses the accumulated `partial_json` and, on a
+ * *structural* error (not mere truncation), rejects `finalMessage()` with an
+ * AnthropicError whose message is the underlying JSON `SyntaxError`. There's no
+ * HTTP status, so it never becomes a {@link DeepSeekApiError}; we match on the
+ * V8 parse-error wording instead ("… in JSON at position N", "Unexpected end of
+ * JSON input", etc.), checking both the error and its `cause`.
+ *
+ * Callers treat it as retryable: re-issuing the request almost always yields
+ * well-formed JSON (the model samples at non-zero temperature), turning what was
+ * a fatal loop termination into a transparent retry.
+ */
+export function isMalformedToolJsonError(err: unknown): boolean {
+  const parts: string[] = [];
+  if (err instanceof Error) {
+    parts.push(err.message);
+    if (err.cause instanceof Error) parts.push(err.cause.message);
+  } else {
+    parts.push(String(err));
+  }
+  return /\bin JSON\b|JSON input|JSON at position/i.test(parts.join(" "));
+}
+
+/**
+ * Internal retry policy for DeepSeek's *transient* failures (429/500/503) and
+ * malformed tool-call JSON. `maxAttempts` counts the first try, so 4 means
+ * "1 + up to 3 retries".
  */
 export const DEEPSEEK_RETRY = {
   maxAttempts: 4,

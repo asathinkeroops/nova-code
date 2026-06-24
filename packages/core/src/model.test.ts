@@ -190,6 +190,41 @@ describe("createAnthropicModel deepseek error handling", () => {
     expect(retries).toEqual([{ attempt: 1, maxAttempts: 4, delayMs: 1_000, status: 429 }]);
   });
 
+  it("retries malformed tool-call JSON (no status) and then succeeds", async () => {
+    vi.useFakeTimers();
+    // The SDK rejects finalMessage() with the wrapped JSON SyntaxError text.
+    const jsonErr = new Error(
+      "Expected ',' or '}' after property value in JSON at position 28 (line 1 column 29)",
+    );
+    mockCreate.mockRejectedValueOnce(jsonErr).mockResolvedValueOnce(okResponse());
+    const retries: { attempt: number; status?: number; reason?: string }[] = [];
+    const m = createAnthropicModel({
+      apiKey: "x",
+      model: "deepseek-chat",
+      onRetry: (i) => retries.push(i),
+    });
+    const p = m.call({ ...baseReq });
+    await vi.advanceTimersByTimeAsync(1_000);
+    const res = await p;
+    expect(res.content).toEqual([{ type: "text", text: "ok" }]);
+    expect(mockCreate).toHaveBeenCalledTimes(2);
+    expect(retries).toEqual([
+      { attempt: 1, maxAttempts: 4, delayMs: 1_000, reason: "malformed-json" },
+    ]);
+  });
+
+  it("retries malformed tool-call JSON for non-deepseek models too", async () => {
+    vi.useFakeTimers();
+    const jsonErr = new Error("Unexpected end of JSON input");
+    mockCreate.mockRejectedValueOnce(jsonErr).mockResolvedValueOnce(okResponse());
+    const m = createAnthropicModel({ apiKey: "x", model: "claude-sonnet-4-5" });
+    const p = m.call({ ...baseReq });
+    await vi.advanceTimersByTimeAsync(1_000);
+    const res = await p;
+    expect(res.content).toEqual([{ type: "text", text: "ok" }]);
+    expect(mockCreate).toHaveBeenCalledTimes(2);
+  });
+
   it("gives up after max attempts and throws a translated DeepSeekApiError", async () => {
     vi.useFakeTimers();
     mockCreate.mockRejectedValue(apiError(503));

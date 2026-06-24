@@ -35,6 +35,7 @@ export {
   DeepSeekApiError,
   deepSeekRetryDelayMs,
   describeDeepSeekStatus,
+  isMalformedToolJsonError,
   translateDeepSeekError,
   type DeepSeekErrorInfo,
 } from "./deepseek-errors.js";

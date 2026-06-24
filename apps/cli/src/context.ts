@@ -297,21 +297,22 @@ export async function createContext(
     lastTokenPush = now;
     screen.setSpinnerTokens(progress);
   };
-  // DeepSeek's transient errors (429/500/503) are retried inside the model
-  // adapter; surface each retry in the live spinner (n/max) so a stalled turn
+  // Transient model failures are retried inside the model adapter — DeepSeek's
+  // 429/500/503 (carry a `status`) and malformed tool-call JSON (carries a
+  // `reason`). Surface each retry in the live spinner (n/max) so a stalled turn
   // isn't a silent freeze.
   const onRetry = (info: {
     attempt: number;
     maxAttempts: number;
     delayMs: number;
-    status: number;
+    status?: number;
+    reason?: string;
   }): void => {
-    logger.warn(info, "deepseek retry");
+    logger.warn(info, "model retry");
     retryHintShown = true;
     const secs = Math.round(info.delayMs / 100) / 10;
-    screen.setSpinnerHint(
-      `retry ${info.attempt}/${info.maxAttempts - 1} (${info.status}, ${secs}s)`,
-    );
+    const cause = info.status !== undefined ? String(info.status) : (info.reason ?? "error");
+    screen.setSpinnerHint(`retry ${info.attempt}/${info.maxAttempts - 1} (${cause}, ${secs}s)`);
   };
 
   // Stream assistant text/thinking into the live draft. Deltas arrive token by

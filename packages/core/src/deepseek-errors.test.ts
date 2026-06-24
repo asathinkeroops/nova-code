@@ -5,6 +5,7 @@ import {
   DeepSeekApiError,
   deepSeekRetryDelayMs,
   describeDeepSeekStatus,
+  isMalformedToolJsonError,
   translateDeepSeekError,
 } from "./deepseek-errors.js";
 
@@ -40,6 +41,34 @@ describe("describeDeepSeekStatus", () => {
   it("returns undefined for undocumented or missing status", () => {
     expect(describeDeepSeekStatus(404)).toBeUndefined();
     expect(describeDeepSeekStatus(undefined)).toBeUndefined();
+  });
+});
+
+describe("isMalformedToolJsonError", () => {
+  it("matches the V8 JSON parse messages the SDK surfaces from a bad tool call", () => {
+    // The exact message from the reported failure, plus other common shapes.
+    for (const msg of [
+      "Expected ',' or '}' after property value in JSON at position 28 (line 1 column 29)",
+      "Unexpected end of JSON input",
+      "Unexpected token } in JSON at position 5",
+      "Expected property name or '}' in JSON at position 1",
+    ]) {
+      expect(isMalformedToolJsonError(new Error(msg))).toBe(true);
+    }
+  });
+
+  it("matches when the parse error is wrapped as the cause (SDK AnthropicError shape)", () => {
+    const cause = new SyntaxError("Expected ',' or '}' after property value in JSON at position 28");
+    const wrapped = new Error("stream failed", { cause });
+    expect(isMalformedToolJsonError(wrapped)).toBe(true);
+  });
+
+  it("does not match unrelated errors", () => {
+    expect(isMalformedToolJsonError(new Error("429 boom"))).toBe(false);
+    expect(isMalformedToolJsonError(new Error("ECONNRESET"))).toBe(false);
+    expect(isMalformedToolJsonError(new DeepSeekApiError(describeDeepSeekStatus(500)!))).toBe(false);
+    expect(isMalformedToolJsonError(undefined)).toBe(false);
+    expect(isMalformedToolJsonError("plain string")).toBe(false);
   });
 });
 
