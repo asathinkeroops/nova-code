@@ -117,6 +117,11 @@ export class LspManager {
     return client.definition(abs, position);
   }
 
+  async implementation(path: string, position: Position): Promise<Location[]> {
+    const { client, abs } = await this.clientForPath(path);
+    return client.implementation(abs, position);
+  }
+
   async references(path: string, position: Position, includeDeclaration = true): Promise<Location[]> {
     const { client, abs } = await this.clientForPath(path);
     return client.references(abs, position, includeDeclaration);

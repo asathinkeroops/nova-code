@@ -56,6 +56,28 @@ describe("lsp tool", () => {
     expect(res.output).toContain("src/foo.ts:10:5");
   });
 
+  it("queries implementation at the requested position and renders the results", async () => {
+    let seen: { line: number; character: number } | undefined;
+    const uri = pathToFileURL("/work/src/impl.ts").href;
+    const tool = createLspTool(
+      fakeManager({
+        implementation: async (_path: string, position) => {
+          seen = position;
+          return [
+            { uri, range: { start: { line: 41, character: 2 }, end: { line: 41, character: 9 } } },
+          ];
+        },
+      }),
+    );
+    const res = await tool.run(
+      { action: "implementation", path: "src/foo.ts", line: 8, character: 5 },
+      ctx,
+    );
+    expect(res.isError).toBeFalsy();
+    expect(seen).toEqual({ line: 7, character: 4 });
+    expect(res.output).toContain("src/impl.ts:42:3");
+  });
+
   it("renders diagnostics with severity labels", async () => {
     const tool = createLspTool(
       fakeManager({

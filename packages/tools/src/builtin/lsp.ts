@@ -17,9 +17,18 @@ import {
 const inputSchema = z
   .object({
     action: z
-      .enum(["definition", "references", "hover", "diagnostics", "document_symbols", "workspace_symbol"])
+      .enum([
+        "definition",
+        "implementation",
+        "references",
+        "hover",
+        "diagnostics",
+        "document_symbols",
+        "workspace_symbol",
+      ])
       .describe(
-        "What to query: definition (go to def), references (find usages), hover (type/doc at a position), " +
+        "What to query: definition (go to def), implementation (go to the concrete implementation(s) of an " +
+          "interface/abstract member), references (find usages), hover (type/doc at a position), " +
           "diagnostics (errors/warnings for a file), document_symbols (outline of a file), " +
           "workspace_symbol (find a symbol by name across the project).",
       ),
@@ -35,13 +44,13 @@ const inputSchema = z
       .int()
       .positive()
       .optional()
-      .describe("1-based line of the symbol. Required for definition, references, and hover."),
+      .describe("1-based line of the symbol. Required for definition, implementation, references, and hover."),
     character: z
       .number()
       .int()
       .positive()
       .optional()
-      .describe("1-based column of the symbol. Defaults to 1. Used by definition, references, hover."),
+      .describe("1-based column of the symbol. Defaults to 1. Used by definition, implementation, references, hover."),
     symbol: z
       .string()
       .optional()
@@ -72,8 +81,8 @@ export function createLspTool(manager: LspManager): ToolHandler {
     definition: {
       name: "lsp",
       description:
-        "Query a language server for precise code intelligence: go-to-definition, find-references, hover " +
-        "(types/docs), diagnostics (errors/warnings), and symbol search. Far more accurate than grep for " +
+        "Query a language server for precise code intelligence: go-to-definition, go-to-implementation, " +
+        "find-references, hover (types/docs), diagnostics (errors/warnings), and symbol search. Far more accurate than grep for " +
         "navigation because it understands scopes and types. Positions are 1-based line and column. " +
         "Requires the relevant language server installed on PATH (e.g. typescript-language-server, " +
         "pyright-langserver, gopls, rust-analyzer).",
@@ -101,6 +110,11 @@ async function dispatch(manager: LspManager, input: Input, cwd: string): Promise
       const { path, position } = requirePosition(input);
       const locs = await manager.definition(path, position);
       return renderLocations(locs, cwd, `definition of ${path}:${input.line}`);
+    }
+    case "implementation": {
+      const { path, position } = requirePosition(input);
+      const locs = await manager.implementation(path, position);
+      return renderLocations(locs, cwd, `implementations of ${path}:${input.line}`);
     }
     case "references": {
       const { path, position } = requirePosition(input);

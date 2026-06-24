@@ -170,6 +170,15 @@ export class LspClient {
     return normalizeLocations(res);
   }
 
+  async implementation(absPath: string, position: Position): Promise<Location[]> {
+    const uri = await this.ensureOpen(absPath);
+    const res = await this.req("textDocument/implementation", {
+      textDocument: { uri },
+      position,
+    });
+    return normalizeLocations(res);
+  }
+
   async references(absPath: string, position: Position, includeDeclaration = true): Promise<Location[]> {
     const uri = await this.ensureOpen(absPath);
     const res = await this.req("textDocument/references", {
@@ -280,6 +289,7 @@ function clientCapabilities(): Record<string, unknown> {
     textDocument: {
       synchronization: { dynamicRegistration: false, didSave: false },
       definition: { dynamicRegistration: false, linkSupport: true },
+      implementation: { dynamicRegistration: false, linkSupport: true },
       references: { dynamicRegistration: false },
       hover: { dynamicRegistration: false, contentFormat: ["markdown", "plaintext"] },
       documentSymbol: { dynamicRegistration: false, hierarchicalDocumentSymbolSupport: true },
