@@ -114,4 +114,75 @@ describe("loadMemory", () => {
     expect(userSources[0]?.filename).toBe("CLAUDE.md");
     expect(userSources[0]?.path).toBe(join(home, ".claude", "CLAUDE.md"));
   });
+
+  describe("auto layer", () => {
+    it("loads the auto index after the project layer, tagged with baseDir", async () => {
+      await writeFile(join(root, "NOVA.md"), "project-nova content", "utf8");
+      const autoDir = join(root, ".nova", "memory");
+      await writeFileEnsuringDir(join(autoDir, "MEMORY.md"), "AUTO_INDEX_BODY");
+
+      const bundle = await loadMemory(root, { home, autoDir });
+
+      expect(bundle.sources.map((s) => s.layer)).toEqual(["project", "auto"]);
+      expect(bundle.autoDir).toBe(autoDir);
+      expect(bundle.system).toContain("AUTO_INDEX_BODY");
+      expect(bundle.system).toContain(`<memory layer="auto" baseDir="${autoDir}">`);
+      // Auto section comes last so it reads as the most-specific override.
+      expect(bundle.system.indexOf("AUTO_INDEX_BODY")).toBeGreaterThan(
+        bundle.system.indexOf("project-nova content"),
+      );
+    });
+
+    it("echoes autoDir even when no index file exists yet", async () => {
+      const autoDir = join(root, ".nova", "memory");
+
+      const bundle = await loadMemory(root, { home, autoDir });
+
+      // Feature is enabled (dir echoed) but nothing is loaded as a source.
+      expect(bundle.autoDir).toBe(autoDir);
+      expect(bundle.sources.some((s) => s.layer === "auto")).toBe(false);
+      expect(bundle.system).not.toContain('layer="auto"');
+    });
+
+    it("leaves autoDir unset when the option is absent", async () => {
+      const bundle = await loadMemory(root, { home });
+      expect(bundle.autoDir).toBeUndefined();
+    });
+
+    it("caps the index to its NEWEST maxEntries (appended last), keeping the heading", async () => {
+      const autoDir = join(root, ".nova", "memory");
+      // Entries appended oldest→newest, so mem-19 is the most recent (bottom).
+      const entries = Array.from({ length: 20 }, (_, i) => `- [Mem ${i}](mem-${i}.md) — hook ${i}`);
+      const body = ["# Memory Index", "", ...entries].join("\n");
+      await writeFileEnsuringDir(join(autoDir, "MEMORY.md"), body);
+
+      const bundle = await loadMemory(root, { home, autoDir, autoMaxEntries: 3 });
+
+      // Heading + newest 3 entries (17,18,19) kept; oldest 17 dropped.
+      expect(bundle.system).toContain("# Memory Index");
+      expect(bundle.system).toContain("- [Mem 17](mem-17.md)");
+      expect(bundle.system).toContain("- [Mem 19](mem-19.md)");
+      expect(bundle.system).not.toContain("- [Mem 16](mem-16.md)");
+      expect(bundle.system).not.toContain("- [Mem 0](mem-0.md)");
+      expect(bundle.system).toContain("17 older memories omitted");
+      expect(bundle.system).toContain("read MEMORY.md for the full index");
+      // The truncation notice sits above the surviving entries (where the cut was).
+      expect(bundle.system.indexOf("17 older memories omitted")).toBeLessThan(
+        bundle.system.indexOf("- [Mem 17](mem-17.md)"),
+      );
+    });
+
+    it("leaves a within-budget index untouched (no truncation marker)", async () => {
+      const autoDir = join(root, ".nova", "memory");
+      await writeFileEnsuringDir(
+        join(autoDir, "MEMORY.md"),
+        "# Memory Index\n\n- [One](one.md) — only entry",
+      );
+
+      const bundle = await loadMemory(root, { home, autoDir, autoMaxEntries: 100 });
+
+      expect(bundle.system).toContain("- [One](one.md) — only entry");
+      expect(bundle.system).not.toMatch(/omitted to bound the prompt/);
+    });
+  });
 });

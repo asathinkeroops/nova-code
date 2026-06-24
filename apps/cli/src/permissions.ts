@@ -126,16 +126,49 @@ export function workspaceReadRules(roots: readonly string[]): PermissionRule[] {
   }));
 }
 
+// File-touching tools auto-allowed inside the agent's auto-memory directory.
+// read is included for the case where the store is configured outside the
+// workspace (inside, workspaceReadRules already covers it); write/edit are the
+// point of this rule — the agent owns this store and persisting a learned fact
+// shouldn't prompt the user every time.
+const AUTO_MEMORY_TOOLS = ["read", "write", "edit"] as const;
+
+/**
+ * Auto-allow read/write/edit whose canonical `path` lands inside the project's
+ * auto-memory directory. This store (a MEMORY.md index plus one file per fact)
+ * is maintained by the agent itself, so reading and writing inside it is part
+ * of normal operation rather than something to confirm per call — mirroring how
+ * `workspaceReadRules` fences the read-only tools, but extended to writes since
+ * the agent legitimately owns this directory. `autoDir` must already be
+ * canonicalized (see canonicalizeRoots) so containment compares real on-disk
+ * locations. Scoped tightly to the memory dir, so writes elsewhere still ask.
+ */
+export function autoMemoryRules(autoDir: string): PermissionRule[] {
+  const within = [autoDir];
+  return AUTO_MEMORY_TOOLS.map((tool) => ({
+    tool,
+    effect: "allow" as const,
+    match: { path: { within } },
+  }));
+}
+
 /**
  * Merge user-provided rules with CLI defaults. User rules come first so the
  * PermissionEngine's first-match evaluation lets users override a default
- * (e.g. force `read` back to `ask`). Workspace-scoped read rules sit between
- * user rules and other defaults so a global `read → ask` user override still
- * wins. `roots` must already be canonicalized (see canonicalizeRoots).
+ * (e.g. force `read` back to `ask`, or `write` inside the memory dir back to
+ * `ask`). Auto-memory and workspace-scoped read rules sit between user rules and
+ * other defaults so a global user override still wins. `roots` and
+ * `autoMemoryDir` must already be canonicalized (see canonicalizeRoots).
  */
 export function resolvePermissionRules(
   settings: Settings,
   roots: readonly string[],
+  autoMemoryDir?: string,
 ): PermissionRule[] {
-  return [...settings.permissions.rules, ...workspaceReadRules(roots), ...DEFAULT_PERMISSION_RULES];
+  return [
+    ...settings.permissions.rules,
+    ...(autoMemoryDir ? autoMemoryRules(autoMemoryDir) : []),
+    ...workspaceReadRules(roots),
+    ...DEFAULT_PERMISSION_RULES,
+  ];
 }

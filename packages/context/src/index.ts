@@ -1,5 +1,6 @@
 export {
   loadMemory,
+  MEMORY_INDEX_FILENAME,
   type MemoryBundle,
   type MemoryLayer,
   type MemorySource,

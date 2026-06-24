@@ -122,6 +122,12 @@ export async function createContext(
     filenames: settings.memory.filenames,
     ...(settings.memory.userPaths ? { userPaths: settings.memory.userPaths } : {}),
     ...(settings.memory.globalPath ? { globalPath: settings.memory.globalPath } : {}),
+    ...(settings.memory.auto.enabled
+      ? {
+          autoDir: resolve(workspace, settings.memory.auto.dir),
+          autoMaxEntries: settings.memory.auto.maxEntries,
+        }
+      : {}),
   };
   const memory = await loadMemory(workspace, memoryOpts);
   const version = await readCliVersion();
@@ -428,9 +434,17 @@ export async function createContext(
     [workspace, ...settings.permissions.additionalDirectories],
     workspace,
   );
+  // The agent maintains its own auto-memory store under this directory; auto-allow
+  // read/write/edit inside it so persisting a learned fact doesn't prompt. Resolve
+  // to the same canonical form the gate compares paths in (the dir may not exist
+  // yet — canonicalizePath folds that to the logical absolute path).
+  const autoMemoryDir =
+    memoryOpts.autoDir !== undefined
+      ? await canonicalizePath(workspace, memoryOpts.autoDir)
+      : undefined;
   const permission = new PermissionEngine({
     defaultEffect: settings.permissions.defaultEffect,
-    rules: resolvePermissionRules(settings, allowedRoots),
+    rules: resolvePermissionRules(settings, allowedRoots, autoMemoryDir),
     ask: askWithSignal,
   });
   (ctx as { permission: PermissionEngine }).permission = permission;

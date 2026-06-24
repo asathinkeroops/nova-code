@@ -2,6 +2,7 @@ import { parseSettings } from "@nova/runtime";
 import { PermissionEngine } from "@nova/safety";
 import { describe, expect, it } from "vitest";
 import {
+  autoMemoryRules,
   DEFAULT_PERMISSION_RULES,
   resolveModeDecision,
   resolvePermissionRules,
@@ -60,6 +61,56 @@ describe("resolvePermissionRules", () => {
     expect(tools).not.toContain("read");
     expect(tools).not.toContain("glob");
     expect(tools).not.toContain("grep");
+  });
+});
+
+describe("auto-memory rules", () => {
+  const MEM = `${CWD}/.nova/memory`;
+
+  it("auto-allows read/write/edit scoped to the memory dir", () => {
+    expect(autoMemoryRules(MEM)).toEqual([
+      { tool: "read", effect: "allow", match: { path: { within: [MEM] } } },
+      { tool: "write", effect: "allow", match: { path: { within: [MEM] } } },
+      { tool: "edit", effect: "allow", match: { path: { within: [MEM] } } },
+    ]);
+  });
+
+  it("is omitted when no auto-memory dir is passed (default call sig unchanged)", () => {
+    const settings = parseSettings({});
+    const ws = workspaceReadRules([CWD]);
+    const merged = resolvePermissionRules(settings, [CWD]);
+    expect(merged.slice(0, ws.length)).toEqual(ws);
+    expect(merged.slice(ws.length)).toEqual([...DEFAULT_PERMISSION_RULES]);
+  });
+
+  it("inserts memory rules after user rules and before workspace read rules", () => {
+    const settings = parseSettings({});
+    const merged = resolvePermissionRules(settings, [CWD], MEM);
+    const mem = autoMemoryRules(MEM);
+    expect(merged.slice(0, mem.length)).toEqual(mem);
+  });
+
+  it("lets the engine auto-allow write/edit inside the memory dir but still ask outside", () => {
+    const settings = parseSettings({});
+    const eng = new PermissionEngine({
+      defaultEffect: settings.permissions.defaultEffect,
+      rules: resolvePermissionRules(settings, [CWD], MEM),
+    });
+    expect(eng.evaluate({ tool: "write", input: { path: `${MEM}/fact.md` } }).effect).toBe("allow");
+    expect(eng.evaluate({ tool: "edit", input: { path: `${MEM}/MEMORY.md` } }).effect).toBe("allow");
+    // A write elsewhere in the workspace still prompts (prompt-on-write default).
+    expect(eng.evaluate({ tool: "write", input: { path: `${CWD}/src/foo.ts` } }).effect).toBe("ask");
+  });
+
+  it("lets a user rule force memory writes back to ask (first-match wins)", () => {
+    const settings = parseSettings({
+      permissions: { defaultEffect: "ask", rules: [{ tool: "write", effect: "ask" }] },
+    });
+    const eng = new PermissionEngine({
+      defaultEffect: settings.permissions.defaultEffect,
+      rules: resolvePermissionRules(settings, [CWD], MEM),
+    });
+    expect(eng.evaluate({ tool: "write", input: { path: `${MEM}/fact.md` } }).effect).toBe("ask");
   });
 });
 

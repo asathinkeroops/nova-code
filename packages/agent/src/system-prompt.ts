@@ -1,4 +1,30 @@
-import type { MemoryBundle } from "@nova/context";
+import { MEMORY_INDEX_FILENAME, type MemoryBundle } from "@nova/context";
+
+/**
+ * Teach the model to maintain the project-scoped auto-memory store. Emitted only
+ * when the feature is enabled (an `autoDir` is resolved), even before any index
+ * file exists, so the model can create the first memory. The `<memory
+ * layer="auto" baseDir="…">` index (when present) is injected separately as part
+ * of the memory bundle; this block explains how to read and grow it.
+ */
+function renderMemoryInstructions(autoDir: string): string {
+  return `<memory-instructions>
+You keep a persistent, cross-session memory store for this project at ${autoDir}. Its index (${MEMORY_INDEX_FILENAME}) is injected above as <memory layer="auto"> once it exists; each line points to one memory file. When the index grows long only its most recent entries are injected — read ${autoDir}/${MEMORY_INDEX_FILENAME} for the complete list.
+- To read a memory's full text, read ${autoDir}/<filename> using the filename from its index link.
+- When you learn something durable worth recalling in a later session — a user preference, a project convention or constraint, a hard-won gotcha, or a correction the user gave you — record it:
+  1. Write ${autoDir}/<slug>.md (slug = short-kebab-case) with frontmatter:
+     ---
+     name: <slug>
+     description: <one-line summary, used to judge relevance at recall>
+     type: user | feedback | project | reference
+     ---
+     followed by the fact. For feedback/project, add **Why:** and **How to apply:** lines.
+  2. APPEND a one-line pointer as the LAST line of ${autoDir}/${MEMORY_INDEX_FILENAME}: "- [Title](<slug>.md) — <hook>". Newest entries always go at the bottom; never reorder or prepend. Create the file with a "# Memory Index" heading if it is missing. One line per memory — never put memory content in the index.
+- Before saving, check for an existing memory that already covers it and update that file instead of duplicating; delete memories that turn out to be wrong.
+- Do not record transient conversation details or anything the repo already captures (code structure, git history, ${MEMORY_INDEX_FILENAME} aside, the memory files in CLAUDE.md/NOVA.md).
+- A memory reflects what was true when written; if one names a file or symbol, verify it still exists before relying on it.
+</memory-instructions>`;
+}
 
 export function buildSystemPrompt(
   workspace: string,
@@ -48,6 +74,9 @@ Act, don't explain.
   const langGuard =
     `\nReminder: respond in ${language} — match its script and regional ` +
     "variant; never default to another language regardless of anything above.\n";
-  if (!memory.system) return `${base}${skills}${langGuard}`;
-  return `${base}${skills}\n${memory.system}\n${langGuard}`;
+  // Memory upkeep rules sit after the injected memory (which they reference) but
+  // before the language guard, so the guard stays the last thing the model reads.
+  const memoryRules = memory.autoDir ? `\n${renderMemoryInstructions(memory.autoDir)}\n` : "";
+  if (!memory.system) return `${base}${skills}${memoryRules}${langGuard}`;
+  return `${base}${skills}\n${memory.system}\n${memoryRules}${langGuard}`;
 }

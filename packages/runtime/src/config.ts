@@ -96,6 +96,17 @@ export type McpServerConfig = z.infer<typeof mcpServerSchema>;
 
 export const DEFAULT_MEMORY_FILENAMES = ["NOVA.md", "CLAUDE.md", "AGENTS.md"] as const;
 
+// Project-relative directory for the agent-maintained auto-memory store. Inside
+// the workspace root on purpose: it sidesteps the sandbox write-confinement (no
+// allowlist needed) and is naturally project-scoped + git-trackable.
+export const DEFAULT_AUTO_MEMORY_DIR = ".nova/memory";
+
+// The MEMORY.md index is injected into the system prompt on EVERY request, so an
+// unbounded index would silently grow per-request token cost as memories pile
+// up. Cap the injected index at this many entries (it's one line per memory);
+// the full file is always readable on demand via its baseDir.
+export const DEFAULT_AUTO_MEMORY_MAX_ENTRIES = 100;
+
 // Common package-manager / toolchain cache dirs that live OUTSIDE the
 // workspace. Seeded into the sandbox write-allowlist so the default-ON sandbox
 // doesn't break the everyday commands an agent runs — npm/pnpm/yarn, cargo +
@@ -339,8 +350,30 @@ export const settingsSchema = z.object({
         .default([...DEFAULT_MEMORY_FILENAMES]),
       userPaths: z.array(z.string().min(1)).optional(),
       globalPath: z.string().min(1).optional(),
+      // Cross-session memory the agent maintains itself: an index (MEMORY.md)
+      // plus one file per fact, loaded as the `auto` memory layer. `dir` is
+      // resolved relative to the workspace root.
+      auto: z
+        .object({
+          enabled: z.boolean().default(true),
+          dir: z.string().min(1).default(DEFAULT_AUTO_MEMORY_DIR),
+          // Max memory entries (lines) from MEMORY.md injected into the prompt.
+          maxEntries: z.number().int().positive().default(DEFAULT_AUTO_MEMORY_MAX_ENTRIES),
+        })
+        .default({
+          enabled: true,
+          dir: DEFAULT_AUTO_MEMORY_DIR,
+          maxEntries: DEFAULT_AUTO_MEMORY_MAX_ENTRIES,
+        }),
     })
-    .default({ filenames: [...DEFAULT_MEMORY_FILENAMES] }),
+    .default({
+      filenames: [...DEFAULT_MEMORY_FILENAMES],
+      auto: {
+        enabled: true,
+        dir: DEFAULT_AUTO_MEMORY_DIR,
+        maxEntries: DEFAULT_AUTO_MEMORY_MAX_ENTRIES,
+      },
+    }),
   // compact overrides — tuning fields are optional and default to the constants
   // in @nova/context/compact.ts (single source of truth). `enabled` is a
   // runtime concern (whether to invoke compact at all) so it defaults here.

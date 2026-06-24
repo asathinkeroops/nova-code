@@ -55,6 +55,25 @@ describe("buildSystemPrompt", () => {
     expect(prompt).not.toMatch(/date="\d{4}-\d{2}-\d{2}T/);
   });
 
+  it("emits memory-upkeep instructions when an auto memory dir is set", () => {
+    const memory: MemoryBundle = { system: "", sources: [], autoDir: "/ws/.nova/memory" };
+    const prompt = buildSystemPrompt("/ws", memory, "sess-1");
+    expect(prompt).toContain("<memory-instructions>");
+    expect(prompt).toContain("/ws/.nova/memory");
+    expect(prompt).toContain("MEMORY.md");
+  });
+
+  it("omits memory-upkeep instructions when auto memory is disabled (no autoDir)", () => {
+    const prompt = buildSystemPrompt("/ws", emptyMemory, "sess-1");
+    expect(prompt).not.toContain("<memory-instructions>");
+  });
+
+  it("keeps the language guard after the memory-upkeep instructions", () => {
+    const memory: MemoryBundle = { system: "", sources: [], autoDir: "/ws/.nova/memory" };
+    const prompt = buildSystemPrompt("/ws", memory, "sess-1", "", "en");
+    expect(prompt.indexOf("respond in en")).toBeGreaterThan(prompt.indexOf("<memory-instructions>"));
+  });
+
   it("does not name 'Chinese' anywhere — naming it primes a Chinese-prior model", () => {
     // The only language token that may appear is 'English' (in the langGuard,
     // as the positive example). 'Chinese' must not appear: Nova is tuned for
