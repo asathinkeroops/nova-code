@@ -1,6 +1,6 @@
 import wrapAnsi from "wrap-ansi";
 import type { RenderItem } from "./render-item.js";
-import { renderItemToString } from "./render-strings.js";
+import { clickTargetLine, renderItemToString } from "./render-strings.js";
 
 interface CacheEntry {
   width: number;
@@ -60,6 +60,13 @@ export function totalHeight(items: RenderItem[], width: number): number {
 export interface VisibleSlice {
   /** Visible ANSI lines, ready to join with "\n". */
   lines: string[];
+  /**
+   * Per-visible-line click/hover target, aligned 1:1 with {@link lines}. Holds a
+   * collapsible item's key on its control row (tool-batch title / thinking
+   * "… +N lines" hint) and `null` everywhere else, so the mouse layer can map a
+   * terminal row back to that item without re-measuring.
+   */
+  targets: Array<string | null>;
   /** True total line count of the input items at this width. */
   totalLines: number;
   /** Lines hidden above the slice (in [0, totalLines]). */
@@ -89,7 +96,7 @@ export function sliceLines(
   viewportRows: number,
 ): VisibleSlice {
   if (viewportRows <= 0) {
-    return { lines: [], totalLines: 0, hiddenAbove: 0, hiddenBelow: 0 };
+    return { lines: [], targets: [], totalLines: 0, hiddenAbove: 0, hiddenBelow: 0 };
   }
   const total = totalHeight(items, width);
   const maxOffset = Math.max(0, total - viewportRows);
@@ -97,6 +104,7 @@ export function sliceLines(
   const end = off + viewportRows;
 
   const collected: string[] = [];
+  const targets: Array<string | null> = [];
   let scanned = 0;
   outer: for (const it of items) {
     const itemLines = measureItem(it, width);
@@ -104,8 +112,17 @@ export function sliceLines(
       scanned += itemLines.length;
       continue;
     }
-    for (const line of itemLines) {
-      if (scanned >= off && scanned < end) collected.push(line);
+    // Collapsible items (tool batch, committed thinking) expose one clickable
+    // control row; tag that row with the item key so the mouse layer can resolve
+    // a viewport row to the item. Only the control row itself is tagged, and
+    // only while it is visible (a scrolled-off control can't be clicked).
+    const targetLine = clickTargetLine(it, width);
+    const key = targetLine !== null ? it.key : null;
+    for (let li = 0; li < itemLines.length; li++) {
+      if (scanned >= off && scanned < end) {
+        collected.push(itemLines[li] ?? "");
+        targets.push(key !== null && li === targetLine ? key : null);
+      }
       scanned++;
       if (scanned >= end) break outer;
     }
@@ -113,6 +130,7 @@ export function sliceLines(
 
   return {
     lines: collected,
+    targets,
     totalLines: total,
     hiddenAbove: off,
     hiddenBelow: Math.max(0, total - off - collected.length),

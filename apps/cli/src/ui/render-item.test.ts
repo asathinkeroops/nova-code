@@ -228,6 +228,195 @@ describe("buildRenderItems sub-agent details", () => {
   });
 });
 
+describe("buildRenderItems tool batching", () => {
+  const toolUse = (id: string, name: string, input: Record<string, unknown>) => ({
+    type: "tool_use" as const,
+    id,
+    name,
+    input,
+  });
+  const toolResult = (id: string, text: string, isError = false) => ({
+    type: "tool_result" as const,
+    tool_use_id: id,
+    content: text,
+    ...(isError ? { is_error: true } : {}),
+  });
+
+  // One assistant message of tool_use blocks paired with a following user
+  // message of their tool_results — mirrors how the loop commits them.
+  const render = (
+    uses: ReturnType<typeof toolUse>[],
+    results: ReturnType<typeof toolResult>[],
+    expandedItems?: Record<string, boolean>,
+  ) =>
+    buildRenderItems({
+      banner: null,
+      cards: [],
+      messages: [
+        { role: "assistant", content: uses },
+        { role: "user", content: results },
+      ],
+      ...(expandedItems ? { expandedItems } : {}),
+    });
+
+  it("folds two adjacent completed reads into a collapsed tool-batch", () => {
+    const items = render(
+      [toolUse("r1", "read", { path: "a.ts" }), toolUse("r2", "read", { path: "b.ts" })],
+      [toolResult("r1", "x"), toolResult("r2", "y")],
+    );
+    expect(items.map((i) => i.kind)).toEqual(["spacer", "tool-batch"]);
+    const batch = items.find((i) => i.kind === "tool-batch");
+    expect(batch).toMatchObject({ key: "r1", collapsed: true });
+    expect(batch && batch.kind === "tool-batch" ? batch.members.length : 0).toBe(2);
+  });
+
+  it("leaves a lone tool call as a normal tool-call item", () => {
+    const items = render([toolUse("r1", "read", { path: "a.ts" })], [toolResult("r1", "x")]);
+    expect(items.map((i) => i.kind)).toEqual(["spacer", "tool-call"]);
+  });
+
+  it("batches pending calls too, so the line stays stable while results stream", () => {
+    const items = render(
+      [toolUse("r1", "read", { path: "a.ts" }), toolUse("r2", "read", { path: "b.ts" })],
+      [toolResult("r1", "x")], // r2 has no result yet
+    );
+    expect(items.map((i) => i.kind)).toEqual(["spacer", "tool-batch"]);
+    const batch = items.find((i) => i.kind === "tool-batch");
+    expect(batch && batch.kind === "tool-batch" ? batch.members.length : 0).toBe(2);
+    // The still-pending member is carried with an undefined result.
+    expect(
+      batch && batch.kind === "tool-batch" ? batch.members[1]?.result : "x",
+    ).toBeUndefined();
+  });
+
+  it("expands a batch whose key is in expandedItems", () => {
+    const items = render(
+      [toolUse("r1", "read", { path: "a.ts" }), toolUse("r2", "read", { path: "b.ts" })],
+      [toolResult("r1", "x"), toolResult("r2", "y")],
+      { r1: true },
+    );
+    const batch = items.find((i) => i.kind === "tool-batch");
+    expect(batch).toMatchObject({ collapsed: false });
+  });
+
+  it("batches a mix of search / read / run but not other tools", () => {
+    const items = render(
+      [
+        toolUse("g1", "grep", { pattern: "x" }),
+        toolUse("r1", "read", { path: "a.ts" }),
+        toolUse("b1", "bash", { command: "ls" }),
+      ],
+      [toolResult("g1", "m"), toolResult("r1", "x"), toolResult("b1", "out")],
+    );
+    expect(items.map((i) => i.kind)).toEqual(["spacer", "tool-batch"]);
+    // An edit between two reads breaks the run into two single calls.
+    const split = render(
+      [
+        toolUse("r1", "read", { path: "a.ts" }),
+        toolUse("e1", "edit", { path: "a.ts", old_string: "x", new_string: "y" }),
+        toolUse("r2", "read", { path: "b.ts" }),
+      ],
+      [toolResult("r1", "x"), toolResult("e1", "ok"), toolResult("r2", "y")],
+    );
+    expect(split.map((i) => i.kind)).toEqual([
+      "spacer",
+      "tool-call",
+      "spacer",
+      "tool-call",
+      "spacer",
+      "tool-call",
+    ]);
+  });
+});
+
+describe("renderItemToString tool batch", () => {
+  const batch = (
+    members: Array<{ name: string; id: string }>,
+    collapsed: boolean,
+  ): string =>
+    renderItemToString(
+      {
+        kind: "tool-batch",
+        key: members[0]?.id ?? "k",
+        collapsed,
+        members: members.map((m) => ({
+          use: { type: "tool_use", id: m.id, name: m.name, input: {} },
+          result: { type: "tool_result", tool_use_id: m.id, content: "ok" },
+        })),
+      } as RenderItem,
+      80,
+    );
+
+  it("renders a single summary line when collapsed", () => {
+    const out = batch(
+      [
+        { name: "grep", id: "g1" },
+        { name: "glob", id: "g2" },
+        { name: "read", id: "r1" },
+        { name: "read", id: "r2" },
+        { name: "read", id: "r3" },
+        { name: "bash", id: "b1" },
+      ],
+      true,
+    );
+    expect(out.split("\n")).toHaveLength(1);
+    expect(out).toContain("Search 2 patterns");
+    expect(out).toContain("read 3 files");
+    expect(out).toContain("run 1 shell command");
+  });
+
+  it("stays a single summary line while a member is still pending", () => {
+    const out = renderItemToString(
+      {
+        kind: "tool-batch",
+        key: "r1",
+        collapsed: true,
+        members: [
+          {
+            use: { type: "tool_use", id: "r1", name: "read", input: {} },
+            result: { type: "tool_result", tool_use_id: "r1", content: "ok" },
+          },
+          // r2 still running — no result. Batch must still render as one line.
+          { use: { type: "tool_use", id: "r2", name: "read", input: {} }, result: undefined },
+        ],
+      } as RenderItem,
+      80,
+    );
+    expect(out.split("\n")).toHaveLength(1);
+    expect(out).toContain("Read 2 files");
+  });
+
+  it("expands to the full per-call rendering when not collapsed", () => {
+    const out = batch(
+      [
+        { name: "read", id: "r1" },
+        { name: "read", id: "r2" },
+      ],
+      false,
+    );
+    // Title line plus each member's own multi-line tool-call rendering.
+    expect(out.split("\n").length).toBeGreaterThan(2);
+    expect(out).toContain("read");
+  });
+
+  it("wraps expanded children in a left spine closed with a corner", () => {
+    const out = batch(
+      [
+        { name: "read", id: "r1" },
+        { name: "read", id: "r2" },
+      ],
+      false,
+    );
+    const rows = out.split("\n");
+    // First row is the disclosure title; every child row hangs off the │ spine.
+    expect(rows[0]).toContain("▾");
+    const body = rows.slice(1);
+    expect(body.every((r) => r.includes("│") || r.includes("╰"))).toBe(true);
+    // The group is closed by a final corner row.
+    expect(rows[rows.length - 1]).toContain("╰");
+  });
+});
+
 describe("renderItemToString thinking collapse", () => {
   const WIDTH = 80;
   const thinking = (text: string, collapsed: boolean): string =>
@@ -260,5 +449,57 @@ describe("renderItemToString thinking collapse", () => {
     const out = thinking("line 1\nline 2", true);
     expect(out).not.toContain("lines");
     expect(out.split("\n")).toHaveLength(3); // header + 2 body rows
+  });
+});
+
+describe("renderItemToString thinking expand", () => {
+  const WIDTH = 80;
+  const thinking = (text: string, expanded: boolean): string =>
+    renderItemToString(
+      { kind: "thinking", key: "k", thinking: text, collapsed: true, expanded } as RenderItem,
+      WIDTH,
+    );
+  const sixLines = Array.from({ length: 6 }, (_, i) => `line ${i + 1}`).join("\n");
+
+  it("shows the full body and a 'show less' control when expanded", () => {
+    const out = thinking(sixLines, true);
+    expect(out).toContain("line 1");
+    expect(out).toContain("line 6");
+    expect(out).toContain("show less");
+    expect(out).not.toContain("+");
+    // header + 6 body rows + show-less hint = 8 rows.
+    expect(out.split("\n")).toHaveLength(8);
+  });
+
+  it("falls back to the collapsed preview when expanded is false", () => {
+    const out = thinking(sixLines, false);
+    expect(out).not.toContain("line 4");
+    expect(out).toContain("+3 lines");
+  });
+});
+
+describe("buildRenderItems thinking expand state", () => {
+  const longThinking = Array.from({ length: 8 }, (_, i) => `r${i}`).join("\n");
+  const buildThinking = (expandedItems?: Record<string, boolean>) => {
+    const items = buildRenderItems({
+      banner: null,
+      cards: [],
+      messages: [
+        { role: "assistant", content: [{ type: "thinking", thinking: longThinking, signature: "s" }] },
+      ],
+      ...(expandedItems ? { expandedItems } : {}),
+    });
+    return items.find((i) => i.kind === "thinking");
+  };
+
+  it("marks a committed thinking item expanded when its key is in expandedItems", () => {
+    const collapsed = buildThinking();
+    expect(collapsed && collapsed.kind === "thinking" ? collapsed.key : "").toBeTruthy();
+    const key = collapsed && collapsed.kind === "thinking" ? collapsed.key : "";
+    // Default: not expanded.
+    expect(collapsed).not.toHaveProperty("expanded");
+    // With the key flagged, the same block builds as expanded.
+    const expanded = buildThinking({ [key]: true });
+    expect(expanded).toMatchObject({ collapsed: true, expanded: true });
   });
 });

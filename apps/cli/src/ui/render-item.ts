@@ -30,7 +30,16 @@ export type RenderItem =
   | { kind: "spacer"; key: string }
   | { kind: "user-text"; key: string; text: string }
   | { kind: "assistant-text"; key: string; text: string }
-  | { kind: "thinking"; key: string; thinking: string; label?: string; collapsed?: boolean }
+  | {
+      kind: "thinking";
+      key: string;
+      thinking: string;
+      label?: string;
+      /** True once reasoning is done — eligible to collapse to a short preview. */
+      collapsed?: boolean;
+      /** User toggled the collapsed preview open to read the full reasoning. */
+      expanded?: boolean;
+    }
   | { kind: "redacted-thinking"; key: string; label?: string }
   | {
       kind: "tool-call";
@@ -45,11 +54,28 @@ export type RenderItem =
       details?: SubAgentDetail[];
     }
   | {
-      kind: "read-batch";
+      kind: "tool-batch";
       key: string;
-      entries: Array<{ use: ToolUseBlock; result: ToolResultBlock | undefined }>;
+      /**
+       * The consecutive completed tool calls folded into this batch, in order.
+       * Rendered as a single summary line when {@link collapsed}, or as each
+       * member's full tool-call rendering (exactly as if un-batched) when
+       * expanded. See `coalesceToolBatches` and `renderToolBatch`.
+       */
+      members: Array<{ use: ToolUseBlock; result: ToolResultBlock | undefined }>;
+      /** True = show only the summary line; false = show every member in full. */
+      collapsed: boolean;
     }
   | { kind: "card"; key: string; card: Card };
+
+/**
+ * Tools whose adjacent calls fold into a collapsible batch: searches
+ * (grep/glob), file reads, and shell runs. Pending calls fold too — the batch
+ * forms as soon as the assistant message lands so the collapsed line stays
+ * stable while results stream in, rather than re-flowing each time one arrives.
+ * The summary marker reflects the aggregate state (pending / error / ok).
+ */
+const BATCHABLE_TOOLS = new Set(["grep", "glob", "read", "bash"]);
 
 const HIDDEN_TOOLS = new Set([
   "createTodo",
@@ -106,17 +132,31 @@ export interface BuildOpts {
    * `display-sidecar.ts`.
    */
   toolDetails?: Record<string, SubAgentDetail[]>;
+  /**
+   * Set of batch keys (the first member's `tool_use` id) the user has expanded.
+   * A coalesced tool batch renders collapsed unless its key is present here. See
+   * `coalesceToolBatches`.
+   */
+  expandedItems?: Record<string, boolean>;
 }
 
 /**
  * Project store state into a flat list of RenderItems. Cards are interleaved
  * by their `anchor` (the message index they were pushed against); cards with
  * anchor === -1 render before all messages; cards anchored past the end go
- * last. Adjacent `read` tool calls collapse into a single ReadBatch.
+ * last. Adjacent completed search/read/run tool calls are then folded into
+ * collapsible `tool-batch` items (see `coalesceToolBatches`).
  */
 export function buildRenderItems(opts: BuildOpts): RenderItem[] {
-  const { banner, messages, cards, thinkingLabel, userDisplayOverrides, toolDetails } =
-    opts;
+  const {
+    banner,
+    messages,
+    cards,
+    thinkingLabel,
+    userDisplayOverrides,
+    toolDetails,
+    expandedItems,
+  } = opts;
   const items: RenderItem[] = [];
   let n = 0;
   const nextKey = (prefix: string): string => `${prefix}#${n++}`;
@@ -146,7 +186,15 @@ export function buildRenderItems(opts: BuildOpts): RenderItem[] {
     if (msg.role === "user") {
       appendUserItems(items, msg, nextKey, userDisplayOverrides);
     } else {
-      appendAssistantItems(items, msg, resultIndex, thinkingLabel, nextKey, toolDetails);
+      appendAssistantItems(
+        items,
+        msg,
+        resultIndex,
+        thinkingLabel,
+        nextKey,
+        toolDetails,
+        expandedItems ?? {},
+      );
     }
 
     for (const c of cardsByAnchor.get(mi) ?? []) {
@@ -162,7 +210,64 @@ export function buildRenderItems(opts: BuildOpts): RenderItem[] {
     }
   }
 
-  return items;
+  return coalesceToolBatches(items, expandedItems ?? {});
+}
+
+type ToolCallItem = Extract<RenderItem, { kind: "tool-call" }>;
+
+/** A grep/glob/read/bash call (pending or done) with no sub-agent details. */
+function isBatchableToolCall(item: RenderItem | undefined): item is ToolCallItem {
+  return (
+    item !== undefined &&
+    item.kind === "tool-call" &&
+    BATCHABLE_TOOLS.has(item.use.name) &&
+    (item.details === undefined || item.details.length === 0)
+  );
+}
+
+/**
+ * Fold maximal runs of consecutive search/read/run tool calls (pending or done)
+ * into a single `tool-batch` item. In the flat item stream each tool call is preceded
+ * by its own spacer, so a run looks like `[spacer, tool-call]+`; we keep the
+ * run's leading spacer, drop the interior ones (the batch re-inserts blank rows
+ * between members when expanded), and replace the rest with one batch item.
+ * Runs shorter than two calls are left untouched. The batch key is the first
+ * member's `tool_use` id — stable across appends, so its expand/collapse state
+ * survives re-renders.
+ */
+function coalesceToolBatches(
+  items: RenderItem[],
+  expanded: Record<string, boolean>,
+): RenderItem[] {
+  const out: RenderItem[] = [];
+  let i = 0;
+  while (i < items.length) {
+    const item = items[i];
+    if (item && item.kind === "spacer" && isBatchableToolCall(items[i + 1])) {
+      const members: Array<{ use: ToolUseBlock; result: ToolResultBlock | undefined }> = [];
+      let j = i;
+      while (items[j]?.kind === "spacer" && isBatchableToolCall(items[j + 1])) {
+        const tc = items[j + 1] as ToolCallItem;
+        members.push({ use: tc.use, result: tc.result });
+        j += 2;
+      }
+      if (members.length >= 2) {
+        const firstId = members[0]!.use.id;
+        out.push(item); // keep the run's leading spacer
+        out.push({
+          kind: "tool-batch",
+          key: firstId,
+          members,
+          collapsed: expanded[firstId] !== true,
+        });
+        i = j;
+        continue;
+      }
+    }
+    if (item) out.push(item);
+    i++;
+  }
+  return out;
 }
 
 /**
@@ -228,6 +333,7 @@ function appendAssistantItems(
   thinkingLabel: string | undefined,
   nextKey: (p: string) => string,
   toolDetails: Record<string, SubAgentDetail[]> | undefined,
+  expandedItems: Record<string, boolean>,
 ): void {
   const blocks = blocksOf(msg);
   // Each visible item gets a leading spacer so consecutive tools / thinking
@@ -248,14 +354,17 @@ function appendAssistantItems(
       // guard in buildLiveDraftItems. `redacted_thinking` still renders: it
       // stands in for encrypted reasoning that genuinely exists.
       if (block.thinking.trim().length === 0) continue;
+      const thKey = nextKey("th");
       push({
         kind: "thinking",
-        key: nextKey("th"),
+        key: thKey,
         thinking: block.thinking,
         // Committed thinking is "done": collapse it to a short preview. The
         // live draft (buildLiveDraftItems) stays uncollapsed so reasoning still
-        // streams in full while it is being produced.
+        // streams in full while it is being produced. The preview's "… +N lines"
+        // hint is a click target (keyed by thKey) that expands the full text.
         collapsed: true,
+        ...(expandedItems[thKey] ? { expanded: true } : {}),
         ...(thinkingLabel !== undefined ? { label: thinkingLabel } : {}),
       });
     } else if (block.type === "redacted_thinking") {
@@ -266,33 +375,6 @@ function appendAssistantItems(
       });
     } else if (block.type === "tool_use") {
       if (HIDDEN_TOOLS.has(block.name)) continue;
-
-      if (block.name === "read") {
-        const entries = [{ use: block, result: resultIndex.get(block.id) }];
-        let j = i + 1;
-        while (j < blocks.length) {
-          const next = blocks[j];
-          if (
-            !next ||
-            next.type !== "tool_use" ||
-            next.name !== "read" ||
-            HIDDEN_TOOLS.has(next.name)
-          ) {
-            break;
-          }
-          entries.push({ use: next, result: resultIndex.get(next.id) });
-          j++;
-        }
-        if (entries.length >= 2) {
-          push({
-            kind: "read-batch",
-            key: nextKey("rb"),
-            entries,
-          });
-          i = j - 1;
-          continue;
-        }
-      }
 
       const details = toolDetails?.[block.id];
       push({

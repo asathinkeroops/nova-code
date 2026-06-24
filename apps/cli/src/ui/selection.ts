@@ -56,14 +56,24 @@ export function normalizeDrag(rect: DragRect): DragRect {
 const SEL_BG_OPEN = "\x1b[48;2;45;80;130m";
 const SEL_BG_CLOSE = "\x1b[49m";
 
+// Lighter, cooler band for mouse hover on an interactive row (e.g. a collapsible
+// tool-batch title). Distinct from the selection blue so a hover never reads as
+// an active drag-selection.
+const HOVER_BG_OPEN = "\x1b[48;2;60;66;86m";
+
 /**
  * Wrap the visible chars in `[startCol, endCol)` of an ANSI line with a
- * selection background so the user sees what they're selecting. Pre-existing
+ * background so the user sees what they're selecting / hovering. Pre-existing
  * SGR codes inside the range are preserved; the background is re-emitted
  * after each embedded SGR so an inline reset (e.g. `\x1b[0m`) doesn't punch a
- * hole through the highlight.
+ * hole through the highlight. `bgOpen` defaults to the selection colour.
  */
-export function applyInverse(line: string, startCol: number, endCol: number): string {
+export function applyInverse(
+  line: string,
+  startCol: number,
+  endCol: number,
+  bgOpen: string = SEL_BG_OPEN,
+): string {
   if (startCol >= endCol || line.length === 0) return line;
   let col = 0;
   let out = "";
@@ -75,13 +85,13 @@ export function applyInverse(line: string, startCol: number, endCol: number): st
       const end = line.indexOf("m", i);
       if (end !== -1) {
         out += line.slice(i, end + 1);
-        if (inSel) out += SEL_BG_OPEN;
+        if (inSel) out += bgOpen;
         i = end + 1;
         continue;
       }
     }
     if (!inSel && col >= startCol && col < endCol) {
-      out += SEL_BG_OPEN;
+      out += bgOpen;
       inSel = true;
     }
     if (inSel && col >= endCol) {
@@ -94,6 +104,14 @@ export function applyInverse(line: string, startCol: number, endCol: number): st
   }
   if (inSel) out += SEL_BG_CLOSE;
   return out;
+}
+
+/**
+ * Paint a hover background across the whole visible text of `line` — used to
+ * highlight a collapsible tool-batch title row while the mouse is over it.
+ */
+export function highlightWholeLine(line: string): string {
+  return applyInverse(line, 0, Number.MAX_SAFE_INTEGER, HOVER_BG_OPEN);
 }
 
 export function extractSelection(

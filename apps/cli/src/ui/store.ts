@@ -224,6 +224,27 @@ export interface AppState {
    */
   selection: SelectionRect | null;
   /**
+   * Click/hover target per visible viewport line (1:1 with the painted lines),
+   * written back by the viewport each render. Holds a collapsible item's key on
+   * its control row (tool-batch title / thinking "… +N lines" hint) and null
+   * elsewhere, letting the mouse layer map a terminal row to that item. See
+   * `measure.ts` `VisibleSlice`.
+   */
+  lineTargets: Array<string | null>;
+  /**
+   * Keys of the collapsible items (tool batches, committed thinking blocks) the
+   * user has expanded (clicked open). Absent key = collapsed (the default). Read
+   * by `buildRenderItems` to pick each item's render mode; cleared on `reset()`
+   * (/clear) with the rest of the transcript.
+   */
+  expandedItems: Record<string, boolean>;
+  /**
+   * Key of the collapsible item the mouse is currently hovering, or null. Drives
+   * the control-row hover highlight in the viewport. Purely visual; never
+   * persisted.
+   */
+  hoveredItem: string | null;
+  /**
    * Epoch-ms the active session was created. Drives the StatusLine elapsed
    * clock. Set by `setStatusMeta`; survives `reset()` (session-level state).
    */
@@ -410,6 +431,12 @@ export interface AppActions {
   /** Wire (or clear) the host's image-paste handlers. */
   setImagePaste: (handlers: AppState["imagePaste"]) => void;
   setSelection: (rect: SelectionRect | null) => void;
+  /** Record the per-line click/hover targets the viewport painted this frame. */
+  setLineTargets: (targets: Array<string | null>) => void;
+  /** Toggle a collapsible item (tool batch / thinking) between collapsed and expanded. */
+  toggleItem: (key: string) => void;
+  /** Set (or clear, with null) the collapsible item the mouse is hovering. No-op if unchanged. */
+  setHoveredItem: (key: string | null) => void;
   /** Set the session-level StatusLine metadata (clock origin, branch, window). */
   setStatusMeta: (meta: {
     sessionStartedAt: number;
@@ -600,6 +627,9 @@ export function createAppStore(opts: AppStoreOptions = {}): AppStoreApi {
       copyNoticeTone: "success",
       imagePaste: null,
       selection: null,
+      lineTargets: [],
+      expandedItems: {},
+      hoveredItem: null,
       sessionStartedAt: null,
       gitBranch: null,
       contextTokens: 0,
@@ -841,6 +871,9 @@ export function createAppStore(opts: AppStoreOptions = {}): AppStoreApi {
           sessionOutputTokens: 0,
           userDisplayOverrides: {},
           toolDetails: {},
+          expandedItems: {},
+          hoveredItem: null,
+          lineTargets: [],
         });
         // banner, thinkingLabel, and the session-level status meta
         // (sessionStartedAt / gitBranch / contextWindowSize) are intentionally
@@ -916,6 +949,33 @@ export function createAppStore(opts: AppStoreOptions = {}): AppStoreApi {
       setSelection(rect) {
         if (get().selection === rect) return;
         set({ selection: rect });
+      },
+
+      setLineTargets(targets) {
+        // The viewport hands back a fresh array each frame; only commit when the
+        // mapping actually changed so idle frames don't churn the store.
+        const cur = get().lineTargets;
+        if (
+          cur.length === targets.length &&
+          cur.every((t, i) => t === targets[i])
+        ) {
+          return;
+        }
+        set({ lineTargets: targets });
+      },
+
+      toggleItem(key) {
+        set((s) => {
+          const next = { ...s.expandedItems };
+          if (next[key]) delete next[key];
+          else next[key] = true;
+          return { expandedItems: next };
+        });
+      },
+
+      setHoveredItem(key) {
+        if (get().hoveredItem === key) return;
+        set({ hoveredItem: key });
       },
 
       setStatusMeta(meta) {

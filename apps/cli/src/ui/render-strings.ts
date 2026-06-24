@@ -118,34 +118,59 @@ const THINKING_INDENT = "     "; // aligns continuation rows under the `⎿` bod
 // many wrapped body rows before summarizing the rest with a `… +N lines` hint.
 const THINKING_COLLAPSED_MAX_LINES = 3;
 
+// Wrap committed reasoning to the gutter body width. Hard-wrapped so the line
+// count is stable (measure re-wraps to the same width without splitting again),
+// which lets {@link thinkingToggleLineIndex} locate the hint row analytically.
+function wrapThinkingBody(text: string, width: number): string[] {
+  const trimmed = text.replace(/\s+$/u, "");
+  if (trimmed.length === 0) return [];
+  const bodyWidth = Math.max(1, width - THINKING_INDENT.length);
+  return wrapAnsi(trimmed, bodyWidth, { hard: true, wordWrap: false, trim: false }).split("\n");
+}
+
 function renderThinking(
   text: string,
   label: string | undefined,
   width: number,
   collapsed = false,
+  expanded = false,
 ): string {
   const head = `${magenta("✻")} ${dim(`thinking${label ? ` · ${label}` : ""}`)}`;
-  const trimmed = text.replace(/\s+$/u, "");
-  if (trimmed.length === 0) return head;
-  // Wrap the reasoning ourselves at the body width and prefix a hanging indent
-  // so soft-wrapped long lines stay aligned under the `⎿` marker instead of
-  // falling back to column 0.
-  const bodyWidth = Math.max(1, width - THINKING_INDENT.length);
-  const lines = wrapAnsi(trimmed, bodyWidth, { hard: true, wordWrap: false, trim: false }).split(
-    "\n",
-  );
+  const lines = wrapThinkingBody(text, width);
+  if (lines.length === 0) return head;
   // Once thinking is done we collapse it to a short preview: the first few
-  // wrapped rows plus a one-line hint counting what was hidden. While streaming
-  // (collapsed === false) the full reasoning is shown.
-  const hidden = collapsed ? Math.max(0, lines.length - THINKING_COLLAPSED_MAX_LINES) : 0;
-  const shown = hidden > 0 ? lines.slice(0, THINKING_COLLAPSED_MAX_LINES) : lines;
+  // wrapped rows plus a one-line hint counting what was hidden. The user can
+  // click that hint to expand the full reasoning (which then ends in a
+  // "show less" hint to collapse again). While streaming (collapsed === false)
+  // the full reasoning is always shown with no hint.
+  const overflow = collapsed ? Math.max(0, lines.length - THINKING_COLLAPSED_MAX_LINES) : 0;
+  const shown = overflow > 0 && !expanded ? lines.slice(0, THINKING_COLLAPSED_MAX_LINES) : lines;
   const body = shown
     .map((line, i) => `${dim(i === 0 ? "  ⎿  " : THINKING_INDENT)}${dim(italic(line))}`)
     .join("\n");
-  if (hidden > 0) {
-    return `${head}\n${body}\n${dim(`${THINKING_INDENT}… +${hidden} lines`)}`;
+  if (overflow > 0) {
+    const hint = expanded ? "… show less" : `… +${overflow} lines`;
+    return `${head}\n${body}\n${dim(`${THINKING_INDENT}${hint}`)}`;
   }
   return `${head}\n${body}`;
+}
+
+/**
+ * Index of a committed thinking block's clickable hint row (the "… +N lines" /
+ * "… show less" control), or null when the block has no hint (still streaming,
+ * empty, or its body fits the preview). The hint is always the last rendered
+ * row: header (1) + preview/full body rows + the hint. Used by `measure` to map
+ * that row to a click/hover target.
+ */
+export function thinkingToggleLineIndex(
+  item: Extract<RenderItem, { kind: "thinking" }>,
+  width: number,
+): number | null {
+  if (item.collapsed !== true) return null;
+  const lines = wrapThinkingBody(item.thinking, width);
+  if (lines.length <= THINKING_COLLAPSED_MAX_LINES) return null;
+  const shown = item.expanded ? lines.length : THINKING_COLLAPSED_MAX_LINES;
+  return 1 + shown; // header at 0, body rows 1..shown, hint immediately after
 }
 
 function renderRedactedThinking(label: string | undefined): string {
@@ -561,31 +586,84 @@ function renderToolCall(
   return `${head}\n  ${dim("⎿")}  ${child}${detailRows}`;
 }
 
-// ─── read batch ────────────────────────────────────────────────────────────
+// ─── tool batch ──────────────────────────────────────────────────────────────
 
-const BATCH_MAX_VISIBLE = 5;
+type BatchMember = { use: ToolUseBlock; result: ToolResultBlock | undefined };
 
-function renderReadBatch(
-  entries: Array<{ use: ToolUseBlock; result: ToolResultBlock | undefined }>,
+/**
+ * One-line summary of a folded tool batch, e.g.
+ * `Search 2 patterns, read 3 files, run 1 shell command`. Searches (grep/glob),
+ * reads, and runs (bash) are counted into fixed-order segments; only the first
+ * segment keeps its leading capital so the line reads as a sentence.
+ */
+export function toolBatchSummary(members: BatchMember[]): string {
+  let search = 0;
+  let read = 0;
+  let run = 0;
+  for (const m of members) {
+    const name = m.use.name;
+    if (name === "grep" || name === "glob") search++;
+    else if (name === "read") read++;
+    else if (name === "bash") run++;
+  }
+  const plural = (n: number, one: string): string => `${n} ${one}${n === 1 ? "" : "s"}`;
+  const segs: string[] = [];
+  if (search > 0) segs.push(`Search ${plural(search, "pattern")}`);
+  if (read > 0) segs.push(`Read ${plural(read, "file")}`);
+  if (run > 0) segs.push(`Run ${plural(run, "shell command")}`);
+  return segs
+    .map((s, i) => (i === 0 ? s : `${s.charAt(0).toLowerCase()}${s.slice(1)}`))
+    .join(", ");
+}
+
+// Left spine that visually wraps an expanded batch's children under the title,
+// aligning the bar under the disclosure triangle. Two visual columns ("│ ") so
+// children render against `width - 2` and the prefix never forces a re-wrap.
+const BATCH_GUTTER = `${dim("│")} `;
+const BATCH_GUTTER_W = 2;
+
+/**
+ * Aggregate state of a batch: pending while any member is still running, then
+ * error if any failed, else ok. Drives the disclosure marker colour so a
+ * streaming batch reads as in-progress without the line re-flowing.
+ */
+function batchState(members: BatchMember[]): ToolState {
+  if (members.some((m) => m.result === undefined)) return "pending";
+  if (members.some((m) => m.result?.is_error === true)) return "err";
+  return "ok";
+}
+
+function renderToolBatch(
+  members: BatchMember[],
+  collapsed: boolean,
+  width: number,
 ): string {
-  const visible = entries.slice(0, BATCH_MAX_VISIBLE);
-  const hidden = entries.length - visible.length;
-  const batchState: ToolState = entries.some((e) => e.result === undefined)
-    ? "pending"
-    : entries.some((e) => e.result?.is_error === true)
-      ? "err"
-      : "ok";
-  const head = `${marker(batchState)} ${header("read", `${entries.length} file${entries.length === 1 ? "" : "s"}`)}`;
-  const rows = visible.map((entry, i) => {
-    const input = entry.use.input as Record<string, unknown>;
-    const path = typeof input.path === "string" ? input.path : "?";
-    const r = entry.result;
-    const mark = r === undefined ? dim("…") : r.is_error ? red("✗") : green("✓");
-    const prefix = i === 0 ? `  ${dim("⎿")}  ` : "     ";
-    return `${prefix}${mark} ${path}`;
+  // Disclosure triangle (▸ collapsed / ▾ expanded) signals the row is clickable;
+  // its colour mirrors the aggregate state (gray pending / red error / green ok),
+  // like a tool marker dot.
+  const state = batchState(members);
+  const tri = collapsed ? "▸" : "▾";
+  const tinted = state === "pending" ? gray(tri) : state === "err" ? red(tri) : green(tri);
+  const summary = toolBatchSummary(members);
+  // Collapsed batches are summaries the eye should skim past; dim the text so
+  // they recede behind real content (only the coloured triangle stays vivid).
+  // Expanded, the title heads a visible group, so it stays full-strength.
+  if (collapsed) return `${tinted} ${dim(summary)}`;
+  const title = `${tinted} ${summary}`;
+  // Expanded: the title, then every member rendered exactly as an un-batched
+  // tool call but hung off a continuous left spine (│) so the children read as
+  // one group owned by the title. Members are separated by a bar-only row and
+  // the group is closed with a `╰` corner.
+  const childWidth = Math.max(1, width - BATCH_GUTTER_W);
+  const lines = [title];
+  members.forEach((m, i) => {
+    if (i > 0) lines.push(dim("│"));
+    for (const ln of renderToolCall(m.use, m.result, childWidth).split("\n")) {
+      lines.push(`${BATCH_GUTTER}${ln}`);
+    }
   });
-  if (hidden > 0) rows.push(`     ${dim(`… +${hidden} more`)}`);
-  return [head, ...rows].join("\n");
+  lines.push(dim("╰"));
+  return lines.join("\n");
 }
 
 // ─── dispatch ──────────────────────────────────────────────────────────────
@@ -606,14 +684,37 @@ export function renderItemToString(item: RenderItem, width: number): string {
     case "assistant-text":
       return renderMarkdown(item.text);
     case "thinking":
-      return renderThinking(item.thinking, item.label, width, item.collapsed ?? false);
+      return renderThinking(
+        item.thinking,
+        item.label,
+        width,
+        item.collapsed ?? false,
+        item.expanded ?? false,
+      );
     case "redacted-thinking":
       return renderRedactedThinking(item.label);
     case "tool-call":
       return renderToolCall(item.use, item.result, width, item.details);
-    case "read-batch":
-      return renderReadBatch(item.entries);
+    case "tool-batch":
+      return renderToolBatch(item.members, item.collapsed, width);
     case "card":
       return renderCard(item.card);
+  }
+}
+
+/**
+ * Index of the click/hover target row within an item's rendered lines, or null
+ * if the item has none. A tool batch's whole title is the control (row 0); a
+ * collapsed thinking block's control is its trailing "… +N lines" / "show less"
+ * hint. `measure` uses this to map a viewport row back to a collapsible item.
+ */
+export function clickTargetLine(item: RenderItem, width: number): number | null {
+  switch (item.kind) {
+    case "tool-batch":
+      return 0;
+    case "thinking":
+      return thinkingToggleLineIndex(item, width);
+    default:
+      return null;
   }
 }

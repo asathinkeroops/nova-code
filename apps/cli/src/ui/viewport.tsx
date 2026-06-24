@@ -15,6 +15,7 @@ import {
   viewerLineText,
 } from "./picker.js";
 import { buildLiveDraftItems, buildRenderItems } from "./render-item.js";
+import { highlightWholeLine } from "./selection.js";
 import { blinkPendingOff, hasPendingDot } from "./render-strings.js";
 import { Spinner } from "./spinner.js";
 import type { AppStoreApi, ModalState } from "./store.js";
@@ -63,6 +64,8 @@ export function Viewport({ store, rows, resolveModal }: ViewportProps): React.Re
     selection,
     userDisplayOverrides,
     toolDetails,
+    expandedItems,
+    hoveredItem,
   } = store(
     useShallow((s) => ({
       banner: s.banner,
@@ -83,10 +86,13 @@ export function Viewport({ store, rows, resolveModal }: ViewportProps): React.Re
       selection: s.selection,
       userDisplayOverrides: s.userDisplayOverrides,
       toolDetails: s.toolDetails,
+      expandedItems: s.expandedItems,
+      hoveredItem: s.hoveredItem,
     })),
   );
   const reportViewportMetrics = store.getState().reportViewportMetrics;
   const scrollBy = store.getState().scrollBy;
+  const setLineTargets = store.getState().setLineTargets;
 
   const baseItems = React.useMemo(
     () =>
@@ -96,9 +102,10 @@ export function Viewport({ store, rows, resolveModal }: ViewportProps): React.Re
         cards,
         userDisplayOverrides,
         toolDetails,
+        expandedItems,
         ...(thinkingLabel !== undefined ? { thinkingLabel } : {}),
       }),
-    [banner, messages, cards, thinkingLabel, userDisplayOverrides, toolDetails],
+    [banner, messages, cards, thinkingLabel, userDisplayOverrides, toolDetails, expandedItems],
   );
   // Streaming draft items are built separately and appended, so the transcript's
   // measure-cache (keyed by item identity) stays warm while only the draft
@@ -139,20 +146,32 @@ export function Viewport({ store, rows, resolveModal }: ViewportProps): React.Re
     reportViewportMetrics(slice.totalLines, textRows);
   }, [reportViewportMetrics, slice.totalLines, textRows]);
 
-  // Hand the visible lines to the store so the mouse-drag handler can map
-  // terminal (row, col) coordinates back to characters when copying.
+  // Hand the visible lines + per-line click targets to the store so the mouse
+  // layer can map terminal (row, col) coordinates back to characters (for copy)
+  // and to a collapsible item — tool-batch or thinking (for click/hover).
   const setVisibleLines = store.getState().setVisibleLines;
   React.useEffect(() => {
     setVisibleLines(slice.lines);
   }, [setVisibleLines, slice.lines]);
+  React.useEffect(() => {
+    setLineTargets(slice.targets);
+  }, [setLineTargets, slice.targets]);
 
   // When a drag is in flight, paint the selected range in inverse video so
   // the user sees what they're selecting. Recomputed only when selection or
   // the underlying lines change — cheap for typical small selections.
-  const highlighted = React.useMemo(
-    () => (selection ? highlightLines(slice.lines, selection) : slice.lines),
-    [slice.lines, selection],
-  );
+  // A hovered collapsible-item control row (tool-batch title / thinking hint)
+  // gets a whole-line highlight (skipped while a selection is active so a drag
+  // never fights the hover band).
+  const highlighted = React.useMemo(() => {
+    if (selection) return highlightLines(slice.lines, selection);
+    if (hoveredItem === null) return slice.lines;
+    const idx = slice.targets.indexOf(hoveredItem);
+    if (idx === -1) return slice.lines;
+    const out = slice.lines.slice();
+    out[idx] = highlightWholeLine(out[idx] ?? "");
+    return out;
+  }, [slice.lines, slice.targets, selection, hoveredItem]);
 
   // Blink the pending tool dot. The dot is baked into the static transcript
   // text, so we can't animate it with an Ink prop; instead we run a timer only

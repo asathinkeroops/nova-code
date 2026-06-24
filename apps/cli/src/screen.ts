@@ -182,11 +182,27 @@ export class Screen {
           endCol: Math.max(0, col - 1 - H_PAD),
         });
       },
+      onHover: ({ row }) => {
+        // Resolve the hovered terminal row to a collapsible item's control row
+        // (tool-batch title or thinking "… +N lines" hint; its key lives in
+        // lineTargets) and highlight it; null clears the highlight elsewhere.
+        const state = this.store.getState();
+        const key = state.lineTargets[Math.max(0, row - 1)] ?? null;
+        state.setHoveredItem(key);
+      },
       onSelectEnd: ({ row, col }, moved) => {
         const state = this.store.getState();
         const cur = state.selection;
         state.setSelection(null);
-        if (!moved || !cur) return;
+        // A press+release without movement is a click: toggle a collapsible item
+        // (tool-batch / thinking) open or closed when the click lands on its
+        // control row. Drags fall through to the copy path below.
+        if (!moved) {
+          const key = state.lineTargets[Math.max(0, row - 1)] ?? null;
+          if (key !== null) state.toggleItem(key);
+          return;
+        }
+        if (!cur) return;
         const lines = state.visibleLines;
         if (lines.length === 0) return;
         const text = extractSelection(lines, {

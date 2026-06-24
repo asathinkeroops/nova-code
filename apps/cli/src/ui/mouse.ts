@@ -16,14 +16,15 @@ import { PassThrough } from "node:stream";
  * still let users hold Shift to bypass and use native selection.
  */
 
-// `?1002h` = button-event tracking (motion only while a button is held, which
-// is what we need for drag selection without spamming motion events when no
-// button is pressed). `?1006h` = SGR coordinate format (no col/row overflow
-// past 223). `?2004h` = bracketed paste, so the terminal wraps a paste in
-// `\x1b[200~ … \x1b[201~` — letting us tell a paste from typing and detect an
-// empty (non-text, e.g. image) paste.
-const ENABLE = "\x1b[?1002h\x1b[?1006h\x1b[?2004h";
-const DISABLE = "\x1b[?2004l\x1b[?1006l\x1b[?1002l";
+// `?1003h` = any-event tracking: report motion with OR without a button held.
+// We need the button-held motion for drag selection and the no-button motion
+// for hover (highlighting a collapsible tool-batch title under the pointer).
+// `?1006h` = SGR coordinate format (no col/row overflow past 223). `?2004h` =
+// bracketed paste, so the terminal wraps a paste in `\x1b[200~ … \x1b[201~` —
+// letting us tell a paste from typing and detect an empty (non-text, e.g.
+// image) paste.
+const ENABLE = "\x1b[?1003h\x1b[?1006h\x1b[?2004h";
+const DISABLE = "\x1b[?2004l\x1b[?1006l\x1b[?1003l";
 
 const PASTE_START = "\x1b[200~";
 const PASTE_END = "\x1b[201~";
@@ -113,6 +114,9 @@ export interface MouseHandlers {
   /** Button-1 release — finalises and clears the selection. `moved` is true
    *  iff the cursor moved between press and release (i.e. real drag, not click). */
   onSelectEnd: (pos: MousePos, moved: boolean) => void;
+  /** Pointer motion with no button held — drives hover highlight. Fires only
+   *  when the pointer changes terminal cell. */
+  onHover: (pos: MousePos) => void;
 }
 
 export interface FilteredStdin {
@@ -181,6 +185,9 @@ export function attachFilteredStdin(handlers: MouseHandlers): FilteredStdin {
   // finalised on release. Null when no drag is in flight.
   let dragStart: MousePos | null = null;
   let dragLast: MousePos | null = null;
+  // Last cell a no-button hover fired for, so we emit one event per cell change
+  // (not per duplicate motion report) under any-event tracking.
+  let hoverLast: MousePos | null = null;
 
   const resolvePastes = createPasteResolver();
 
@@ -213,12 +220,20 @@ export function attachFilteredStdin(handlers: MouseHandlers): FilteredStdin {
         dragLast = { row, col };
         handlers.onSelectStart({ row, col });
       } else if (code === 32 && press && dragStart) {
-        // Motion while button-1 held (`?1002h` reports as button 32 + motion).
-        // Skip events that don't actually move the pointer to keep selection
-        // updates cheap (terminals can report repeats on cell-boundary jitter).
+        // Motion while button-1 held (reported as button 32 + motion). Skip
+        // events that don't actually move the pointer to keep selection updates
+        // cheap (terminals can report repeats on cell-boundary jitter).
         if (!dragLast || dragLast.row !== row || dragLast.col !== col) {
           dragLast = { row, col };
           handlers.onSelectUpdate({ row, col });
+        }
+      } else if (code === 35 && press && !dragStart) {
+        // Motion with no button held (any-event tracking reports button 3 +
+        // motion = 35). Drives hover; deduped per cell so we don't fire on every
+        // duplicate motion report. Suppressed mid-drag (dragStart set).
+        if (!hoverLast || hoverLast.row !== row || hoverLast.col !== col) {
+          hoverLast = { row, col };
+          handlers.onHover({ row, col });
         }
       } else if (!press && dragStart) {
         // Any button release while we're tracking a drag → finalize + clear.
