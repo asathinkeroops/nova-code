@@ -62,6 +62,7 @@ cli (apps/cli)                     ──► every package above
 
 ## Conventions
 
+- **Source is the only ground truth.** Answer every question from the *current* code — read the actual source before claiming what exists or how it works. Local docs (`docs/`, `README*`, design notes) and even this file may be stale or aspirational; never treat them as authoritative without confirming against source. When a doc and the code disagree, the code wins and the doc is the bug.
 - **ESM with `.js` import extensions.** Intra-package imports use `.js` even when importing from `.ts` source (`import { x } from "./foo.js";`). TS is configured with `moduleResolution: "Bundler"` and `verbatimModuleSyntax: false`.
 - **TS strict, `noUncheckedIndexedAccess` on.** Array/object access returns `T | undefined`; handle the `undefined` case — don't disable it locally.
 - **Public APIs get a zod schema** — tool inputs, settings, anything crossing a package boundary that originates outside the type system.
