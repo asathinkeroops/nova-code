@@ -82,6 +82,11 @@ export function sessionBadgeColor(name: string): string {
 
 export const MAGENTA_RGB: Rgb = [220, 130, 220];
 
+// Selection background for the input box, matching the steel-blue band the
+// viewport selection paints (`ui/selection.ts`, rgb(45,80,130)) so a drag in
+// either region reads identically. Used as an Ink `backgroundColor` (hex).
+export const SELECTION_BG_HEX = "#2d5082";
+
 // Diff row colours — kept in sync with the canonical renderer in ui/diff.ts so
 // the `/diff` viewer and inline tool diffs look identical. Dark row tints with
 // brighter foreground signs.

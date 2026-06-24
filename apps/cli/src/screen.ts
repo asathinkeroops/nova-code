@@ -18,6 +18,7 @@ import { copyToClipboard } from "./ui/clipboard.js";
 import { attachFilteredStdin } from "./ui/mouse.js";
 import { wrapStdout } from "./ui/sync-output.js";
 import { getCursorTarget } from "./ui/cursor-target.js";
+import { getInputMouseController } from "./ui/input-mouse.js";
 import { extractSelection } from "./ui/selection.js";
 import { H_PAD } from "./ui/viewport.js";
 import { type SetupEntry, type SetupState } from "./ui/setup-view.js";
@@ -161,9 +162,29 @@ export class Screen {
     // screen), so visibleLines index = row - 1. Column is additionally
     // offset by the viewport's horizontal padding (H_PAD) so selection
     // coordinates map to the pre-wrapped content width.
+    // A drag is routed to either the input box or the viewport based on where it
+    // starts, and stays there for its whole lifetime (so dragging from one region
+    // into the other doesn't switch mid-selection). `inputDrag` holds the input
+    // box's selection endpoints in buffer offsets while such a drag is in flight.
+    let dragTarget: "input" | "viewport" | null = null;
+    let inputDrag: { anchor: number; head: number } | null = null;
     const filtered = attachFilteredStdin({
       onWheel: ({ delta }) => this.store.getState().scrollBy(delta),
       onSelectStart: ({ row, col }) => {
+        // A press on an input-box body line moves the caret there and arms a
+        // potential text selection; everything else opens a viewport selection.
+        const input = getInputMouseController();
+        const offset = input?.hitTest(row, col) ?? null;
+        if (input && offset !== null) {
+          dragTarget = "input";
+          inputDrag = { anchor: offset, head: offset };
+          input.moveCaret(offset);
+          return;
+        }
+        dragTarget = "viewport";
+        // Drop any leftover input-box highlight so it doesn't linger once the
+        // user starts selecting in the viewport instead.
+        input?.setRange(null);
         const r = Math.max(0, row - 1);
         const c = Math.max(0, col - 1 - H_PAD);
         this.store.getState().setSelection({
@@ -174,6 +195,15 @@ export class Screen {
         });
       },
       onSelectUpdate: ({ row, col }) => {
+        if (dragTarget === "input") {
+          const input = getInputMouseController();
+          if (!input || !inputDrag) return;
+          const head = input.hitTest(row, col);
+          if (head === null) return; // pointer left the body rows — keep last
+          inputDrag = { ...inputDrag, head };
+          input.setRange(inputDrag);
+          return;
+        }
         const cur = this.store.getState().selection;
         if (!cur) return;
         this.store.getState().setSelection({
@@ -191,6 +221,30 @@ export class Screen {
         state.setHoveredItem(key);
       },
       onSelectEnd: ({ row, col }, moved) => {
+        // Finalise an input-box drag: a no-move release is just the caret click
+        // already applied on press; a real drag copies the selected text and
+        // leaves it highlighted until the next keystroke.
+        if (dragTarget === "input") {
+          const input = getInputMouseController();
+          const drag = inputDrag;
+          dragTarget = null;
+          inputDrag = null;
+          if (!input) return;
+          if (!moved || !drag || drag.anchor === drag.head) {
+            input.setRange(null);
+            return;
+          }
+          const lo = Math.min(drag.anchor, drag.head);
+          const hi = Math.max(drag.anchor, drag.head);
+          const text = input.textBetween(lo, hi);
+          if (text.length > 0 && copyToClipboard(text)) {
+            this.store
+              .getState()
+              .setCopyNotice("✓ copied selection to clipboard");
+          }
+          return;
+        }
+        dragTarget = null;
         const state = this.store.getState();
         const cur = state.selection;
         state.setSelection(null);

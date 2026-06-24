@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   commandTokenRange,
+  hitTestInput,
   historyRule,
   matchingFiles,
   mentionTokenAt,
   sessionNameBadge,
+  wrapBuffer,
+  type InputHitLayout,
   type SlashCommand,
 } from "./input-box.js";
 
@@ -134,6 +137,73 @@ describe("historyRule", () => {
     // left + badge + trail still spans the full frame width
     expect(left.length + badge.badge.length + badge.trail.length).toBe(60);
     expect(left).toContain(" History 3/9 ");
+  });
+});
+
+describe("hitTestInput", () => {
+  // A single-line layout: termRows 24, bottomChromeRows 2 (status line, no mode
+  // indicator). base = 24 - 1 - 2 - bodyRows, so a 1-row body sits at row 20.
+  const layout = (
+    buffer: string,
+    width = 80,
+    termRows = 24,
+    bottomChromeRows = 2,
+  ): InputHitLayout => {
+    const lines = wrapBuffer(buffer, width);
+    return { lines, bodyRows: lines.length, termRows, bottomChromeRows };
+  };
+
+  it("returns null for rows above or below the body", () => {
+    const l = layout("hello world");
+    expect(hitTestInput(l, 19, 6)).toBeNull(); // one row above the body
+    expect(hitTestInput(l, 21, 6)).toBeNull(); // one row below the body
+  });
+
+  it("maps the first content cell (col 4) to offset 0", () => {
+    const l = layout("hello world");
+    // Leading space (col 1) + "❯ " prompt (cols 2-3) → content starts at col 4.
+    expect(hitTestInput(l, 20, 4)).toBe(0);
+  });
+
+  it("clamps a click in the prompt/leading space to the line start", () => {
+    const l = layout("hello world");
+    expect(hitTestInput(l, 20, 1)).toBe(0);
+    expect(hitTestInput(l, 20, 3)).toBe(0);
+  });
+
+  it("maps each column to the char boundary under it", () => {
+    const l = layout("hello world");
+    expect(hitTestInput(l, 20, 5)).toBe(1); // after 'h'
+    expect(hitTestInput(l, 20, 9)).toBe(5); // after 'hello'
+  });
+
+  it("lands a click past the end of the line at the line end", () => {
+    const l = layout("hello world"); // 11 chars
+    expect(hitTestInput(l, 20, 40)).toBe(11);
+  });
+
+  it("resolves wide (CJK) chars to whole-character boundaries", () => {
+    const l = layout("中x"); // '中' is width 2 at cols 4-5, 'x' at col 6
+    expect(hitTestInput(l, 20, 4)).toBe(0); // before 中
+    expect(hitTestInput(l, 20, 5)).toBe(0); // within 中 → before it
+    expect(hitTestInput(l, 20, 6)).toBe(1); // before x
+    expect(hitTestInput(l, 20, 7)).toBe(2); // past end
+  });
+
+  it("hit-tests wrapped lines with no prompt offset on later rows", () => {
+    // width 10 → firstCap 7, restCap 9. "abcdefghij" wraps to "abcdefg"/"hij".
+    const l = layout("abcdefghij", 10);
+    expect(l.bodyRows).toBe(2);
+    // base = 24 - 1 - 2 - 2 = 19, so line 0 → row 19, line 1 → row 20.
+    expect(hitTestInput(l, 19, 4)).toBe(0); // first line, content at col 4
+    expect(hitTestInput(l, 20, 2)).toBe(7); // second line, content at col 2 (no prompt)
+    expect(hitTestInput(l, 20, 3)).toBe(8);
+  });
+
+  it("maps a click on an empty buffer to offset 0", () => {
+    const l = layout("");
+    expect(l.bodyRows).toBe(1);
+    expect(hitTestInput(l, 20, 4)).toBe(0);
   });
 });
 

@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Box, Text, useInput, useStdout } from "ink";
-import { ACCENT_HEX, BASH_HEX, sessionBadgeColor } from "../colors.js";
+import { ACCENT_HEX, BASH_HEX, SELECTION_BG_HEX, sessionBadgeColor } from "../colors.js";
 import { normalizeDroppedImagePath, type ClipboardPaste } from "../image-paste.js";
 import { setCursorTarget } from "./cursor-target.js";
+import { setInputMouseController } from "./input-mouse.js";
 import { charDisplayWidth, truncateToWidth, visibleWidth } from "./width.js";
 
 export interface SlashCommand {
@@ -47,7 +48,7 @@ export interface BoxedInputOptions {
   sessionName?: string;
 }
 
-interface DisplayLine {
+export interface DisplayLine {
   content: string;
   bufStart: number;
   bufEnd: number;
@@ -62,7 +63,7 @@ const MIN_WIDTH = 20;
 const PROMPT_TEXT = "❯ ";
 const PROMPT_LEN = visibleWidth(PROMPT_TEXT);
 
-function wrapBuffer(buffer: string, width: number): DisplayLine[] {
+export function wrapBuffer(buffer: string, width: number): DisplayLine[] {
   const firstCap = Math.max(1, width - 1 - PROMPT_LEN);
   const restCap = Math.max(1, width - 1);
   if (buffer.length === 0) {
@@ -101,6 +102,52 @@ function findCursorPosition(
     }
   }
   return { row: 0, col: 0 };
+}
+
+export interface InputHitLayout {
+  /** Wrapped body lines (a single empty line when the buffer is empty). */
+  lines: DisplayLine[];
+  /** Rendered body row count — `lines.length`, or 1 for the empty placeholder. */
+  bodyRows: number;
+  /** Total terminal rows (from `cursorTracking`). */
+  termRows: number;
+  /** Chrome rows below the box: status line + mode indicator (`cursorTracking`). */
+  bottomChromeRows: number;
+}
+
+/**
+ * Map an absolute 1-indexed terminal `(row, col)` to a buffer offset, or null
+ * when the point isn't on one of the input's body lines. The inverse of the
+ * caret placement in render: a body line `li` sits at absolute row
+ * `termRows - 1 - bottomChromeRows - (bodyRows - li)` (counted up from the
+ * bottom-pinned frame), and its first content cell at column `2 + promptOffset`
+ * (leading space + the `❯ ` prompt on the first line). The column is resolved to
+ * a char boundary by walking display widths, so wide (CJK/emoji) chars map
+ * correctly; a click past the line's end lands at its end.
+ */
+export function hitTestInput(
+  layout: InputHitLayout,
+  row: number,
+  col: number,
+): number | null {
+  const { lines, bodyRows, termRows, bottomChromeRows } = layout;
+  // rowForLine(li) = base + li, so li is recovered by subtracting the base.
+  const base = termRows - 1 - bottomChromeRows - bodyRows;
+  const li = row - base;
+  if (li < 0 || li >= bodyRows) return null;
+  const line = lines[li];
+  if (!line) return null;
+  const promptOffset = li === 0 ? PROMPT_LEN : 0;
+  const visibleTarget = col - (2 + promptOffset);
+  if (visibleTarget <= 0) return line.bufStart;
+  let acc = 0;
+  let k = 0;
+  for (; k < line.content.length; k++) {
+    const w = charDisplayWidth(line.content, k);
+    if (visibleTarget < acc + w) break;
+    acc += w;
+  }
+  return line.bufStart + k;
 }
 
 function matchingCommands(
@@ -239,9 +286,10 @@ export function sessionNameBadge(
 
 /**
  * Render one display line as styled spans: the `/command` token (when within
- * `hl`) in the flame accent, the cursor cell inverted, everything else plain.
- * Walks character by character and coalesces runs that share styling so we
- * emit as few `<Text>` nodes as possible.
+ * `hl`) in the flame accent, cells within `sel` on the selection background, the
+ * cursor cell inverted, everything else plain. Walks character by character and
+ * coalesces runs that share styling so we emit as few `<Text>` nodes as possible.
+ * `hl` and `sel` are buffer-coordinate `[start, end)` ranges.
  */
 function styledSpans(
   content: string,
@@ -249,16 +297,22 @@ function styledSpans(
   cursorCol: number | null,
   showCursorAtEnd: boolean,
   hl: [number, number] | null,
+  sel: [number, number] | null,
 ): React.ReactNode[] {
   const nodes: React.ReactNode[] = [];
   let key = 0;
   let segStart = 0;
   let segHl = false;
+  let segSel = false;
   const flush = (end: number): void => {
     if (end <= segStart) return;
     const slice = content.slice(segStart, end);
     nodes.push(
-      <Text key={key++} color={segHl ? ACCENT_HEX : undefined}>
+      <Text
+        key={key++}
+        color={segHl ? ACCENT_HEX : undefined}
+        backgroundColor={segSel ? SELECTION_BG_HEX : undefined}
+      >
         {slice}
       </Text>,
     );
@@ -267,6 +321,7 @@ function styledSpans(
   for (let k = 0; k < content.length; k++) {
     const bufIdx = lineBufStart + k;
     const inHl = hl ? bufIdx >= hl[0] && bufIdx < hl[1] : false;
+    const inSel = sel ? bufIdx >= sel[0] && bufIdx < sel[1] : false;
     if (cursorCol !== null && k === cursorCol) {
       flush(k);
       nodes.push(
@@ -276,11 +331,13 @@ function styledSpans(
       );
       segStart = k + 1;
       segHl = inHl;
+      segSel = inSel;
       continue;
     }
-    if (inHl !== segHl) {
+    if (inHl !== segHl || inSel !== segSel) {
       flush(k);
       segHl = inHl;
+      segSel = inSel;
     }
   }
   flush(content.length);
@@ -390,14 +447,23 @@ export function InputBox({
   const [popupCursor, setPopupCursor] = useState(0);
   const [popupOffset, setPopupOffset] = useState(0);
   const [popupDismissed, setPopupDismissed] = useState(false);
+  // Mouse text selection, in buffer offsets. `anchor` is the press point, `head`
+  // the latest drag point; null when nothing is selected. Driven entirely by the
+  // Screen-level mouse handlers via the registered controller (see below); any
+  // keystroke clears it. Normalised to `[lo, hi)` for rendering/copy.
+  const [selection, setSelection] = useState<{ anchor: number; head: number } | null>(null);
   const { stdout } = useStdout();
 
   // Latest buffer/cursor for async inserts (clipboard capture resolves after the
-  // keypress handler returns, so the closure's `buffer`/`cursor` would be stale).
+  // keypress handler returns, so the closure's `buffer`/`cursor` would be stale)
+  // and for the mouse controller, whose callbacks fire outside React's render.
   const bufferRef = useRef(buffer);
   const cursorRef = useRef(cursor);
   bufferRef.current = buffer;
   cursorRef.current = cursor;
+  // Latest body layout for hit-testing mouse coordinates. Updated each render
+  // (after the wrap is computed) so the controller's `hitTest` sees current rows.
+  const layoutRef = useRef<InputHitLayout | null>(null);
 
   const width = Math.max(MIN_WIDTH, options.width ?? stdout?.columns ?? 80);
   const placeholderText = options.placeholder ?? "";
@@ -463,7 +529,9 @@ export function InputBox({
     setPopupDismissed(false);
     setPopupCursor(0);
     setPopupOffset(0);
-    // Any edit exits history-browse mode so the next ↑ starts from the newest.
+    // Any edit drops a mouse selection and exits history-browse mode so the next
+    // ↑ starts from the newest.
+    setSelection(null);
     setHistoryPos(history.length);
   };
 
@@ -536,12 +604,52 @@ export function InputBox({
     }
   };
 
+  // Register the mouse controller so the Screen-level handlers can move the caret
+  // (click) and drive text selection (drag) on this box. Only the permanent,
+  // bottom-pinned box (it wires `cursorTracking`) participates, and only while it
+  // owns input — a modal taking over clears it so a click can't move a hidden
+  // caret. Callbacks read refs because they fire outside React's render cycle.
+  const mouseEnabled = !mask && !!cursorTracking;
+  useEffect(() => {
+    if (!mouseEnabled || !active) {
+      setInputMouseController(null);
+      return;
+    }
+    setInputMouseController({
+      hitTest: (row, col) =>
+        layoutRef.current ? hitTestInput(layoutRef.current, row, col) : null,
+      moveCaret: (offset) => {
+        setCursor(Math.max(0, Math.min(offset, bufferRef.current.length)));
+        setSelection(null);
+      },
+      setRange: (range) => setSelection(range),
+      textBetween: (lo, hi) => bufferRef.current.slice(lo, hi),
+    });
+    return () => setInputMouseController(null);
+  }, [mouseEnabled, active]);
+
   useInput((input, key) => {
+    // Resolve a non-empty mouse selection to a `[lo, hi)` buffer range, captured
+    // before any clearing below so a Backspace/Delete can act on it.
+    const selLo = selection ? Math.min(selection.anchor, selection.head) : 0;
+    const selHi = selection ? Math.max(selection.anchor, selection.head) : 0;
+    const hasSelection = selHi > selLo;
+
     if (key.ctrl && input === "c") {
       onCancel();
       return;
     }
     if (key.ctrl && input === "d") return;
+
+    // Backspace/Delete with an active mouse selection removes the whole selection
+    // (and parks the caret at its start) rather than a single char.
+    if ((key.backspace || key.delete) && hasSelection) {
+      replaceBuffer(buffer.slice(0, selLo) + buffer.slice(selHi), selLo);
+      return;
+    }
+    // Any other keystroke drops a mouse selection (matches editor behaviour: the
+    // next edit or caret move deselects). No-op when nothing is selected.
+    if (selection) setSelection(null);
 
     if (key.return) {
       // A selected file mention completes in place rather than submitting —
@@ -724,6 +832,25 @@ export function InputBox({
     matches.length > 0 && safeOffset + POPUP_MAX_ROWS < matches.length ? 1 : 0;
   const popupRows = popupTopMore + popupVisible + popupBottomMore;
   const bodyRows = isEmpty ? 1 : lines.length;
+  // Publish the body layout so the mouse controller's `hitTest` (which fires
+  // outside render) maps coordinates against the rows on screen right now. Only
+  // meaningful for the permanent box, which supplies `cursorTracking`.
+  if (cursorTracking) {
+    layoutRef.current = {
+      lines,
+      bodyRows,
+      termRows: cursorTracking.termRows,
+      bottomChromeRows: cursorTracking.bottomChromeRows,
+    };
+  }
+  // Normalised selection range `[lo, hi)` in buffer coords for rendering. A
+  // zero-width selection (anchor === head) paints nothing.
+  const selRange: [number, number] | null =
+    selection && selection.anchor !== selection.head
+      ? selection.anchor < selection.head
+        ? [selection.anchor, selection.head]
+        : [selection.head, selection.anchor]
+      : null;
   const queuedShown = queued.slice(0, QUEUED_MAX_ROWS);
   const queuedMoreRow = queued.length > QUEUED_MAX_ROWS ? 1 : 0;
   const queuedRows = queuedShown.length + queuedMoreRow;
@@ -795,7 +922,14 @@ export function InputBox({
       <Box key={idx}>
         <Text>{" "}</Text>
         {idx === 0 ? <Text color={BASH_HEX}>{PROMPT_TEXT}</Text> : null}
-        {styledSpans(content, line.bufStart, slice.cursorCol, slice.showCursorAtEnd, cmdRange)}
+        {styledSpans(
+          content,
+          line.bufStart,
+          slice.cursorCol,
+          slice.showCursorAtEnd,
+          cmdRange,
+          mask ? null : selRange,
+        )}
       </Box>
     );
   };
