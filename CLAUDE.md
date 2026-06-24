@@ -67,3 +67,13 @@ cli (apps/cli)                     ──► every package above
 - **Public APIs get a zod schema** — tool inputs, settings, anything crossing a package boundary that originates outside the type system.
 - **Tests live next to source** as `*.test.ts(x)` under `packages/*/src/` and `apps/cli/src/`. The vitest glob does not pick up other `apps/`, `eval/`, or `examples/`.
 - This CLAUDE.md is loaded by Nova's own memory system if `nova` runs on this repo, and ships in every agent request. Keep it to **durable invariants and conventions every task needs** — load-bearing contracts, dependency rules, things that bite if violated. Do **not** log feature additions, command catalogs, or changelog-style notes here (the CLI's `--help`, slash-command list, and git history already cover those); if a fact isn't needed on a typical request, leave it out.
+
+## Git workflow
+
+- **Every commit must include the co-author trailer** from `.gitmessage` (blank line before it, at the end of the message body):
+
+  ```
+  Co-authored-by: Claude <81847+claude@users.noreply.github.com>
+  ```
+
+  Add it explicitly in the commit command — don't rely on `commit.template` being wired up.
