@@ -406,6 +406,7 @@ export async function createContext(
     longRunningManager,
     lspManager,
     sandbox: null as unknown as SandboxControl,
+    setSandbox: null as unknown as CliContext["setSandbox"],
     userHooks: null as unknown as UserHooks,
     registry,
     tools,
@@ -495,6 +496,35 @@ export async function createContext(
     logger.warn({ reason: sandboxControl.reason }, "sandbox requested but inactive");
   }
 
+  // Runtime toggle for the `/sandbox` command. Captures allowedRoots/logger so
+  // the rebuilt control confines writes to the same roots as the initial one.
+  // The dispatch closure reads ctx.sandbox.bridge lazily, so reassigning here
+  // flips sandboxing on the next subprocess tool. Session-only (not persisted).
+  (ctx as { setSandbox: CliContext["setSandbox"] }).setSandbox = async (enabled) => {
+    await ctx.sandbox?.dispose();
+    ctx.settings.sandbox.enabled = enabled;
+    const next = await createSandbox({
+      enabled,
+      writeRoots: allowedRoots,
+      extraAllowWrite: settings.sandbox.filesystem.allowWrite,
+      denyWrite: settings.sandbox.filesystem.denyWrite,
+      denyRead: settings.sandbox.filesystem.denyRead,
+      allowGitConfig: settings.sandbox.filesystem.allowGitConfig,
+      monitorViolations: settings.sandbox.monitorViolations,
+      network: settings.sandbox.network,
+      logger,
+    });
+    (ctx as { sandbox: SandboxControl }).sandbox = next;
+    await transcript.append({
+      kind: "sandbox_init",
+      data: {
+        active: next.active,
+        ...(next.reason ? { reason: next.reason } : {}),
+      },
+    });
+    return next;
+  };
+
   (ctx as { checkPermission: CliContext["checkPermission"] }).checkPermission = async (
     tool,
     input,
@@ -560,7 +590,11 @@ export async function createContext(
 
   (ctx as { compactor: CliContext["compactor"] }).compactor = buildCompactor({
     settings,
-    getModel: () => ctx.model,
+    // Non-streaming client (trackTokens=false): the summarizer's output must
+    // not leak into the live draft / spinner like a normal turn — it's internal
+    // machinery, surfaced only via the post_compact card. Built from the live
+    // model name so it still follows /model switches.
+    getModel: () => ctx.buildModel(ctx.settings.model, false),
     getSessionDir: () => ctx.session.dir,
     onPreCompact: async ({ before }) => {
       const r = await ctx.userHooks.firePreCompact({

@@ -28,7 +28,10 @@ export async function handleCompact(ctx: CliContext, focus: string): Promise<voi
     }
     const result = await manualCompact(current, {
       settings: ctx.settings,
-      getModel: () => ctx.model,
+      // Non-streaming client so the summarizer's tokens don't stream into the
+      // live draft / spinner as a phantom assistant turn (it's internal; the
+      // result is surfaced via the card below). Follows /model switches.
+      getModel: () => ctx.buildModel(ctx.settings.model, false),
       getSessionDir: () => ctx.session.dir,
       ...(focus ? { focus } : {}),
     });

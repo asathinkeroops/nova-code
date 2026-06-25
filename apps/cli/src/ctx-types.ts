@@ -125,6 +125,14 @@ export interface CliContext {
   readonly lspManager: LspManager | undefined;
   /** OS command sandbox handle. Inactive (bridge undefined) unless opted in via settings.sandbox. */
   readonly sandbox: SandboxControl;
+  /**
+   * Toggle the OS sandbox at runtime (the `/sandbox` command). Disposes the
+   * current control, rebuilds it with `enabled`, reassigns `ctx.sandbox`, and
+   * mutates `ctx.settings.sandbox.enabled`. The dispatch closure reads
+   * `ctx.sandbox.bridge` lazily per tool call, so the switch takes effect on the
+   * next subprocess tool. Session-only — not persisted to nova.config.json.
+   */
+  readonly setSandbox: (enabled: boolean) => Promise<SandboxControl>;
   /** User-configured shell hooks (settings.hooks). Lifecycle events fire via `userHooks.fire(...)`. */
   readonly userHooks: UserHooks;
   readonly registry: SlashRegistry;

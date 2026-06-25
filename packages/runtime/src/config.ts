@@ -108,8 +108,8 @@ export const DEFAULT_AUTO_MEMORY_DIR = ".nova/memory";
 export const DEFAULT_AUTO_MEMORY_MAX_ENTRIES = 100;
 
 // Common package-manager / toolchain cache dirs that live OUTSIDE the
-// workspace. Seeded into the sandbox write-allowlist so the default-ON sandbox
-// doesn't break the everyday commands an agent runs — npm/pnpm/yarn, cargo +
+// workspace. Seeded into the sandbox write-allowlist so the sandbox (when
+// enabled) doesn't break the everyday commands an agent runs — npm/pnpm/yarn, cargo +
 // rustup, go, pip, etc. `~` is expanded by the sandbox SDK; entries that don't
 // exist on a given platform simply never match (macOS Library/* vs Linux
 // XDG paths are both listed). Setting `sandbox.filesystem.allowWrite`
@@ -516,8 +516,8 @@ export const settingsSchema = z.object({
       maxTokens: z.number().int().positive().default(32768),
     })
     .default({ enabled: true, maxTurns: 100, maxTokens: 32768 }),
-  // OS-level command sandbox (@anthropic-ai/sandbox-runtime). Opt-out
-  // (default ON). When enabled, tools that spawn a subprocess (bash,
+  // OS-level command sandbox (@anthropic-ai/sandbox-runtime). Opt-in
+  // (default OFF). When enabled, tools that spawn a subprocess (bash,
   // runLongRunningCommand) run inside a platform sandbox — macOS Seatbelt via
   // sandbox-exec, Linux bubblewrap — that confines filesystem *writes* to the
   // workspace roots (the same allowed roots the permission engine uses) plus a
@@ -529,11 +529,11 @@ export const settingsSchema = z.object({
   // default-ON is safe to ship. Common out-of-workspace caches
   // (npm/pnpm/cargo/go/…) are seeded into filesystem.allowWrite by default (see
   // DEFAULT_SANDBOX_ALLOW_WRITE) so the usual commands work; add more paths
-  // there for anything else, or set `enabled: false` to turn the sandbox off
-  // entirely.
+  // there for anything else. The sandbox is OFF by default; set
+  // `enabled: true` to turn it on.
   sandbox: z
     .object({
-      enabled: z.boolean().default(true),
+      enabled: z.boolean().default(false),
       // Capture sandbox violations (macOS: a `log stream` watcher) so blocked
       // writes are annotated onto a command's output. Harmless no-op when the
       // sandbox is inactive. Turn off to skip the watcher subprocess.
@@ -609,7 +609,7 @@ export const settingsSchema = z.object({
         .describe("Network confinement config; omit for unrestricted network (default)."),
     })
     .default({
-      enabled: true,
+      enabled: false,
       monitorViolations: true,
       filesystem: {
         allowWrite: [...DEFAULT_SANDBOX_ALLOW_WRITE],

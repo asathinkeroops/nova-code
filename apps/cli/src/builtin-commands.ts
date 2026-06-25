@@ -20,6 +20,7 @@ import {
   handleResume,
   handleReview,
   handleRewind,
+  handleSandbox,
   handleSkills,
   handleTasks,
   handleUsage,
@@ -102,6 +103,16 @@ export function registerBuiltinSlashCommands(ctx: CliContext): void {
     source: { kind: "builtin" },
     run: async (_c, args) => {
       await handleRewind(ctx, args.trim());
+      return handled;
+    },
+  });
+  ctx.registry.register({
+    name: "sandbox",
+    description: "enable/disable the OS command sandbox for this session",
+    argHint: "[on|off]",
+    source: { kind: "builtin" },
+    run: async (_c, args) => {
+      await handleSandbox(ctx, args.trim());
       return handled;
     },
   });

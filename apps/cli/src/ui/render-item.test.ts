@@ -154,6 +154,7 @@ describe("buildRenderItems hides system-injected user messages", () => {
     '<background-command id="1" status="done">x</background-command>',
     "<interrupted-by-user></interrupted-by-user>",
     "<goal-eval>\nYour goal is not complete yet. Evaluation: tests fail\n</goal-eval>",
+    "<compacted>\n[Conversation compacted [compacted].]\n\nSUMMARY OF WORK\n</compacted>",
   ])("skips the bubble for injection %#", (content) => {
     expect(firstUserText(content)).toBeUndefined();
   });

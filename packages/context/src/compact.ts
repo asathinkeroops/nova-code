@@ -200,8 +200,11 @@ export async function autoCompact(
     ? `[Conversation compacted ${COMPACT_MARKER}. Pre-compact transcript: ${transcriptPath}]`
     : `[Conversation compacted ${COMPACT_MARKER}.]`;
 
+  // Wrap in a <compacted> tag so the model reads the summary while the TUI skips
+  // its bubble (same convention as <reminder>/<background-command>; the renderer
+  // matches the opening tag in apps/cli/src/ui/render-item.ts).
   const newMessages: MessageParam[] = [
-    { role: "user", content: `${header}\n\n${summary}` },
+    { role: "user", content: `<compacted>\n${header}\n\n${summary}\n</compacted>` },
   ];
 
   return {

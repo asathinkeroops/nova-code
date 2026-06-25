@@ -91,7 +91,10 @@ const HIDDEN_TOOLS = new Set([
 /**
  * Hook-injected user-role messages (todo/task reminders, background command
  * notifications) wrap their payload in a known tag so we can skip rendering
- * them as user bubbles.
+ * them as user bubbles. The auto-compact summary uses the same convention
+ * (`<compacted>`, produced in @nova/context's autoCompact): the model reads it,
+ * but the user never typed it, so we skip the bubble. The compaction is still
+ * announced via the `post_compact` info card (with the snapshot path).
  */
 function isSystemInjectionText(text: string): boolean {
   const trimmed = text.trimStart();
@@ -99,7 +102,8 @@ function isSystemInjectionText(text: string): boolean {
     trimmed.startsWith("<reminder>") ||
     trimmed.startsWith("<background-command") ||
     trimmed.startsWith("<interrupted-by-user>") ||
-    trimmed.startsWith("<goal-eval>")
+    trimmed.startsWith("<goal-eval>") ||
+    trimmed.startsWith("<compacted>")
   );
 }
 

@@ -29,7 +29,7 @@ describe("settingsSchema", () => {
     expect(s.permissions.defaultEffect).toBe("ask");
     expect(s.permissions.rules).toEqual([]);
     expect(s.transcript.enabled).toBe(true);
-    expect(s.sandbox.enabled).toBe(true);
+    expect(s.sandbox.enabled).toBe(false);
     expect(s.sandbox.monitorViolations).toBe(true);
     expect(s.sandbox.filesystem.allowWrite).toEqual([...DEFAULT_SANDBOX_ALLOW_WRITE]);
     expect(s.sandbox.filesystem.allowGitConfig).toBe(true);

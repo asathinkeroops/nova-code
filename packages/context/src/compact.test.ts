@@ -173,6 +173,10 @@ describe("autoCompact", () => {
     expect(r.messages[0]?.role).toBe("user");
     expect(r.messages[0]?.content).toContain("SUMMARY OF WORK");
     expect(r.messages[0]?.content).toContain("[compacted]");
+    // Wrapped in a <compacted> tag so the TUI can skip its bubble.
+    const content = r.messages[0]?.content;
+    expect(typeof content === "string" && content.startsWith("<compacted>")).toBe(true);
+    expect(content).toContain("</compacted>");
     expect(r.usage).toEqual({ inputTokens: 100, outputTokens: 20 });
   });
 

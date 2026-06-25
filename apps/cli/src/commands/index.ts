@@ -17,6 +17,7 @@ export { handleRename } from "./rename.js";
 export { handleResume } from "./resume.js";
 export { handleReview } from "./review.js";
 export { handleRewind } from "./rewind.js";
+export { handleSandbox } from "./sandbox.js";
 export { handleSkills } from "./skills.js";
 export { handleTasks } from "./tasks.js";
 export { handleEffort } from "./effort.js";
