@@ -52,6 +52,12 @@ export type RenderItem =
        * have recorded details. See `display-sidecar.ts`.
        */
       details?: SubAgentDetail[];
+      /**
+       * User toggled a body-bearing call (write/edit diff, bash command) open to
+       * read its full body. Body-bearing calls collapse to a short preview once
+       * done; the trailing hint is a click target keyed by this item's `key`.
+       */
+      expanded?: boolean;
     }
   | {
       kind: "tool-batch";
@@ -381,12 +387,17 @@ function appendAssistantItems(
       if (HIDDEN_TOOLS.has(block.name)) continue;
 
       const details = toolDetails?.[block.id];
+      const tcKey = nextKey("tc");
       push({
         kind: "tool-call",
-        key: nextKey("tc"),
+        key: tcKey,
         use: block,
         result: resultIndex.get(block.id),
         ...(details && details.length > 0 ? { details } : {}),
+        // A done body-bearing call (write/edit/bash) collapses to a preview; if
+        // the user clicked its hint, `expandedItems` carries the key and we show
+        // the full body. Mirrors the committed-thinking expand path above.
+        ...(expandedItems[tcKey] ? { expanded: true } : {}),
       });
     } else if (block.type === "text") {
       // Render text at its real position in the block stream so "narrate then

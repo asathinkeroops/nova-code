@@ -17,6 +17,7 @@ import {
 } from "../colors.js";
 import { LOGO, bannerLine } from "./logo.js";
 import {
+  COMPACT_MAX_LINES,
   compactBody,
   readExisting,
   renderDiff,
@@ -542,11 +543,26 @@ function renderSubAgentDetails(details: SubAgentDetail[] | undefined): string {
   return `\n${rows.join("\n")}`;
 }
 
+/**
+ * Body presentation for a body-bearing tool call. While pending (`done` ===
+ * false) the body shows in full. Once done, a body longer than
+ * {@link COMPACT_MAX_LINES} collapses to a short preview ending in a clickable
+ * hint (`compactBody`); when the user has expanded it, the full body shows
+ * followed by a `… show less` hint to collapse again. The hint is always the
+ * last line of the returned body, which {@link toolCallToggleLineIndex} relies
+ * on to locate the click target.
+ */
+function toolBodyView(body: string, done: boolean, expanded: boolean): string {
+  if (!done || body.split("\n").length <= COMPACT_MAX_LINES) return body;
+  return expanded ? `${body}\n${dim("… show less")}` : compactBody(body);
+}
+
 function renderToolCall(
   use: ToolUseBlock,
   result: ToolResultBlock | undefined,
   width: number,
   details?: SubAgentDetail[],
+  expanded = false,
 ): string {
   const def = tools[use.name];
   const view: UseView = def?.use
@@ -571,11 +587,11 @@ function renderToolCall(
   // Body-bearing tools (bash command, edit/write diff or file content): hang the
   // body under a single `⎿` gutter and let the result join it as one more
   // aligned continuation row — one elbow total, exactly like a thinking block.
-  // The body collapses to a short preview once the call is done (compactBody);
+  // The body collapses to a short preview once the call is done, with a trailing
+  // hint the user can click to expand the full body (and again to collapse);
   // while pending it shows in full and the blinking marker dot signals progress.
   if (view.body) {
-    const raw = resultStr === undefined ? view.body : compactBody(view.body);
-    const gut = gutterIndent(raw);
+    const gut = gutterIndent(toolBodyView(view.body, resultStr !== undefined, expanded));
     if (resultStr === undefined) return `${head}\n${gut}${detailRows}`;
     return `${head}\n${gut}\n${THINKING_INDENT}${resultStr}${detailRows}`;
   }
@@ -694,7 +710,7 @@ export function renderItemToString(item: RenderItem, width: number): string {
     case "redacted-thinking":
       return renderRedactedThinking(item.label);
     case "tool-call":
-      return renderToolCall(item.use, item.result, width, item.details);
+      return renderToolCall(item.use, item.result, width, item.details, item.expanded ?? false);
     case "tool-batch":
       return renderToolBatch(item.members, item.collapsed, width);
     case "card":
@@ -703,10 +719,42 @@ export function renderItemToString(item: RenderItem, width: number): string {
 }
 
 /**
+ * Index of a body-bearing tool call's clickable hint row (the trailing
+ * "… N more lines hidden" / "… show less" control), or null when the call has
+ * no collapsible body — still pending, body-less, or a body that fits the
+ * preview. The hint is the last line of the gutter body, so everything up to and
+ * including it is `head + gut` and the hint is its final wrapped row. Wrapping
+ * matches `measureItem` so the index lands on the same row the viewport shows.
+ */
+export function toolCallToggleLineIndex(
+  item: Extract<RenderItem, { kind: "tool-call" }>,
+  width: number,
+): number | null {
+  if (item.result === undefined) return null;
+  const def = tools[item.use.name];
+  const view: UseView = def?.use
+    ? def.use(item.use.input as Record<string, unknown>, width)
+    : { header: genericUseHeader(item.use) };
+  if (!view.body || view.body.split("\n").length <= COMPACT_MAX_LINES) return null;
+  const head = `${marker(toolState(item.result))} ${view.header}`;
+  const gut = gutterIndent(toolBodyView(view.body, true, item.expanded ?? false));
+  return wrappedRowCount(`${head}\n${gut}`, width) - 1;
+}
+
+// Count the rows an ANSI string occupies when hard-wrapped to `width`, matching
+// `measureItem`'s wrapping (hard, no word-wrap, preserve leading space). Kept
+// local to avoid a render-strings ↔ measure import cycle.
+function wrappedRowCount(s: string, width: number): number {
+  return wrapAnsi(s, Math.max(1, width), { hard: true, wordWrap: false, trim: false }).split("\n")
+    .length;
+}
+
+/**
  * Index of the click/hover target row within an item's rendered lines, or null
  * if the item has none. A tool batch's whole title is the control (row 0); a
  * collapsed thinking block's control is its trailing "… +N lines" / "show less"
- * hint. `measure` uses this to map a viewport row back to a collapsible item.
+ * hint; a body-bearing tool call's control is its trailing collapse/expand hint.
+ * `measure` uses this to map a viewport row back to a collapsible item.
  */
 export function clickTargetLine(item: RenderItem, width: number): number | null {
   switch (item.kind) {
@@ -714,6 +762,8 @@ export function clickTargetLine(item: RenderItem, width: number): number | null 
       return 0;
     case "thinking":
       return thinkingToggleLineIndex(item, width);
+    case "tool-call":
+      return toolCallToggleLineIndex(item, width);
     default:
       return null;
   }

@@ -64,4 +64,34 @@ describe("sliceLines targets", () => {
     const slice = sliceLines(items, WIDTH, 0, 50);
     expect(slice.targets.every((t) => t === null)).toBe(true);
   });
+
+  it("tags a done edit's collapse hint row with the tool-call key", () => {
+    const newStr = Array.from({ length: 10 }, (_, i) => `new line ${i + 1}`).join("\n");
+    const items: RenderItem[] = [
+      {
+        kind: "tool-call",
+        key: "tc#1",
+        use: { type: "tool_use", id: "e1", name: "edit", input: { path: "a.ts", old_string: "", new_string: newStr } },
+        result: { type: "tool_result", tool_use_id: "e1", content: "ok" },
+      },
+    ];
+    const slice = sliceLines(items, WIDTH, 0, 50);
+    expect(slice.targets.filter((t) => t === "tc#1")).toEqual(["tc#1"]);
+    const idx = slice.targets.indexOf("tc#1");
+    expect(slice.lines[idx]).toContain("hidden");
+  });
+
+  it("does not tag a read call (body-less) or a short-bodied call", () => {
+    const items: RenderItem[] = [
+      tc("a"),
+      {
+        kind: "tool-call",
+        key: "tc#2",
+        use: { type: "tool_use", id: "w1", name: "write", input: { path: "b.ts", content: "one\ntwo" } },
+        result: { type: "tool_result", tool_use_id: "w1", content: "ok" },
+      },
+    ];
+    const slice = sliceLines(items, WIDTH, 0, 50);
+    expect(slice.targets.every((t) => t === null)).toBe(true);
+  });
 });

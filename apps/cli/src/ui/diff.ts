@@ -5,7 +5,7 @@ import { dim, useColor } from "../colors.js";
 import { highlightMarkdownSource } from "./markdown.js";
 
 const MAX_CONTENT_LINES = 300;
-const COMPACT_MAX_LINES = 7;
+export const COMPACT_MAX_LINES = 7;
 
 const ADD_BG_OPEN = "\x1b[48;2;14;68;41m";
 const ADD_BG_CLOSE = "\x1b[49m";

@@ -249,8 +249,9 @@ export class Screen {
         const cur = state.selection;
         state.setSelection(null);
         // A press+release without movement is a click: toggle a collapsible item
-        // (tool-batch / thinking) open or closed when the click lands on its
-        // control row. Drags fall through to the copy path below.
+        // (tool-batch / thinking / a body-bearing tool call's preview) open or
+        // closed when the click lands on its control row. Drags fall through to
+        // the copy path below.
         if (!moved) {
           const key = state.lineTargets[Math.max(0, row - 1)] ?? null;
           if (key !== null) state.toggleItem(key);

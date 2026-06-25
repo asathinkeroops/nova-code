@@ -479,6 +479,78 @@ describe("renderItemToString thinking expand", () => {
   });
 });
 
+describe("renderItemToString tool-call body collapse/expand", () => {
+  const WIDTH = 80;
+  // A 10-line new_string makes the edit diff exceed COMPACT_MAX_LINES (7).
+  const newStr = Array.from({ length: 10 }, (_, i) => `new line ${i + 1}`).join("\n");
+  const editItem = (result: unknown, expanded?: boolean): RenderItem =>
+    ({
+      kind: "tool-call",
+      key: "tc#1",
+      use: {
+        type: "tool_use",
+        id: "e1",
+        name: "edit",
+        input: { path: "a.ts", old_string: "", new_string: newStr },
+      },
+      result,
+      ...(expanded !== undefined ? { expanded } : {}),
+    }) as RenderItem;
+
+  it("collapses a done edit body to a preview with a collapse hint", () => {
+    const out = renderItemToString(
+      editItem({ type: "tool_result", tool_use_id: "e1", content: "ok" }),
+      WIDTH,
+    );
+    expect(out).toContain("new line 1");
+    expect(out).not.toContain("new line 10");
+    expect(out).toContain("hidden");
+  });
+
+  it("shows the full body and a 'show less' hint when expanded", () => {
+    const out = renderItemToString(
+      editItem({ type: "tool_result", tool_use_id: "e1", content: "ok" }, true),
+      WIDTH,
+    );
+    expect(out).toContain("new line 10");
+    expect(out).toContain("show less");
+    expect(out).not.toContain("hidden");
+  });
+
+  it("shows the full body while still pending (no result, no hint)", () => {
+    const out = renderItemToString(editItem(undefined), WIDTH);
+    expect(out).toContain("new line 10");
+    expect(out).not.toContain("hidden");
+    expect(out).not.toContain("show less");
+  });
+});
+
+describe("buildRenderItems tool-call expand state", () => {
+  const longContent = Array.from({ length: 12 }, (_, i) => `c${i}`).join("\n");
+  const build = (expandedItems?: Record<string, boolean>) =>
+    buildRenderItems({
+      banner: null,
+      cards: [],
+      messages: [
+        {
+          role: "assistant",
+          content: [{ type: "tool_use", id: "w1", name: "write", input: { path: "x.ts", content: longContent } }],
+        },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "w1", content: "ok" }] },
+      ],
+      ...(expandedItems ? { expandedItems } : {}),
+    }).find((i) => i.kind === "tool-call");
+
+  it("marks a write call expanded when its key is in expandedItems", () => {
+    const collapsed = build();
+    expect(collapsed).not.toHaveProperty("expanded");
+    const key = collapsed && collapsed.kind === "tool-call" ? collapsed.key : "";
+    expect(key).toBeTruthy();
+    const expanded = build({ [key]: true });
+    expect(expanded).toMatchObject({ expanded: true });
+  });
+});
+
 describe("buildRenderItems thinking expand state", () => {
   const longThinking = Array.from({ length: 8 }, (_, i) => `r${i}`).join("\n");
   const buildThinking = (expandedItems?: Record<string, boolean>) => {
