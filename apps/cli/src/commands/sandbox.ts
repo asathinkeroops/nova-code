@@ -1,3 +1,4 @@
+import { saveSettings } from "@nova/runtime";
 import { dim, green, red } from "../colors.js";
 import { stopSpinner, type CliContext } from "../context.js";
 
@@ -7,11 +8,11 @@ const ON_WORDS = new Set(["on", "enable", "enabled", "true", "1"]);
 const OFF_WORDS = new Set(["off", "disable", "disabled", "false", "0"]);
 
 /**
- * Toggle the OS command sandbox for the current session. `/sandbox` with no arg
- * reports the current state; `/sandbox on|off` flips it via `ctx.setSandbox`,
- * which rebuilds the control and reassigns `ctx.sandbox`. The change is
- * session-only (not written to nova.config.json) and takes effect on the next
- * subprocess tool call.
+ * Toggle the OS command sandbox. `/sandbox` with no arg reports the current
+ * state; `/sandbox on|off` flips it via `ctx.setSandbox`, which rebuilds the
+ * control and reassigns `ctx.sandbox`, then persists `sandbox.enabled` to
+ * nova.config.json so the choice survives restarts. The live toggle takes
+ * effect on the next subprocess tool call.
  */
 export async function handleSandbox(ctx: CliContext, arg: string): Promise<void> {
   const a = arg.trim().toLowerCase();
@@ -37,8 +38,13 @@ export async function handleSandbox(ctx: CliContext, arg: string): Promise<void>
   try {
     const control = await ctx.setSandbox(enable);
     stopSpinner(ctx);
+    // Persist the new state so it survives a restart. setSandbox already updated
+    // ctx.settings.sandbox.enabled; write the whole resolved sandbox block (same
+    // shallow-merge pattern as /predict, /effort). Non-fatal on failure — the
+    // live toggle still holds for this session.
+    await persistEnabled(ctx);
     if (!enable) {
-      ctx.screen.card(`${dim("sandbox")} ${red("off")} ${dim("(this session)")}`, {
+      ctx.screen.card(`${dim("sandbox")} ${red("off")}`, {
         kind: "info",
         title: TITLE,
       });
@@ -47,7 +53,7 @@ export async function handleSandbox(ctx: CliContext, arg: string): Promise<void>
     if (control.active) {
       ctx.screen.card(
         `${dim("sandbox")} ${green("on")} ${dim(
-          "— subprocess writes confined to the workspace (this session)",
+          "— subprocess writes confined to the workspace",
         )}`,
         { kind: "info", title: TITLE },
       );
@@ -64,6 +70,18 @@ export async function handleSandbox(ctx: CliContext, arg: string): Promise<void>
     stopSpinner(ctx);
     const msg = err instanceof Error ? err.message : String(err);
     ctx.screen.card(msg, { kind: "error", title: `${TITLE} failed` });
+  }
+}
+
+async function persistEnabled(ctx: CliContext): Promise<void> {
+  try {
+    await saveSettings({ sandbox: ctx.settings.sandbox });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    ctx.screen.card(`sandbox toggled for this session, but saving to config failed: ${msg}`, {
+      kind: "warn",
+      title: TITLE,
+    });
   }
 }
 

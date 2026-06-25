@@ -111,6 +111,13 @@ export interface AskUserQuestionSpec {
   header: string;
   options: Array<{ label: string; description?: string }>;
   multiSelect: boolean;
+  /**
+   * Whether the UI appends an "Other" option that lets the user type a freeform
+   * answer. Defaults to true (the model-facing askUserQuestion tool relies on
+   * it). Set false for internal yes/no style prompts where a custom answer makes
+   * no sense — e.g. the sandbox re-run confirmation.
+   */
+  allowFreeform?: boolean;
 }
 
 export interface AskUserRequest {
@@ -169,6 +176,15 @@ export interface SandboxBridge {
    * Returns `output` unchanged when there are no violations / monitoring is off.
    */
   annotateOutput(command: string, output: string): string;
+  /**
+   * Sandbox-violation lines captured for `command` since it ran — the OS
+   * sandbox's filesystem/network denials. Empty when monitoring is off
+   * (`settings.sandbox.monitorViolations: false`), the sandbox is inactive, or
+   * the command tripped no violations. Lets a tool distinguish a failure
+   * *caused by* sandbox confinement from the command's own non-zero exit, and
+   * offer to re-run it unsandboxed.
+   */
+  violationsForCommand(command: string): string[];
 }
 
 export interface ToolContext {

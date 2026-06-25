@@ -163,6 +163,90 @@ describe("bashTool", () => {
     expect(r.isError).toBe(true);
     expect(String(r.output)).toContain("exit=7");
   });
+
+  describe("sandbox fallback", () => {
+    // A bridge that wraps the command into a guaranteed-failing form, then
+    // reports a violation for the original command so the fallback path fires.
+    function blockingBridge() {
+      return {
+        wrapCommand: vi.fn(async (_cmd: string) => "exit 13"),
+        afterCommand: vi.fn(),
+        annotateOutput: vi.fn((_cmd: string, out: string) => out),
+        violationsForCommand: vi.fn((_cmd: string) => ["deny file-write /etc/passwd"]),
+      };
+    }
+
+    it("asks to re-run unsandboxed and runs the original command on confirm", async () => {
+      const sandbox = blockingBridge();
+      const askUser = vi.fn(
+        async (_req: AskUserRequest): Promise<AskUserResponse> => ({
+          answers: [{ selected: ["Re-run unsandboxed"] }],
+        }),
+      );
+      const r = await bashTool.run(
+        { command: "echo ok", timeout_ms: 5000 },
+        { cwd: dir, sandbox, askUser },
+      );
+      expect(sandbox.wrapCommand).toHaveBeenCalledTimes(1);
+      expect(askUser).toHaveBeenCalledTimes(1);
+      expect(r.isError).toBeUndefined();
+      expect(String(r.output)).toContain("re-ran unsandboxed");
+      expect(String(r.output)).toContain("ok");
+    });
+
+    it("keeps the sandbox failure when the user declines", async () => {
+      const sandbox = blockingBridge();
+      const askUser = vi.fn(
+        async (_req: AskUserRequest): Promise<AskUserResponse> => ({
+          answers: [{ selected: ["Keep blocked"] }],
+        }),
+      );
+      const r = await bashTool.run(
+        { command: "echo ok", timeout_ms: 5000 },
+        { cwd: dir, sandbox, askUser },
+      );
+      expect(r.isError).toBe(true);
+      expect(String(r.output)).toContain("exit=13");
+      expect(String(r.output)).not.toContain("re-ran unsandboxed");
+    });
+
+    it("prompts even when the blocked command exited 0 (violations, not exit code)", async () => {
+      // A denied write can still let the command exit 0 (e.g. a trailing
+      // `; echo`). The fallback must key on the recorded violation, not isError.
+      const sandbox = {
+        wrapCommand: vi.fn(async (_cmd: string) => "true"),
+        afterCommand: vi.fn(),
+        annotateOutput: vi.fn((_cmd: string, out: string) => out),
+        violationsForCommand: vi.fn((_cmd: string) => ["deny file-write-create .git/hooks/post-commit"]),
+      };
+      const askUser = vi.fn(
+        async (_req: AskUserRequest): Promise<AskUserResponse> => ({
+          answers: [{ selected: ["Re-run unsandboxed"] }],
+        }),
+      );
+      const r = await bashTool.run(
+        { command: "echo ok > .git/hooks/post-commit", timeout_ms: 5000 },
+        { cwd: dir, sandbox, askUser },
+      );
+      expect(askUser).toHaveBeenCalledTimes(1);
+      expect(String(r.output)).toContain("re-ran unsandboxed");
+    });
+
+    it("does not prompt when the failure had no sandbox violations", async () => {
+      const sandbox = blockingBridge();
+      sandbox.violationsForCommand.mockReturnValue([]);
+      const askUser = vi.fn(
+        async (_req: AskUserRequest): Promise<AskUserResponse> => ({ answers: [] }),
+      );
+      const r = await bashTool.run(
+        { command: "echo ok", timeout_ms: 5000 },
+        { cwd: dir, sandbox, askUser },
+      );
+      expect(askUser).not.toHaveBeenCalled();
+      expect(r.isError).toBe(true);
+      expect(String(r.output)).toContain("exit=13");
+    });
+  });
 });
 
 describe("editTool", () => {

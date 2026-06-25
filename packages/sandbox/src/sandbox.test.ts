@@ -8,6 +8,11 @@ const mock = {
   wrapWithSandbox: vi.fn(async (cmd: string) => `SANDBOXED(${cmd})`),
   cleanupAfterCommand: vi.fn(),
   annotateStderrWithSandboxFailures: vi.fn((_cmd: string, out: string) => `${out}\n<violations/>`),
+  getSandboxViolationStore: vi.fn(() => ({
+    getViolationsForCommand: (_cmd: string) => [
+      { line: "deny file-write /etc/passwd", timestamp: new Date(0) },
+    ],
+  })),
   reset: vi.fn(async () => {}),
 };
 
@@ -127,6 +132,19 @@ describe("createSandbox", () => {
     ctl.bridge!.afterCommand();
     expect(mock.cleanupAfterCommand).toHaveBeenCalledTimes(1);
     expect(ctl.bridge!.annotateOutput("echo hi", "out")).toBe("out\n<violations/>");
+  });
+
+  it("bridge.violationsForCommand returns recorded violation lines", async () => {
+    const ctl = await createSandbox({ enabled: true, writeRoots: ["/ws"] });
+    expect(ctl.bridge!.violationsForCommand("echo hi")).toEqual(["deny file-write /etc/passwd"]);
+  });
+
+  it("bridge.violationsForCommand returns [] when the store throws (monitoring off)", async () => {
+    mock.getSandboxViolationStore.mockImplementationOnce(() => {
+      throw new Error("no monitor");
+    });
+    const ctl = await createSandbox({ enabled: true, writeRoots: ["/ws"] });
+    expect(ctl.bridge!.violationsForCommand("echo hi")).toEqual([]);
   });
 
   it("dispose resets the SDK", async () => {

@@ -2,7 +2,7 @@ import React from "react";
 import { Box, Text } from "ink";
 import { useShallow } from "zustand/react/shallow";
 import { ApprovalPrompt, approvalRows } from "./approval.js";
-import { AskPanel } from "./ask-user.js";
+import { AskPanel, askRows } from "./ask-user.js";
 import { countWrappedLines, sliceLines } from "./measure.js";
 import { highlightLines } from "./selection.js";
 import {
@@ -288,7 +288,10 @@ function chromeRowsFor(
         // tall, so the message region painted over a multi-line modal.
         return approvalRows(modal.input, cols);
       case "ask":
-        return 10;
+        // Exact, width-aware height. A hardcoded constant under-reserved when
+        // the question text wrapped or carried embedded newlines (e.g. the
+        // sandbox re-run prompt), so the message region painted over it.
+        return askRows(modal.req, cols);
       case "pick":
         return pickListRows(modal.opts as PickerOptions<unknown>, cols);
       case "pickH":

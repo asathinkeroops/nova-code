@@ -7,6 +7,7 @@ import type {
   AskUserResponse,
 } from "@nova/core";
 import { ACCENT_HEX } from "../colors.js";
+import { countWrappedLines } from "./measure.js";
 import { visibleWidth } from "./width.js";
 
 const OTHER_LABEL = "Other";
@@ -30,7 +31,9 @@ function buildState(req: AskUserRequest): QState[] {
   return req.questions.map((spec) => {
     const seen = new Set(spec.options.map((o) => o.label.toLowerCase()));
     const options = [...spec.options];
-    if (!seen.has(OTHER_LABEL.toLowerCase())) {
+    // Append the freeform "Other" option unless the spec opts out (allowFreeform
+    // === false) or it's already present.
+    if (spec.allowFreeform !== false && !seen.has(OTHER_LABEL.toLowerCase())) {
       options.push({ label: OTHER_LABEL, description: "type a custom answer" });
     }
     return { spec, options, selected: new Set<number>(), freeform: "" };
@@ -73,6 +76,65 @@ function buildResponse(states: QState[]): AskUserResponse {
     return ans;
   });
   return { answers };
+}
+
+/**
+ * Exact render height of the AskPanel below, so the viewport reserves the right
+ * number of rows and the message region never paints over it. The panel shows
+ * one tab at a time but the user can switch freely, so we reserve the tallest
+ * tab (each question + the confirm tab). Mirrors `approvalRows`/`pickListRows`.
+ *
+ * Box chrome: round border (top+bottom = 2) + padding={1} (top+bottom = 2) +
+ * marginTop/marginBottom (2) = 6 rows; border+paddingX eat 4 columns.
+ */
+export function askRows(req: AskUserRequest, cols: number): number {
+  const inner = Math.max(1, cols - 4);
+  const states = buildState(req); // options here include any auto-added "Other"
+
+  // The tab strip is one logical line: `[ ● header ] … [ → Confirm ]`. Build a
+  // representative string so a long set of headers that wraps is reserved for.
+  const tabStrip =
+    states.map((s) => `[ ● ${s.spec.header} ]`).join(" ") + ` [ → ${CONFIRM_HEADER} ]`;
+  const tabRows = countWrappedLines(tabStrip, inner);
+  const hintRows = 2; // blank line + footer hint line (always present)
+
+  let maxBody = 0;
+
+  // Each question tab: question text + tab strip + blank + option rows
+  // (+ the freeform input rows that appear when "Other" is chosen).
+  for (const s of states) {
+    const questionRows = countWrappedLines(`? ${s.spec.question}`, inner);
+    let optionRows = 0;
+    for (const o of s.options) {
+      optionRows += countWrappedLines(
+        `    ● ${o.label}${o.description ? `  ${o.description}` : ""}`,
+        inner,
+      );
+    }
+    const hasOther = s.options.some((o) => o.label === OTHER_LABEL);
+    const freeformRows = hasOther ? 2 : 0; // blank + input line, when active
+    maxBody = Math.max(maxBody, questionRows + tabRows + 1 + optionRows + freeformRows + hintRows);
+  }
+
+  // Confirm tab: prompt + tab strip + blank + per-question summary + blank +
+  // Submit/Cancel buttons.
+  const confirmPrompt = countWrappedLines("? Review your answers and submit.", inner);
+  let summaryRows = 0;
+  for (const s of states) {
+    // Worst-case answer value: every option label joined (multiSelect) or the
+    // longest single label. Freeform custom text is unbounded and not modeled.
+    const value = s.spec.multiSelect
+      ? s.spec.options.map((o) => o.label).join(", ")
+      : s.spec.options.reduce((a, o) => (o.label.length > a.length ? o.label : a), "");
+    summaryRows += countWrappedLines(`  ${s.spec.header}: ${value}`, inner);
+  }
+  const buttonRows =
+    countWrappedLines("    Submit  (answer all questions first)", inner) +
+    countWrappedLines("    Cancel", inner);
+  const confirmBody = confirmPrompt + tabRows + 1 + summaryRows + 1 + buttonRows + hintRows;
+  maxBody = Math.max(maxBody, confirmBody);
+
+  return 6 + maxBody;
 }
 
 export interface AskPanelProps {

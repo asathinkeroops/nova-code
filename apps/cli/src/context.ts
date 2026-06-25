@@ -499,7 +499,9 @@ export async function createContext(
   // Runtime toggle for the `/sandbox` command. Captures allowedRoots/logger so
   // the rebuilt control confines writes to the same roots as the initial one.
   // The dispatch closure reads ctx.sandbox.bridge lazily, so reassigning here
-  // flips sandboxing on the next subprocess tool. Session-only (not persisted).
+  // flips sandboxing on the next subprocess tool. This toggle only mutates the
+  // live control/settings; the `/sandbox` command persists the choice to
+  // nova.config.json separately via saveSettings.
   (ctx as { setSandbox: CliContext["setSandbox"] }).setSandbox = async (enabled) => {
     await ctx.sandbox?.dispose();
     ctx.settings.sandbox.enabled = enabled;

@@ -179,6 +179,16 @@ export async function createSandbox(opts: CreateSandboxOptions): Promise<Sandbox
         return output;
       }
     },
+    violationsForCommand(command) {
+      try {
+        return SandboxManager.getSandboxViolationStore()
+          .getViolationsForCommand(command)
+          .map((v) => v.line);
+      } catch {
+        // No store (monitoring off) / SDK error → treat as "no violations".
+        return [];
+      }
+    },
   };
 
   log?.info(
