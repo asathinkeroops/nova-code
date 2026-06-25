@@ -1,7 +1,7 @@
 import type { SlashCommandKind } from "@nova/external";
 import { accent, cyan, dim } from "../colors.js";
 import type { CliContext } from "../context.js";
-import { reloadFileCommands } from "../slash.js";
+import { reloadFileCommands, reloadSkillCommands } from "../slash.js";
 
 const TITLE = "/commands";
 
@@ -9,6 +9,7 @@ const KIND_TAG: Record<SlashCommandKind, string> = {
   builtin: "[builtin]",
   user: "[user]   ",
   project: "[project]",
+  skill: "[skill]  ",
   mcp: "[mcp]    ",
 };
 
@@ -20,9 +21,17 @@ export async function handleCommands(ctx: CliContext, arg: string): Promise<void
       settings: ctx.settings,
       logger: ctx.logger,
     });
+    const skills = reloadSkillCommands(ctx.registry, {
+      cwd: ctx.workspace,
+      settings: ctx.settings,
+      logger: ctx.logger,
+    });
     const ms = Date.now() - t0;
     const tail = errors > 0 ? ` · ${errors} error(s) — see log` : "";
-    ctx.screen.card(`reloaded ${added} file command(s) in ${ms}ms${tail}`, { title: TITLE });
+    ctx.screen.card(
+      `reloaded ${added} file command(s), ${skills.added} skill(s) in ${ms}ms${tail}`,
+      { title: TITLE },
+    );
     return;
   }
   if (arg) {

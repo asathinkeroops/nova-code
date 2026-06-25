@@ -57,7 +57,7 @@ import { restoreUsageFromTranscript } from "./usage-restore.js";
 import { UserHooks } from "./user-hooks.js";
 import { SnapshotStore } from "./snapshots.js";
 import { renderSkillsBlock } from "./skills-render.js";
-import { loadFileCommandsInto } from "./slash.js";
+import { loadFileCommandsInto, loadSkillCommandsInto } from "./slash.js";
 import { loadSessionName } from "./session-name.js";
 import { resolveSession } from "./session.js";
 import { Screen, fatalExit } from "./screen.js";
@@ -820,6 +820,12 @@ export async function createContext(
     if (promptCommands.length > 0) {
       logger.info({ prompts: promptCommands.length }, "mcp prompt commands registered");
     }
+  }
+  // Bridge skills as slash commands. Registered last so an explicit builtin or
+  // file command of the same name always shadows the auto-generated skill one.
+  const skillCmds = loadSkillCommandsInto(ctx.registry, { cwd: workspace, settings, logger });
+  if (skillCmds.added > 0) {
+    logger.info({ added: skillCmds.added }, "skill slash commands registered");
   }
 
   // For resumed sessions, wipe whatever is already on screen (setup wizard
