@@ -61,7 +61,7 @@ export async function evaluateGoalWithAgent(
 
   const evaluator = createAgent({
     workspace: ctx.workspace,
-    memory: ctx.memory,
+    getMemory: () => ctx.memory,
     skillsBlock: ctx.skillsBlock,
     getSessionId: () => id,
     getMessagesPath: () => join(ctx.session.dir, "goal-eval.messages.jsonl"),

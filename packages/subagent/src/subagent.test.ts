@@ -93,7 +93,7 @@ function makeDeps(
 ): SubAgentDeps {
   return {
     workspace: "/tmp/ws",
-    memory: { system: "", sources: [] },
+    getMemory: () => ({ system: "", sources: [] }),
     skillsBlock: "",
     getAgentRegistry: () => new AgentRegistry(),
     getModel: () => model,

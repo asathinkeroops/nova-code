@@ -175,6 +175,11 @@ export async function switchToSession(
     kind: "session_start",
     data: { id: newSession.id, cwd: ctx.workspace, model: ctx.settings.model, resumed },
   });
+  // Re-read memory at the session boundary: the prefix is rebuilt for the
+  // switched-in session anyway, so picking up on-disk memory edits (incl. the
+  // agent's own auto-memory writes from earlier this process) costs nothing
+  // cache-wise. The agent reads via getMemory(), so the next turn sees it.
+  await ctx.reloadMemory();
   if (ctx.memory.sources.length > 0) {
     await ctx.transcript.append({ kind: "memory_loaded", data: { sources: ctx.memory.sources } });
   }

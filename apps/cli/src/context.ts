@@ -387,6 +387,7 @@ export async function createContext(
     apiKey,
     workspace,
     memory,
+    reloadMemory: null as unknown as CliContext["reloadMemory"],
     skillsBlock,
     version,
     noTranscript,
@@ -411,6 +412,15 @@ export async function createContext(
     agent: null as unknown as Agent,
     buildLogger,
     buildModel,
+  };
+
+  // Re-read memory from disk and swap in the fresh bundle. Only invoked at a
+  // session boundary (switchToSession), where the prefix is already rebuilt, so
+  // it never disturbs an in-session prefix cache. The agent reads the bundle via
+  // `getMemory: () => ctx.memory`, so the next turn picks this up automatically.
+  ctx.reloadMemory = async () => {
+    ctx.memory = await loadMemory(workspace, memoryOpts);
+    return ctx.memory;
   };
 
   // Permission ask bridges into the in-flight turn's signal so a long-pending
@@ -586,7 +596,7 @@ export async function createContext(
 
   (ctx as { agent: Agent }).agent = createAgent({
     workspace,
-    memory,
+    getMemory: () => ctx.memory,
     skillsBlock,
     getSessionId: () => ctx.session.id,
     getMessagesPath: () => ctx.session.messagesPath,
@@ -643,7 +653,7 @@ export async function createContext(
     ctx.tools.register(
       createSubAgentTool({
         workspace,
-        memory,
+        getMemory: () => ctx.memory,
         skillsBlock,
         getAgentRegistry: () => ctx.agents,
         getModel: getSubagentModel,

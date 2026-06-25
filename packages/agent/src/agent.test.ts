@@ -62,7 +62,7 @@ function makeDeps(overrides: Partial<AgentDeps> & {
 
   return {
     workspace: "/tmp/ws",
-    memory: { system: "", sources: [] },
+    getMemory: () => ({ system: "", sources: [] }),
     skillsBlock: "",
     getSessionId: () => "test-session",
     getMessagesPath: () => overrides.messagesPath,
@@ -159,6 +159,36 @@ describe("createAgent.runTurn", () => {
 
     const raw = await readFile(transcriptPath, "utf8");
     expect(raw).toContain('"kind":"user_prompt"');
+  });
+
+  it("reads memory fresh each turn via getMemory, so a session-boundary reload is visible", async () => {
+    const messagesPath = join(tmp, "messages.jsonl");
+    const transcriptPath = join(tmp, "transcript.jsonl");
+    const seenSystems: string[] = [];
+    const model: ModelClient = {
+      async call(opts) {
+        seenSystems.push(opts.system);
+        return {
+          content: [{ type: "text", text: "ok" }],
+          stopReason: "end_turn",
+          usage: { inputTokens: 1, outputTokens: 1 },
+        };
+      },
+    };
+    // Mutable bundle: the CLI swaps ctx.memory at a session boundary; getMemory
+    // reads it live, so turn 2 must see the new text without rebuilding the agent.
+    let bundle = { system: "MEMORY-BEFORE-RELOAD", sources: [] };
+    const agent = createAgent(
+      makeDeps({ model, messagesPath, transcriptPath, getMemory: () => bundle }),
+    );
+
+    await agent.runTurn("hi");
+    bundle = { system: "MEMORY-AFTER-RELOAD", sources: [] }; // simulate switchToSession reload
+    await agent.runTurn("hi again");
+
+    expect(seenSystems[0]).toContain("MEMORY-BEFORE-RELOAD");
+    expect(seenSystems[0]).not.toContain("MEMORY-AFTER-RELOAD");
+    expect(seenSystems[1]).toContain("MEMORY-AFTER-RELOAD");
   });
 
   it("currentSignal returns the in-flight signal and undefined when idle", async () => {

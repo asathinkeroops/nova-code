@@ -86,11 +86,23 @@ export interface CliContext {
    */
   pendingAutoCompactNotice: { before: number; after: number; transcriptPath?: string } | null;
 
+  /**
+   * The active memory bundle. Reassigned ONLY at a session boundary via
+   * `reloadMemory()` (see `switchToSession`), where the prefix is rebuilt
+   * anyway — never mid-turn, or DeepSeek's prefix cache collapses (see the
+   * prefix-caching contract in CLAUDE.md).
+   */
+  memory: MemoryBundle;
+  /**
+   * Re-read all memory layers from disk and swap in the fresh bundle. Call only
+   * at a session boundary (`/clear`, `/resume`). Returns the new bundle.
+   */
+  reloadMemory: () => Promise<MemoryBundle>;
+
   // ===== Read-only after init =====
   readonly agent: Agent;
   readonly apiKey: string;
   readonly workspace: string;
-  readonly memory: MemoryBundle;
   /**
    * Pre-rendered `<available-skills>` block injected into the system prompt.
    * Empty string when skills are disabled or no SKILL.md files were found.

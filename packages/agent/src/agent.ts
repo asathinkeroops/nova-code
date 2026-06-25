@@ -50,9 +50,10 @@ export interface AgentSettingsSlice {
 }
 
 /**
- * Inputs to `createAgent`. Identity / model / settings live behind getters so
- * the agent transparently sees CLI-side mutations (e.g. /resume, /think) on
- * the next turn. Stable values (workspace, memory) are passed by reference.
+ * Inputs to `createAgent`. Identity / model / settings / memory live behind
+ * getters so the agent transparently sees CLI-side mutations (e.g. /resume,
+ * /think, a session-boundary memory reload) on the next turn. `workspace` is
+ * the one stable value passed by reference.
  *
  * Built-in capabilities (`checkPermission`, `compactor`) are still accepted
  * as deps for ergonomic reasons — `createAgent` registers them as
@@ -64,7 +65,15 @@ export interface AgentSettingsSlice {
  */
 export interface AgentDeps {
   workspace: string;
-  memory: MemoryBundle;
+  /**
+   * The memory bundle, read fresh each turn. Behind a getter (not a value) so a
+   * session-boundary reload (`/clear`, `/resume`) is reflected on the next turn.
+   * MUST return a reference that is stable WITHIN a session — the bundle is
+   * embedded in the `system` prompt (byte 0 of the prefix), so a mid-session
+   * change would collapse DeepSeek's prefix cache. See the prefix-caching
+   * contract in CLAUDE.md.
+   */
+  getMemory: () => MemoryBundle;
   skillsBlock: string;
 
   // identity — varies across /resume
@@ -268,7 +277,7 @@ export function createAgent(deps: AgentDeps): Agent {
           ? deps.getSystemPrompt()
           : buildSystemPrompt(
             deps.workspace,
-            deps.memory,
+            deps.getMemory(),
             deps.getSessionId(),
             deps.skillsBlock,
             settings.language,

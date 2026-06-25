@@ -108,7 +108,8 @@ function buildToolDescription(defs: AgentDefinition[]): string {
 
 export interface SubAgentDeps {
   workspace: string;
-  memory: MemoryBundle;
+  /** Read per-spawn so a session-boundary memory reload reaches new sub-agents. */
+  getMemory: () => MemoryBundle;
   /** Skills index block embedded in the sub-agent's system prompt. */
   skillsBlock: string;
   /**
@@ -231,7 +232,7 @@ export function createSubAgentTool(deps: SubAgentDeps): ToolHandler {
 
       const agent = createAgent({
         workspace: deps.workspace,
-        memory: deps.memory,
+        getMemory: deps.getMemory,
         skillsBlock: deps.skillsBlock,
         getSessionId: () => id,
         getMessagesPath: () => join(logDir, `${id}.messages.jsonl`),
@@ -252,7 +253,7 @@ export function createSubAgentTool(deps: SubAgentDeps): ToolHandler {
         askUser: deps.askUser,
         getMessages: () => [],
         getSystemPrompt: () =>
-          buildSubAgentSystemPrompt(deps.workspace, deps.memory, deps.skillsBlock, def),
+          buildSubAgentSystemPrompt(deps.workspace, deps.getMemory(), deps.skillsBlock, def),
       });
 
       // Stream live progress (thinking / tool_use) out to the host, capped at
