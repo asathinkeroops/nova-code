@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { DeepSeekApiError } from "./deepseek-errors.js";
-import { createAnthropicModel, detectThinkingFormat } from "./model.js";
+import { createAnthropicModel, detectThinkingFormat, type RetryNotice } from "./model.js";
 
 // Stub the Anthropic SDK so we can inspect the params our adapter sends
 // without making a network call. The adapter streams, so `stream(...)` returns
@@ -176,7 +176,7 @@ describe("createAnthropicModel deepseek error handling", () => {
   it("retries a transient (429) error and then succeeds", async () => {
     vi.useFakeTimers();
     mockCreate.mockRejectedValueOnce(apiError(429)).mockResolvedValueOnce(okResponse());
-    const retries: { attempt: number; status: number }[] = [];
+    const retries: RetryNotice[] = [];
     const m = createAnthropicModel({
       apiKey: "x",
       model: "deepseek-chat",
