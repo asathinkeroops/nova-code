@@ -2,7 +2,7 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
 
-export type SlashCommandKind = "builtin" | "user" | "project";
+export type SlashCommandKind = "builtin" | "user" | "project" | "mcp";
 
 export interface SlashCommandSource {
   kind: SlashCommandKind;

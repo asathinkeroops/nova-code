@@ -45,6 +45,12 @@ export interface McpServerStatus {
   toolCount: number;
   /** Bridged tool names (`mcp__<server>__<tool>`), present when connected. */
   toolNames: string[];
+  /** Number of prompts the server exposed (0 unless connected/capable). */
+  promptCount: number;
+  /** Bridged prompt slash-command names (`mcp__<server>__<prompt>`). */
+  promptNames: string[];
+  /** Number of static resources + resource templates the server exposed. */
+  resourceCount: number;
   /** Failure reason when `state === "failed"`. */
   error?: string;
 }

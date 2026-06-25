@@ -225,6 +225,11 @@ export async function createContext(
   if (mcp) {
     await mcp.connectAll();
     for (const handler of mcp.handlers()) tools.register(handler);
+    // Resources surface as two global, read-only model tools
+    // (mcp_list_resources / mcp_read_resource); registered only when some
+    // connected server advertised the capability. Prompts surface as slash
+    // commands, registered later once the SlashRegistry exists (see finalize).
+    for (const handler of mcp.resourceTools()) tools.register(handler);
     const failed = mcp.status().filter((s) => s.state === "failed");
     await transcript.append({
       kind: "mcp_loaded",
@@ -232,6 +237,8 @@ export async function createContext(
         servers: mcp.serverCount,
         connected: mcp.connectedCount,
         tools: mcp.handlers().length,
+        prompts: mcp.promptCommands().length,
+        resources: mcp.resourceTools().length > 0,
         failed: failed.map((s) => s.name),
       },
     });
@@ -770,6 +777,15 @@ export async function createContext(
   });
   if (loaded.added > 0 || loaded.errors > 0) {
     logger.info({ ...loaded }, "slash commands loaded");
+  }
+  // Bridge MCP prompts as slash commands. Registered after builtins/file
+  // commands; their namespaced (`mcp__server__prompt`) names won't collide.
+  if (ctx.mcp) {
+    const promptCommands = ctx.mcp.promptCommands();
+    for (const cmd of promptCommands) ctx.registry.register(cmd);
+    if (promptCommands.length > 0) {
+      logger.info({ prompts: promptCommands.length }, "mcp prompt commands registered");
+    }
   }
 
   // For resumed sessions, wipe whatever is already on screen (setup wizard

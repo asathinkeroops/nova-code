@@ -6,8 +6,9 @@ const SECTION_TITLE: Record<SlashCommandKind, string> = {
   builtin: "Built-in",
   project: "Project",
   user: "User",
+  mcp: "MCP",
 };
-const SECTION_ORDER: SlashCommandKind[] = ["builtin", "project", "user"];
+const SECTION_ORDER: SlashCommandKind[] = ["builtin", "project", "user", "mcp"];
 
 function formatRow(cmd: SlashCommand, nameWidth: number): string {
   // Colour the command name (accent) and its parameters (cyan) distinctly while

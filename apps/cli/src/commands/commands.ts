@@ -9,6 +9,7 @@ const KIND_TAG: Record<SlashCommandKind, string> = {
   builtin: "[builtin]",
   user: "[user]   ",
   project: "[project]",
+  mcp: "[mcp]    ",
 };
 
 export async function handleCommands(ctx: CliContext, arg: string): Promise<void> {

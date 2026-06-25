@@ -34,18 +34,29 @@ export function handleMcp(ctx: CliContext, args: string): void {
           ? red("● failed")
           : yellow("● disabled");
     const name = s.name.padEnd(nameWidth, " ");
-    const meta = s.state === "connected" ? dim(`${s.transport} · ${s.toolCount} tool(s)`) : dim(s.transport);
+    const counts =
+      `${s.toolCount} tool(s)` +
+      (s.promptCount > 0 ? ` · ${s.promptCount} prompt(s)` : "") +
+      (s.resourceCount > 0 ? ` · ${s.resourceCount} resource(s)` : "");
+    const meta = s.state === "connected" ? dim(`${s.transport} · ${counts}`) : dim(s.transport);
     lines.push(`  ${name}  ${badge}  ${meta}`);
     if (s.error) lines.push(`  ${" ".repeat(nameWidth)}  ${dim(s.error)}`);
-    if (showTools && s.toolNames.length > 0) {
+    if (showTools) {
       for (const t of s.toolNames) lines.push(`  ${" ".repeat(nameWidth)}    ${dim(t)}`);
+      for (const p of s.promptNames) lines.push(`  ${" ".repeat(nameWidth)}    ${dim(`/${p}`)}`);
     }
   }
   lines.push("");
+  const promptTotal = mcp.promptCommands().length;
+  const resourceServers = status.filter((s) => s.resourceCount > 0).length;
   lines.push(
-    dim(`${mcp.connectedCount}/${mcp.serverCount} connected · ${mcp.handlers().length} tool(s) bridged`),
+    dim(
+      `${mcp.connectedCount}/${mcp.serverCount} connected · ${mcp.handlers().length} tool(s) bridged` +
+        (promptTotal > 0 ? ` · ${promptTotal} prompt(s)` : "") +
+        (resourceServers > 0 ? ` · resources on ${resourceServers} server(s)` : ""),
+    ),
   );
-  if (!showTools) lines.push(dim("run `/mcp tools` to list bridged tool names"));
+  if (!showTools) lines.push(dim("run `/mcp tools` to list bridged tool & prompt names"));
 
   ctx.screen.card(lines.join("\n"), { title: TITLE });
 }

@@ -1,8 +1,20 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { ToolHandler } from "@nova/core";
+import type { SlashCommand } from "../slash.js";
 import { createHttpTransport } from "./http.js";
 import { createStdioTransport } from "./stdio.js";
+import {
+  formatPromptMessages,
+  mcpPromptToSlash,
+  type McpPromptDescriptor,
+} from "./prompt.js";
+import {
+  resourceToolHandlers,
+  type McpResourceDescriptor,
+  type McpResourceTemplateDescriptor,
+  type McpServerResources,
+} from "./resource.js";
 import { mcpToolToHandler, type McpToolDescriptor } from "./tool.js";
 import type {
   McpHttpServerSpec,
@@ -51,6 +63,23 @@ function formatContent(content: unknown): string {
   return parts.join("\n");
 }
 
+/** Flatten a `resources/read` result's contents into a single string. */
+function formatResourceContents(contents: unknown): string {
+  if (!Array.isArray(contents)) return "";
+  const parts: string[] = [];
+  for (const block of contents) {
+    if (!block || typeof block !== "object") continue;
+    const b = block as Record<string, unknown>;
+    if (typeof b.text === "string") {
+      parts.push(b.text);
+    } else if (typeof b.blob === "string") {
+      const mime = typeof b.mimeType === "string" ? b.mimeType : "application/octet-stream";
+      parts.push(`[binary resource ${String(b.uri ?? "")} ${mime}, ${b.blob.length} base64 chars]`);
+    }
+  }
+  return parts.join("\n");
+}
+
 export interface McpManagerOptions {
   logger?: McpLogger;
   /** Per-tool-call timeout (ms). */
@@ -66,6 +95,11 @@ interface Connection {
   spec: McpServerSpec;
   client: Client;
   handlers: ToolHandler[];
+  prompts: SlashCommand[];
+  resources: McpResourceDescriptor[];
+  templates: McpResourceTemplateDescriptor[];
+  /** Whether the server advertised the `resources` capability. */
+  hasResources: boolean;
 }
 
 /**
@@ -101,16 +135,40 @@ export class McpManager {
     try {
       const transport = make(name, spec);
       await client.connect(transport);
-      const { tools } = await client.listTools();
       const timeout = this.opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+      const caps = client.getServerCapabilities();
+
+      const { tools } = await client.listTools();
       const handlers = (tools as McpToolDescriptor[]).map((descriptor) =>
         mcpToolToHandler(name, descriptor, (toolName, args) =>
           this.invoke(name, client, toolName, args, timeout),
         ),
       );
-      this.connections.set(name, { name, spec, client, handlers });
+
+      // Prompts and resources are gated on the server's declared capabilities —
+      // listing one the server never advertised makes the SDK throw. Each
+      // discovery is independently best-effort so a flaky prompts/list never
+      // costs us the server's tools (or its resources).
+      const prompts = caps?.prompts
+        ? await this.discoverPrompts(name, client, timeout)
+        : [];
+      const hasResources = !!caps?.resources;
+      const { resources, templates } = hasResources
+        ? await this.discoverResources(name, client)
+        : { resources: [], templates: [] };
+
+      this.connections.set(name, {
+        name,
+        spec,
+        client,
+        handlers,
+        prompts,
+        resources,
+        templates,
+        hasResources,
+      });
       this.opts.logger?.info(
-        { server: name, tools: handlers.length },
+        { server: name, tools: handlers.length, prompts: prompts.length, resources: resources.length },
         "mcp server connected",
       );
     } catch (err) {
@@ -151,11 +209,142 @@ export class McpManager {
     }
   }
 
+  /**
+   * List a server's prompts and bridge each into a Nova slash command whose
+   * `run` resolves the template via `prompts/get`. Best-effort: a failed list
+   * yields no prompts rather than failing the whole connection.
+   */
+  private async discoverPrompts(
+    server: string,
+    client: Client,
+    timeout: number,
+  ): Promise<SlashCommand[]> {
+    try {
+      const { prompts } = await client.listPrompts();
+      return (prompts as McpPromptDescriptor[]).map((descriptor) =>
+        mcpPromptToSlash(server, descriptor, async (promptName, args) => {
+          try {
+            const res = await client.getPrompt(
+              { name: promptName, arguments: args },
+              { timeout },
+            );
+            const text = formatPromptMessages((res as { messages?: unknown }).messages);
+            return { ok: text || "(prompt returned no content)" };
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            this.opts.logger?.warn({ server, prompt: promptName, err: msg }, "mcp getPrompt failed");
+            return { error: `MCP prompt "${promptName}" failed: ${msg}` };
+          }
+        }),
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.opts.logger?.warn({ server, err: msg }, "mcp listPrompts failed");
+      return [];
+    }
+  }
+
+  /** List a server's static resources and resource templates (best-effort). */
+  private async discoverResources(
+    server: string,
+    client: Client,
+  ): Promise<{ resources: McpResourceDescriptor[]; templates: McpResourceTemplateDescriptor[] }> {
+    const resources: McpResourceDescriptor[] = [];
+    const templates: McpResourceTemplateDescriptor[] = [];
+    try {
+      const res = await client.listResources();
+      resources.push(...((res.resources as McpResourceDescriptor[]) ?? []));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.opts.logger?.warn({ server, err: msg }, "mcp listResources failed");
+    }
+    try {
+      const res = await client.listResourceTemplates();
+      templates.push(...((res.resourceTemplates as McpResourceTemplateDescriptor[]) ?? []));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.opts.logger?.debug({ server, err: msg }, "mcp listResourceTemplates failed");
+    }
+    return { resources, templates };
+  }
+
+  /** Read a resource by URI, optionally constrained to one named server. */
+  private async readResource(
+    uri: string,
+    server: string | undefined,
+  ): Promise<{ output: string; isError: boolean }> {
+    const candidates = Array.from(this.connections.values()).filter(
+      (c) => c.hasResources && (server === undefined || c.name === server),
+    );
+    if (candidates.length === 0) {
+      return {
+        output: server
+          ? `No connected MCP server named "${server}" exposes resources.`
+          : "No connected MCP server exposes resources.",
+        isError: true,
+      };
+    }
+    const errors: string[] = [];
+    for (const conn of candidates) {
+      try {
+        const res = await conn.client.readResource({ uri });
+        const output = formatResourceContents((res as { contents?: unknown }).contents);
+        return { output: output || "(resource is empty)", isError: false };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        errors.push(`${conn.name}: ${msg}`);
+      }
+    }
+    return { output: `Failed to read resource "${uri}" — ${errors.join("; ")}`, isError: true };
+  }
+
   /** All successfully-bridged tool handlers across every connected server. */
   handlers(): ToolHandler[] {
     const out: ToolHandler[] = [];
     for (const conn of this.connections.values()) out.push(...conn.handlers);
     return out;
+  }
+
+  /** Bridged prompt slash commands across every connected server. */
+  promptCommands(): SlashCommand[] {
+    const out: SlashCommand[] = [];
+    for (const conn of this.connections.values()) out.push(...conn.prompts);
+    return out;
+  }
+
+  /**
+   * The two global resource tools (`mcp_list_resources` / `mcp_read_resource`),
+   * or an empty array when no connected server exposes resources. Closes over
+   * the live connection map, so it reflects whatever connected.
+   */
+  resourceTools(): ToolHandler[] {
+    if (!this.hasResources()) return [];
+    return resourceToolHandlers(
+      (server) => this.listResources(server),
+      (uri, server) => this.readResource(uri, server),
+    );
+  }
+
+  /** Group advertised resources by server, optionally filtered to one server. */
+  private listResources(server?: string): McpServerResources[] {
+    const out: McpServerResources[] = [];
+    for (const conn of this.connections.values()) {
+      if (!conn.hasResources) continue;
+      if (server !== undefined && conn.name !== server) continue;
+      out.push({ server: conn.name, resources: conn.resources, templates: conn.templates });
+    }
+    return out;
+  }
+
+  /** True if any connected server advertised the resources capability. */
+  hasResources(): boolean {
+    for (const conn of this.connections.values()) if (conn.hasResources) return true;
+    return false;
+  }
+
+  /** True if any connected server exposed at least one prompt. */
+  hasPrompts(): boolean {
+    return this.promptCommands().length > 0;
   }
 
   /** True if any server connected and exposed at least one tool. */
@@ -176,6 +365,9 @@ export class McpManager {
           transport,
           toolCount: conn.handlers.length,
           toolNames: conn.handlers.map((h) => h.definition.name),
+          promptCount: conn.prompts.length,
+          promptNames: conn.prompts.map((p) => p.name),
+          resourceCount: conn.resources.length + conn.templates.length,
         };
       }
       const error = this.failures.get(name);
@@ -185,6 +377,9 @@ export class McpManager {
         transport,
         toolCount: 0,
         toolNames: [],
+        promptCount: 0,
+        promptNames: [],
+        resourceCount: 0,
         ...(error ? { error } : {}),
       };
     });

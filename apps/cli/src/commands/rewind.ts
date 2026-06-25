@@ -43,8 +43,11 @@ export function collectUserTurns(messages: MessageParam[]): UserTurn[] {
 /**
  * Rewind the conversation to just before a previous user message: history
  * after the chosen turn is discarded and the message itself is placed back in
- * the input box for editing/resending. Does not touch files on disk — only the
- * model context and `messages.jsonl`.
+ * the input box for editing/resending. Files that `write`/`edit` touched at or
+ * after that turn are also rolled back to their pre-turn state (via the
+ * snapshot store) — modified files restored, newly-created files deleted —
+ * after a confirmation preview. Side effects from `bash` (rm, sed -i,
+ * redirects) are not snapshotted and so are left untouched.
  *
  * `/rewind` with no arg opens a picker (newest turn pre-selected). `/rewind N`
  * counts back from the most recent turn (1 = undo the last exchange).
