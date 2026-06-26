@@ -242,4 +242,29 @@ describe("resolveModeDecision", () => {
     });
     expect(resolveModeDecision("acceptEdits", "write", undefined, roots)).toBeNull();
   });
+
+  it("auto auto-grants in-workspace write/edit like accept-edits", () => {
+    expect(resolveModeDecision("auto", "write", `${CWD}/src/a.ts`, roots)).toEqual({
+      granted: true,
+    });
+    expect(resolveModeDecision("auto", "edit", CWD, roots)).toEqual({ granted: true });
+  });
+
+  it("auto defers (asks) for out-of-workspace write/edit", () => {
+    expect(resolveModeDecision("auto", "write", "/etc/hosts", roots)).toBeNull();
+    expect(resolveModeDecision("auto", "edit", `${CWD}-sibling/x`, roots)).toBeNull();
+  });
+
+  it("auto defers the command tools to the async classifier (not decided here)", () => {
+    // Command gating in auto mode is async (it may call the model), so it lives
+    // in checkPermission, not resolveModeDecision — which returns null here.
+    expect(resolveModeDecision("auto", "bash", undefined, roots)).toBeNull();
+    expect(resolveModeDecision("auto", "runInBackground", undefined, roots)).toBeNull();
+  });
+
+  it("auto leaves read-only tools to the engine", () => {
+    for (const tool of ["read", "glob", "grep", "lsp"]) {
+      expect(resolveModeDecision("auto", tool, `${CWD}/x`, roots)).toBeNull();
+    }
+  });
 });

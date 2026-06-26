@@ -21,6 +21,7 @@ import {
 } from "@nova/tools";
 import {
   createLogger,
+  DEFAULT_CHEAP_TIER,
   loadProjectHooks,
   mergeHooks,
   resolveMaxTokens,
@@ -46,7 +47,8 @@ import { buildCompactor } from "./compactor.js";
 import { loadGoal } from "./goal.js";
 import { buildMcpManager } from "./mcp.js";
 import { canonicalizePath, canonicalizeRoots, PATH_INPUT_TOOLS } from "./path-safety.js";
-import { resolveModeDecision, resolvePermissionRules } from "./permissions.js";
+import { MODE_COMMAND_TOOLS, resolveModeDecision, resolvePermissionRules } from "./permissions.js";
+import { classifyCommandRisk } from "./auto-classify.js";
 import { loadAgents } from "./agents.js";
 import { readCliVersion } from "./version.js";
 import { UI_FRAME_MS } from "./ui/frame.js";
@@ -567,18 +569,53 @@ export async function createContext(
         ? { granted: false, reason: "denied at PreToolUse hook prompt" }
         : { granted: true };
     }
-    // Input-box permission mode (shift+tab cycles default/acceptEdits/plan).
+    // Input-box permission mode (shift+tab cycles default/acceptEdits/auto/plan).
     // Applied AFTER canonicalization so accept-edits containment is judged on
     // the real on-disk path, and BEFORE the engine so plan-mode denial and
     // accept-edits auto-grant short-circuit the normal `ask` flow. A null
     // decision means "no mode opinion — defer to the engine rules below".
+    const mode = ctx.screen.getPermissionMode();
     const modeDecision = resolveModeDecision(
-      ctx.screen.getPermissionMode(),
+      mode,
       tool,
       PATH_INPUT_TOOLS.has(tool) ? (evalInput.path as string) : undefined,
       allowedRoots,
     );
     if (modeDecision) return modeDecision;
+    // `auto` mode runs commands unattended, but only after a risk classifier
+    // clears them (static rules first, then an LLM call for the rest). A risky
+    // verdict falls back to a confirmation prompt — Claude Code's auto-mode
+    // fallback-to-prompting — rather than denying outright, so the user keeps
+    // control while genuinely-safe commands run without interruption.
+    if (mode === "auto" && MODE_COMMAND_TOOLS.has(tool)) {
+      const command = typeof evalInput.command === "string" ? evalInput.command : "";
+      const autoCfg = ctx.settings.permissions.autoMode;
+      // Classifier model is independent of the agent's /model. Precedence:
+      // explicit `autoMode.model` → the cheap built-in tier (when `models` still
+      // carries it — a user override can replace it away) → the main model.
+      // Defaulting to the cheap tier keeps safety checks fast and cheap;
+      // buildModel resolves a bare id or `models` alias and is untracked, so the
+      // classifier never pollutes the turn's token counters.
+      const classifierModel =
+        autoCfg.model ??
+        (ctx.settings.models[DEFAULT_CHEAP_TIER] ? DEFAULT_CHEAP_TIER : ctx.settings.model);
+      const verdict = await classifyCommandRisk(command, {
+        model: autoCfg.llmClassifier ? ctx.buildModel(classifierModel, false) : undefined,
+        timeoutMs: autoCfg.classifierTimeoutMs,
+        signal: ctx.agent.currentSignal() ?? undefined,
+      });
+      if (verdict.risk === "safe") return { granted: true };
+      const answer = await askWithSignal(
+        {
+          effect: "ask",
+          reason: `Auto mode flagged this command as risky (${verdict.reason ?? verdict.source}). Approve to run it.`,
+        },
+        { tool, input: evalInput },
+      );
+      return answer === "no"
+        ? { granted: false, reason: "denied at auto-mode risk prompt" }
+        : { granted: true };
+    }
     try {
       await permission.check({ tool, input: evalInput });
       return { granted: true };

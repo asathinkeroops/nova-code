@@ -129,8 +129,9 @@ describe("permissionModeIndicator", () => {
     expect(permissionModeIndicator("default")).toBeNull();
   });
 
-  it("labels accept-edits, plan, and bypass in distinct colors (hint appended dim by the renderer)", () => {
+  it("labels accept-edits, auto, plan, and bypass in distinct colors (hint appended dim by the renderer)", () => {
     expect(permissionModeIndicator("acceptEdits")).toEqual({ label: "⏵⏵ accept edits on", color: "green" });
+    expect(permissionModeIndicator("auto")).toEqual({ label: "⏵⏵ auto mode on", color: "yellow" });
     expect(permissionModeIndicator("plan")).toEqual({ label: "⏸ plan mode on", color: "cyan" });
     expect(permissionModeIndicator("bypassPermissions")).toEqual({
       label: "⚠ bypass permissions on",

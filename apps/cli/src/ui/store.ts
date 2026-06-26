@@ -1116,8 +1116,8 @@ export function createAppStore(opts: AppStoreOptions = {}): AppStoreApi {
         // `bypassPermissions` joins the cycle only once `--dangerously-skip-permissions`
         // has armed it (bypassAllowed); otherwise the dangerous mode is unreachable.
         const order: PermissionMode[] = get().bypassAllowed
-          ? ["default", "acceptEdits", "plan", "bypassPermissions"]
-          : ["default", "acceptEdits", "plan"];
+          ? ["default", "acceptEdits", "auto", "plan", "bypassPermissions"]
+          : ["default", "acceptEdits", "auto", "plan"];
         const cur = get().permissionMode;
         const idx = order.indexOf(cur);
         const next = order[(idx + 1) % order.length] ?? "default";

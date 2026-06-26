@@ -55,9 +55,9 @@ function applyCliOverrides(settings: Settings, opts: CliOptions): void {
  */
 function parsePermissionMode(raw: string | undefined): PermissionMode {
   const mode = (raw ?? "default") as PermissionMode;
-  if (!["default", "acceptEdits", "plan"].includes(mode)) {
+  if (!["default", "acceptEdits", "auto", "plan"].includes(mode)) {
     throw new Error(
-      `invalid --permission-mode: ${raw} (expected default, acceptEdits, or plan)`,
+      `invalid --permission-mode: ${raw} (expected default, acceptEdits, auto, or plan)`,
     );
   }
   return mode;
@@ -220,7 +220,7 @@ program
   )
   .option(
     "--permission-mode <mode>",
-    "initial permission mode: default | acceptEdits | plan",
+    "initial permission mode: default | acceptEdits | auto | plan",
   )
   .option(
     "--dangerously-skip-permissions",

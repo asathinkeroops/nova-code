@@ -242,6 +242,12 @@ export const DEFAULT_MODEL_DESCRIPTIONS: Record<string, string> = {
 // DeepSeek-flavoured to match this build's tuning. Exported so the setup
 // provider templates can reference the same source of truth.
 export const DEFAULT_MODEL_TIER = "pro";
+// Cheapest built-in tier — the sensible default for auxiliary, latency- and
+// cost-sensitive model calls (e.g. the auto-mode command classifier) that don't
+// need the main `pro` tier. Only meaningful when `models` still carries it;
+// since a user `models` override REPLACES DEFAULT_MODELS wholesale, callers must
+// fall back to the main model when this key is absent.
+export const DEFAULT_CHEAP_TIER = "flash";
 export const DEFAULT_BASE_URL = "https://api.deepseek.com/anthropic";
 
 // Default goal-mode knobs (the object-level fallback when `goal` is absent).
@@ -298,8 +304,37 @@ export const settingsSchema = z.object({
       // at startup so the containment check compares real on-disk paths. The
       // workspace cwd is always an allowed root and need not be listed here.
       additionalDirectories: z.array(z.string().min(1)).default([]),
+      // The `auto` permission mode (shift+tab) runs commands (bash,
+      // runInBackground) unattended, gated by a command-risk classifier:
+      // static rules block clearly destructive commands and fast-path clearly
+      // read-only ones; whatever the rules can't decide goes to an LLM
+      // classifier. A command judged risky falls back to a confirmation prompt
+      // (it is never silently run). Mirrors Claude Code's auto-mode classifier.
+      autoMode: z
+        .object({
+          // Send rule-undecided commands to the LLM classifier. Off → rules
+          // only: every undecided command falls back to a prompt (no model
+          // call, zero added latency/tokens, but far more prompts).
+          llmClassifier: z.boolean().default(true),
+          // Model the classifier runs on — a bare model id or a key into
+          // `models`. Independent of the agent's `/model`, mirroring Claude
+          // Code's separate classifier model: a small/cheap/fast model so
+          // safety checks don't pay main-model latency or cost. Unset → the
+          // cheap built-in tier (DEFAULT_CHEAP_TIER, "flash") when `models`
+          // still carries it, otherwise the active main model.
+          model: z.string().min(1).optional(),
+          // Budget for the LLM classifier call. On timeout the command is
+          // treated as risky (fail-closed) and prompts rather than running.
+          classifierTimeoutMs: z.number().int().positive().default(8000),
+        })
+        .default({ llmClassifier: true, classifierTimeoutMs: 8000 }),
     })
-    .default({ defaultEffect: "ask", rules: [], additionalDirectories: [] }),
+    .default({
+      defaultEffect: "ask",
+      rules: [],
+      additionalDirectories: [],
+      autoMode: { llmClassifier: true, classifierTimeoutMs: 8000 },
+    }),
   transcript: z
     .object({
       enabled: z.boolean().default(true),

@@ -8,19 +8,36 @@ import { isWithin } from "@nova/safety";
  * - `default`    — no change; write/edit/bash fall through to the engine's `ask`.
  * - `acceptEdits`— in-workspace write/edit auto-granted (no prompt); bash and
  *                  out-of-workspace write/edit still ask.
+ * - `auto`       — autonomous: in-workspace write/edit auto-granted like
+ *                  `acceptEdits`, and additionally the command tools (bash,
+ *                  runInBackground) auto-run without a prompt. More permissive
+ *                  than `acceptEdits` (arbitrary commands run unattended) but
+ *                  still narrower than `bypassPermissions` — out-of-workspace
+ *                  write/edit and user `deny` rules are NOT bypassed. Mirrors
+ *                  Claude Code's `auto` mode (minus its background classifier).
  * - `plan`       — read-only; write/edit/bash are denied (mirrors the read-only
  *                  `/plan` sub-agent), so the agent investigates and plans only.
  * - `bypassPermissions` — every approval auto-granted (the
  *                  `--dangerously-skip-permissions` bypass). Only reachable in
  *                  the shift+tab cycle once that startup flag has armed it.
  */
-export type PermissionMode = "default" | "acceptEdits" | "plan" | "bypassPermissions";
+export type PermissionMode = "default" | "acceptEdits" | "auto" | "plan" | "bypassPermissions";
 
 /**
  * Workspace-mutating tools, withheld in `plan` mode. Mirrors the read-only
  * sub-agent's MUTATING_TOOLS set (packages/subagent/src/subagent.ts).
  */
 const MODE_MUTATING_TOOLS: ReadonlySet<string> = new Set(["write", "edit", "bash"]);
+
+/**
+ * Command-execution tools that `auto` mode runs unattended — but only after a
+ * risk classifier clears them (see auto-classify.ts). Unlike the synchronous
+ * edit grant, command gating is async (it may call the model), so it lives in
+ * `checkPermission` rather than `resolveModeDecision`; this set just tells the
+ * caller which tools to route through the classifier. Both spawn an arbitrary
+ * shell (`runInBackground` is the long-running variant of `bash`).
+ */
+export const MODE_COMMAND_TOOLS: ReadonlySet<string> = new Set(["bash", "runInBackground"]);
 
 /**
  * Mode-specific permission decision, applied by `checkPermission` AFTER it has
@@ -45,11 +62,15 @@ export function resolveModeDecision(
         "of changing anything; the user can turn off plan mode (shift+tab) to apply it.",
     };
   }
-  if (mode === "acceptEdits" && (tool === "write" || tool === "edit")) {
+  // In-workspace write/edit auto-grant, shared by `acceptEdits` and `auto`.
+  // Out-of-workspace paths (and a missing path) fall through to the engine's ask.
+  if ((mode === "acceptEdits" || mode === "auto") && (tool === "write" || tool === "edit")) {
     if (canonicalPath !== undefined && roots.some((root) => isWithin(root, canonicalPath))) {
       return { granted: true };
     }
   }
+  // `auto` mode's command tools (bash, runInBackground) are gated by an async
+  // risk classifier in `checkPermission`, not here — see MODE_COMMAND_TOOLS.
   return null;
 }
 

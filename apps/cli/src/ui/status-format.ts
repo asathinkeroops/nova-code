@@ -27,14 +27,17 @@ export const SHELL_MODE_INDICATOR: PermissionModeIndicator = {
 /**
  * Colored label shown below the StatusLine for a non-default permission mode,
  * or null for `default` (no extra row). Each mode gets a distinct color for
- * at-a-glance distinction — green for accept-edits (writes flowing), cyan for
- * plan (read-only), red for the dangerous bypass. The PERMISSION_MODE_HINT is
- * rendered after it in the StatusLine's dim color. Cycled with shift+tab.
+ * at-a-glance distinction — green for accept-edits (writes flowing), yellow for
+ * auto (writes plus unattended commands), cyan for plan (read-only), red for the
+ * dangerous bypass. The PERMISSION_MODE_HINT is rendered after it in the
+ * StatusLine's dim color. Cycled with shift+tab.
  */
 export function permissionModeIndicator(mode: PermissionMode): PermissionModeIndicator | null {
   switch (mode) {
     case "acceptEdits":
       return { label: "⏵⏵ accept edits on", color: "green" };
+    case "auto":
+      return { label: "⏵⏵ auto mode on", color: "yellow" };
     case "plan":
       return { label: "⏸ plan mode on", color: "cyan" };
     case "bypassPermissions":

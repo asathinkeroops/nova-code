@@ -115,10 +115,11 @@ describe("permission mode", () => {
     expect(createAppStore().getState().permissionMode).toBe("default");
   });
 
-  it("cycles default → acceptEdits → plan → default and returns the new mode", () => {
+  it("cycles default → acceptEdits → auto → plan → default and returns the new mode", () => {
     const store = createAppStore();
     expect(store.getState().cyclePermissionMode()).toBe("acceptEdits");
     expect(store.getState().permissionMode).toBe("acceptEdits");
+    expect(store.getState().cyclePermissionMode()).toBe("auto");
     expect(store.getState().cyclePermissionMode()).toBe("plan");
     expect(store.getState().cyclePermissionMode()).toBe("default");
   });
@@ -142,6 +143,7 @@ describe("bypass permissions mode", () => {
     const store = createAppStore();
     expect(store.getState().bypassAllowed).toBe(false);
     store.getState().cyclePermissionMode(); // acceptEdits
+    store.getState().cyclePermissionMode(); // auto
     store.getState().cyclePermissionMode(); // plan
     expect(store.getState().cyclePermissionMode()).toBe("default"); // skips bypass
   });
@@ -156,9 +158,10 @@ describe("bypass permissions mode", () => {
   it("once armed, shift+tab can cycle into and back out of bypass", () => {
     const store = createAppStore();
     store.getState().enableBypass(); // now in bypassPermissions
-    // bypass → default → acceptEdits → plan → bypass
+    // bypass → default → acceptEdits → auto → plan → bypass
     expect(store.getState().cyclePermissionMode()).toBe("default");
     expect(store.getState().cyclePermissionMode()).toBe("acceptEdits");
+    expect(store.getState().cyclePermissionMode()).toBe("auto");
     expect(store.getState().cyclePermissionMode()).toBe("plan");
     expect(store.getState().cyclePermissionMode()).toBe("bypassPermissions");
   });
@@ -170,6 +173,7 @@ describe("bypass permissions mode", () => {
     store.getState().reset();
     expect(store.getState().bypassAllowed).toBe(true);
     expect(store.getState().cyclePermissionMode()).toBe("acceptEdits");
+    store.getState().cyclePermissionMode(); // auto
     store.getState().cyclePermissionMode(); // plan
     expect(store.getState().cyclePermissionMode()).toBe("bypassPermissions");
   });
