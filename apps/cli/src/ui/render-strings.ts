@@ -565,6 +565,35 @@ function toolBodyView(body: string, done: boolean, expanded: boolean): string {
   return expanded ? `${body}\n${dim("… show less")}` : compactBody(body);
 }
 
+/**
+ * The result line for a tool call (the `✓ …` / error summary that joins the
+ * call once it completes). Shared by {@link renderToolCall} and
+ * {@link toolCallToggleLineIndex} so both agree on the gutter body's contents.
+ */
+function toolResultStr(
+  use: ToolUseBlock,
+  result: ToolResultBlock,
+): string {
+  const def = tools[use.name];
+  return def?.result
+    ? def.result(result, use.input as Record<string, unknown> | undefined)
+    : result.is_error
+      ? errLine(result)
+      : okLine(flatten(trim(contentToString(result.content), 200)));
+}
+
+/**
+ * Assemble the gutter body for a body-bearing tool call. Once the call has a
+ * result, that result line sits at the TOP of the body (carrying the `⎿` elbow
+ * after {@link gutterIndent}), with the diff / file content hanging beneath it.
+ * The body's trailing collapse/expand hint therefore stays the last line of the
+ * combined body — {@link toolCallToggleLineIndex} relies on this.
+ */
+function toolGutterBody(body: string, resultStr: string | undefined, expanded: boolean): string {
+  const view = toolBodyView(body, resultStr !== undefined, expanded);
+  return resultStr === undefined ? view : `${resultStr}\n${view}`;
+}
+
 function renderToolCall(
   use: ToolUseBlock,
   result: ToolResultBlock | undefined,
@@ -583,25 +612,19 @@ function renderToolCall(
   // its detail (body and/or result) hanging underneath as children under a
   // single `⎿` elbow. Nothing is ever collapsed onto the title line, so every
   // tool call reads the same way.
-  const resultStr =
-    result === undefined
-      ? undefined
-      : def?.result
-        ? def.result(result, use.input as Record<string, unknown> | undefined)
-        : result.is_error
-          ? errLine(result)
-          : okLine(flatten(trim(contentToString(result.content), 200)));
+  const resultStr = result === undefined ? undefined : toolResultStr(use, result);
 
   // Body-bearing tools (bash command, edit/write diff or file content): hang the
-  // body under a single `⎿` gutter and let the result join it as one more
-  // aligned continuation row — one elbow total, exactly like a thinking block.
-  // The body collapses to a short preview once the call is done, with a trailing
-  // hint the user can click to expand the full body (and again to collapse);
-  // while pending it shows in full and the blinking marker dot signals progress.
+  // body under a single `⎿` gutter — one elbow total, exactly like a thinking
+  // block. The result line leads the body (it carries the elbow once the call is
+  // done), so the success/info summary reads first, with the diff / file content
+  // beneath it. The body collapses to a short preview once the call is done, with
+  // a trailing hint the user can click to expand the full body (and again to
+  // collapse); while pending it shows in full and the blinking marker dot signals
+  // progress.
   if (view.body) {
-    const gut = gutterIndent(toolBodyView(view.body, resultStr !== undefined, expanded));
-    if (resultStr === undefined) return `${head}\n${gut}${detailRows}`;
-    return `${head}\n${gut}\n${THINKING_INDENT}${resultStr}${detailRows}`;
+    const gut = gutterIndent(toolGutterBody(view.body, resultStr, expanded));
+    return `${head}\n${gut}${detailRows}`;
   }
 
   // Body-less tools: the result is the elbow child (a `⎿ …` placeholder while
@@ -745,7 +768,8 @@ export function toolCallToggleLineIndex(
     : { header: genericUseHeader(item.use) };
   if (!view.body || view.body.split("\n").length <= COMPACT_MAX_LINES) return null;
   const head = `${marker(toolState(item.result))} ${view.header}`;
-  const gut = gutterIndent(toolBodyView(view.body, true, item.expanded ?? false));
+  const resultStr = toolResultStr(item.use, item.result);
+  const gut = gutterIndent(toolGutterBody(view.body, resultStr, item.expanded ?? false));
   return wrappedRowCount(`${head}\n${gut}`, width) - 1;
 }
 
