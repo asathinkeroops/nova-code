@@ -639,7 +639,7 @@ type BatchMember = { use: ToolUseBlock; result: ToolResultBlock | undefined };
 
 /**
  * One-line summary of a folded tool batch, e.g.
- * `Search 2 patterns, read 3 files, run 1 shell command`. Searches (grep/glob),
+ * `Searched for 2 patterns, read 3 files, ran 1 shell command`. Searches (grep/glob),
  * reads, and runs (bash) are counted into fixed-order segments; only the first
  * segment keeps its leading capital so the line reads as a sentence.
  */
@@ -655,9 +655,9 @@ export function toolBatchSummary(members: BatchMember[]): string {
   }
   const plural = (n: number, one: string): string => `${n} ${one}${n === 1 ? "" : "s"}`;
   const segs: string[] = [];
-  if (search > 0) segs.push(`Search ${plural(search, "pattern")}`);
+  if (search > 0) segs.push(`Searched for ${plural(search, "pattern")}`);
   if (read > 0) segs.push(`Read ${plural(read, "file")}`);
-  if (run > 0) segs.push(`Run ${plural(run, "shell command")}`);
+  if (run > 0) segs.push(`Ran ${plural(run, "shell command")}`);
   return segs
     .map((s, i) => (i === 0 ? s : `${s.charAt(0).toLowerCase()}${s.slice(1)}`))
     .join(", ");
