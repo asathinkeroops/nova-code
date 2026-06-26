@@ -103,6 +103,25 @@ async function runBang(ctx: CliContext, command: string): Promise<void> {
 }
 
 /**
+ * Build the shell runner threaded into custom-command expansion for
+ * `` !`cmd` `` interpolation. Reuses the builtin `bash` tool + OS sandbox bridge
+ * so command-authored shell stays write-confined to the workspace, same as the
+ * model's bash calls and the user's own `!` lines.
+ */
+function makeCommandRunner(
+  ctx: CliContext,
+): (command: string) => Promise<{ output: string; isError: boolean }> {
+  const bridge = ctx.sandbox?.bridge;
+  return async (command) => {
+    const result = await bashTool.run(
+      { command },
+      { cwd: ctx.workspace, ...(bridge ? { sandbox: bridge } : {}) },
+    );
+    return { output: result.output, isError: result.isError ?? false };
+  };
+}
+
+/**
  * Returns "exit" to leave the REPL, "continue" to skip the LLM turn, or a
  * turn descriptor with the prompt text to feed to the agent.
  */
@@ -118,7 +137,10 @@ async function dispatchLine(ctx: CliContext, line: string): Promise<DispatchActi
   if (!hit) {
     return { kind: "turn", prompt: line };
   }
-  const outcome = await hit.cmd.run({ cwd: ctx.workspace }, hit.args);
+  const outcome = await hit.cmd.run(
+    { cwd: ctx.workspace, runCommand: makeCommandRunner(ctx) },
+    hit.args,
+  );
   if (outcome.kind === "prompt") {
     // The model receives the expanded prompt, but the transcript should show
     // what the user actually typed. Record the mapping (in-memory + on-disk so

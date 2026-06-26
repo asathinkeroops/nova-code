@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   SlashRegistry,
+  expandCommandBody,
   expandPlaceholders,
   fileCommandToSlash,
   loadFileCommands,
@@ -165,6 +166,58 @@ describe("expandPlaceholders", () => {
   });
 });
 
+describe("expandCommandBody — Claude Code syntax", () => {
+  const cwd = process.cwd();
+
+  it("substitutes $ARGUMENTS and $1..$N positionals", async () => {
+    const r = await expandCommandBody("all=$ARGUMENTS first=$1 second=$2", [], "alpha beta", {
+      cwd,
+    });
+    expect(r).toEqual({ ok: "all=alpha beta first=alpha second=beta" });
+  });
+
+  it("expands a missing positional to empty string", async () => {
+    const r = await expandCommandBody("x=$2", [], "only", { cwd });
+    expect(r).toEqual({ ok: "x=" });
+  });
+
+  it("leaves non-arg dollar tokens (e.g. $HOME) untouched", async () => {
+    const r = await expandCommandBody("echo $HOME and $1", [], "v", { cwd });
+    expect(r).toEqual({ ok: "echo $HOME and v" });
+  });
+
+  it("interpolates !`cmd` via the injected runCommand", async () => {
+    const r = await expandCommandBody("status:\n!`git status`", [], "", {
+      cwd,
+      runCommand: async (command) => ({ output: `ran<${command}>\n`, isError: false }),
+    });
+    expect(r).toEqual({ ok: "status:\nran<git status>" });
+  });
+
+  it("leaves !`cmd` verbatim when no runner is wired", async () => {
+    const r = await expandCommandBody("!`echo hi`", [], "", { cwd });
+    expect(r).toEqual({ ok: "!`echo hi`" });
+  });
+
+  it("embeds @path when the file exists and leaves @scope/pkg alone", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "nova-embed-"));
+    await writeFile(join(dir, "note.txt"), "hello world", "utf8");
+    const r = await expandCommandBody("see @note.txt and @scope/pkg", [], "", { cwd: dir });
+    if (!("ok" in r)) throw new Error(r.error);
+    expect(r.ok).toContain("Contents of note.txt:");
+    expect(r.ok).toContain("hello world");
+    expect(r.ok).toContain("@scope/pkg");
+  });
+
+  it("feeds substituted args into a !`cmd` segment", async () => {
+    const r = await expandCommandBody("!`show $1`", [], "abc123", {
+      cwd,
+      runCommand: async (command) => ({ output: command.toUpperCase(), isError: false }),
+    });
+    expect(r).toEqual({ ok: "SHOW ABC123" });
+  });
+});
+
 describe("SlashRegistry", () => {
   it("resolves /name args", () => {
     const r = new SlashRegistry();
@@ -271,6 +324,18 @@ describe("loadFileCommands", () => {
     expect(result.commands).toHaveLength(1);
     expect(result.commands[0]?.name).toBe("hi");
     expect(result.commands[0]?.kind).toBe("project");
+  });
+
+  it("namespaces subdirectory commands as dir:name", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "nova-slash-cwd-"));
+    const home = await mkdtemp(join(tmpdir(), "nova-slash-home-"));
+    await mkdir(join(cwd, ".nova/commands/frontend"), { recursive: true });
+    await writeFile(join(cwd, ".nova/commands/frontend/component.md"), "scaffold a component\n");
+    await writeFile(join(cwd, ".nova/commands/review.md"), "review the diff\n");
+
+    const result = await loadFileCommands({ cwd, home });
+    const names = result.commands.map((c) => c.name).sort();
+    expect(names).toEqual(["frontend:component", "review"]);
   });
 
   it("returns parse errors instead of throwing on bad files", async () => {

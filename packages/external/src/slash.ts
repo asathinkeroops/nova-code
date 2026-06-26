@@ -20,6 +20,13 @@ export interface SlashArgSpec {
 
 export interface SlashRunCtx {
   cwd: string;
+  /**
+   * Execute a shell command for Claude-Code-style `` !`cmd` `` interpolation in
+   * a command body. Injected by the host so execution stays sandbox-confined
+   * and this leaf package keeps no dependency on the tool/sandbox layer. When
+   * absent, `` !`cmd` `` segments are left verbatim.
+   */
+  runCommand?: (command: string) => Promise<{ output: string; isError: boolean }>;
 }
 
 export type SlashOutcome =
@@ -54,7 +61,9 @@ export interface SlashParseError {
 }
 
 const FRONT_MATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
-const NAME_RE = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
+// Allows Claude-Code-style namespaced names from subdirectories, joined by ":"
+// (e.g. `frontend:component` from `frontend/component.md`).
+const NAME_RE = /^[a-zA-Z][a-zA-Z0-9_-]*(?::[a-zA-Z0-9_-]+)*$/;
 
 /**
  * Tiny YAML-subset parser for command front-matter. Supports:
@@ -201,6 +210,7 @@ export function parseCommandFile(
   path: string,
   text: string,
   kind: "user" | "project",
+  defaultName?: string,
 ): { ok: FileCommandRaw } | { error: string } {
   try {
     let body = text.replace(/\r\n/g, "\n");
@@ -210,14 +220,16 @@ export function parseCommandFile(
       meta = parseFrontMatter(fm[1] ?? "");
       body = body.slice(fm[0].length);
     }
-    const fallbackName = basename(path).replace(/\.md$/i, "");
+    const fallbackName = defaultName ?? basename(path).replace(/\.md$/i, "");
     const name = asString(meta["name"], "name") ?? fallbackName;
     if (!NAME_RE.test(name)) {
       return { error: `invalid command name "${name}" (must match ${NAME_RE})` };
     }
     const description =
       asString(meta["description"], "description") ?? firstNonEmptyLine(body) ?? "";
-    const argHint = asString(meta["argHint"], "argHint");
+    // `argument-hint` is the Claude Code spelling; `argHint` is the nova alias.
+    const argHint =
+      asString(meta["argHint"], "argHint") ?? asString(meta["argument-hint"], "argument-hint");
     const args = parseArgsSpec(meta["args"]);
     return {
       ok: {
@@ -287,6 +299,92 @@ export function expandPlaceholders(
   });
   if (error) return { error };
   return { ok: expanded };
+}
+
+/** `$ARGUMENTS` (all args) and `$1`..`$N` (positional) — Claude Code spelling. */
+const DOLLAR_RE = /\$(ARGUMENTS|\d+)/g;
+/** `` !`cmd` `` shell interpolation. */
+const BANG_RE = /!`([^`]+)`/g;
+/** `@path` file reference at a word boundary (so emails / `@scope/pkg` are safe). */
+const MENTION_RE = /(^|\s)@([^\s]+)/g;
+/** Cap embedded file content so a stray `@huge.log` can't blow up the prompt. */
+const MAX_EMBED_BYTES = 100_000;
+
+/** Replace matches of a global regex with an async-computed replacement. */
+async function replaceAsync(
+  input: string,
+  re: RegExp,
+  fn: (match: string, ...groups: string[]) => Promise<string>,
+): Promise<string> {
+  re.lastIndex = 0;
+  const hits: RegExpExecArray[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(input)) !== null) {
+    hits.push(m);
+    if (m.index === re.lastIndex) re.lastIndex++;
+  }
+  let out = "";
+  let last = 0;
+  for (const hit of hits) {
+    out += input.slice(last, hit.index);
+    out += await fn(hit[0], ...hit.slice(1));
+    last = hit.index + hit[0].length;
+  }
+  return out + input.slice(last);
+}
+
+/**
+ * Expand a command body using Claude-Code-compatible syntax, layered on top of
+ * nova's `{{arg}}` placeholders. Applied in order so each stage can feed the
+ * next:
+ *   1. `{{arg}}` / `{{arg|default}}` — declared positional args + defaults.
+ *   2. `$ARGUMENTS` (raw trailing string) and `$1`..`$N` (positional tokens).
+ *   3. `@path` — embed a readable file's contents (left verbatim when the path
+ *      doesn't resolve to a file, so emails / `@scope/pkg` survive).
+ *   4. `` !`cmd` `` — shell interpolation via the host-injected, sandbox-confined
+ *      `ctx.runCommand` (left verbatim when no runner is wired).
+ */
+export async function expandCommandBody(
+  body: string,
+  args: SlashArgSpec[],
+  rawArgs: string,
+  ctx: SlashRunCtx,
+): Promise<{ ok: string } | { error: string }> {
+  const placeheld = expandPlaceholders(body, args, rawArgs);
+  if ("error" in placeheld) return placeheld;
+  let text = placeheld.ok;
+
+  const trimmed = rawArgs.trim();
+  const tokens = trimmed.length === 0 ? [] : trimmed.split(/\s+/);
+  text = text.replace(DOLLAR_RE, (_match, key: string) => {
+    if (key === "ARGUMENTS") return trimmed;
+    const idx = Number(key) - 1;
+    return idx >= 0 && idx < tokens.length ? (tokens[idx] as string) : "";
+  });
+
+  text = await replaceAsync(text, MENTION_RE, async (full, lead: string, rel: string) => {
+    const abs = resolve(ctx.cwd, rel);
+    const st = await stat(abs).catch(() => null);
+    if (!st || !st.isFile()) return full;
+    let content = await readFile(abs, "utf8").catch(() => null);
+    if (content === null) return full;
+    let note = "";
+    if (Buffer.byteLength(content, "utf8") > MAX_EMBED_BYTES) {
+      content = content.slice(0, MAX_EMBED_BYTES);
+      note = "\n… (truncated)";
+    }
+    return `${lead}Contents of ${rel}:\n\`\`\`\n${content}${note}\n\`\`\``;
+  });
+
+  const runCommand = ctx.runCommand;
+  if (runCommand) {
+    text = await replaceAsync(text, BANG_RE, async (_full, command: string) => {
+      const { output } = await runCommand(command);
+      return output.trim();
+    });
+  }
+
+  return { ok: text };
 }
 
 /**
@@ -386,12 +484,27 @@ async function dirExists(p: string): Promise<boolean> {
   return !!s && s.isDirectory();
 }
 
-async function listMarkdown(dir: string): Promise<string[]> {
-  const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
-  return entries
-    .filter((e) => e.isFile() && e.name.toLowerCase().endsWith(".md"))
-    .map((e) => join(dir, e.name))
-    .sort();
+/**
+ * Recursively collect `.md` files under a commands directory. Subdirectories
+ * become Claude-Code-style name segments joined by ":" (e.g. `frontend:component`
+ * for `frontend/component.md`). Results are sorted for deterministic shadowing.
+ */
+async function walkMarkdown(root: string): Promise<Array<{ path: string; relName: string }>> {
+  const out: Array<{ path: string; relName: string }> = [];
+  const recurse = async (dir: string, prefix: readonly string[]): Promise<void> => {
+    const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+    const sorted = [...entries].sort((a, b) => a.name.localeCompare(b.name));
+    for (const e of sorted) {
+      if (e.isDirectory()) {
+        await recurse(join(dir, e.name), [...prefix, e.name]);
+      } else if (e.isFile() && e.name.toLowerCase().endsWith(".md")) {
+        const base = e.name.replace(/\.md$/i, "");
+        out.push({ path: join(dir, e.name), relName: [...prefix, base].join(":") });
+      }
+    }
+  };
+  await recurse(root, []);
+  return out;
 }
 
 /**
@@ -426,15 +539,15 @@ export async function loadFileCommands(opts: LoadCommandsOptions): Promise<LoadC
       scanned.push({ kind: t.kind, path: t.path, found: 0 });
       continue;
     }
-    const files = await listMarkdown(t.path);
+    const files = await walkMarkdown(t.path);
     let found = 0;
-    for (const file of files) {
+    for (const { path: file, relName } of files) {
       const text = await readFile(file, "utf8").catch((err: unknown) => {
         errors.push({ path: file, message: err instanceof Error ? err.message : String(err) });
         return null;
       });
       if (text === null) continue;
-      const parsed = parseCommandFile(file, text, t.kind);
+      const parsed = parseCommandFile(file, text, t.kind, relName);
       if ("error" in parsed) {
         errors.push({ path: file, message: parsed.error });
         continue;
@@ -464,8 +577,8 @@ export function fileCommandToSlash(raw: FileCommandRaw): SlashCommand {
       : {}),
     source: { kind: raw.kind, path: raw.path },
     args: raw.args,
-    run: (_ctx, args) => {
-      const expanded = expandPlaceholders(raw.body, raw.args, args);
+    run: async (ctx, args) => {
+      const expanded = await expandCommandBody(raw.body, raw.args, args, ctx);
       if ("error" in expanded) {
         return { kind: "error", message: expanded.error };
       }
