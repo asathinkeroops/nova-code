@@ -525,6 +525,45 @@ describe("renderItemToString tool-call body collapse/expand", () => {
   });
 });
 
+describe("renderItemToString bash command layout", () => {
+  const WIDTH = 80;
+  const bashItem = (command: string): RenderItem =>
+    ({
+      kind: "tool-call",
+      key: "tc#b",
+      use: { type: "tool_use", id: "b1", name: "bash", input: { command } },
+      result: undefined,
+    }) as RenderItem;
+
+  const stripAnsi = (s: string): string => s.replace(/\[[0-9;]*m/g, "");
+
+  const headerLine = (out: string): string => stripAnsi(out).split("\n")[0] ?? "";
+
+  it("renders a single-row command inline in the header", () => {
+    // The header row carries the whole command; below it sits only the standard
+    // body-less result elbow (`⎿ …`), exactly like read/grep — no command body.
+    const out = renderItemToString(bashItem('sleep 20 & echo "complete"'), WIDTH);
+    expect(headerLine(out)).toContain('bash  sleep 20 & echo "complete"');
+    expect(stripAnsi(out).split("\n")).toHaveLength(2); // header + ⎿ result
+  });
+
+  it("keeps a multi-line command in the ⎿ body, not the header", () => {
+    const out = stripAnsi(renderItemToString(bashItem("echo a\necho b"), WIDTH));
+    expect(headerLine(out)).not.toContain("echo a");
+    expect(out).toContain("⎿");
+    expect(out).toContain("echo a");
+    expect(out).toContain("echo b");
+  });
+
+  it("moves a single logical line that would wrap into the ⎿ body", () => {
+    const long = `echo ${"x".repeat(WIDTH)}`;
+    const out = renderItemToString(bashItem(long), WIDTH);
+    // Header no longer carries the command inline; it wraps under the gutter.
+    expect(headerLine(out)).not.toContain("xxxx");
+    expect(stripAnsi(out)).toContain("⎿");
+  });
+});
+
 describe("buildRenderItems tool-call expand state", () => {
   const longContent = Array.from({ length: 12 }, (_, i) => `c${i}`).join("\n");
   const build = (expandedItems?: Record<string, boolean>) =>

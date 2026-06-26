@@ -25,6 +25,7 @@ import {
   splitDisplayLines,
 } from "./diff.js";
 import { renderMarkdown } from "./markdown.js";
+import { visibleWidth } from "./width.js";
 import type { Card, CardKind } from "./store.js";
 import type { BannerProps, RenderItem } from "./render-item.js";
 
@@ -301,10 +302,17 @@ const tools: Record<string, ToolStr> = {
   bash: {
     use: (input, width) => {
       const cmd = typeof input.command === "string" ? input.command : JSON.stringify(input);
-      // Keep the header a single clean row (`● bash`) and show the command as a
-      // child node under the `⎿` gutter, like a thinking block. Heredocs and
-      // long one-liners stay readable instead of being flattened/truncated into
-      // the header. Pre-wrap to the body width so continuation rows stay aligned;
+      // A command that renders on a single row reads best inline in the header
+      // (`● bash <cmd>`) — no extra `⎿` child node. "Single row" is a rendering
+      // judgement, not just newline-free: the command must have no newline AND
+      // fit the header width once the `● bash  ` prefix is accounted for. Heredocs
+      // and long one-liners that would wrap fall through to the `⎿` gutter body,
+      // where they wrap cleanly instead of being flattened/truncated.
+      const prefixWidth = visibleWidth(`${marker("pending")} ${header("bash")}  `);
+      if (!cmd.includes("\n") && prefixWidth + visibleWidth(cmd) <= width) {
+        return { header: header("bash", cmd) };
+      }
+      // Pre-wrap to the body width so continuation rows stay aligned;
       // renderToolCall adds the gutter.
       return { header: header("bash"), body: wrapBodyToWidth(cmd, width) };
     },
