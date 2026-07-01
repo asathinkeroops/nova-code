@@ -28,10 +28,19 @@ export const mcpStdioServerSchema = z.object({
   enabled: z.boolean().default(true),
 });
 
+// OAuth 2.0 (authorization-code + PKCE) for remote servers that gate access
+// behind a 401. Add `oauth: {}` to a server to enable it (scopes optional);
+// the first `/mcp auth <server>` opens a browser, and tokens persist under
+// `~/.nova/mcp-auth/` so later sessions refresh silently.
+export const mcpOAuthSchema = z.object({
+  scope: z.string().min(1).optional(),
+});
+
 export const mcpHttpServerSchema = z.object({
   type: z.enum(["http", "sse"]),
   url: z.string().url(),
   headers: z.record(z.string()).optional(),
+  oauth: mcpOAuthSchema.optional(),
   enabled: z.boolean().default(true),
 });
 
@@ -132,12 +141,26 @@ export const DEFAULT_SANDBOX_ALLOW_WRITE = [
 // discount/premium assumed), so a minimal `{ match, input, output }` works for
 // providers that don't price cache tokens separately.
 export const modelPriceSchema = z.object({
-  match: z.string().min(1).describe("Case-insensitive substring tested against the active model id."),
+  match: z
+    .string()
+    .min(1)
+    .describe("Case-insensitive substring tested against the active model id."),
   input: z.number().nonnegative().describe("Price per 1M uncached input tokens."),
   output: z.number().nonnegative().describe("Price per 1M output tokens."),
-  cacheRead: z.number().nonnegative().optional().describe("Price per 1M cache-read tokens; defaults to `input`."),
-  cacheWrite: z.number().nonnegative().optional().describe("Price per 1M cache-write tokens; defaults to `input`."),
-  currency: z.enum(["USD", "CNY"]).optional().describe("Display currency for these rates; defaults to USD."),
+  cacheRead: z
+    .number()
+    .nonnegative()
+    .optional()
+    .describe("Price per 1M cache-read tokens; defaults to `input`."),
+  cacheWrite: z
+    .number()
+    .nonnegative()
+    .optional()
+    .describe("Price per 1M cache-write tokens; defaults to `input`."),
+  currency: z
+    .enum(["USD", "CNY"])
+    .optional()
+    .describe("Display currency for these rates; defaults to USD."),
 });
 
 export type ModelPriceConfig = z.infer<typeof modelPriceSchema>;
@@ -165,8 +188,22 @@ export interface ModelPriceDefault {
 // cache-hit price, and there is no separate write premium (cacheWrite = input);
 // the v4 models list-price in CNY.
 export const DEFAULT_MODEL_PRICING: ModelPriceDefault[] = [
-  { match: "deepseek-v4-flash", input: 1, output: 2, cacheRead: 0.02, cacheWrite: 1, currency: "CNY" },
-  { match: "deepseek-v4-pro", input: 3, output: 6, cacheRead: 0.025, cacheWrite: 3, currency: "CNY" },
+  {
+    match: "deepseek-v4-flash",
+    input: 1,
+    output: 2,
+    cacheRead: 0.02,
+    cacheWrite: 1,
+    currency: "CNY",
+  },
+  {
+    match: "deepseek-v4-pro",
+    input: 3,
+    output: 6,
+    cacheRead: 0.025,
+    cacheWrite: 3,
+    currency: "CNY",
+  },
 ];
 
 /** Default per-response output cap when neither the model profile nor the
@@ -202,7 +239,9 @@ export const modelProfileSchema = z.object({
     .int()
     .positive()
     .default(DEFAULT_CONTEXT_WINDOW_SIZE)
-    .describe("Per-tier context-window budget (drives the status-line gauge and auto-compaction threshold)."),
+    .describe(
+      "Per-tier context-window budget (drives the status-line gauge and auto-compaction threshold).",
+    ),
   maxTokens: z
     .number()
     .int()
@@ -226,8 +265,18 @@ export type ModelEntry = z.infer<typeof modelEntrySchema>;
 // built-in pricing table carries); override by setting `models` in
 // nova.config.json — providing the key REPLACES this default wholesale.
 export const DEFAULT_MODELS: Record<string, ModelProfile> = {
-  flash: { id: "deepseek-v4-flash", maxTokens: 384_000, contextWindowSize: 1_000_000, modalities: { input: ["text"] } },
-  pro: { id: "deepseek-v4-pro", maxTokens: 384_000, contextWindowSize: 1_000_000, modalities: { input: ["text"] } },
+  flash: {
+    id: "deepseek-v4-flash",
+    maxTokens: 384_000,
+    contextWindowSize: 1_000_000,
+    modalities: { input: ["text"] },
+  },
+  pro: {
+    id: "deepseek-v4-pro",
+    maxTokens: 384_000,
+    contextWindowSize: 1_000_000,
+    modalities: { input: ["text"] },
+  },
 };
 
 // One-line blurbs for the built-in tiers, shown next to each row in the /model
@@ -712,8 +761,26 @@ export const settingsSchema = z.object({
       servers: z.record(mcpServerSchema).default({}),
       // Per-tool-call timeout in milliseconds.
       timeoutMs: z.number().int().positive().default(60_000),
+      // Loopback endpoint that catches the OAuth redirect during `/mcp auth`.
+      // The port is fixed (not ephemeral) so the registered redirect_uri stays
+      // stable across runs; change it only if it collides with another service.
+      oauth: z
+        .object({
+          callbackHost: z.string().min(1).default("127.0.0.1"),
+          callbackPort: z.number().int().min(1024).max(65_535).default(7777),
+          // Mark any remote server that challenges with 401/403 as needs-auth
+          // (offering `/mcp` → Authenticate), even without an explicit `oauth`
+          // block. Servers using a static Authorization header are exempt.
+          autoDetect: z.boolean().default(true),
+        })
+        .default({ callbackHost: "127.0.0.1", callbackPort: 7777, autoDetect: true }),
     })
-    .default({ enabled: true, servers: {}, timeoutMs: 60_000 }),
+    .default({
+      enabled: true,
+      servers: {},
+      timeoutMs: 60_000,
+      oauth: { callbackHost: "127.0.0.1", callbackPort: 7777, autoDetect: true },
+    }),
   // Declarative shell automation bridged onto the in-code HookRegistry by the
   // CLI (apps/cli/src/user-hooks.ts). Event names mirror the familiar
   // PreToolUse / PostToolUse / UserPromptSubmit / Stop convention:
@@ -801,10 +868,7 @@ export function resolveMaxTokens(settings: Settings, name: string): number {
  * {@link resolveMaxTokens}: the tier's own `modalities` first, then a same-id
  * profile match, then a text-only fallback.
  */
-export function resolveModelModalities(
-  settings: Settings,
-  name: string,
-): ModelModalities {
+export function resolveModelModalities(settings: Settings, name: string): ModelModalities {
   const direct = settings.models[name];
   if (direct?.modalities) return direct.modalities;
   const id = resolveModelId(settings, name);

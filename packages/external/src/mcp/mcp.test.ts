@@ -1,12 +1,18 @@
+import {
+  UnauthorizedError,
+  type OAuthClientProvider,
+} from "@modelcontextprotocol/sdk/client/auth.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+import type { OAuthTokens } from "@modelcontextprotocol/sdk/shared/auth.js";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { McpManager } from "./client.js";
 import { mcpToolName, mcpToolToHandler, parseMcpToolName } from "./tool.js";
 import { bindPromptArgs, formatPromptMessages, mcpPromptName } from "./prompt.js";
 import { MCP_LIST_RESOURCES_TOOL, MCP_READ_RESOURCE_TOOL } from "./resource.js";
-import type { McpServerSpec } from "./types.js";
+import type { McpHttpServerSpec, McpServerSpec } from "./types.js";
 
 /**
  * A fresh in-memory MCP server exposing an `echo` tool and a `boom` tool, plus
@@ -23,16 +29,9 @@ function buildServer(extras = false): McpServer {
     isError: true,
   }));
   if (extras) {
-    server.prompt(
-      "greet",
-      "Greet someone by name.",
-      { who: z.string() },
-      ({ who }) => ({
-        messages: [
-          { role: "user", content: { type: "text", text: `Say hello to ${who}.` } },
-        ],
-      }),
-    );
+    server.prompt("greet", "Greet someone by name.", { who: z.string() }, ({ who }) => ({
+      messages: [{ role: "user", content: { type: "text", text: `Say hello to ${who}.` } }],
+    }));
     server.resource("readme", "file:///readme.md", async (uri) => ({
       contents: [{ uri: uri.href, mimeType: "text/markdown", text: "# Hello from MCP" }],
     }));
@@ -41,7 +40,10 @@ function buildServer(extras = false): McpServer {
 }
 
 /** Wire a manager to an in-memory linked pair backed by `buildServer()`. */
-function managerWithServer(specName = "demo", extras = false): {
+function managerWithServer(
+  specName = "demo",
+  extras = false,
+): {
   manager: McpManager;
   spec: McpServerSpec;
 } {
@@ -275,6 +277,291 @@ describe("McpManager", () => {
     // The healthy server's tools are still available.
     expect(manager.handlers().length).toBe(2);
 
+    await manager.close();
+  });
+});
+
+/**
+ * A minimal stub OAuthClientProvider that returns whatever tokens it's seeded
+ * with and records the authorization URL the same way NovaOAuthProvider does.
+ */
+function stubProvider(tokens?: OAuthTokens): OAuthClientProvider & {
+  authorizationUrl?: URL;
+  expectedState?: string;
+} {
+  let saved = tokens;
+  return {
+    get redirectUrl() {
+      return "http://127.0.0.1:7777/callback";
+    },
+    get clientMetadata() {
+      return { redirect_uris: ["http://127.0.0.1:7777/callback"] };
+    },
+    state() {
+      this.expectedState = "state-xyz";
+      return this.expectedState;
+    },
+    clientInformation: () => undefined,
+    tokens: () => saved,
+    saveTokens: (t: OAuthTokens) => {
+      saved = t;
+    },
+    redirectToAuthorization(url: URL) {
+      this.authorizationUrl = url;
+    },
+    saveCodeVerifier: () => {},
+    codeVerifier: () => "verifier",
+  } as OAuthClientProvider & { authorizationUrl?: URL; expectedState?: string };
+}
+
+const HTTP_SPEC: McpHttpServerSpec = {
+  type: "http",
+  url: "https://remote.example/mcp",
+  oauth: {},
+};
+
+/** A remote server with NO explicit oauth config (auto-detect candidate). */
+const PLAIN_HTTP: McpHttpServerSpec = { type: "http", url: "https://remote.example/mcp" };
+
+/** A transport whose connect immediately 401s, like an auth-gated endpoint. */
+function unauthorizedTransport(): Transport {
+  return {
+    async start() {
+      throw new UnauthorizedError("auth required");
+    },
+    async send() {},
+    async close() {},
+  } as unknown as Transport;
+}
+
+describe("McpManager OAuth", () => {
+  it("marks an OAuth server with no saved tokens as needs-auth and skips connect", async () => {
+    let transportBuilt = false;
+    const manager = new McpManager(
+      { remote: HTTP_SPEC },
+      {
+        createAuthProvider: () => stubProvider(undefined),
+        createTransport: () => {
+          transportBuilt = true;
+          throw new Error("should not be reached");
+        },
+      },
+    );
+    await manager.connectAll();
+
+    expect(transportBuilt).toBe(false);
+    expect(manager.serversNeedingAuth()).toEqual(["remote"]);
+    const [status] = manager.status();
+    expect(status?.state).toBe("needs-auth");
+    expect(status?.error).toContain("Authenticate");
+    expect(manager.connectedCount).toBe(0);
+  });
+
+  it("connects an OAuth server directly when a stored token is present", async () => {
+    const manager = new McpManager(
+      { remote: HTTP_SPEC },
+      {
+        createAuthProvider: () => stubProvider({ access_token: "tok", token_type: "Bearer" }),
+        createTransport: () => {
+          const [clientT, serverT] = InMemoryTransport.createLinkedPair();
+          void buildServer().connect(serverT);
+          return clientT;
+        },
+      },
+    );
+    await manager.connectAll();
+
+    expect(manager.serversNeedingAuth()).toEqual([]);
+    expect(manager.status()[0]?.state).toBe("connected");
+    expect(manager.handlers().length).toBe(2);
+    await manager.close();
+  });
+
+  it("drives the redirect handshake, then connects and bridges tools on complete", async () => {
+    const provider = stubProvider(undefined);
+    let attempt = 0;
+    const manager = new McpManager(
+      { remote: HTTP_SPEC },
+      {
+        createAuthProvider: () => provider,
+        createTransport: (_name, _spec, ap) => {
+          attempt++;
+          if (attempt === 1) {
+            // First transport simulates the SDK's pre-auth behavior: it records
+            // the authorization URL on the provider, then 401s out of connect.
+            return {
+              async start() {
+                ap?.redirectToAuthorization(new URL("https://auth.example/authorize?c=1"));
+                throw new UnauthorizedError("auth required");
+              },
+              async send() {},
+              async close() {},
+              async finishAuth(code: string) {
+                expect(code).toBe("the-code");
+                ap?.saveTokens({ access_token: "tok", token_type: "Bearer" });
+              },
+            } as unknown as Transport;
+          }
+          // Reconnect after finishAuth: a real, working in-memory transport.
+          const [clientT, serverT] = InMemoryTransport.createLinkedPair();
+          void buildServer().connect(serverT);
+          return clientT;
+        },
+      },
+    );
+
+    const first = await manager.authorize("remote");
+    expect(first.status).toBe("redirect");
+    if (first.status !== "redirect") throw new Error("unreachable");
+    expect(first.authorizationUrl.toString()).toBe("https://auth.example/authorize?c=1");
+
+    const done = await first.complete("the-code");
+    expect(done.status).toBe("connected");
+    if (done.status !== "connected") throw new Error("unreachable");
+    expect(done.handlers.map((h) => h.definition.name).sort()).toEqual([
+      "mcp__remote__boom",
+      "mcp__remote__echo",
+    ]);
+    // The server is now live in the manager and no longer pending.
+    expect(manager.serversNeedingAuth()).toEqual([]);
+    expect(manager.handlers().length).toBe(2);
+    await manager.close();
+  });
+
+  it("returns unsupported when authorizing a server that isn't OAuth-configured", async () => {
+    const manager = new McpManager(
+      { plain: { type: "stdio", command: "x" } as McpServerSpec },
+      { createAuthProvider: () => stubProvider(undefined) },
+    );
+    const res = await manager.authorize("plain");
+    expect(res.status).toBe("unsupported");
+  });
+
+  it("returns an error for an unknown server", async () => {
+    const manager = new McpManager({}, {});
+    const res = await manager.authorize("nope");
+    expect(res.status).toBe("error");
+  });
+
+  it("disconnect tears down a connected OAuth server and marks it needs-auth", async () => {
+    const manager = new McpManager(
+      { remote: HTTP_SPEC },
+      {
+        createAuthProvider: () => stubProvider({ access_token: "tok", token_type: "Bearer" }),
+        createTransport: () => {
+          const [clientT, serverT] = InMemoryTransport.createLinkedPair();
+          void buildServer().connect(serverT);
+          return clientT;
+        },
+      },
+    );
+    await manager.connectAll();
+    expect(manager.handlers().length).toBe(2);
+
+    const { toolNames } = await manager.disconnect("remote");
+    expect(toolNames.sort()).toEqual(["mcp__remote__boom", "mcp__remote__echo"]);
+    expect(manager.handlers().length).toBe(0);
+    expect(manager.serversNeedingAuth()).toEqual(["remote"]);
+    expect(manager.status()[0]?.state).toBe("needs-auth");
+    await manager.close();
+  });
+
+  it("auto-detect marks a 401 from an un-configured remote server as needs-auth", async () => {
+    const manager = new McpManager(
+      { remote: PLAIN_HTTP as McpServerSpec },
+      {
+        autoDetectOAuth: true,
+        createAuthProvider: () => stubProvider(undefined),
+        createTransport: () => unauthorizedTransport(),
+      },
+    );
+    await manager.connectAll();
+    expect(manager.serversNeedingAuth()).toEqual(["remote"]);
+    expect(manager.status()[0]?.state).toBe("needs-auth");
+    expect(manager.isOAuthCapable("remote")).toBe(true);
+  });
+
+  it("without auto-detect, a 401 from an un-configured server is a plain failure", async () => {
+    const manager = new McpManager(
+      { remote: PLAIN_HTTP as McpServerSpec },
+      {
+        autoDetectOAuth: false,
+        createAuthProvider: () => stubProvider(undefined),
+        createTransport: () => unauthorizedTransport(),
+      },
+    );
+    await manager.connectAll();
+    expect(manager.status()[0]?.state).toBe("failed");
+    expect(manager.isOAuthCapable("remote")).toBe(false);
+    expect(await manager.authorize("remote")).toMatchObject({ status: "unsupported" });
+  });
+
+  it("auto-detect exempts servers that already send a static Authorization header", async () => {
+    const withHeader: McpHttpServerSpec = {
+      type: "http",
+      url: "https://remote.example/mcp",
+      headers: { Authorization: "Bearer stale" },
+    };
+    const manager = new McpManager(
+      { remote: withHeader as McpServerSpec },
+      {
+        autoDetectOAuth: true,
+        createAuthProvider: () => stubProvider(undefined),
+        createTransport: () => unauthorizedTransport(),
+      },
+    );
+    await manager.connectAll();
+    // A 401 here means a bad bearer token, not an OAuth challenge.
+    expect(manager.status()[0]?.state).toBe("failed");
+    expect(manager.isOAuthCapable("remote")).toBe(false);
+  });
+
+  it("auto-detect lets authorize() run on a server without an oauth block", async () => {
+    const provider = stubProvider(undefined);
+    const manager = new McpManager(
+      { remote: PLAIN_HTTP as McpServerSpec },
+      {
+        autoDetectOAuth: true,
+        createAuthProvider: () => provider,
+        createTransport: (_name, _spec, ap) => {
+          return {
+            async start() {
+              ap?.redirectToAuthorization(new URL("https://auth.example/authorize?c=1"));
+              throw new UnauthorizedError("auth required");
+            },
+            async send() {},
+            async close() {},
+            async finishAuth() {},
+          } as unknown as Transport;
+        },
+      },
+    );
+    const res = await manager.authorize("remote");
+    expect(res.status).toBe("redirect");
+  });
+
+  it("reconnect retries a previously failed server and bridges its tools", async () => {
+    let attempt = 0;
+    const manager = new McpManager(
+      { demo: { type: "stdio", command: "x" } as McpServerSpec },
+      {
+        createTransport: () => {
+          attempt++;
+          if (attempt === 1) throw new Error("transient");
+          const [clientT, serverT] = InMemoryTransport.createLinkedPair();
+          void buildServer().connect(serverT);
+          return clientT;
+        },
+      },
+    );
+    await manager.connectAll();
+    expect(manager.status()[0]?.state).toBe("failed");
+    expect(manager.handlers().length).toBe(0);
+
+    const state = await manager.reconnect("demo");
+    expect(state).toBe("connected");
+    expect(manager.handlers().length).toBe(2);
+    expect(manager.status()[0]?.error).toBeUndefined();
     await manager.close();
   });
 });

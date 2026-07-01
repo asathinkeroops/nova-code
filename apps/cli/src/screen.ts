@@ -1,10 +1,6 @@
 import React from "react";
 import { render } from "ink";
-import type {
-  AskUserRequest,
-  AskUserResponse,
-  MessageParam,
-} from "@nova/core";
+import type { AskUserRequest, AskUserResponse, MessageParam } from "@nova/core";
 import type { Task, Todo } from "@nova/tools";
 import type { ModelRates } from "@nova/observability";
 import type { AccountBalance } from "./deepseek-balance.js";
@@ -49,11 +45,7 @@ export type Spinner = SpinnerHandle;
  * the user can still see after Ink releases the terminal. Writing to stderr
  * AFTER unmount avoids interleaving with Ink's live-region paint.
  */
-export async function fatalExit(
-  screen: Screen,
-  message: string,
-  code: number = 2,
-): Promise<never> {
+export async function fatalExit(screen: Screen, message: string, code: number = 2): Promise<never> {
   await screen.unmount();
   process.stderr.write(`\n✗ ${message}\n`);
   process.exit(code);
@@ -238,9 +230,7 @@ export class Screen {
           const hi = Math.max(drag.anchor, drag.head);
           const text = input.textBetween(lo, hi);
           if (text.length > 0 && copyToClipboard(text)) {
-            this.store
-              .getState()
-              .setCopyNotice("✓ copied selection to clipboard");
+            this.store.getState().setCopyNotice("✓ copied selection to clipboard");
           }
           return;
         }
@@ -587,9 +577,10 @@ export class Screen {
 
   /** Wire (or clear) the input box's image-paste handlers. */
   setImagePaste(
-    handlers:
-      | { capture: () => Promise<ClipboardPaste | null>; attached: (path: string) => void }
-      | null,
+    handlers: {
+      capture: () => Promise<ClipboardPaste | null>;
+      attached: (path: string) => void;
+    } | null,
   ): void {
     this.store.getState().setImagePaste(handlers);
   }
@@ -649,9 +640,12 @@ export class Screen {
     return this.store.getState().openPickHorizontalModal(opts);
   }
 
-  /** Open a read-only, scrollable text pager. Resolves when the user closes it. */
-  async viewer(opts: ViewerOptions): Promise<void> {
-    return this.store.getState().openViewerModal(opts);
+  /**
+   * Open a read-only, scrollable text pager. Resolves when the user closes it,
+   * or — when `signal` is supplied — when that signal aborts (so a caller can
+   * dismiss the pager programmatically on an external event).
+   */
+  async viewer(opts: ViewerOptions, o: { signal?: AbortSignal } = {}): Promise<void> {
+    return this.store.getState().openViewerModal(opts, o.signal);
   }
 }
-

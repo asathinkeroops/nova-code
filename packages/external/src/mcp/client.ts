@@ -1,14 +1,14 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import {
+  UnauthorizedError,
+  type OAuthClientProvider,
+} from "@modelcontextprotocol/sdk/client/auth.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { ToolHandler } from "@nova/core";
 import type { SlashCommand } from "../slash.js";
 import { createHttpTransport } from "./http.js";
 import { createStdioTransport } from "./stdio.js";
-import {
-  formatPromptMessages,
-  mcpPromptToSlash,
-  type McpPromptDescriptor,
-} from "./prompt.js";
+import { formatPromptMessages, mcpPromptToSlash, type McpPromptDescriptor } from "./prompt.js";
 import {
   resourceToolHandlers,
   type McpResourceDescriptor,
@@ -32,10 +32,61 @@ function isHttpSpec(spec: McpServerSpec): spec is McpHttpServerSpec {
 const DEFAULT_CLIENT_INFO = { name: "nova", version: "0.1.0" };
 const DEFAULT_TIMEOUT_MS = 60_000;
 
-/** Build the real transport for a spec. Overridable for tests. */
-export function transportForSpec(spec: McpServerSpec): Transport {
-  return isHttpSpec(spec) ? createHttpTransport(spec) : createStdioTransport(spec as McpStdioServerSpec);
+/** SDK HTTP/SSE transports expose `finishAuth` to complete the OAuth handshake. */
+interface AuthCompletableTransport extends Transport {
+  finishAuth(authorizationCode: string): Promise<void>;
 }
+
+/**
+ * A provider whose `redirectToAuthorization` records the URL (rather than
+ * opening a browser) so the host can drive the interactive grant.
+ * {@link NovaOAuthProvider} implements these; both reads are optional so a host
+ * may supply a plainer provider.
+ */
+interface RedirectAwareProvider extends OAuthClientProvider {
+  readonly authorizationUrl?: URL;
+  readonly expectedState?: string;
+}
+
+function canFinishAuth(t: Transport): t is AuthCompletableTransport {
+  return typeof (t as { finishAuth?: unknown }).finishAuth === "function";
+}
+
+/** Build the real transport for a spec. Overridable for tests. */
+export function transportForSpec(
+  spec: McpServerSpec,
+  authProvider?: OAuthClientProvider,
+): Transport {
+  return isHttpSpec(spec)
+    ? createHttpTransport(spec, authProvider)
+    : createStdioTransport(spec as McpStdioServerSpec);
+}
+
+/**
+ * Outcome of an interactive {@link McpManager.authorize} attempt.
+ * - `connected`: tokens were already valid (or refreshed) and the server is now
+ *   live; `handlers`/`prompts`/`resourceTools` are the freshly-bridged surfaces
+ *   the host should register into its live registries.
+ * - `redirect`: the user must approve in a browser. Open `authorizationUrl`,
+ *   capture the redirect's `code` (verifying `expectedState`), then call
+ *   `complete(code)` to finish and reconnect.
+ * - `error` / `unsupported`: nothing to do.
+ */
+export type McpAuthResult =
+  | {
+      status: "connected";
+      handlers: ToolHandler[];
+      prompts: SlashCommand[];
+      resourceTools: ToolHandler[];
+    }
+  | {
+      status: "redirect";
+      authorizationUrl: URL;
+      expectedState?: string;
+      complete: (authorizationCode: string) => Promise<McpAuthResult>;
+    }
+  | { status: "error"; error: string }
+  | { status: "unsupported"; error: string };
 
 function transportKind(spec: McpServerSpec): "stdio" | "http" | "sse" {
   return !spec.type ? "stdio" : spec.type;
@@ -87,7 +138,27 @@ export interface McpManagerOptions {
   /** Identifies this client to servers during the handshake. */
   clientInfo?: { name: string; version: string };
   /** Test seam: override transport construction. */
-  createTransport?: (name: string, spec: McpServerSpec) => Transport;
+  createTransport?: (
+    name: string,
+    spec: McpServerSpec,
+    authProvider?: OAuthClientProvider,
+  ) => Transport;
+  /**
+   * Build the OAuth provider for a remote server that opted into `oauth`
+   * (host-supplied so token storage / redirect URL stay a host concern). Called
+   * once per connect attempt; return `undefined` to skip OAuth for the server.
+   */
+  createAuthProvider?: (
+    name: string,
+    spec: McpHttpServerSpec,
+  ) => Promise<OAuthClientProvider | undefined> | OAuthClientProvider | undefined;
+  /**
+   * When true, a remote server that challenges with 401/403 is marked
+   * `needs-auth` (offering interactive authorization) even without an explicit
+   * `oauth` block — mirroring Claude Code. Servers using a static `Authorization`
+   * header are excluded. Requires {@link createAuthProvider}. Defaults to false.
+   */
+  autoDetectOAuth?: boolean;
 }
 
 interface Connection {
@@ -114,11 +185,37 @@ export class McpManager {
   private readonly opts: McpManagerOptions;
   private readonly connections = new Map<string, Connection>();
   private readonly failures = new Map<string, string>();
+  /** Servers awaiting an interactive `/mcp` Authenticate grant (distinct from failed). */
+  private readonly needsAuth = new Set<string>();
+  /** Treat a 401 from a remote server as `needs-auth` even without `oauth` config. */
+  private readonly autoDetectOAuth: boolean;
   private connected = false;
 
   constructor(servers: Record<string, McpServerSpec>, opts: McpManagerOptions = {}) {
     this.servers = Object.entries(servers).map(([name, spec]) => ({ name, spec }));
     this.opts = opts;
+    this.autoDetectOAuth = opts.autoDetectOAuth ?? false;
+  }
+
+  /**
+   * Whether OAuth can be attempted for a server: any remote (http/sse) server
+   * that either opted in via `oauth` config, or — when {@link autoDetectOAuth}
+   * is on — carries no static `Authorization` header (a 401 there would be a bad
+   * bearer token, not an OAuth challenge). Gates both the startup 401 → needs-auth
+   * reclassification and interactive {@link authorize}.
+   */
+  private oauthEligible(spec: McpServerSpec): boolean {
+    if (!isHttpSpec(spec)) return false;
+    if (spec.oauth) return true;
+    if (!this.autoDetectOAuth || !this.opts.createAuthProvider) return false;
+    const headers = spec.headers ?? {};
+    return !Object.keys(headers).some((k) => k.toLowerCase() === "authorization");
+  }
+
+  /** True if `name` is a configured server for which OAuth can be attempted. */
+  isOAuthCapable(name: string): boolean {
+    const spec = this.servers.find((s) => s.name === name)?.spec;
+    return !!spec && this.oauthEligible(spec);
   }
 
   /** Connect every configured server in parallel. Resolves once all settle. */
@@ -128,59 +225,224 @@ export class McpManager {
   }
 
   private async connectOne(name: string, spec: McpServerSpec): Promise<void> {
-    const make = this.opts.createTransport ?? ((_n, s) => transportForSpec(s));
+    const eligible = this.oauthEligible(spec);
+    const explicitOAuth = isHttpSpec(spec) && !!spec.oauth;
+
+    // Resolve any OAuth provider before connecting. A server explicitly
+    // configured for OAuth but not yet signed in is flagged `needs-auth` without
+    // even probing: attempting it would trigger dynamic registration + a browser
+    // redirect we can't service at startup. With saved tokens we attach the
+    // provider and connect (the SDK refreshes silently). Auto-detected servers
+    // (no `oauth` config) are probed WITHOUT a provider, so a 401 surfaces as a
+    // plain UnauthorizedError below — no registration happens until the user
+    // explicitly authorizes.
+    let authProvider: OAuthClientProvider | undefined;
+    if (eligible && this.opts.createAuthProvider) {
+      const provider =
+        (await this.opts.createAuthProvider(name, spec as McpHttpServerSpec)) ?? undefined;
+      if (provider && (await provider.tokens())) {
+        authProvider = provider;
+      } else if (explicitOAuth) {
+        this.needsAuth.add(name);
+        this.opts.logger?.info({ server: name }, "mcp server needs authorization");
+        return;
+      }
+    }
+
+    const make = this.opts.createTransport ?? ((_n, s, ap) => transportForSpec(s, ap));
     const client = new Client(this.opts.clientInfo ?? DEFAULT_CLIENT_INFO, {
       capabilities: {},
     });
     try {
-      const transport = make(name, spec);
+      const transport = make(name, spec, authProvider);
       await client.connect(transport);
-      const timeout = this.opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-      const caps = client.getServerCapabilities();
-
-      const { tools } = await client.listTools();
-      const handlers = (tools as McpToolDescriptor[]).map((descriptor) =>
-        mcpToolToHandler(name, descriptor, (toolName, args) =>
-          this.invoke(name, client, toolName, args, timeout),
-        ),
-      );
-
-      // Prompts and resources are gated on the server's declared capabilities —
-      // listing one the server never advertised makes the SDK throw. Each
-      // discovery is independently best-effort so a flaky prompts/list never
-      // costs us the server's tools (or its resources).
-      const prompts = caps?.prompts
-        ? await this.discoverPrompts(name, client, timeout)
-        : [];
-      const hasResources = !!caps?.resources;
-      const { resources, templates } = hasResources
-        ? await this.discoverResources(name, client)
-        : { resources: [], templates: [] };
-
-      this.connections.set(name, {
-        name,
-        spec,
-        client,
-        handlers,
-        prompts,
-        resources,
-        templates,
-        hasResources,
-      });
-      this.opts.logger?.info(
-        { server: name, tools: handlers.length, prompts: prompts.length, resources: resources.length },
-        "mcp server connected",
-      );
+      await this.finalize(name, spec, client);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this.failures.set(name, msg);
-      this.opts.logger?.warn({ server: name, err: msg }, "mcp server failed to connect");
       try {
         await client.close();
       } catch {
         // best-effort cleanup of a half-open client
       }
+      if (err instanceof UnauthorizedError && eligible) {
+        // Either stored tokens were rejected/expired, or an auto-detected server
+        // is challenging for auth. Offer interactive authorization rather than
+        // reporting a hard failure.
+        this.needsAuth.add(name);
+        this.opts.logger?.warn({ server: name }, "mcp server requires authorization");
+        return;
+      }
+      const msg = err instanceof Error ? err.message : String(err);
+      this.failures.set(name, msg);
+      this.opts.logger?.warn({ server: name, err: msg }, "mcp server failed to connect");
     }
+  }
+
+  /**
+   * Discover a connected client's tools/prompts/resources and record the
+   * connection. Clears any prior failed/needs-auth marker for the server.
+   * Shared by startup ({@link connectOne}) and interactive {@link authorize}.
+   */
+  private async finalize(name: string, spec: McpServerSpec, client: Client): Promise<Connection> {
+    const timeout = this.opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    const caps = client.getServerCapabilities();
+
+    const { tools } = await client.listTools();
+    const handlers = (tools as McpToolDescriptor[]).map((descriptor) =>
+      mcpToolToHandler(name, descriptor, (toolName, args) =>
+        this.invoke(name, client, toolName, args, timeout),
+      ),
+    );
+
+    // Prompts and resources are gated on the server's declared capabilities —
+    // listing one the server never advertised makes the SDK throw. Each
+    // discovery is independently best-effort so a flaky prompts/list never
+    // costs us the server's tools (or its resources).
+    const prompts = caps?.prompts ? await this.discoverPrompts(name, client, timeout) : [];
+    const hasResources = !!caps?.resources;
+    const { resources, templates } = hasResources
+      ? await this.discoverResources(name, client)
+      : { resources: [], templates: [] };
+
+    const conn: Connection = {
+      name,
+      spec,
+      client,
+      handlers,
+      prompts,
+      resources,
+      templates,
+      hasResources,
+    };
+    this.connections.set(name, conn);
+    this.failures.delete(name);
+    this.needsAuth.delete(name);
+    this.opts.logger?.info(
+      {
+        server: name,
+        tools: handlers.length,
+        prompts: prompts.length,
+        resources: resources.length,
+      },
+      "mcp server connected",
+    );
+    return conn;
+  }
+
+  /**
+   * Drive the interactive OAuth grant for one configured server. Returns a
+   * `redirect` result when the user must approve in a browser (the host opens
+   * the URL, captures the `code`, and calls the returned `complete`), or
+   * `connected` when the stored token was still good. See {@link McpAuthResult}.
+   */
+  async authorize(name: string): Promise<McpAuthResult> {
+    const entry = this.servers.find((s) => s.name === name);
+    if (!entry) return { status: "error", error: `Unknown MCP server "${name}".` };
+    const spec = entry.spec;
+    if (!this.oauthEligible(spec)) {
+      return { status: "unsupported", error: `Server "${name}" is not configured for OAuth.` };
+    }
+    if (!this.opts.createAuthProvider) {
+      return { status: "unsupported", error: "OAuth is not wired up in this host." };
+    }
+    // `oauthEligible` above guarantees `spec` is a remote (http/sse) server.
+    const provider = ((await this.opts.createAuthProvider(name, spec as McpHttpServerSpec)) ??
+      undefined) as RedirectAwareProvider | undefined;
+    if (!provider) return { status: "unsupported", error: `No OAuth provider for "${name}".` };
+
+    const make = this.opts.createTransport ?? ((_n, s, ap) => transportForSpec(s, ap));
+    const connect = async (): Promise<McpAuthResult> => {
+      const client = new Client(this.opts.clientInfo ?? DEFAULT_CLIENT_INFO, { capabilities: {} });
+      const transport = make(name, spec, provider);
+      try {
+        await client.connect(transport);
+        const conn = await this.finalize(name, spec, client);
+        return {
+          status: "connected",
+          handlers: conn.handlers,
+          prompts: conn.prompts,
+          resourceTools: this.resourceTools(),
+        };
+      } catch (err) {
+        try {
+          await client.close();
+        } catch {
+          // best-effort cleanup
+        }
+        if (err instanceof UnauthorizedError && provider.authorizationUrl) {
+          this.needsAuth.add(name);
+          return {
+            status: "redirect",
+            authorizationUrl: provider.authorizationUrl,
+            expectedState: provider.expectedState,
+            complete: async (code: string) => {
+              if (!canFinishAuth(transport)) {
+                return { status: "error", error: "Transport cannot complete OAuth." };
+              }
+              try {
+                await transport.finishAuth(code);
+              } catch (e) {
+                const m = e instanceof Error ? e.message : String(e);
+                return { status: "error", error: `Token exchange failed: ${m}` };
+              }
+              // Fresh transport/client now that the provider holds tokens.
+              return connect();
+            },
+          };
+        }
+        const msg = err instanceof Error ? err.message : String(err);
+        return { status: "error", error: msg };
+      }
+    };
+    return connect();
+  }
+
+  /**
+   * Tear down a server's live connection and report the surfaces it had bridged,
+   * so the host can unregister them from its tool/slash registries. An OAuth
+   * server is moved back to `needs-auth` (it can be re-authorized); others just
+   * drop out of the connected set. Does not touch persisted tokens — that is the
+   * host's call (e.g. clearing the on-disk store on an explicit log-out).
+   */
+  async disconnect(name: string): Promise<{ toolNames: string[]; promptNames: string[] }> {
+    const conn = this.connections.get(name);
+    if (!conn) return { toolNames: [], promptNames: [] };
+    const toolNames = conn.handlers.map((h) => h.definition.name);
+    const promptNames = conn.prompts.map((p) => p.name);
+    try {
+      await conn.client.close();
+    } catch {
+      // best-effort teardown
+    }
+    this.connections.delete(name);
+    const spec = this.servers.find((s) => s.name === name)?.spec;
+    if (spec && this.oauthEligible(spec)) this.needsAuth.add(name);
+    return { toolNames, promptNames };
+  }
+
+  /**
+   * Re-attempt a server's connection from scratch (drop any stale client, clear
+   * its failed/needs-auth markers, run the normal connect path). Returns the
+   * resulting state; on `connected` the freshly-bridged handlers are available
+   * via {@link handlers} for the host to register.
+   */
+  async reconnect(name: string): Promise<McpServerState> {
+    const entry = this.servers.find((s) => s.name === name);
+    if (!entry) return "failed";
+    const existing = this.connections.get(name);
+    if (existing) {
+      try {
+        await existing.client.close();
+      } catch {
+        // best-effort teardown
+      }
+      this.connections.delete(name);
+    }
+    this.failures.delete(name);
+    this.needsAuth.delete(name);
+    await this.connectOne(name, entry.spec);
+    if (this.connections.has(name)) return "connected";
+    if (this.needsAuth.has(name)) return "needs-auth";
+    return "failed";
   }
 
   private async invoke(
@@ -224,15 +486,15 @@ export class McpManager {
       return (prompts as McpPromptDescriptor[]).map((descriptor) =>
         mcpPromptToSlash(server, descriptor, async (promptName, args) => {
           try {
-            const res = await client.getPrompt(
-              { name: promptName, arguments: args },
-              { timeout },
-            );
+            const res = await client.getPrompt({ name: promptName, arguments: args }, { timeout });
             const text = formatPromptMessages((res as { messages?: unknown }).messages);
             return { ok: text || "(prompt returned no content)" };
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
-            this.opts.logger?.warn({ server, prompt: promptName, err: msg }, "mcp getPrompt failed");
+            this.opts.logger?.warn(
+              { server, prompt: promptName, err: msg },
+              "mcp getPrompt failed",
+            );
             return { error: `MCP prompt "${promptName}" failed: ${msg}` };
           }
         }),
@@ -370,10 +632,13 @@ export class McpManager {
           resourceCount: conn.resources.length + conn.templates.length,
         };
       }
-      const error = this.failures.get(name);
+      const state: McpServerState = this.needsAuth.has(name) ? "needs-auth" : "failed";
+      const error =
+        this.failures.get(name) ??
+        (state === "needs-auth" ? "run `/mcp` and choose Authenticate to sign in" : undefined);
       return {
         name,
-        state: "failed" as McpServerState,
+        state,
         transport,
         toolCount: 0,
         toolNames: [],
@@ -383,6 +648,11 @@ export class McpManager {
         ...(error ? { error } : {}),
       };
     });
+  }
+
+  /** Names of servers awaiting an interactive `/mcp` Authenticate grant. */
+  serversNeedingAuth(): string[] {
+    return [...this.needsAuth];
   }
 
   /** Total servers configured (connected + failed). */

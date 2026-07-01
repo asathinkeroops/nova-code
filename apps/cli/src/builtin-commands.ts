@@ -212,11 +212,11 @@ export function registerBuiltinSlashCommands(ctx: CliContext): void {
   });
   ctx.registry.register({
     name: "mcp",
-    description: "show MCP server status; `tools` to list bridged tools",
+    description: "open the MCP server menu (authenticate, reconnect, log out); `tools` to list",
     argHint: "[tools]",
     source: { kind: "builtin" },
-    run: (_c, args) => {
-      handleMcp(ctx, args);
+    run: async (_c, args) => {
+      await handleMcp(ctx, args);
       return handled;
     },
   });

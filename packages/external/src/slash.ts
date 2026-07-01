@@ -433,6 +433,11 @@ export class SlashRegistry {
     return Array.from(this.byName.values()).sort((a, b) => a.name.localeCompare(b.name));
   }
 
+  /** Remove a command by name (e.g. an MCP prompt whose server logged out). */
+  remove(name: string): boolean {
+    return this.byName.delete(name);
+  }
+
   /** Parse a typed REPL line into a registered command + raw arg string. */
   resolve(line: string): { cmd: SlashCommand; args: string } | null {
     if (!line.startsWith("/")) return null;

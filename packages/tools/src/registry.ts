@@ -20,6 +20,11 @@ export class ToolRegistry {
     return this.handlers.get(name);
   }
 
+  /** Remove a registered tool by name. Returns true if one was present. */
+  unregister(name: string): boolean {
+    return this.handlers.delete(name);
+  }
+
   list(): ToolHandler[] {
     return Array.from(this.handlers.values());
   }

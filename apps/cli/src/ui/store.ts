@@ -9,11 +9,7 @@ import type { PermissionDecision, PermissionInput } from "@nova/safety";
 import type { BannerProps } from "./render-item.js";
 import type { BoxedInputOptions, SlashCommand } from "./input-box.js";
 import { appendInputHistory } from "./input-history.js";
-import type {
-  HorizontalPickerOptions,
-  PickerOptions,
-  ViewerOptions,
-} from "./picker.js";
+import type { HorizontalPickerOptions, PickerOptions, ViewerOptions } from "./picker.js";
 import type { SetupEntry, SetupState } from "./setup-view.js";
 import type { PermissionMode } from "../permissions.js";
 import type { ClipboardPaste } from "../image-paste.js";
@@ -409,13 +405,10 @@ export interface AppActions {
     input: PermissionInput,
     opts?: { signal?: AbortSignal; onCancel?: () => void },
   ) => Promise<ApprovalAnswer>;
-  openAskModal: (
-    req: AskUserRequest,
-    opts?: { signal?: AbortSignal },
-  ) => Promise<AskUserResponse>;
+  openAskModal: (req: AskUserRequest, opts?: { signal?: AbortSignal }) => Promise<AskUserResponse>;
   openPickModal: <T>(opts: PickerOptions<T>) => Promise<T | null>;
   openPickHorizontalModal: <T>(opts: HorizontalPickerOptions<T>) => Promise<T | null>;
-  openViewerModal: (opts: ViewerOptions) => Promise<void>;
+  openViewerModal: (opts: ViewerOptions, signal?: AbortSignal) => Promise<void>;
   reset: () => void;
   setTerminalSize: (cols: number, rows: number) => void;
   /** Sticky-aware writeback used by the viewport after each measure. */
@@ -570,11 +563,7 @@ export function createAppStore(opts: AppStoreOptions = {}): AppStoreApi {
       }
     }
 
-    function openModal<T>(
-      modal: ModalState,
-      signal?: AbortSignal,
-      cancelValue?: T,
-    ): Promise<T> {
+    function openModal<T>(modal: ModalState, signal?: AbortSignal, cancelValue?: T): Promise<T> {
       // Defensive: cancel any previous modal so we never leak resolvers.
       if (slot.resolve) {
         const prev = slot.resolve;
@@ -820,11 +809,10 @@ export function createAppStore(opts: AppStoreOptions = {}): AppStoreApi {
       },
 
       openAskModal(req, opts = {}) {
-        return openModal<AskUserResponse>(
-          { kind: "ask", req },
-          opts.signal,
-          { answers: [], cancelled: true },
-        );
+        return openModal<AskUserResponse>({ kind: "ask", req }, opts.signal, {
+          answers: [],
+          cancelled: true,
+        });
       },
 
       openPickModal<T>(opts: PickerOptions<T>) {
@@ -843,8 +831,10 @@ export function createAppStore(opts: AppStoreOptions = {}): AppStoreApi {
         );
       },
 
-      openViewerModal(opts: ViewerOptions) {
-        return openModal<void>({ kind: "viewer", opts }, undefined, undefined);
+      openViewerModal(opts: ViewerOptions, signal?: AbortSignal) {
+        // A signal lets a caller close the pager programmatically (e.g. an OAuth
+        // wait that ends when the browser redirect lands, not on a keypress).
+        return openModal<void>({ kind: "viewer", opts }, signal, undefined);
       },
 
       /**
@@ -908,7 +898,7 @@ export function createAppStore(opts: AppStoreOptions = {}): AppStoreApi {
         if (delta === 0) return;
         const maxOffset = Math.max(0, s.viewportTotalLines - s.viewportRows);
         const next = Math.max(0, Math.min(s.scrollOffset + delta, maxOffset));
-        if (next === s.scrollOffset && s.stickToBottom === (next >= maxOffset)) return;
+        if (next === s.scrollOffset && s.stickToBottom === next >= maxOffset) return;
         set({
           scrollOffset: next,
           stickToBottom: next >= maxOffset,
@@ -955,10 +945,7 @@ export function createAppStore(opts: AppStoreOptions = {}): AppStoreApi {
         // The viewport hands back a fresh array each frame; only commit when the
         // mapping actually changed so idle frames don't churn the store.
         const cur = get().lineTargets;
-        if (
-          cur.length === targets.length &&
-          cur.every((t, i) => t === targets[i])
-        ) {
+        if (cur.length === targets.length && cur.every((t, i) => t === targets[i])) {
           return;
         }
         set({ lineTargets: targets });
@@ -1128,7 +1115,11 @@ export function createAppStore(opts: AppStoreOptions = {}): AppStoreApi {
       setPermissionMode(mode) {
         if (get().permissionMode === mode) return;
         // Seeding bypass directly (e.g. --permission-mode) also unlocks it in the cycle.
-        set(mode === "bypassPermissions" ? { permissionMode: mode, bypassAllowed: true } : { permissionMode: mode });
+        set(
+          mode === "bypassPermissions"
+            ? { permissionMode: mode, bypassAllowed: true }
+            : { permissionMode: mode },
+        );
       },
 
       enableBypass() {

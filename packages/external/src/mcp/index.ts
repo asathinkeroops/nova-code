@@ -2,9 +2,17 @@ export {
   McpManager,
   transportForSpec,
   type McpManagerOptions,
+  type McpAuthResult,
 } from "./client.js";
 export { createStdioTransport } from "./stdio.js";
 export { createHttpTransport } from "./http.js";
+export {
+  NovaOAuthProvider,
+  createNovaOAuthProvider,
+  type OAuthStore,
+  type StoredOAuth,
+  type NovaOAuthProviderOptions,
+} from "./oauth.js";
 export {
   mcpToolToHandler,
   mcpToolName,
@@ -35,6 +43,7 @@ export type {
   McpServerSpec,
   McpStdioServerSpec,
   McpHttpServerSpec,
+  McpOAuthSpec,
   McpLogger,
   McpServerStatus,
   McpServerState,

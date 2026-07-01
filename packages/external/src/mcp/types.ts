@@ -22,6 +22,18 @@ export interface McpHttpServerSpec {
   url: string;
   /** Extra headers sent on every request (auth tokens, etc.). */
   headers?: Record<string, string>;
+  /**
+   * OAuth 2.0 (authorization-code + PKCE) config for servers that gate access
+   * behind a 401. Presence enables the flow; the host attaches an
+   * `OAuthClientProvider` for this server when building the transport. Omit (or
+   * use static `headers`) for unauthenticated or bearer-token servers.
+   */
+  oauth?: McpOAuthSpec;
+}
+
+export interface McpOAuthSpec {
+  /** Space-delimited scopes to request, if the server needs specific ones. */
+  scope?: string;
 }
 
 export type McpServerSpec = McpStdioServerSpec | McpHttpServerSpec;
@@ -34,7 +46,7 @@ export interface McpLogger {
   error(obj: unknown, msg?: string): void;
 }
 
-export type McpServerState = "connected" | "failed" | "disabled";
+export type McpServerState = "connected" | "failed" | "disabled" | "needs-auth";
 
 export interface McpServerStatus {
   name: string;

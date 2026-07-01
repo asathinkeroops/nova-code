@@ -1,5 +1,6 @@
 import { McpManager, type McpServerSpec } from "@nova/external";
 import type { Logger, Settings } from "@nova/runtime";
+import { makeAuthProviderFactory } from "./mcp-oauth.js";
 
 /**
  * Map validated `settings.mcp.servers` onto transport-agnostic specs, dropping
@@ -25,9 +26,15 @@ export function buildMcpManager(settings: Settings, logger: Logger): McpManager 
         type: cfg.type,
         url: cfg.url,
         ...(cfg.headers ? { headers: cfg.headers } : {}),
+        ...(cfg.oauth ? { oauth: cfg.oauth } : {}),
       };
     }
   }
   if (Object.keys(specs).length === 0) return null;
-  return new McpManager(specs, { logger, timeoutMs: settings.mcp.timeoutMs });
+  return new McpManager(specs, {
+    logger,
+    timeoutMs: settings.mcp.timeoutMs,
+    createAuthProvider: makeAuthProviderFactory(settings),
+    autoDetectOAuth: settings.mcp.oauth.autoDetect,
+  });
 }
