@@ -3,6 +3,7 @@ import { isThinkingLevel } from "@nova/core";
 import { loadSettings, type Settings } from "@nova/runtime";
 import { createContext } from "./context.js";
 import { runHeadless, type HeadlessOutputFormat } from "./headless.js";
+import { buildMcpCommand } from "./mcp-cli.js";
 import type { HeadlessApprovalPolicy } from "./headless-screen.js";
 import type { PermissionMode } from "./permissions.js";
 import { runRepl } from "./repl.js";
@@ -227,6 +228,8 @@ program
     "auto-approve every permission prompt (unattended writes)",
   )
   .action((positional: string[], opts: CliOptions) => run(positional, opts));
+
+program.addCommand(buildMcpCommand());
 
 program.parseAsync(process.argv).catch((err) => {
   console.error(err);
