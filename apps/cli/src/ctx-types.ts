@@ -81,10 +81,10 @@ export interface CliContext {
   /**
    * Carrier for the auto-compact summary card across the compactor →
    * post_compact window. The compactor's onAutoCompact callback stashes the
-   * info here; the post_compact UI hook reads it back after the mandatory
-   * `clearCards()` and pushes the card, so the notice survives.
+   * info here; the post_compact UI hook reads it back and pushes the card, so
+   * the notice survives.
    */
-  pendingAutoCompactNotice: { before: number; after: number; transcriptPath?: string } | null;
+  pendingAutoCompactNotice: { before: number; after: number } | null;
 
   /**
    * The active memory bundle. Reassigned ONLY at a session boundary via

@@ -161,9 +161,9 @@ export interface HookSpec {
     payload: { messages: MessageParam[] };
     decision: { messages: MessageParam[] };
   };
-  /** Fires after compaction actually replaced the history. */
+  /** Fires after compaction appended a `<compacted>` boundary to the history. */
   post_compact: {
-    payload: { before: number; after: number; transcriptPath?: string };
+    payload: { before: number; after: number };
     decision: void;
   };
 

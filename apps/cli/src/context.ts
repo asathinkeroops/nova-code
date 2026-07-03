@@ -1,6 +1,6 @@
 import { join, resolve } from "node:path";
 import { createAgent, emptyCursor, loadMessages, type Agent } from "@nova/agent";
-import { loadMemory } from "@nova/context";
+import { loadMemory, sliceFromLastCompacted } from "@nova/context";
 import {
   createAnthropicModel,
   type AskUserFn,
@@ -104,6 +104,24 @@ function registerInterject(agent: Agent, fn: InterjectFn): void {
     if (!msgs || msgs.length === 0) return undefined;
     return { messages: msgs };
   });
+}
+
+/**
+ * Wrap a model client so every request is sliced to the model-facing view —
+ * from the last `<compacted>` boundary onward (see `sliceFromLastCompacted`).
+ *
+ * This is the one place the append-only full history (rendered by the TUI,
+ * persisted verbatim to messages.jsonl) diverges from what the model receives:
+ * compaction APPENDS a `<compacted>` boundary rather than truncating history,
+ * and the model reads only the post-boundary slice. The transform is a pure
+ * projection at the wire — the loop's canonical `messages` array is untouched,
+ * so append-only persistence and full-history rendering both keep working.
+ * Only the agent's model is wrapped; the summarizer's client stays raw.
+ */
+function withCompactionSlice(base: ModelClient): ModelClient {
+  return {
+    call: (req) => base.call({ ...req, messages: sliceFromLastCompacted(req.messages) }),
+  };
 }
 
 export async function createContext(
@@ -634,7 +652,6 @@ export async function createContext(
     // machinery, surfaced only via the post_compact card. Built from the live
     // model name so it still follows /model switches.
     getModel: () => ctx.buildModel(ctx.settings.model, false),
-    getSessionDir: () => ctx.session.dir,
     onPreCompact: async ({ before }) => {
       const r = await ctx.userHooks.firePreCompact({
         subject: "auto",
@@ -649,21 +666,12 @@ export async function createContext(
       }
       return { block: r.blocked };
     },
-    onAutoCompact: async ({ before, after, transcriptPath }) => {
-      ctx.pendingAutoCompactNotice = {
-        before,
-        after,
-        ...(transcriptPath ? { transcriptPath } : {}),
-      };
-      ctx.logger.info({ before, after, transcriptPath }, "auto-compacted");
+    onAutoCompact: async ({ before, after }) => {
+      ctx.pendingAutoCompactNotice = { before, after };
+      ctx.logger.info({ before, after }, "auto-compacted");
       await ctx.userHooks.fire("PostCompact", {
         subject: "auto",
-        fields: {
-          trigger: "auto",
-          before,
-          after,
-          ...(transcriptPath ? { archived_transcript_path: transcriptPath } : {}),
-        },
+        fields: { trigger: "auto", before, after },
       });
     },
   });
@@ -686,7 +694,10 @@ export async function createContext(
     setPersistCursor: (c) => {
       ctx.persistCursor = c;
     },
-    getModel: () => ctx.model,
+    // Slice to the model-facing view at the wire (post-<compacted> boundary).
+    // ctx.model may be rebuilt on /model switch, so wrap the live binding each
+    // turn rather than capturing it once.
+    getModel: () => withCompactionSlice(ctx.model),
     getThinkingBudget: () => currentThinkingBudget(ctx),
     getSettings: () => ({
       maxTokens: resolveMaxTokens(ctx.settings, ctx.settings.model),

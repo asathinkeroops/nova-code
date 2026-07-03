@@ -32,7 +32,6 @@ export async function handleCompact(ctx: CliContext, focus: string): Promise<voi
       // live draft / spinner as a phantom assistant turn (it's internal; the
       // result is surfaced via the card below). Follows /model switches.
       getModel: () => ctx.buildModel(ctx.settings.model, false),
-      getSessionDir: () => ctx.session.dir,
       ...(focus ? { focus } : {}),
     });
     await ctx.userHooks.fire("PostCompact", {
@@ -41,17 +40,18 @@ export async function handleCompact(ctx: CliContext, focus: string): Promise<voi
         trigger: "manual",
         before: result.before,
         after: result.after,
-        ...(result.transcriptPath ? { archived_transcript_path: result.transcriptPath } : {}),
       },
     });
+    // Append-only: `result.messages` is the full retained history plus the new
+    // <compacted> boundary. The history is NOT truncated (the TUI keeps
+    // rendering it; only the model reads the post-boundary slice), so the
+    // index-anchored cards stay valid and are left in place.
     ctx.screen.setMessages(result.messages);
-    ctx.screen.clearCards();
     ctx.nextPlaceholder = "";
     await persist(ctx);
     const seconds = (spinner.elapsedMs() / 1000).toFixed(1);
-    const tail = result.transcriptPath ? `\nsnapshot: ${result.transcriptPath}` : "";
     stopSpinner(ctx);
-    ctx.screen.card(`${seconds}s · ${result.before} → ${result.after} msgs${tail}`, {
+    ctx.screen.card(`${seconds}s · context ${result.before} → ${result.after} msgs`, {
       kind: "info",
       title: "/compact",
     });
@@ -59,7 +59,6 @@ export async function handleCompact(ctx: CliContext, focus: string): Promise<voi
       {
         before: result.before,
         after: result.after,
-        transcriptPath: result.transcriptPath,
         focus: focus || undefined,
       },
       "manual /compact",

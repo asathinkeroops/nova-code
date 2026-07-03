@@ -9,13 +9,12 @@ export {
 
 export {
   COMPACT_MARKER,
-  microCompact,
+  isCompactionMarker,
+  sliceFromLastCompacted,
   estimateTokens,
   computeThreshold,
   shouldAutoCompact,
   autoCompact,
-  type MicroCompactOptions,
-  type MicroCompactResult,
   type ThresholdOptions,
   type AutoCompactOptions,
   type AutoCompactResult,

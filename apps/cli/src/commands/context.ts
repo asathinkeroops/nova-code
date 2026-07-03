@@ -1,5 +1,5 @@
 import { buildSystemPrompt } from "@nova/agent";
-import { computeThreshold, estimateTokens } from "@nova/context";
+import { computeThreshold, estimateTokens, sliceFromLastCompacted } from "@nova/context";
 import { toWireTools } from "@nova/core";
 import { resolveContextWindowSize } from "@nova/runtime";
 import { accent, blue, bold, cyan, dim, green, magenta, yellow } from "../colors.js";
@@ -64,7 +64,11 @@ export function handleContext(ctx: CliContext): void {
   const toolsTokens = builtinWire.length ? estimateChars(JSON.stringify(builtinWire)) : 0;
   const mcpTokens = mcpWire.length ? estimateChars(JSON.stringify(mcpWire)) : 0;
 
-  const messagesTokens = estimateTokens(ctx.screen.getMessages());
+  // The model only receives the slice from the last <compacted> boundary; the
+  // retained pre-boundary history stays on disk / in the TUI but costs no
+  // context window. Measure the slice so the gauge and auto-compact buffer math
+  // match what is actually sent (and what shouldAutoCompact triggers on).
+  const messagesTokens = estimateTokens(sliceFromLastCompacted(ctx.screen.getMessages()));
 
   const used =
     systemTokens + memoryTokens + skillsTokens + toolsTokens + mcpTokens + messagesTokens;

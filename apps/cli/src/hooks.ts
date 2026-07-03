@@ -31,14 +31,13 @@ export function registerUiHooks(ctx: CliContext): void {
   });
 
   ctx.agent.on("post_compact", () => {
-    // Inline cards anchored to pre-compaction message indices are meaningless
-    // now — drop them all rather than try to rebase.
-    ctx.screen.clearCards();
+    // Compaction is append-only (it appends a <compacted> boundary rather than
+    // truncating), so message indices don't shift and index-anchored cards stay
+    // valid — leave them in place.
     const notice = ctx.pendingAutoCompactNotice;
     ctx.pendingAutoCompactNotice = null;
     if (notice) {
-      const tail = notice.transcriptPath ? `\nsnapshot: ${notice.transcriptPath}` : "";
-      ctx.screen.card(`history ${notice.before} → ${notice.after} msgs${tail}`, {
+      ctx.screen.card(`context ${notice.before} → ${notice.after} msgs`, {
         kind: "info",
         title: "auto-compact",
       });

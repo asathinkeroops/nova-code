@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { createAgent, emptyCursor } from "@nova/agent";
+import { sliceFromLastCompacted } from "@nova/context";
 import { blocksOf, extractText, type AskUserFn, type MessageParam } from "@nova/core";
 import { Transcript } from "@nova/observability";
 import { resolveMaxTokens, resolveModelModalities } from "@nova/runtime";
@@ -91,7 +92,13 @@ export async function evaluateGoalWithAgent(
     getSystemPrompt: () => GOAL_EVAL_SYSTEM,
   });
 
-  const prompt = buildGoalEvalPrompt(goal.condition, ctx.screen.getMessages());
+  // Evaluate against the model-facing view (post-<compacted> slice), matching
+  // what the agent actually sees and keeping this bounded — the full retained
+  // history stays on disk but must not blow this evaluator's context window.
+  const prompt = buildGoalEvalPrompt(
+    goal.condition,
+    sliceFromLastCompacted(ctx.screen.getMessages()),
+  );
   const result = await evaluator.runTurn(prompt, signal ? { signal } : {});
 
   // Fold the evaluator's spend into the session totals (it bills even on

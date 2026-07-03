@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { sliceFromLastCompacted } from "@nova/context";
 import { bashTool } from "@nova/tools";
 import { resolveModelModalities } from "@nova/runtime";
 import { ACCENT_RGB, accent, dim, green } from "./colors.js";
@@ -29,7 +30,9 @@ async function refreshMentionFiles(ctx: CliContext): Promise<void> {
 
 async function refreshPrediction(ctx: CliContext): Promise<void> {
   if (!ctx.settings.predict.enabled) return;
-  const messages = ctx.screen.getMessages();
+  // Predict from the model-facing view (post-<compacted> slice) so the prompt
+  // stays bounded and matches what the agent sees; retained history is on disk.
+  const messages = sliceFromLastCompacted(ctx.screen.getMessages());
   if (messages.length === 0) return;
   ctx.spinner = ctx.screen.startSpinner({
     words: ["Thinking ahead..."],

@@ -1,93 +1,42 @@
-import type { MessageParam, ModelClient, ToolResultBlock } from "@nova/core";
+import type { MessageParam, ModelClient } from "@nova/core";
 
 export const COMPACT_MARKER = "[compacted]";
 
-const DEFAULT_KEEP_RECENT = 3;
-const DEFAULT_MIN_CHARS = 100;
+/** Opening tag marking a message as a compaction boundary + summary. */
+const COMPACT_TAG = "<compacted>";
+
 const DEFAULT_MAX_SUMMARY_TOKENS = 2000;
 const DEFAULT_CONTEXT_WINDOW_PERCENT = 0.5;
-const DEFAULT_PRESERVE_TOOLS: readonly string[] = ["read"];
 
 // ────────────────────────────────────────────────────────────────────────────
-// Layer 1 — micro_compact
+// Compaction boundary — the model-facing view of an append-only history
 // ────────────────────────────────────────────────────────────────────────────
 
-export interface MicroCompactOptions {
-  /** Keep the last N tool_result blocks fully intact. Default 3. */
-  keepRecent?: number;
-  /** Only compact tool_result content whose string length exceeds this. Default 100. */
-  minContentChars?: number;
-  /** Tool names whose outputs are never compacted. Default ["read"]. */
-  preserveTools?: Iterable<string>;
-}
-
-export interface MicroCompactResult {
-  messages: MessageParam[];
-  replaced: number;
+/**
+ * A compaction boundary is a synthetic `user` message whose string content
+ * opens with `<compacted>` (produced by `autoCompact`). The full conversation
+ * history stays append-only on disk and is rendered in full by the TUI; the
+ * model is fed only the slice from the LAST boundary onward.
+ */
+export function isCompactionMarker(msg: MessageParam): boolean {
+  return (
+    msg.role === "user" &&
+    typeof msg.content === "string" &&
+    msg.content.trimStart().startsWith(COMPACT_TAG)
+  );
 }
 
 /**
- * Silent, every-turn cleanup. Replace tool_result content older than the last
- * `keepRecent` with a `[Previous: used <tool>]` placeholder. Read-only tools
- * (default: `read`) are preserved because their outputs are reference material —
- * compacting them would force the agent to re-read files.
+ * The model-facing view of an append-only history: every message from the last
+ * compaction boundary onward (inclusive). With no boundary the array is returned
+ * unchanged. The boundary is always a `user` message, so the slice is a valid
+ * request prefix and never splits a tool_use/tool_result pair.
  */
-export function microCompact(
-  messages: MessageParam[],
-  opts: MicroCompactOptions = {},
-): MicroCompactResult {
-  const keepRecent = opts.keepRecent ?? DEFAULT_KEEP_RECENT;
-  const minChars = opts.minContentChars ?? DEFAULT_MIN_CHARS;
-  const preserve = new Set(opts.preserveTools ?? DEFAULT_PRESERVE_TOOLS);
-
-  const toolNameById = new Map<string, string>();
-  for (const msg of messages) {
-    if (msg.role !== "assistant" || typeof msg.content === "string") continue;
-    for (const block of msg.content) {
-      if (block.type === "tool_use") toolNameById.set(block.id, block.name);
-    }
+export function sliceFromLastCompacted(messages: MessageParam[]): MessageParam[] {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (isCompactionMarker(messages[i]!)) return messages.slice(i);
   }
-
-  const refs: Array<{ msgIdx: number; blockIdx: number }> = [];
-  messages.forEach((msg, msgIdx) => {
-    if (msg.role !== "user" || typeof msg.content === "string") return;
-    msg.content.forEach((block, blockIdx) => {
-      if (block.type === "tool_result") refs.push({ msgIdx, blockIdx });
-    });
-  });
-
-  if (refs.length <= keepRecent) return { messages, replaced: 0 };
-
-  const toClear = refs.slice(0, refs.length - keepRecent);
-  const cloned = new Map<number, MessageParam>();
-  let replaced = 0;
-
-  for (const { msgIdx, blockIdx } of toClear) {
-    const orig = messages[msgIdx];
-    if (!orig || orig.role !== "user" || typeof orig.content === "string") continue;
-    const block = orig.content[blockIdx];
-    if (!block || block.type !== "tool_result") continue;
-    const text = typeof block.content === "string" ? block.content : null;
-    if (text === null || text.length <= minChars) continue;
-    const toolName = toolNameById.get(block.tool_use_id) ?? "unknown";
-    if (preserve.has(toolName)) continue;
-
-    const replacement: ToolResultBlock = {
-      ...block,
-      content: `[Previous: used ${toolName}]`,
-    };
-    const next =
-      cloned.get(msgIdx) ?? ({ ...orig, content: [...orig.content] } as MessageParam);
-    if (Array.isArray(next.content)) {
-      next.content[blockIdx] = replacement;
-    }
-    cloned.set(msgIdx, next);
-    replaced++;
-  }
-
-  if (replaced === 0) return { messages, replaced: 0 };
-  const result = messages.map((m, i) => cloned.get(i) ?? m);
-  return { messages: result, replaced };
+  return messages;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -140,14 +89,11 @@ export interface AutoCompactOptions {
   focus?: string;
   /** Cap on the summary response. Default 2000 tokens. */
   maxSummaryTokens?: number;
-  /** Persists the pre-compact transcript and returns its path (embedded in the marker). */
-  saveTranscript?: (messages: MessageParam[]) => Promise<string | undefined>;
 }
 
 export interface AutoCompactResult {
   messages: MessageParam[];
   summary: string;
-  transcriptPath?: string;
   usage?: { inputTokens: number; outputTokens: number };
 }
 
@@ -163,20 +109,17 @@ const SUMMARY_INSTRUCTIONS = [
 ].join("\n");
 
 /**
- * Threshold-triggered (or manual) deep compaction. Persists a pre-compact
- * snapshot, asks the LLM for a continuity summary, and returns a single user
- * message that replaces the entire conversation history.
+ * Threshold-triggered (or manual) deep compaction. Asks the LLM for a
+ * continuity summary and returns a single `user` message (tagged `<compacted>`)
+ * that callers APPEND to the append-only history as a new compaction boundary —
+ * the model then reads only from that boundary onward (see
+ * `sliceFromLastCompacted`), while the full history is retained on disk.
  */
 export async function autoCompact(
   messages: MessageParam[],
   opts: AutoCompactOptions,
 ): Promise<AutoCompactResult> {
   const maxSummaryTokens = opts.maxSummaryTokens ?? DEFAULT_MAX_SUMMARY_TOKENS;
-
-  let transcriptPath: string | undefined;
-  if (opts.saveTranscript) {
-    transcriptPath = await opts.saveTranscript(messages);
-  }
 
   const conversationText = JSON.stringify(messages);
   const focusLine = opts.focus ? `\n\nFocus on: ${opts.focus}` : "";
@@ -196,9 +139,7 @@ export async function autoCompact(
       .join("\n")
       .trim() || "No summary generated.";
 
-  const header = transcriptPath
-    ? `[Conversation compacted ${COMPACT_MARKER}. Pre-compact transcript: ${transcriptPath}]`
-    : `[Conversation compacted ${COMPACT_MARKER}.]`;
+  const header = `[Conversation compacted ${COMPACT_MARKER}. Full history retained in messages.jsonl.]`;
 
   // Wrap in a <compacted> tag so the model reads the summary while the TUI skips
   // its bubble (same convention as <reminder>/<background-command>; the renderer
@@ -210,7 +151,6 @@ export async function autoCompact(
   return {
     messages: newMessages,
     summary,
-    ...(transcriptPath ? { transcriptPath } : {}),
     ...(res.usage
       ? {
           usage: {
