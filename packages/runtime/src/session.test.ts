@@ -43,6 +43,24 @@ describe("session", () => {
     expect(ids).toContain(b.id);
   });
 
+  it("orders by last activity, not creation, so --continue resumes the last-used session", async () => {
+    // `older` is created first, `newer` second — by birthtime `newer` would win.
+    const older = await createSession(root);
+    await new Promise((r) => setTimeout(r, 5));
+    const newer = await createSession(root);
+
+    // But we then work in `older` (append to its history) more recently, so it
+    // must sort to the head — that's what `nova -c` reaches for.
+    const now = Date.now();
+    await writeFile(newer.messagesPath, '{"role":"user","content":"hi"}\n');
+    await utimes(newer.messagesPath, new Date(now - 60_000), new Date(now - 60_000));
+    await writeFile(older.messagesPath, '{"role":"user","content":"hi"}\n');
+    await utimes(older.messagesPath, new Date(now), new Date(now));
+
+    const list = await listSessions(root);
+    expect(list[0]?.id).toBe(older.id);
+  });
+
   it("returns null for unknown id", async () => {
     const s = await getSession("does-not-exist", root);
     expect(s).toBeNull();

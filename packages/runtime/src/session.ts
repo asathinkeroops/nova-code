@@ -52,7 +52,17 @@ export async function listSessions(rootOverride?: string): Promise<Session[]> {
         messagesPath: join(dir, "messages.jsonl"),
       });
     }
-    return sessions.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    // Sort by last activity (newest first) so the head is the most recently
+    // *used* session, not the most recently *created* one. `--continue` resumes
+    // sessions[0], and a resumed-then-worked-in old session must win over a
+    // newer-but-abandoned one — `createdAt` (dir birthtime) would get that wrong.
+    const activity = new Map<string, number>();
+    await Promise.all(
+      sessions.map(async (s) => {
+        activity.set(s.id, (await lastActivityAt(s)).getTime());
+      }),
+    );
+    return sessions.sort((a, b) => (activity.get(b.id) ?? 0) - (activity.get(a.id) ?? 0));
   } catch {
     return [];
   }
