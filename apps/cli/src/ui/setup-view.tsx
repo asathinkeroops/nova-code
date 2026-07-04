@@ -2,6 +2,7 @@ import React from "react";
 import { Box, Text } from "ink";
 import { ACCENT_HEX } from "../colors.js";
 import { LOGO, LOGO_ROW_HEX } from "./logo.js";
+import { DeepSeekArt } from "./deepseek-art-view.js";
 
 export interface SetupEntry {
   kind: "ok" | "err";
@@ -40,8 +41,8 @@ export function SetupView({ state }: { state: SetupState }): React.ReactElement 
       </Box>
       <Box marginTop={1}>
         <Text dimColor>
-          The coding agent purpose-built for DeepSeek — 95%+ cache hits ·
-          OS-sandboxed · tool-complete
+          The coding agent purpose-built for DeepSeek — 95%+ cache hits · OS-sandboxed ·
+          tool-complete
         </Text>
       </Box>
       <Box marginTop={1}>
@@ -54,9 +55,7 @@ export function SetupView({ state }: { state: SetupState }): React.ReactElement 
       </Text>
       <Text dimColor>{`Config will be saved to: ${header.configPath}`}</Text>
       {header.noteBaseURL ? (
-        <Text dimColor>
-          Note: baseURL must point to an Anthropic-compatible API endpoint.
-        </Text>
+        <Text dimColor>Note: baseURL must point to an Anthropic-compatible API endpoint.</Text>
       ) : null}
 
       {entries.length > 0 ? (
@@ -70,12 +69,17 @@ export function SetupView({ state }: { state: SetupState }): React.ReactElement 
       ) : null}
 
       {currentPrompt ? (
-        <Box marginTop={1}>
-          <Text>
-            <Text color={ACCENT_HEX}>?</Text> <Text bold>{currentPrompt.label}</Text>{" "}
-            <Text dimColor>{`(${currentPrompt.hint})`}</Text>
-          </Text>
-        </Box>
+        <>
+          <Box marginTop={1}>
+            <DeepSeekArt />
+          </Box>
+          <Box marginTop={1}>
+            <Text>
+              <Text color={ACCENT_HEX}>?</Text> <Text bold>{currentPrompt.label}</Text>{" "}
+              <Text dimColor>{`(${currentPrompt.hint})`}</Text>
+            </Text>
+          </Box>
+        </>
       ) : null}
     </Box>
   );
