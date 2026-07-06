@@ -15,6 +15,7 @@ import { attachFilteredStdin } from "./ui/mouse.js";
 import { wrapStdout } from "./ui/sync-output.js";
 import { getCursorTarget } from "./ui/cursor-target.js";
 import { getInputMouseController } from "./ui/input-mouse.js";
+import { hitTestJumpButton } from "./ui/jump-button.js";
 import { extractSelection } from "./ui/selection.js";
 import { H_PAD } from "./ui/viewport.js";
 import { type SetupEntry, type SetupState } from "./ui/setup-view.js";
@@ -162,7 +163,14 @@ export class Screen {
     let inputDrag: { anchor: number; head: number } | null = null;
     const filtered = attachFilteredStdin({
       onWheel: ({ delta }) => this.store.getState().scrollBy(delta),
+      onJumpToBottom: () => this.store.getState().scrollToBottom(),
       onSelectStart: ({ row, col }) => {
+        // A click on the "Jump to bottom" hint jumps and consumes the press (no
+        // selection). It sits above the input box, outside the viewport lines.
+        if (hitTestJumpButton(row, col)) {
+          this.store.getState().scrollToBottom();
+          return;
+        }
         // A press on an input-box body line moves the caret there and arms a
         // potential text selection; everything else opens a viewport selection.
         const input = getInputMouseController();
@@ -204,11 +212,19 @@ export class Screen {
           endCol: Math.max(0, col - 1 - H_PAD),
         });
       },
-      onHover: ({ row }) => {
+      onHover: ({ row, col }) => {
+        const state = this.store.getState();
+        // The "Jump to bottom" hint highlights on hover; it sits outside the
+        // viewport lines, so check it first and clear any viewport-item highlight.
+        if (hitTestJumpButton(row, col)) {
+          state.setJumpButtonHovered(true);
+          state.setHoveredItem(null);
+          return;
+        }
+        state.setJumpButtonHovered(false);
         // Resolve the hovered terminal row to a collapsible item's control row
         // (tool-batch title or thinking "… +N lines" hint; its key lives in
         // lineTargets) and highlight it; null clears the highlight elsewhere.
-        const state = this.store.getState();
         const key = state.lineTargets[Math.max(0, row - 1)] ?? null;
         state.setHoveredItem(key);
       },
@@ -563,8 +579,8 @@ export class Screen {
     this.store.getState().setThinkingLabel(label);
   }
 
-  startSpinner(label: SpinnerLabel, hint?: string): SpinnerHandle {
-    return this.store.getState().startSpinner(label, hint);
+  startSpinner(label: SpinnerLabel, hint?: string, startedAt?: number): SpinnerHandle {
+    return this.store.getState().startSpinner(label, hint, startedAt);
   }
 
   updateSpinnerLabel(label: SpinnerLabel): void {

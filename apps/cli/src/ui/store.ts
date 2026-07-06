@@ -183,6 +183,11 @@ export interface AppState {
    */
   viewportRows: number;
   /**
+   * True while the mouse is hovering the "Jump to bottom" hint, so it can render
+   * a highlight. Set by the Screen-level mouse handlers via `hitTestJumpButton`.
+   */
+  jumpButtonHovered: boolean;
+  /**
    * The ANSI lines the viewport painted this frame, in render order. The
    * mouse-drag handler reads this to map (terminalRow, terminalCol) back to
    * the underlying text when copying a selection. Always corresponds to
@@ -382,7 +387,7 @@ export interface AppActions {
   setThinkingLabel: (label: string | undefined) => void;
   setTodos: (todos: Todo[]) => void;
   setTasks: (tasks: Task[]) => void;
-  startSpinner: (label: SpinnerLabel, hint?: string) => SpinnerHandle;
+  startSpinner: (label: SpinnerLabel, hint?: string, startedAt?: number) => SpinnerHandle;
   /** Update the active spinner's live token counts (no-op if none). */
   setSpinnerTokens: (progress: { inputTokens?: number; outputTokens: number }) => void;
   /** Set/clear the active spinner's trailing hint (no-op if none). */
@@ -417,6 +422,8 @@ export interface AppActions {
   scrollBy: (delta: number) => void;
   scrollToTop: () => void;
   scrollToBottom: () => void;
+  /** Set the hover highlight on the "Jump to bottom" hint (no-op if unchanged). */
+  setJumpButtonHovered: (hovered: boolean) => void;
   /** Snapshot of the visible text — written back by the viewport each render. */
   setVisibleLines: (lines: string[]) => void;
   /** Show a transient notice; auto-clears after `ttlMs` (default 1000). */
@@ -611,6 +618,7 @@ export function createAppStore(opts: AppStoreOptions = {}): AppStoreApi {
       stickToBottom: true,
       viewportTotalLines: 0,
       viewportRows: 0,
+      jumpButtonHovered: false,
       visibleLines: [],
       copyNotice: null,
       copyNoticeTone: "success",
@@ -687,7 +695,7 @@ export function createAppStore(opts: AppStoreOptions = {}): AppStoreApi {
         set({ tasks });
       },
 
-      startSpinner(label, hint) {
+      startSpinner(label, hint, startedAt) {
         const id = ++spinnerCounter;
         const activeWord =
           typeof label === "string"
@@ -697,18 +705,20 @@ export function createAppStore(opts: AppStoreOptions = {}): AppStoreApi {
           id,
           label,
           ...(hint !== undefined ? { hint } : {}),
-          startedAt: Date.now(),
+          // Anchor to the caller-supplied task start when given (so the timer
+          // spans a whole turn); otherwise this spinner's own creation time.
+          startedAt: startedAt ?? Date.now(),
           activeWord,
         };
         set({ spinner: spec });
-        const startedAt = spec.startedAt;
+        const anchoredAt = spec.startedAt;
         return {
           stop: (): void => {
             const cur = get().spinner;
             if (cur?.id !== id) return;
             set({ spinner: null });
           },
-          elapsedMs: (): number => Date.now() - startedAt,
+          elapsedMs: (): number => Date.now() - anchoredAt,
           label: (): string => {
             const cur = get().spinner;
             return cur?.id === id ? cur.activeWord : activeWord;
@@ -854,6 +864,7 @@ export function createAppStore(opts: AppStoreOptions = {}): AppStoreApi {
           stickToBottom: true,
           viewportTotalLines: 0,
           viewportRows: 0,
+          jumpButtonHovered: false,
           contextTokens: 0,
           cacheReadTokens: 0,
           cacheCreationTokens: 0,
@@ -916,6 +927,11 @@ export function createAppStore(opts: AppStoreOptions = {}): AppStoreApi {
         const maxOffset = Math.max(0, s.viewportTotalLines - s.viewportRows);
         if (s.scrollOffset === maxOffset && s.stickToBottom) return;
         set({ scrollOffset: maxOffset, stickToBottom: true });
+      },
+
+      setJumpButtonHovered(hovered) {
+        if (get().jumpButtonHovered === hovered) return;
+        set({ jumpButtonHovered: hovered });
       },
 
       setVisibleLines(lines) {

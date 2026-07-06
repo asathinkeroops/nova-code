@@ -117,6 +117,37 @@ export interface MouseHandlers {
   /** Pointer motion with no button held — drives hover highlight. Fires only
    *  when the pointer changes terminal cell. */
   onHover: (pos: MousePos) => void;
+  /** End / ctrl+End — jump the transcript to the bottom. Ink zeroes the `input`
+   *  for named keys like End, so we intercept the raw sequence here instead. */
+  onJumpToBottom: () => void;
+}
+
+// End / ctrl+End escape sequences. Ink's `useInput` maps these to `name: 'end'`
+// and blanks out `input` (End is in its `nonAlphanumericKeys`), so a React-level
+// handler can't see them — we catch the raw bytes before they reach Ink.
+const JUMP_TO_BOTTOM_SEQS = [
+  "\x1b[1;5F", // ctrl+End
+  "\x1b[F", // End (xterm)
+  "\x1bOF", // End (application cursor mode)
+  "\x1b[4~", // End (vt220)
+];
+
+/**
+ * Strip any End / ctrl+End sequences from a keyboard byte-run, returning the
+ * remaining text and whether a jump key was present. Pure so it can be unit-
+ * tested; `onData` calls it on the non-mouse, non-paste residue before forwarding
+ * to Ink.
+ */
+export function extractJumpToBottom(text: string): { rest: string; jumped: boolean } {
+  let rest = text;
+  let jumped = false;
+  for (const seq of JUMP_TO_BOTTOM_SEQS) {
+    if (rest.includes(seq)) {
+      rest = rest.split(seq).join("");
+      jumped = true;
+    }
+  }
+  return { rest, jumped };
 }
 
 export interface FilteredStdin {
@@ -256,8 +287,12 @@ export function attachFilteredStdin(handlers: MouseHandlers): FilteredStdin {
       pending = "";
     }
 
-    const joined = out.join("");
-    if (joined.length > 0) proxy.write(joined);
+    // Intercept End / ctrl+End before Ink swallows them: strip the sequence from
+    // the byte stream and fire the jump handler. (Usually arrives atomically; a
+    // sequence split across chunks falls through and is harmless.)
+    const { rest, jumped } = extractJumpToBottom(out.join(""));
+    if (jumped) handlers.onJumpToBottom();
+    if (rest.length > 0) proxy.write(rest);
   };
 
   process.stdin.on("data", onData);

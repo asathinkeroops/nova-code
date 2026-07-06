@@ -1,9 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { createPasteResolver } from "./mouse.js";
+import { createPasteResolver, extractJumpToBottom } from "./mouse.js";
 
 const START = "\x1b[200~";
 const END = "\x1b[201~";
 const CTRL_V = "\x16";
+
+describe("extractJumpToBottom", () => {
+  it("detects and strips ctrl+End and End variants", () => {
+    for (const seq of ["\x1b[1;5F", "\x1b[F", "\x1bOF", "\x1b[4~"]) {
+      expect(extractJumpToBottom(seq)).toEqual({ rest: "", jumped: true });
+    }
+  });
+
+  it("leaves ordinary input untouched", () => {
+    expect(extractJumpToBottom("hello")).toEqual({ rest: "hello", jumped: false });
+    expect(extractJumpToBottom("")).toEqual({ rest: "", jumped: false });
+  });
+
+  it("strips the sequence but keeps surrounding bytes", () => {
+    expect(extractJumpToBottom("ab\x1b[1;5Fcd")).toEqual({ rest: "abcd", jumped: true });
+  });
+});
 
 describe("createPasteResolver", () => {
   it("passes ordinary typing through untouched", () => {

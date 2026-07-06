@@ -9,6 +9,8 @@ import { setCursorTarget } from "./cursor-target.js";
 import { PickHorizontal, type HorizontalPickerOptions } from "./picker.js";
 import type { AppStoreApi } from "./store.js";
 import { Viewport } from "./viewport.js";
+import { visibleWidth } from "./width.js";
+import { setJumpButtonBounds } from "./jump-button.js";
 
 /**
  * Pinned bottom chrome row count: a blank spacer row above the InputBox, the
@@ -30,6 +32,67 @@ const STATUS_LINE_ROWS = 2;
 /** Blank rows held between the viewport and the InputBox so they aren't cramped. */
 const INPUT_TOP_SPACER_ROWS = 1;
 
+/** Padded so it reads as a button; leading/trailing space is part of the click target. */
+const JUMP_TO_BOTTOM_LABEL = " Jump to bottom (ctrl+End) ↓ ";
+const JUMP_TO_BOTTOM_WIDTH = visibleWidth(JUMP_TO_BOTTOM_LABEL);
+
+/**
+ * Right-aligned button occupying the spacer row above the InputBox while the
+ * user has scrolled up (stickToBottom=false) and no modal owns the input. It
+ * always renders exactly INPUT_TOP_SPACER_ROWS tall — visible or not — so it
+ * never reflows the pinned-bottom row budget.
+ *
+ * End / ctrl+End (intercepted in mouse.ts) or a click on the button scroll back
+ * to the bottom and hide it. While shown, it registers its absolute screen
+ * position (`setJumpButtonBounds`) so the Screen-level mouse handlers can hover-
+ * highlight and click it; `jumpButtonHovered` in the store drives the highlight.
+ */
+function JumpToBottomHint({
+  store,
+  enabled,
+  termRows,
+  termCols,
+  inputRows,
+  indicatorRows,
+}: {
+  store: AppStoreApi;
+  enabled: boolean;
+  termRows: number;
+  termCols: number;
+  inputRows: number;
+  indicatorRows: number;
+}): React.ReactElement {
+  const stickToBottom = store((s) => s.stickToBottom);
+  const hovered = store((s) => s.jumpButtonHovered);
+  const show = enabled && !stickToBottom;
+
+  // Absolute 1-indexed screen position, derived from the pinned-bottom layout:
+  // the button is the single spacer row directly above the InputBox, centered.
+  const frameRows = Math.max(MIN_FRAME_ROWS, termRows - 1);
+  const row = Math.max(1, frameRows - inputRows - STATUS_LINE_ROWS - indicatorRows);
+  const colStart = Math.max(1, Math.floor((termCols - JUMP_TO_BOTTOM_WIDTH) / 2) + 1);
+  const colEnd = colStart + JUMP_TO_BOTTOM_WIDTH - 1;
+
+  React.useEffect(() => {
+    if (!show) return;
+    setJumpButtonBounds({ row, colStart, colEnd });
+    return () => {
+      setJumpButtonBounds(null);
+      store.getState().setJumpButtonHovered(false);
+    };
+  }, [show, row, colStart, colEnd, store]);
+
+  return (
+    <Box flexShrink={0} height={INPUT_TOP_SPACER_ROWS} justifyContent="center">
+      {show ? (
+        <Text color="black" backgroundColor={hovered ? "cyan" : "gray"}>
+          {JUMP_TO_BOTTOM_LABEL}
+        </Text>
+      ) : null}
+    </Box>
+  );
+}
+
 /** Floor for the pinned frame height so a tiny terminal still renders. */
 const MIN_FRAME_ROWS = 4;
 
@@ -49,6 +112,7 @@ export function App({ store }: AppProps): React.ReactElement {
     sessionName,
     permissionMode,
     termRows,
+    termCols,
     imagePaste,
   } = store(
     useShallow((s) => ({
@@ -62,6 +126,7 @@ export function App({ store }: AppProps): React.ReactElement {
       sessionName: s.sessionName,
       permissionMode: s.permissionMode,
       termRows: s.termRows,
+      termCols: s.termCols,
       imagePaste: s.imagePaste,
     })),
   );
@@ -155,7 +220,14 @@ export function App({ store }: AppProps): React.ReactElement {
   return (
     <Box flexDirection="column" height={Math.max(MIN_FRAME_ROWS, termRows - 1)} overflowY="hidden">
       <Viewport store={store} rows={viewportRows} resolveModal={resolveModal} />
-      <Box flexShrink={0} height={INPUT_TOP_SPACER_ROWS} />
+      <JumpToBottomHint
+        store={store}
+        enabled={modal === null}
+        termRows={termRows}
+        termCols={termCols}
+        inputRows={inputRows}
+        indicatorRows={indicatorRows}
+      />
       <Box flexShrink={0} flexDirection="column">
         <InputBox
           options={{
