@@ -14,7 +14,10 @@ import { loadDisplaySidecar } from "./display-sidecar.js";
 import { loadCards } from "./card-store.js";
 import { loadGoal } from "./goal.js";
 import { loadSessionName } from "./session-name.js";
-import { restoreUsageFromTranscript } from "./usage-restore.js";
+import {
+  restoreContextTokensFromTranscript,
+  restoreUsageFromTranscript,
+} from "./usage-restore.js";
 import { SnapshotStore } from "./snapshots.js";
 import { loadMessages, emptyCursor } from "@nova/agent";
 
@@ -216,6 +219,10 @@ export async function switchToSession(
   // so its counters stay at the zero set by `screen.reset()` above.
   if (resumed) {
     ctx.screen.seedUsage(await restoreUsageFromTranscript(newSession.transcriptPath));
+    // Also rehydrate the context-window meter from the last request's total, so
+    // it reads the real occupancy after `/resume` rather than 0% (reset above)
+    // until the next model turn.
+    ctx.screen.setContextTokens(await restoreContextTokensFromTranscript(newSession.transcriptPath));
   }
   ctx.logger.info(
     { sessionId: newSession.id, dir: newSession.dir, messageCount: newMessages.length, resumed },

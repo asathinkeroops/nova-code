@@ -2,7 +2,10 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { restoreUsageFromTranscript } from "./usage-restore.js";
+import {
+  restoreContextTokensFromTranscript,
+  restoreUsageFromTranscript,
+} from "./usage-restore.js";
 
 async function writeTranscript(lines: object[]): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "nova-usage-"));
@@ -118,5 +121,43 @@ describe("restoreUsageFromTranscript", () => {
       uncachedInputTokens: 5,
       outputTokens: 2,
     });
+  });
+});
+
+describe("restoreContextTokensFromTranscript", () => {
+  it("returns the last request's total (input + cache + output), not the sum", async () => {
+    const path = await writeTranscript([
+      requestRecord({
+        inputTokens: 100,
+        outputTokens: 30,
+        cacheReadInputTokens: 800,
+        cacheCreationInputTokens: 50,
+      }),
+      requestRecord({
+        inputTokens: 20,
+        outputTokens: 10,
+        cacheReadInputTokens: 200,
+        cacheCreationInputTokens: 5,
+      }),
+    ]);
+    // Only the last record: 20 + 200 + 5 + 10.
+    expect(await restoreContextTokensFromTranscript(path)).toBe(235);
+  });
+
+  it("skips trailing error/aborted post_requests without usage", async () => {
+    const path = await writeTranscript([
+      requestRecord({ inputTokens: 40, outputTokens: 8, cacheReadInputTokens: 100 }),
+      { kind: "post_request", data: { error: "aborted", durationMs: 5 } },
+      { kind: "user_prompt", data: { text: "hi" } },
+    ]);
+    // Falls back to the last record that actually carried usage: 40 + 100 + 8.
+    expect(await restoreContextTokensFromTranscript(path)).toBe(148);
+  });
+
+  it("returns 0 when the transcript is absent or has no request", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "nova-usage-"));
+    expect(await restoreContextTokensFromTranscript(join(dir, "transcript.jsonl"))).toBe(0);
+    const path = await writeTranscript([{ kind: "user_prompt", data: { text: "hi" } }]);
+    expect(await restoreContextTokensFromTranscript(path)).toBe(0);
   });
 });

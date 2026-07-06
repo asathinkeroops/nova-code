@@ -69,3 +69,33 @@ export async function restoreUsageFromTranscript(
   }
   return totals;
 }
+
+/**
+ * Total tokens of the *most recent* model request in a session's transcript —
+ * input + cache read + cache creation + output — matching the live `post_request`
+ * hook's `setContextTokens` snapshot. Unlike `restoreUsageFromTranscript` (which
+ * sums every request for the cumulative `/usage` row), this is the last request's
+ * total alone, a proxy for how full the context window currently is, so the
+ * statusline's context meter is correct immediately after a restart / `/resume`
+ * rather than reading 0% until the next model turn.
+ *
+ * Only the main transcript is consulted — sub-agent spend never occupies the main
+ * session's context window. Returns 0 when the transcript is absent, empty, or has
+ * no `post_request` record yet (e.g. a fresh session).
+ */
+export async function restoreContextTokensFromTranscript(transcriptPath: string): Promise<number> {
+  const records = await new Transcript(transcriptPath).readAll();
+  for (let i = records.length - 1; i >= 0; i--) {
+    const rec = records[i];
+    if (rec?.kind !== "post_request") continue;
+    const usage = (rec.data as { usage?: RecordedUsage } | undefined)?.usage;
+    if (!usage) continue;
+    return (
+      (usage.inputTokens ?? 0) +
+      (usage.cacheReadInputTokens ?? 0) +
+      (usage.cacheCreationInputTokens ?? 0) +
+      (usage.outputTokens ?? 0)
+    );
+  }
+  return 0;
+}

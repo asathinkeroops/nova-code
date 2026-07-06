@@ -57,7 +57,10 @@ import { UI_FRAME_MS } from "./ui/frame.js";
 import { appendToolDetail, loadDisplaySidecar } from "./display-sidecar.js";
 import { appendCard, appendCardsCleared, loadCards } from "./card-store.js";
 import { registerUiHooks } from "./hooks.js";
-import { restoreUsageFromTranscript } from "./usage-restore.js";
+import {
+  restoreContextTokensFromTranscript,
+  restoreUsageFromTranscript,
+} from "./usage-restore.js";
 import { UserHooks } from "./user-hooks.js";
 import { SnapshotStore } from "./snapshots.js";
 import { renderSkillsBlock } from "./skills-render.js";
@@ -1011,6 +1014,9 @@ export async function createContext(
       ctx.screen.seedUsage(
         await restoreUsageFromTranscript(session.transcriptPath, join(session.dir, "subagents")),
       );
+      // Seed the context-window meter from the last request's total so it shows
+      // real occupancy on launch, not 0% until the first model turn.
+      ctx.screen.setContextTokens(await restoreContextTokensFromTranscript(session.transcriptPath));
       logger.info({ count: msgs.length }, "messages restored");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
