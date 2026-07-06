@@ -15,6 +15,7 @@ import {
   handleMcp,
   handleModel,
   handlePlan,
+  handlePlugin,
   handlePredict,
   handleRename,
   handleResume,
@@ -226,6 +227,16 @@ export function registerBuiltinSlashCommands(ctx: CliContext): void {
     source: { kind: "builtin" },
     run: () => {
       handleLsp(ctx);
+      return handled;
+    },
+  });
+  ctx.registry.register({
+    name: "plugin",
+    description: "list loaded plugins and their contributions; enable/disable one by name",
+    argHint: "[list | enable <name> | disable <name>]",
+    source: { kind: "builtin" },
+    run: async (_c, args) => {
+      await handlePlugin(ctx, args);
       return handled;
     },
   });

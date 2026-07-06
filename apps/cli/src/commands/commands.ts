@@ -11,6 +11,7 @@ const KIND_TAG: Record<SlashCommandKind, string> = {
   project: "[project]",
   skill: "[skill]  ",
   mcp: "[mcp]    ",
+  plugin: "[plugin] ",
 };
 
 export async function handleCommands(ctx: CliContext, arg: string): Promise<void> {

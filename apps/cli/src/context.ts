@@ -1,4 +1,4 @@
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { createAgent, emptyCursor, loadMessages, type Agent } from "@nova/agent";
 import { loadMemory, sliceFromLastCompacted } from "@nova/context";
 import {
@@ -50,6 +50,7 @@ import { canonicalizePath, canonicalizeRoots, PATH_INPUT_TOOLS } from "./path-sa
 import { MODE_COMMAND_TOOLS, resolveModeDecision, resolvePermissionRules } from "./permissions.js";
 import { classifyCommandRisk } from "./auto-classify.js";
 import { loadAgents } from "./agents.js";
+import { loadPlugins } from "./plugins/loader.js";
 import { readCliVersion } from "./version.js";
 import { UI_FRAME_MS } from "./ui/frame.js";
 import { appendToolDetail, loadDisplaySidecar } from "./display-sidecar.js";
@@ -172,14 +173,48 @@ export async function createContext(
     await transcript.append({ kind: "memory_loaded", data: { sources: memory.sources } });
   }
 
+  // Plugins: distributable bundles that package the existing extension types
+  // (slash commands, sub-agents, skills, shell hooks, MCP servers). Loaded here,
+  // before the extension points they feed, so skills fold into the (prefix-cached)
+  // system prompt at session start and MCP specs reach buildMcpManager. Purely
+  // declarative — nothing in a plugin is executed. Per-plugin failures are
+  // isolated into `errors`, mirroring MCP connect.
+  const pluginResult = settings.plugins.enabled
+    ? await loadPlugins({
+        cwd: workspace,
+        projectDirs: settings.plugins.projectDirs,
+        userDirs: settings.plugins.userDirs,
+        disabled: settings.plugins.disabled,
+        logger,
+      })
+    : { plugins: [], errors: [] };
+  for (const e of pluginResult.errors) {
+    logger.warn({ dir: e.dir, err: e.message }, "plugin load failed");
+  }
+  if (pluginResult.plugins.length > 0) {
+    logger.info(
+      {
+        count: pluginResult.plugins.length,
+        names: pluginResult.plugins.map((p) => p.manifest.name),
+      },
+      "plugins loaded",
+    );
+  }
+  // Skill directories contributed by plugins, folded into the index via extraDirs
+  // (each entry is a `skills/` root whose subdirs each hold a SKILL.md).
+  const pluginSkillRoots = [
+    ...new Set(pluginResult.plugins.flatMap((p) => p.skills.map((s) => dirname(s)))),
+  ];
+
   // Skills index: build one SkillsOptions and let getSkillList + builtinTools
   // both consume it. The first call warms the cache; the second hits it.
+  const skillsExtraDirs = [...(settings.skills.extraDirs ?? []), ...pluginSkillRoots];
   const skillsOpts: SkillsOptions | undefined = settings.skills.enabled
     ? {
         cwd: workspace,
         ...(settings.skills.projectDirs ? { projectDirs: settings.skills.projectDirs } : {}),
         ...(settings.skills.userPaths ? { userPaths: settings.skills.userPaths } : {}),
-        ...(settings.skills.extraDirs ? { extraDirs: settings.skills.extraDirs } : {}),
+        ...(skillsExtraDirs.length > 0 ? { extraDirs: skillsExtraDirs } : {}),
         maxResponseBytes: settings.skills.maxResponseBytes,
         logger,
       }
@@ -218,6 +253,13 @@ export async function createContext(
       );
     }
   }
+  // Plugin-contributed sub-agents. Layered after custom defs; built-ins and
+  // earlier (project) definitions win on name collisions via addCustom.
+  const pluginAgents = pluginResult.plugins.flatMap((p) => p.agents);
+  if (pluginAgents.length > 0) {
+    const skipped = agents.addCustom(pluginAgents);
+    logger.info({ parsed: pluginAgents.length, skipped: skipped.length }, "plugin agents loaded");
+  }
 
   const todoStore = new TodoStore();
   const taskStore = new TaskStore(workspace, session.id);
@@ -241,7 +283,8 @@ export async function createContext(
   // MCP: connect configured servers and bridge their tools into the registry
   // before the agent reads `tools.definitions()`. A server that fails to connect
   // is logged and skipped — it never blocks startup.
-  const mcp = buildMcpManager(settings, logger);
+  const pluginMcpSpecs = Object.assign({}, ...pluginResult.plugins.map((p) => p.mcpServers));
+  const mcp = buildMcpManager(settings, logger, pluginMcpSpecs);
   if (mcp) {
     await mcp.connectAll();
     for (const handler of mcp.handlers()) tools.register(handler);
@@ -433,6 +476,7 @@ export async function createContext(
     tools,
     agents,
     mcp,
+    plugins: pluginResult.plugins,
     dispatch,
     fileLedger,
     permission: null as unknown as PermissionEngine,
@@ -824,7 +868,14 @@ export async function createContext(
   // repo, so loaded files are surfaced loudly; a malformed file is reported and
   // skipped rather than aborting startup.
   const projectHooks = await loadProjectHooks(ctx.workspace);
-  const mergedHooks = mergeHooks([ctx.settings.hooks, ...projectHooks.loaded.map((p) => p.hooks)]);
+  const pluginHooks = pluginResult.plugins
+    .map((p) => p.hooks)
+    .filter((h): h is NonNullable<typeof h> => h !== undefined);
+  const mergedHooks = mergeHooks([
+    ctx.settings.hooks,
+    ...projectHooks.loaded.map((p) => p.hooks),
+    ...pluginHooks,
+  ]);
   if (projectHooks.loaded.length > 0) {
     const sources = projectHooks.loaded.map((p) => p.source);
     ctx.logger.info({ sources }, "loaded project hooks");
@@ -862,6 +913,19 @@ export async function createContext(
   });
   if (loaded.added > 0 || loaded.errors > 0) {
     logger.info({ ...loaded }, "slash commands loaded");
+  }
+  // Plugin slash commands (namespaced `<plugin>:<name>`). Registered after
+  // builtins/file commands; a builtin of the same bare name still wins, and the
+  // namespace keeps plugin commands from colliding with each other or user files.
+  let pluginCmdCount = 0;
+  for (const p of pluginResult.plugins) {
+    for (const cmd of p.commands) {
+      ctx.registry.register(cmd);
+      pluginCmdCount++;
+    }
+  }
+  if (pluginCmdCount > 0) {
+    logger.info({ added: pluginCmdCount }, "plugin slash commands registered");
   }
   // Bridge MCP prompts as slash commands. Registered after builtins/file
   // commands; their namespaced (`mcp__server__prompt`) names won't collide.

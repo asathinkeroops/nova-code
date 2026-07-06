@@ -10,6 +10,7 @@ export { handleHelp } from "./help.js";
 export { handleInit } from "./init.js";
 export { handleLsp } from "./lsp.js";
 export { handleMcp } from "./mcp.js";
+export { handlePlugin } from "./plugin.js";
 export { handleModel } from "./model.js";
 export { handlePlan } from "./plan.js";
 export { handlePredict } from "./predict.js";
