@@ -4,6 +4,7 @@ import { loadSettings, type Settings } from "@nova/runtime";
 import { createContext } from "./context.js";
 import { runHeadless, type HeadlessOutputFormat } from "./headless.js";
 import { buildMcpCommand } from "./mcp-cli.js";
+import { buildPluginCommand } from "./plugin-cli.js";
 import type { HeadlessApprovalPolicy } from "./headless-screen.js";
 import type { PermissionMode } from "./permissions.js";
 import { runRepl } from "./repl.js";
@@ -108,10 +109,7 @@ async function runHeadlessMode(
 
   const outputFormat = (opts.outputFormat ?? "text") as HeadlessOutputFormat;
   if (!["text", "json", "jsonl"].includes(outputFormat)) {
-    dieHeadless(
-      `invalid --output-format: ${opts.outputFormat} (expected text, json, or jsonl)`,
-      2,
-    );
+    dieHeadless(`invalid --output-format: ${opts.outputFormat} (expected text, json, or jsonl)`, 2);
   }
 
   let permissionMode: PermissionMode;
@@ -120,9 +118,7 @@ async function runHeadlessMode(
   } catch (err) {
     dieHeadless(err instanceof Error ? err.message : String(err), 2);
   }
-  const approvalPolicy: HeadlessApprovalPolicy = opts.dangerouslySkipPermissions
-    ? "allow"
-    : "deny";
+  const approvalPolicy: HeadlessApprovalPolicy = opts.dangerouslySkipPermissions ? "allow" : "deny";
 
   let code: number;
   try {
@@ -230,6 +226,7 @@ program
   .action((positional: string[], opts: CliOptions) => run(positional, opts));
 
 program.addCommand(buildMcpCommand());
+program.addCommand(buildPluginCommand());
 
 program.parseAsync(process.argv).catch((err) => {
   console.error(err);

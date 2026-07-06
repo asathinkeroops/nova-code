@@ -232,11 +232,10 @@ export function registerBuiltinSlashCommands(ctx: CliContext): void {
   });
   ctx.registry.register({
     name: "plugin",
-    description: "manage plugins: list, install/uninstall, enable/disable, marketplace",
-    argHint: "[list | install <src> | uninstall <n> | enable/disable <n> | marketplace …]",
+    description: "list loaded plugins (manage them with the `nova plugin` CLI)",
     source: { kind: "builtin" },
-    run: async (_c, args) => {
-      await handlePlugin(ctx, args);
+    run: async () => {
+      await handlePlugin(ctx);
       return handled;
     },
   });
