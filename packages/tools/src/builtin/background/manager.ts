@@ -51,10 +51,10 @@ const DEFAULT_BUFFER_BYTES = 1_000_000;
 const DEFAULT_MAX_CONCURRENT = 8;
 const DISPOSE_SIGKILL_DELAY_MS = 1500;
 
-export class LongRunningCommandError extends Error {
+export class BackgroundCommandError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = "LongRunningCommandError";
+    this.name = "BackgroundCommandError";
   }
 }
 
@@ -143,7 +143,7 @@ function finalize(
 /** Event name carrying a finished command's public record. */
 const COMPLETE_EVENT = "complete";
 
-export class LongRunningCommandManager extends EventEmitter {
+export class BackgroundCommandManager extends EventEmitter {
   private readonly records = new Map<string, InternalRecord>();
   private readonly completedIds: string[] = [];
   private readonly bufferBytes: number;
@@ -173,11 +173,9 @@ export class LongRunningCommandManager extends EventEmitter {
   }
 
   start(input: StartInput): { id: string; pid: number } {
-    const running = Array.from(this.records.values()).filter(
-      (r) => r.status === "running",
-    );
+    const running = Array.from(this.records.values()).filter((r) => r.status === "running");
     if (running.length >= this.maxConcurrent) {
-      throw new LongRunningCommandError(
+      throw new BackgroundCommandError(
         `concurrent command limit reached (${this.maxConcurrent}); wait for some to finish`,
       );
     }
@@ -269,7 +267,7 @@ export class LongRunningCommandManager extends EventEmitter {
   kill(id: string): KillResult {
     const r = this.records.get(id);
     if (!r) {
-      throw new LongRunningCommandError(`no background command with id ${id}`);
+      throw new BackgroundCommandError(`no background command with id ${id}`);
     }
     if (r.status !== "running" || !r.child) {
       return { id: r.id, command: r.command, alreadyExited: true };
@@ -291,9 +289,7 @@ export class LongRunningCommandManager extends EventEmitter {
     }, DISPOSE_SIGKILL_DELAY_MS);
     // Don't let the escalation timer keep the process alive on its own.
     sigkillTimer.unref?.();
-    void (r.lifecycle ?? Promise.resolve()).finally(() =>
-      clearTimeout(sigkillTimer),
-    );
+    void (r.lifecycle ?? Promise.resolve()).finally(() => clearTimeout(sigkillTimer));
 
     return { id: r.id, command: r.command, alreadyExited: false };
   }
@@ -318,7 +314,7 @@ export class LongRunningCommandManager extends EventEmitter {
   read(id: string): ReadResult {
     const r = this.records.get(id);
     if (!r) {
-      throw new LongRunningCommandError(`no background command with id ${id}`);
+      throw new BackgroundCommandError(`no background command with id ${id}`);
     }
     const buf = r.buf;
     // The live buffer holds produced-bytes [truncated, produced); anything
@@ -327,9 +323,7 @@ export class LongRunningCommandManager extends EventEmitter {
     const droppedBytes = Math.max(0, buf.truncated - r.readCursor);
     const liveStart = Math.max(r.readCursor, buf.truncated);
     const sliceStart = liveStart - buf.truncated;
-    const output = Buffer.concat(buf.chunks)
-      .subarray(sliceStart)
-      .toString("utf8");
+    const output = Buffer.concat(buf.chunks).subarray(sliceStart).toString("utf8");
     r.readCursor = produced;
     return {
       id: r.id,
@@ -380,7 +374,7 @@ export class LongRunningCommandManager extends EventEmitter {
   peek(id: string): { id: string; command: string; status: CommandStatus; output: string } {
     const r = this.records.get(id);
     if (!r) {
-      throw new LongRunningCommandError(`no background command with id ${id}`);
+      throw new BackgroundCommandError(`no background command with id ${id}`);
     }
     return { id: r.id, command: r.command, status: r.status, output: renderOutput(r.buf) };
   }

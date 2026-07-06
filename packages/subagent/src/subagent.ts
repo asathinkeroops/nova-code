@@ -130,7 +130,7 @@ export interface SubAgentDeps {
    * set stays in sync with the parent registry.
    *
    * NOTE: the sub-agent reuses the parent's tool *implementations* via the
-   * shared `dispatch`, so stateful tools (todo/task/longRunning) mutate the
+   * shared `dispatch`, so stateful tools (todo/task/background) mutate the
    * parent session's stores. That's an intentional simplification; isolate
    * them later if sub-agents need their own scratch state.
    */
@@ -284,10 +284,7 @@ export function createSubAgentTool(deps: SubAgentDeps): ToolHandler {
         });
       }
 
-      const result = await agent.runTurn(
-        input.prompt,
-        ctx.signal ? { signal: ctx.signal } : {},
-      );
+      const result = await agent.runTurn(input.prompt, ctx.signal ? { signal: ctx.signal } : {});
 
       // Surface the sub-agent's token spend to the host before branching on the
       // outcome — tokens are billed even on abort/error, so report them in every

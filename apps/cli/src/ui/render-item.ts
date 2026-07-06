@@ -94,25 +94,6 @@ const HIDDEN_TOOLS = new Set([
   "clearTaskList",
 ]);
 
-/**
- * Hook-injected user-role messages (todo/task reminders, background command
- * notifications) wrap their payload in a known tag so we can skip rendering
- * them as user bubbles. The auto-compact summary uses the same convention
- * (`<compacted>`, produced in @nova/context's autoCompact): the model reads it,
- * but the user never typed it, so we skip the bubble. The compaction is still
- * announced via the `post_compact` info card (with the snapshot path).
- */
-function isSystemInjectionText(text: string): boolean {
-  const trimmed = text.trimStart();
-  return (
-    trimmed.startsWith("<reminder>") ||
-    trimmed.startsWith("<background-command") ||
-    trimmed.startsWith("<interrupted-by-user>") ||
-    trimmed.startsWith("<goal-eval>") ||
-    trimmed.startsWith("<compacted>")
-  );
-}
-
 function buildResultIndex(messages: MessageParam[]): Map<string, ToolResultBlock> {
   const idx = new Map<string, ToolResultBlock>();
   for (const m of messages) {
@@ -245,10 +226,7 @@ function isBatchableToolCall(item: RenderItem | undefined): item is ToolCallItem
  * member's `tool_use` id — stable across appends, so its expand/collapse state
  * survives re-renders.
  */
-function coalesceToolBatches(
-  items: RenderItem[],
-  expanded: Record<string, boolean>,
-): RenderItem[] {
+function coalesceToolBatches(items: RenderItem[], expanded: Record<string, boolean>): RenderItem[] {
   const out: RenderItem[] = [];
   let i = 0;
   while (i < items.length) {
@@ -314,11 +292,16 @@ function appendUserItems(
   nextKey: (p: string) => string,
   overrides: Record<string, string> | undefined,
 ): void {
+  // nova-injected messages (reminders, background-notifier notices, the
+  // <compacted> boundary, goal-eval continuations) are read by the model but
+  // never typed by the user — skip their bubbles. Identified structurally via
+  // meta.synthetic, so a user who types a `<...>` tag still sees their message.
+  // Compaction is instead announced via the `post_compact` info card.
+  if (msg.meta?.synthetic) return;
   // Prefer the user's original typed input over the expanded model text for
   // slash commands that expand (e.g. `/agent`). Keyed by exact content.
   const display = (text: string): string => overrides?.[text] ?? text;
   if (typeof msg.content === "string") {
-    if (isSystemInjectionText(msg.content)) return;
     items.push({ kind: "spacer", key: nextKey("sp") });
     items.push({
       kind: "user-text",
@@ -330,7 +313,6 @@ function appendUserItems(
   for (const b of msg.content) {
     if (b.type !== "text") continue;
     if (b.text.trim().length === 0) continue;
-    if (isSystemInjectionText(b.text)) continue;
     items.push({ kind: "spacer", key: nextKey("sp") });
     items.push({ kind: "user-text", key: nextKey("user"), text: display(b.text) });
   }

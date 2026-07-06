@@ -55,12 +55,7 @@ describe("buildRenderItems committed thinking", () => {
       { type: "thinking", thinking: "reasoned", signature: "sig" },
       { type: "text", text: "answer" },
     ]);
-    expect(items.map((i) => i.kind)).toEqual([
-      "spacer",
-      "thinking",
-      "spacer",
-      "assistant-text",
-    ]);
+    expect(items.map((i) => i.kind)).toEqual(["spacer", "thinking", "spacer", "assistant-text"]);
   });
 
   it("marks committed thinking as collapsed (it is done)", () => {
@@ -103,10 +98,7 @@ describe("buildRenderItems block ordering", () => {
   });
 
   it("renders narration text before the tool calls it introduces", () => {
-    const items = render([
-      { type: "text", text: "Let me check the deps." },
-      bash("t1"),
-    ]);
+    const items = render([{ type: "text", text: "Let me check the deps." }, bash("t1")]);
     expect(items.map((i) => i.kind)).toEqual(["spacer", "assistant-text", "spacer", "tool-call"]);
   });
 
@@ -138,25 +130,38 @@ describe("buildRenderItems block ordering", () => {
 });
 
 describe("buildRenderItems hides system-injected user messages", () => {
-  const firstUserText = (content: string) =>
+  const firstUserText = (msg: MessageParam) =>
     buildRenderItems({
       banner: null,
       cards: [],
-      messages: [{ role: "user", content }],
+      messages: [msg],
     }).find((i) => i.kind === "user-text");
 
   it("renders a real typed prompt as a user bubble", () => {
-    expect(firstUserText("real prompt")).toMatchObject({ text: "real prompt" });
+    expect(firstUserText({ role: "user", content: "real prompt" })).toMatchObject({
+      text: "real prompt",
+    });
   });
 
+  // Hiding keys off meta.synthetic — the structural marker — not the in-band tag.
   it.each([
-    "<reminder>Update your todos.</reminder>",
-    '<background-command id="1" status="done">x</background-command>',
-    "<interrupted-by-user></interrupted-by-user>",
-    "<goal-eval>\nYour goal is not complete yet. Evaluation: tests fail\n</goal-eval>",
-    "<compacted>\n[Conversation compacted [compacted].]\n\nSUMMARY OF WORK\n</compacted>",
-  ])("skips the bubble for injection %#", (content) => {
-    expect(firstUserText(content)).toBeUndefined();
+    ["todo-reminder", "<todo-reminder>Update your todos.</todo-reminder>"],
+    ["task-reminder", "<task-reminder>Update your tasks.</task-reminder>"],
+    ["background-notifier", '<background-notifier id="1" status="done">x</background-notifier>'],
+    ["interrupted", "<interrupted></interrupted>"],
+    ["goal-eval", "<goal-eval>\nEvaluation: tests fail\n</goal-eval>"],
+    ["compacted", "<compacted>\n[Conversation compacted [compacted].]\n\nSUMMARY\n</compacted>"],
+  ] as const)("skips the bubble for synthetic %s", (kind, content) => {
+    expect(
+      firstUserText({ role: "user", content, meta: { synthetic: true, kind } }),
+    ).toBeUndefined();
+  });
+
+  it("still renders a user who TYPES a tag verbatim (no meta = not hidden)", () => {
+    // Collision safety: a user typing `<compacted>` is NOT a synthetic injection,
+    // so their bubble shows and (see compact.test) it can't forge a slice boundary.
+    const typed = "<compacted>I typed this myself</compacted>";
+    expect(firstUserText({ role: "user", content: typed })).toMatchObject({ text: typed });
   });
 });
 
@@ -170,9 +175,9 @@ describe("buildRenderItems user display overrides", () => {
     }).find((i) => i.kind === "user-text");
 
   it("shows the original input when the message text matches an override key", () => {
-    expect(userText({ "EXPANDED model prompt": "/agent reviewer audit foo.ts" })).toMatchObject(
-      { text: "/agent reviewer audit foo.ts" },
-    );
+    expect(userText({ "EXPANDED model prompt": "/agent reviewer audit foo.ts" })).toMatchObject({
+      text: "/agent reviewer audit foo.ts",
+    });
   });
 
   it("falls back to the raw message text when there is no override", () => {
@@ -223,9 +228,7 @@ describe("buildRenderItems sub-agent details", () => {
 
   it("omits details when none are recorded for the tool_use id", () => {
     expect(toolCall()).not.toHaveProperty("details");
-    expect(toolCall({ "other-id": [{ type: "final", text: "x" }] })).not.toHaveProperty(
-      "details",
-    );
+    expect(toolCall({ "other-id": [{ type: "final", text: "x" }] })).not.toHaveProperty("details");
   });
 });
 
@@ -285,9 +288,7 @@ describe("buildRenderItems tool batching", () => {
     const batch = items.find((i) => i.kind === "tool-batch");
     expect(batch && batch.kind === "tool-batch" ? batch.members.length : 0).toBe(2);
     // The still-pending member is carried with an undefined result.
-    expect(
-      batch && batch.kind === "tool-batch" ? batch.members[1]?.result : "x",
-    ).toBeUndefined();
+    expect(batch && batch.kind === "tool-batch" ? batch.members[1]?.result : "x").toBeUndefined();
   });
 
   it("expands a batch whose key is in expandedItems", () => {
@@ -331,10 +332,7 @@ describe("buildRenderItems tool batching", () => {
 });
 
 describe("renderItemToString tool batch", () => {
-  const batch = (
-    members: Array<{ name: string; id: string }>,
-    collapsed: boolean,
-  ): string =>
+  const batch = (members: Array<{ name: string; id: string }>, collapsed: boolean): string =>
     renderItemToString(
       {
         kind: "tool-batch",
@@ -361,9 +359,9 @@ describe("renderItemToString tool batch", () => {
       true,
     );
     expect(out.split("\n")).toHaveLength(1);
-    expect(out).toContain("Search 2 patterns");
+    expect(out).toContain("Searched for 2 patterns");
     expect(out).toContain("read 3 files");
-    expect(out).toContain("run 1 shell command");
+    expect(out).toContain("ran 1 shell command");
   });
 
   it("stays a single summary line while a member is still pending", () => {
@@ -573,7 +571,14 @@ describe("buildRenderItems tool-call expand state", () => {
       messages: [
         {
           role: "assistant",
-          content: [{ type: "tool_use", id: "w1", name: "write", input: { path: "x.ts", content: longContent } }],
+          content: [
+            {
+              type: "tool_use",
+              id: "w1",
+              name: "write",
+              input: { path: "x.ts", content: longContent },
+            },
+          ],
         },
         { role: "user", content: [{ type: "tool_result", tool_use_id: "w1", content: "ok" }] },
       ],
@@ -597,7 +602,10 @@ describe("buildRenderItems thinking expand state", () => {
       banner: null,
       cards: [],
       messages: [
-        { role: "assistant", content: [{ type: "thinking", thinking: longThinking, signature: "s" }] },
+        {
+          role: "assistant",
+          content: [{ type: "thinking", thinking: longThinking, signature: "s" }],
+        },
       ],
       ...(expandedItems ? { expandedItems } : {}),
     });

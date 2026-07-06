@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { ToolHandler } from "@nova/core";
-import { LongRunningCommandError, type LongRunningCommandManager } from "./manager.js";
+import { BackgroundCommandError, type BackgroundCommandManager } from "./manager.js";
 
 const inputSchema = z
   .object({
@@ -8,10 +8,7 @@ const inputSchema = z
       .string()
       .min(1)
       .describe("Shell command to launch in the background (run with `bash -lc`)."),
-    cwd: z
-      .string()
-      .optional()
-      .describe("Working directory; defaults to the nova session cwd."),
+    cwd: z.string().optional().describe("Working directory; defaults to the nova session cwd."),
     env: z
       .record(z.string(), z.string())
       .optional()
@@ -19,9 +16,7 @@ const inputSchema = z
   })
   .strict();
 
-export function runInBackgroundTool(
-  manager: LongRunningCommandManager,
-): ToolHandler {
+export function runInBackgroundTool(manager: BackgroundCommandManager): ToolHandler {
   return {
     definition: {
       name: "runInBackground",
@@ -56,7 +51,7 @@ export function runInBackgroundTool(
         return { output: JSON.stringify({ id, pid }) };
       } catch (err) {
         const msg =
-          err instanceof LongRunningCommandError
+          err instanceof BackgroundCommandError
             ? err.message
             : err instanceof Error
               ? err.message

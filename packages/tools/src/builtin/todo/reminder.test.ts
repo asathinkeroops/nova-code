@@ -25,7 +25,11 @@ describe("makeTodoReminder", () => {
     expect(await call(remind, [use("read")])).toBeUndefined();
     const out = await call(remind, [use("edit")]);
     expect(out).toEqual([
-      { role: "user", content: [{ type: "text", text: "<reminder>Update your todos.</reminder>" }] },
+      {
+        role: "user",
+        content: [{ type: "text", text: "<todo-reminder>Update your todos.</todo-reminder>" }],
+        meta: { synthetic: true, kind: "todo-reminder" },
+      },
     ]);
   });
 
@@ -88,9 +92,10 @@ describe("makeTodoReminder", () => {
         content: [
           {
             type: "text",
-            text: "<reminder>All todos are completed — call clearTodoList to clear the list.</reminder>",
+            text: "<todo-reminder>All todos are completed — call clearTodoList to clear the list.</todo-reminder>",
           },
         ],
+        meta: { synthetic: true, kind: "todo-reminder" },
       },
     ]);
   });
@@ -143,7 +148,13 @@ describe("makeTodoReminder", () => {
 
     expect(await call(remind, [use("bash")])).toBeUndefined();
     const out = await call(remind, [use("bash")]);
-    expect(out).toEqual([{ role: "user", content: [{ type: "text", text: "PLEASE UPDATE" }] }]);
+    expect(out).toEqual([
+      {
+        role: "user",
+        content: [{ type: "text", text: "PLEASE UPDATE" }],
+        meta: { synthetic: true, kind: "todo-reminder" },
+      },
+    ]);
 
     // myUpdate (not updateTodo) is what resets now.
     await call(remind, [use("myUpdate")]);

@@ -24,10 +24,7 @@ export const toolUseBlockSchema = z.object({
 export const toolResultBlockSchema = z.object({
   type: z.literal("tool_result"),
   tool_use_id: z.string(),
-  content: z.union([
-    z.string(),
-    z.array(z.union([textBlockSchema, imageBlockSchema])),
-  ]),
+  content: z.union([z.string(), z.array(z.union([textBlockSchema, imageBlockSchema]))]),
   is_error: z.boolean().optional(),
 });
 
@@ -61,9 +58,42 @@ export type ThinkingBlock = z.infer<typeof thinkingBlockSchema>;
 export type RedactedThinkingBlock = z.infer<typeof redactedThinkingBlockSchema>;
 export type ContentBlock = z.infer<typeof contentBlockSchema>;
 
+/**
+ * Which nova injection produced a synthetic message. This is the OUT-OF-BAND
+ * source of truth for "not typed by the user / not model output": the TUI hides
+ * these bubbles and the compaction slice finds its boundary by reading `kind`
+ * here — NOT by string-matching the in-band `<...>` tag (which a user could type
+ * verbatim, colliding with a real boundary). The in-band tag still lives in
+ * `content` for the model to read; `meta` is the additive structural marker.
+ */
+export const syntheticKindSchema = z.enum([
+  "todo-reminder",
+  "task-reminder",
+  "background-notifier",
+  "interrupted",
+  "goal-eval",
+  "compacted",
+]);
+
+export type SyntheticKind = z.infer<typeof syntheticKindSchema>;
+
+export const messageMetaSchema = z.object({
+  synthetic: z.literal(true),
+  kind: syntheticKindSchema,
+});
+
+export type MessageMeta = z.infer<typeof messageMetaSchema>;
+
 export const messageParamSchema = z.object({
   role: z.enum(["user", "assistant"]),
   content: z.union([z.string(), z.array(contentBlockSchema)]),
+  /**
+   * Present only on nova-injected messages (see `messageMetaSchema`). Kept in
+   * canonical history + persisted to disk, but STRIPPED before the request
+   * reaches the model gateway (see `toWireMessages`) so it never perturbs the
+   * prefix cache.
+   */
+  meta: messageMetaSchema.optional(),
 });
 
 export type MessageParam = z.infer<typeof messageParamSchema>;
@@ -166,7 +196,7 @@ export interface SandboxBridge {
    * per-command resources (Linux bubblewrap mount points; a no-op on macOS).
    * Call once after a command spawned via `wrapCommand` completes. Reference-
    * counted, so it is safe to call while other sandboxed commands are still
-   * running. Detached/long-running commands may skip it — `dispose()` force-
+   * running. Detached/background commands may skip it — `dispose()` force-
    * cleans everything at session end.
    */
   afterCommand(): void;
@@ -227,10 +257,7 @@ export interface ToolRunResult {
   blocks?: (TextBlock | ImageBlock)[];
 }
 
-export type ToolExecutor = (
-  toolUse: ToolUseBlock,
-  ctx: ToolContext,
-) => Promise<ToolResultBlock>;
+export type ToolExecutor = (toolUse: ToolUseBlock, ctx: ToolContext) => Promise<ToolResultBlock>;
 
 export interface PermissionResult {
   granted: boolean;

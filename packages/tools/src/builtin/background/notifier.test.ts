@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { MessageParam, ToolDefinition } from "@nova/core";
-import { LongRunningCommandManager } from "./manager.js";
-import { makeLongRunningNotifier } from "./notifier.js";
+import { BackgroundCommandManager } from "./manager.js";
+import { makeBackgroundNotifier } from "./notifier.js";
 
 const tools: ToolDefinition[] = [];
 
@@ -22,23 +22,21 @@ async function waitFor(predicate: () => boolean, timeoutMs = 3000): Promise<void
   }
 }
 
-describe("makeLongRunningNotifier", () => {
+describe("makeBackgroundNotifier", () => {
   it("returns undefined when the queue is empty", async () => {
-    const mgr = new LongRunningCommandManager();
-    const hook = makeLongRunningNotifier(mgr);
+    const mgr = new BackgroundCommandManager();
+    const hook = makeBackgroundNotifier(mgr);
     const out = await hook(basePayload([{ role: "user", content: "hi" }]));
     expect(out).toBeUndefined();
   });
 
   it("appends a user message rendering each drained command and drains the queue", async () => {
-    const mgr = new LongRunningCommandManager();
+    const mgr = new BackgroundCommandManager();
     const { id: a } = mgr.start({ command: "echo aa", cwd: process.cwd() });
     const { id: b } = mgr.start({ command: "exit 5", cwd: process.cwd() });
-    await waitFor(
-      () => mgr.get(a)?.status !== "running" && mgr.get(b)?.status !== "running",
-    );
+    await waitFor(() => mgr.get(a)?.status !== "running" && mgr.get(b)?.status !== "running");
 
-    const hook = makeLongRunningNotifier(mgr);
+    const hook = makeBackgroundNotifier(mgr);
     const messages: MessageParam[] = [{ role: "user", content: "hi" }];
     const out = await hook(basePayload(messages));
 
@@ -64,7 +62,7 @@ describe("makeLongRunningNotifier", () => {
   });
 
   it("does not re-push output already consumed via read()", async () => {
-    const mgr = new LongRunningCommandManager();
+    const mgr = new BackgroundCommandManager();
     // Output ("42") is computed, so it appears nowhere in the command string —
     // letting us assert it is absent from the completion push.
     const { id } = mgr.start({ command: "echo $((6 * 7))", cwd: process.cwd() });
@@ -73,7 +71,7 @@ describe("makeLongRunningNotifier", () => {
     // The model already streamed the output via getBackgroundOutput.
     expect(mgr.read(id).output).toContain("42");
 
-    const hook = makeLongRunningNotifier(mgr);
+    const hook = makeBackgroundNotifier(mgr);
     const out = await hook(basePayload([{ role: "user", content: "hi" }]));
     const blocks = out!.messages![1]!.content as Array<{ text: string }>;
     const text = blocks[0]!.text;
@@ -83,7 +81,7 @@ describe("makeLongRunningNotifier", () => {
   });
 
   it("still pushes the unread tail and exit marker on completion", async () => {
-    const mgr = new LongRunningCommandManager();
+    const mgr = new BackgroundCommandManager();
     const { id } = mgr.start({
       command: "echo first; echo second; exit 2",
       cwd: process.cwd(),
@@ -92,7 +90,7 @@ describe("makeLongRunningNotifier", () => {
 
     // Read only enough to consume some, then completion delivers the rest.
     // (Here we read nothing first, so the full tail plus the marker arrive.)
-    const hook = makeLongRunningNotifier(mgr);
+    const hook = makeBackgroundNotifier(mgr);
     const out = await hook(basePayload([{ role: "user", content: "hi" }]));
     const blocks = out!.messages![1]!.content as Array<{ text: string }>;
     const text = blocks[0]!.text;

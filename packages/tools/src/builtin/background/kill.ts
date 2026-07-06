@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { ToolHandler } from "@nova/core";
-import { LongRunningCommandError, type LongRunningCommandManager } from "./manager.js";
+import { BackgroundCommandError, type BackgroundCommandManager } from "./manager.js";
 
 const inputSchema = z
   .object({
@@ -11,9 +11,7 @@ const inputSchema = z
   })
   .strict();
 
-export function killBackgroundTool(
-  manager: LongRunningCommandManager,
-): ToolHandler {
+export function killBackgroundTool(manager: BackgroundCommandManager): ToolHandler {
   return {
     definition: {
       name: "killBackground",
@@ -36,7 +34,7 @@ export function killBackgroundTool(
         };
       } catch (err) {
         const msg =
-          err instanceof LongRunningCommandError
+          err instanceof BackgroundCommandError
             ? err.message
             : err instanceof Error
               ? err.message

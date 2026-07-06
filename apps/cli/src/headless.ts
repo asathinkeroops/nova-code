@@ -73,7 +73,7 @@ export async function runHeadless(settings: Settings, opts: HeadlessOptions): Pr
     result = await ctx.agent.runTurn(opts.prompt);
   } finally {
     await ctx.transcript.flush();
-    await ctx.longRunningManager.disposeAll();
+    await ctx.backgroundManager.disposeAll();
     if (ctx.lspManager) await ctx.lspManager.disposeAll();
     await ctx.sandbox.dispose();
     if (ctx.mcp) await ctx.mcp.close();

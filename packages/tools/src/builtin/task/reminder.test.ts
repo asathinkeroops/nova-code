@@ -40,7 +40,8 @@ describe("makeTaskReminder", () => {
     expect(out).toEqual([
       {
         role: "user",
-        content: [{ type: "text", text: "<reminder>Update your tasks.</reminder>" }],
+        content: [{ type: "text", text: "<task-reminder>Update your tasks.</task-reminder>" }],
+        meta: { synthetic: true, kind: "task-reminder" },
       },
     ]);
   });
@@ -103,9 +104,10 @@ describe("makeTaskReminder", () => {
         content: [
           {
             type: "text",
-            text: "<reminder>All tasks are completed — call clearTaskList to clear the list.</reminder>",
+            text: "<task-reminder>All tasks are completed — call clearTaskList to clear the list.</task-reminder>",
           },
         ],
+        meta: { synthetic: true, kind: "task-reminder" },
       },
     ]);
   });
@@ -158,7 +160,11 @@ describe("makeTaskReminder", () => {
     expect(await call(remind, [use("bash")])).toBeUndefined();
     const out = await call(remind, [use("bash")]);
     expect(out).toEqual([
-      { role: "user", content: [{ type: "text", text: "PLEASE UPDATE" }] },
+      {
+        role: "user",
+        content: [{ type: "text", text: "PLEASE UPDATE" }],
+        meta: { synthetic: true, kind: "task-reminder" },
+      },
     ]);
 
     // myUpdate (not updateTask) is what resets now.

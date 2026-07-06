@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ToolContext } from "@nova/core";
-import { LongRunningCommandManager, type CommandRecord } from "./manager.js";
+import { BackgroundCommandManager, type CommandRecord } from "./manager.js";
 import { runInBackgroundTool } from "./run.js";
 import { killBackgroundTool } from "./kill.js";
 import { getBackgroundOutputTool } from "./output.js";
@@ -17,7 +17,7 @@ async function waitFor(predicate: () => boolean, timeoutMs = 3000): Promise<void
 
 describe("runInBackground", () => {
   it("run returns an id; the record reaches completed", async () => {
-    const mgr = new LongRunningCommandManager();
+    const mgr = new BackgroundCommandManager();
     const runTool = runInBackgroundTool(mgr);
 
     const runRes = await runTool.run({ command: "echo hi" }, ctx);
@@ -31,7 +31,7 @@ describe("runInBackground", () => {
   });
 
   it("emits 'complete' with the public record and marks pending until drained", async () => {
-    const mgr = new LongRunningCommandManager();
+    const mgr = new BackgroundCommandManager();
     const runTool = runInBackgroundTool(mgr);
 
     const completed: CommandRecord[] = [];
@@ -52,7 +52,7 @@ describe("runInBackground", () => {
   });
 
   it("emits 'complete' for a failing command with an error record", async () => {
-    const mgr = new LongRunningCommandManager();
+    const mgr = new BackgroundCommandManager();
     const runTool = runInBackgroundTool(mgr);
 
     const completed: CommandRecord[] = [];
@@ -66,7 +66,7 @@ describe("runInBackground", () => {
   });
 
   it("run reports the manager error when concurrency cap is hit", async () => {
-    const mgr = new LongRunningCommandManager({ maxConcurrent: 1 });
+    const mgr = new BackgroundCommandManager({ maxConcurrent: 1 });
     const runTool = runInBackgroundTool(mgr);
 
     await runTool.run({ command: "sleep 1" }, ctx);
@@ -78,7 +78,7 @@ describe("runInBackground", () => {
 
 describe("killBackground", () => {
   it("terminates a running command and reports the error completion", async () => {
-    const mgr = new LongRunningCommandManager();
+    const mgr = new BackgroundCommandManager();
     const runTool = runInBackgroundTool(mgr);
     const killTool = killBackgroundTool(mgr);
 
@@ -99,7 +99,7 @@ describe("killBackground", () => {
   });
 
   it("is a no-op for an already-finished command", async () => {
-    const mgr = new LongRunningCommandManager();
+    const mgr = new BackgroundCommandManager();
     const runTool = runInBackgroundTool(mgr);
     const killTool = killBackgroundTool(mgr);
 
@@ -113,7 +113,7 @@ describe("killBackground", () => {
   });
 
   it("reports an error for an unknown id", async () => {
-    const mgr = new LongRunningCommandManager();
+    const mgr = new BackgroundCommandManager();
     const killTool = killBackgroundTool(mgr);
 
     const killRes = await killTool.run({ id: "nope" }, ctx);
@@ -124,7 +124,7 @@ describe("killBackground", () => {
 
 describe("getBackgroundOutput", () => {
   it("returns new output incrementally and is empty on a second read", async () => {
-    const mgr = new LongRunningCommandManager();
+    const mgr = new BackgroundCommandManager();
     const runTool = runInBackgroundTool(mgr);
     const outTool = getBackgroundOutputTool(mgr);
 
@@ -143,13 +143,10 @@ describe("getBackgroundOutput", () => {
   });
 
   it("follows output across multiple reads while running", async () => {
-    const mgr = new LongRunningCommandManager();
+    const mgr = new BackgroundCommandManager();
     const runTool = runInBackgroundTool(mgr);
 
-    const runRes = await runTool.run(
-      { command: "echo one; sleep 0.3; echo two; sleep 5" },
-      ctx,
-    );
+    const runRes = await runTool.run({ command: "echo one; sleep 0.3; echo two; sleep 5" }, ctx);
     const { id } = JSON.parse(runRes.output) as { id: string };
 
     // First chunk: "one" is available well before the command exits.
@@ -172,7 +169,7 @@ describe("getBackgroundOutput", () => {
   });
 
   it("applies a line filter", async () => {
-    const mgr = new LongRunningCommandManager();
+    const mgr = new BackgroundCommandManager();
     const runTool = runInBackgroundTool(mgr);
     const outTool = getBackgroundOutputTool(mgr);
 
@@ -189,7 +186,7 @@ describe("getBackgroundOutput", () => {
   });
 
   it("reports an error for an unknown id", async () => {
-    const mgr = new LongRunningCommandManager();
+    const mgr = new BackgroundCommandManager();
     const outTool = getBackgroundOutputTool(mgr);
 
     const res = await outTool.run({ id: "nope" }, ctx);
@@ -198,9 +195,6 @@ describe("getBackgroundOutput", () => {
   });
 });
 
-async function killTool(
-  mgr: LongRunningCommandManager,
-  id: string,
-): Promise<void> {
+async function killTool(mgr: BackgroundCommandManager, id: string): Promise<void> {
   await killBackgroundTool(mgr).run({ id }, ctx);
 }

@@ -1,4 +1,4 @@
-import type { MessageParam, ToolUseBlock } from "@nova/core";
+import { markSynthetic, type MessageParam, type ToolUseBlock } from "@nova/core";
 import type { InterjectCtx, InterjectFn } from "../todo/reminder.js";
 import { TaskStore } from "./store.js";
 
@@ -10,23 +10,18 @@ export interface TaskReminderOptions {
   clearReminderText?: string;
 }
 
-export function makeTaskReminder(
-  store: TaskStore,
-  opts: TaskReminderOptions = {},
-): InterjectFn {
+export function makeTaskReminder(store: TaskStore, opts: TaskReminderOptions = {}): InterjectFn {
   const threshold = opts.threshold ?? 3;
   const toolName = opts.toolName ?? "updateTask";
-  const text = opts.reminderText ?? "<reminder>Update your tasks.</reminder>";
+  const text = opts.reminderText ?? "<task-reminder>Update your tasks.</task-reminder>";
   const clearText =
     opts.clearReminderText ??
-    "<reminder>All tasks are completed — call clearTaskList to clear the list.</reminder>";
+    "<task-reminder>All tasks are completed — call clearTaskList to clear the list.</task-reminder>";
   let streak = 0;
 
   return async ({ toolUses }: InterjectCtx): Promise<MessageParam[] | void> => {
     const all = await store.list();
-    const hasUnfinished = all.some(
-      (t) => t.status === "pending" || t.status === "in_progress",
-    );
+    const hasUnfinished = all.some((t) => t.status === "pending" || t.status === "in_progress");
 
     // Plan is done (non-empty, nothing in flight) — exactly when clearTaskList
     // should fire, and exactly when the streak logic below used to stay silent
@@ -34,7 +29,12 @@ export function makeTaskReminder(
     // streak or whether this turn called updateTask.
     if (all.length > 0 && !hasUnfinished) {
       streak = 0;
-      return [{ role: "user", content: [{ type: "text", text: clearText }] }];
+      return [
+        markSynthetic(
+          { role: "user", content: [{ type: "text", text: clearText }] },
+          "task-reminder",
+        ),
+      ];
     }
 
     if (toolUses.some((u: ToolUseBlock) => u.name === toolName)) {
@@ -50,6 +50,6 @@ export function makeTaskReminder(
     if (!hasUnfinished) return;
 
     streak = 0;
-    return [{ role: "user", content: [{ type: "text", text }] }];
+    return [markSynthetic({ role: "user", content: [{ type: "text", text }] }, "task-reminder")];
   };
 }

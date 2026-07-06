@@ -1,7 +1,7 @@
 /**
  * Encoding helpers for embedding untrusted strings in XML-shaped prompt
  * scaffolding. Any time we wrap model-visible content in tags like
- * `<background-command>…</…>` or `<memory path="…">…</…>`, the inner
+ * `<background-notifier>…</…>` or `<memory path="…">…</…>`, the inner
  * content (or attribute) can collide with the surrounding markup. Use these
  * helpers at the boundary so the model always sees well-formed framing.
  */

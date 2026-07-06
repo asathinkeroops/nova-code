@@ -1,9 +1,6 @@
-import type { MessageParam, ModelClient } from "@nova/core";
+import { markSynthetic, type MessageParam, type ModelClient } from "@nova/core";
 
 export const COMPACT_MARKER = "[compacted]";
-
-/** Opening tag marking a message as a compaction boundary + summary. */
-const COMPACT_TAG = "<compacted>";
 
 const DEFAULT_MAX_SUMMARY_TOKENS = 2000;
 const DEFAULT_CONTEXT_WINDOW_PERCENT = 0.5;
@@ -13,17 +10,16 @@ const DEFAULT_CONTEXT_WINDOW_PERCENT = 0.5;
 // ────────────────────────────────────────────────────────────────────────────
 
 /**
- * A compaction boundary is a synthetic `user` message whose string content
- * opens with `<compacted>` (produced by `autoCompact`). The full conversation
+ * A compaction boundary is a synthetic `user` message tagged `meta.kind ===
+ * "compacted"` (produced by `autoCompact`; its content still opens with the
+ * in-band `<compacted>` tag for the model to read). The full conversation
  * history stays append-only on disk and is rendered in full by the TUI; the
- * model is fed only the slice from the LAST boundary onward.
+ * model is fed only the slice from the LAST boundary onward. Detection keys off
+ * `meta` — never the string — so a user typing `<compacted>` cannot forge a
+ * boundary and truncate the model's context.
  */
 export function isCompactionMarker(msg: MessageParam): boolean {
-  return (
-    msg.role === "user" &&
-    typeof msg.content === "string" &&
-    msg.content.trimStart().startsWith(COMPACT_TAG)
-  );
+  return msg.meta?.kind === "compacted";
 }
 
 /**
@@ -68,9 +64,7 @@ export function computeThreshold(t: ThresholdOptions): number {
     const pct = t.contextWindowPercent ?? DEFAULT_CONTEXT_WINDOW_PERCENT;
     return Math.floor(t.contextWindowSize * pct);
   }
-  throw new Error(
-    "computeThreshold requires either thresholdTokens or contextWindowSize",
-  );
+  throw new Error("computeThreshold requires either thresholdTokens or contextWindowSize");
 }
 
 export function shouldAutoCompact(messages: MessageParam[], t: ThresholdOptions): boolean {
@@ -141,11 +135,14 @@ export async function autoCompact(
 
   const header = `[Conversation compacted ${COMPACT_MARKER}. Full history retained in messages.jsonl.]`;
 
-  // Wrap in a <compacted> tag so the model reads the summary while the TUI skips
-  // its bubble (same convention as <reminder>/<background-command>; the renderer
-  // matches the opening tag in apps/cli/src/ui/render-item.ts).
+  // Wrap in a <compacted> tag so the model reads the summary, and stamp
+  // meta.kind so the slice/TUI recognize the boundary structurally (not by the
+  // forgeable tag string). The TUI skips the bubble via meta.synthetic.
   const newMessages: MessageParam[] = [
-    { role: "user", content: `<compacted>\n${header}\n\n${summary}\n</compacted>` },
+    markSynthetic(
+      { role: "user", content: `<compacted>\n${header}\n\n${summary}\n</compacted>` },
+      "compacted",
+    ),
   ];
 
   return {

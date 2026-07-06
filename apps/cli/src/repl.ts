@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import type { MessageMeta } from "@nova/core";
 import { sliceFromLastCompacted } from "@nova/context";
 import { bashTool } from "@nova/tools";
 import { resolveModelModalities } from "@nova/runtime";
@@ -170,10 +171,10 @@ async function dispatchLine(ctx: CliContext, line: string): Promise<DispatchActi
  * lifecycle; the REPL just binds the ESC key to its abort method and reports
  * the post-turn state.
  */
-async function runTurn(ctx: CliContext, input: string): Promise<boolean> {
+async function runTurn(ctx: CliContext, input: string, meta?: MessageMeta): Promise<boolean> {
   ctx.screen.setEscHandler(() => ctx.agent.abort(new Error("interrupted by user")));
   try {
-    const result = await ctx.agent.runTurn(input);
+    const result = await ctx.agent.runTurn(input, meta ? { meta } : {});
     return result.ok;
   } finally {
     ctx.screen.setEscHandler(null);
@@ -203,8 +204,8 @@ async function runContinuationTurn(ctx: CliContext): Promise<boolean> {
  */
 function shouldAutoContinue(ctx: CliContext): boolean {
   return (
-    ctx.settings.longRunning.autoContinueOnComplete &&
-    ctx.longRunningManager.hasPending() &&
+    ctx.settings.background.autoContinueOnComplete &&
+    ctx.backgroundManager.hasPending() &&
     !ctx.agent.currentSignal()
   );
 }
@@ -281,11 +282,11 @@ async function maybeContinueForGoal(ctx: CliContext): Promise<string | null> {
     dim(`goal not yet met — continuing (${goal.continuations}/${max})\n${verdict.reason}`),
     { title: GOAL_TITLE },
   );
-  // Wrap in <goal-eval> so the UI hides this auto-injected continuation from the
-  // message stream (see isSystemInjectionText) — it is the evaluator driving
-  // another turn, not something the user typed (it never flows through
-  // enqueueInput, so ↑/↓ recall never captures it). The model still reads the
-  // tag's contents normally.
+  // Return the <goal-eval>-tagged continuation. The model reads the tag's
+  // contents; the UI hides the bubble via meta.kind === "goal-eval", stamped by
+  // the caller (runTurnWithStopHooks) when it drives this turn. It is the
+  // evaluator driving another turn, not something the user typed (it never flows
+  // through enqueueInput, so ↑/↓ recall never captures it).
   return (
     `<goal-eval>\n` +
     `Your goal is not complete yet. Evaluation: ${verdict.reason}\n\n` +
@@ -320,10 +321,12 @@ async function runTurnWithStopHooks(ctx: CliContext, prompt: string): Promise<bo
       ok = await runTurn(ctx, decision.reason || "A Stop hook requested that you keep going.");
       continue;
     }
-    // Stop hooks satisfied — consult an active /goal for one more turn.
+    // Stop hooks satisfied — consult an active /goal for one more turn. The
+    // continuation is evaluator-driven, not user-typed: mark it synthetic so the
+    // TUI hides its bubble (the model still reads the <goal-eval> tag content).
     const goalPrompt = await maybeContinueForGoal(ctx);
     if (goalPrompt === null) break;
-    ok = await runTurn(ctx, goalPrompt);
+    ok = await runTurn(ctx, goalPrompt, { synthetic: true, kind: "goal-eval" });
   }
   return ok;
 }
@@ -347,18 +350,13 @@ function wireImagePaste(ctx: CliContext): void {
       return res;
     },
     attached: () => {
-      const supportsImage = resolveModelModalities(
-        ctx.settings,
-        ctx.settings.model,
-      ).input.includes("image");
+      const supportsImage = resolveModelModalities(ctx.settings, ctx.settings.model).input.includes(
+        "image",
+      );
       if (supportsImage) {
         ctx.screen.notice("📎 image attached");
       } else {
-        ctx.screen.notice(
-          "⚠ current model can't read images — path inserted anyway",
-          4000,
-          "warn",
-        );
+        ctx.screen.notice("⚠ current model can't read images — path inserted anyway", 4000, "warn");
       }
     },
   });
@@ -436,7 +434,7 @@ export async function runRepl(ctx: CliContext, initialPrompt: string): Promise<v
   });
 
   await ctx.transcript.flush();
-  await ctx.longRunningManager.disposeAll();
+  await ctx.backgroundManager.disposeAll();
   if (ctx.lspManager) await ctx.lspManager.disposeAll();
   await ctx.sandbox.dispose();
   if (ctx.mcp) await ctx.mcp.close();

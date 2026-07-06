@@ -35,7 +35,7 @@ const MODE_MUTATING_TOOLS: ReadonlySet<string> = new Set(["write", "edit", "bash
  * edit grant, command gating is async (it may call the model), so it lives in
  * `checkPermission` rather than `resolveModeDecision`; this set just tells the
  * caller which tools to route through the classifier. Both spawn an arbitrary
- * shell (`runInBackground` is the long-running variant of `bash`).
+ * shell (`runInBackground` is the background variant of `bash`).
  */
 export const MODE_COMMAND_TOOLS: ReadonlySet<string> = new Set(["bash", "runInBackground"]);
 

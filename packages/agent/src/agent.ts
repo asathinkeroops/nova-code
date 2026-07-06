@@ -1,9 +1,11 @@
 import {
   agentLoop,
   HookRegistry,
+  markSynthetic,
   userText,
   type HookFn,
   type HookPoint,
+  type MessageMeta,
   type MessageParam,
   type ModelClient,
   type PermissionResult,
@@ -138,7 +140,7 @@ export interface Agent {
    * completion, fire `post_turn`. Never throws — all failures land on the
    * returned `TurnResult` and the `error` hook.
    */
-  runTurn(input: string, opts?: { signal?: AbortSignal }): Promise<TurnResult>;
+  runTurn(input: string, opts?: { signal?: AbortSignal; meta?: MessageMeta }): Promise<TurnResult>;
 
   /**
    * Resume the loop on the CURRENT message buffer without appending a user
@@ -214,11 +216,7 @@ export function createAgent(deps: AgentDeps): Agent {
   const persist = async (messages?: MessageParam[]): Promise<void> => {
     const msgs = messages ?? deps.getMessages();
     try {
-      const cursor = await persistMessages(
-        deps.getMessagesPath(),
-        msgs,
-        deps.getPersistCursor(),
-      );
+      const cursor = await persistMessages(deps.getMessagesPath(), msgs, deps.getPersistCursor());
       deps.setPersistCursor(cursor);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -276,12 +274,12 @@ export function createAgent(deps: AgentDeps): Agent {
         system: deps.getSystemPrompt
           ? deps.getSystemPrompt()
           : buildSystemPrompt(
-            deps.workspace,
-            deps.getMemory(),
-            deps.getSessionId(),
-            deps.skillsBlock,
-            settings.language,
-          ),
+              deps.workspace,
+              deps.getMemory(),
+              deps.getSessionId(),
+              deps.skillsBlock,
+              settings.language,
+            ),
         tools: deps.getTools(),
         executeTool: deps.dispatch,
         messages: baseMessages,
@@ -315,7 +313,21 @@ export function createAgent(deps: AgentDeps): Agent {
     const totalUsage = result?.totalUsage ?? zeroUsage();
 
     if (aborted) {
-      finalMessages = [...finalMessages, { role: "user", content: [{ type: "text", text: "<interrupted-by-user>The previous operation was cancelled by the user.</interrupted-by-user>" }] }];
+      finalMessages = [
+        ...finalMessages,
+        markSynthetic(
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "<interrupted>The previous operation was cancelled by the user.</interrupted>",
+              },
+            ],
+          },
+          "interrupted",
+        ),
+      ];
     }
 
     if (result) {
@@ -371,7 +383,7 @@ export function createAgent(deps: AgentDeps): Agent {
 
   const runTurn = async (
     input: string,
-    opts: { signal?: AbortSignal } = {},
+    opts: { signal?: AbortSignal; meta?: MessageMeta } = {},
   ): Promise<TurnResult> => {
     // ── pre_user_prompt (blocking) ────────────────────────────────────────
     let effectiveInput = input;
@@ -423,15 +435,13 @@ export function createAgent(deps: AgentDeps): Agent {
       };
     }
 
-    const baseMessages = [...deps.getMessages(), userText(effectiveInput)];
+    const baseMessages = [...deps.getMessages(), userText(effectiveInput, opts.meta)];
 
     // Immediate visual sync: surface the user message BEFORE the loop fires
     // its first post_messages (which only lands after model.call starts).
     await hooks.runAdvisory("post_messages", { messages: baseMessages });
     if (!deps.getSettings().noTranscript) {
-      await deps
-        .getTranscript()
-        .append({ kind: "user_prompt", data: { text: effectiveInput } });
+      await deps.getTranscript().append({ kind: "user_prompt", data: { text: effectiveInput } });
     }
 
     return runLoop(baseMessages, opts);

@@ -7,6 +7,7 @@ import {
   isMalformedToolJsonError,
   translateDeepSeekError,
 } from "./deepseek-errors.js";
+import { toWireMessages } from "./messages.js";
 import { THINKING_BUDGETS } from "./thinking.js";
 import type {
   AssistantTurn,
@@ -224,7 +225,9 @@ export function createAnthropicModel(config: AnthropicModelConfig): ModelClient 
             model: config.model,
             max_tokens: maxTokens,
             system: req.system,
-            messages: req.messages as Anthropic.MessageParam[],
+            // Strip nova-internal fields (notably `meta`) so the wire body stays
+            // byte-identical to the pre-`meta` format — preserves the prefix cache.
+            messages: toWireMessages(req.messages) as Anthropic.MessageParam[],
             tools: tools as Anthropic.Tool[],
             ...thinkingParams,
           } as Anthropic.MessageStreamParams,

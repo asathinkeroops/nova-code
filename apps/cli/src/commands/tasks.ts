@@ -51,7 +51,7 @@ function summary(records: CommandRecord[]): string {
 /** Kill one record by id, surfacing the outcome as a transient notice. */
 function stopOne(ctx: CliContext, id: string): void {
   try {
-    const res = ctx.longRunningManager.kill(id);
+    const res = ctx.backgroundManager.kill(id);
     ctx.screen.notice(
       res.alreadyExited
         ? `task ${id} had already finished`
@@ -91,7 +91,7 @@ export async function handleTasks(ctx: CliContext, args: string): Promise<void> 
     const [verb, ...rest] = arg.split(/\s+/);
     const target = rest.join(" ").trim();
     if (verb === "list") {
-      const records = ctx.longRunningManager.list();
+      const records = ctx.backgroundManager.list();
       if (records.length === 0) {
         ctx.screen.card(dim("no background tasks."), { title: TITLE });
         return;
@@ -100,7 +100,7 @@ export async function handleTasks(ctx: CliContext, args: string): Promise<void> 
       return;
     }
     if (verb === "stop" || verb === "kill") {
-      const running = ctx.longRunningManager.list().filter((r) => r.status === "running");
+      const running = ctx.backgroundManager.list().filter((r) => r.status === "running");
       if (target === "all") {
         if (running.length === 0) {
           ctx.screen.card(dim("no running tasks to stop."), { title: TITLE });
@@ -129,7 +129,7 @@ export async function handleTasks(ctx: CliContext, args: string): Promise<void> 
   // Interactive modal: list → per-task action row, looping until dismissed.
   let cursor = 0;
   for (;;) {
-    const records = ctx.longRunningManager.list();
+    const records = ctx.backgroundManager.list();
     if (records.length === 0) {
       ctx.screen.card(dim("no background tasks — start one with the runInBackground tool."), {
         title: TITLE,
@@ -149,7 +149,10 @@ export async function handleTasks(ctx: CliContext, args: string): Promise<void> 
         `${pickerArrow(selected)}  ${statusDot(r.status)}   ${oneLine(r.command, CMD_MAX).padEnd(cmdWidth)}   ${metaColumn(r, pidWidth)}`,
     });
     if (!pick) break;
-    cursor = Math.max(0, records.findIndex((r) => r.id === pick.id));
+    cursor = Math.max(
+      0,
+      records.findIndex((r) => r.id === pick.id),
+    );
 
     await openTaskActions(ctx, pick.id);
   }
@@ -160,7 +163,7 @@ type Action = "view" | "stop";
 /** Show the action row for one task, then perform the chosen action. */
 async function openTaskActions(ctx: CliContext, id: string): Promise<void> {
   // Re-read: status may have changed while the list was open.
-  const rec = ctx.longRunningManager.get(id);
+  const rec = ctx.backgroundManager.get(id);
   if (!rec) return;
 
   const actions: Action[] = rec.status === "running" ? ["view", "stop"] : ["view"];
@@ -178,7 +181,7 @@ async function openTaskActions(ctx: CliContext, id: string): Promise<void> {
   }
 
   // view: non-consuming snapshot so the completion notifier keeps its bytes.
-  const snap = ctx.longRunningManager.peek(id);
+  const snap = ctx.backgroundManager.peek(id);
   const lines = snap.output ? snap.output.replace(/\n$/, "").split("\n") : [dim("(no output yet)")];
   await ctx.screen.viewer({
     lines,

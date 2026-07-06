@@ -13,8 +13,8 @@ import { type TaskStore } from "./builtin/task/store.js";
 import { createTaskTools } from "./builtin/task/index.js";
 import { TodoStore } from "./builtin/todo/store.js";
 import { createTodoTools } from "./builtin/todo/index.js";
-import { type LongRunningCommandManager } from "./builtin/long-running/manager.js";
-import { createLongRunningCommandTools } from "./builtin/long-running/index.js";
+import { type BackgroundCommandManager } from "./builtin/background/manager.js";
+import { createBackgroundCommandTools } from "./builtin/background/index.js";
 import { webfetchTool } from "./builtin/webfetch.js";
 import { websearchTool } from "./builtin/websearch.js";
 import { writeTool } from "./builtin/write.js";
@@ -70,18 +70,18 @@ export {
 export { makeTaskReminder, type TaskReminderOptions } from "./builtin/task/reminder.js";
 export {
   runInBackgroundTool,
-  createLongRunningCommandTools,
-  makeLongRunningNotifier,
-  type LongRunningNotifierHook,
-} from "./builtin/long-running/index.js";
+  createBackgroundCommandTools,
+  makeBackgroundNotifier,
+  type BackgroundNotifierHook,
+} from "./builtin/background/index.js";
 export {
-  LongRunningCommandManager,
-  LongRunningCommandError,
+  BackgroundCommandManager,
+  BackgroundCommandError,
   type CommandRecord,
   type CommandStatus,
-  type ManagerOptions as LongRunningManagerOptions,
-  type StartInput as LongRunningStartInput,
-} from "./builtin/long-running/manager.js";
+  type ManagerOptions as BackgroundManagerOptions,
+  type StartInput as BackgroundStartInput,
+} from "./builtin/background/manager.js";
 export {
   getSkill,
   getSkillList,
@@ -105,7 +105,7 @@ export function builtinTools(
   todoStore: TodoStore = new TodoStore(),
   skills?: SkillsOptions,
   taskStore?: TaskStore,
-  longRunningManager?: LongRunningCommandManager,
+  backgroundManager?: BackgroundCommandManager,
   lspManager?: LspManager,
 ): ToolHandler[] {
   const tools: ToolHandler[] = [
@@ -123,8 +123,8 @@ export function builtinTools(
   if (taskStore) {
     tools.push(...createTaskTools(taskStore));
   }
-  if (longRunningManager) {
-    tools.push(...createLongRunningCommandTools(longRunningManager));
+  if (backgroundManager) {
+    tools.push(...createBackgroundCommandTools(backgroundManager));
   }
   if (lspManager) {
     tools.push(createLspTool(lspManager));

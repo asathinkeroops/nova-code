@@ -1,19 +1,14 @@
 import { z } from "zod";
 import type { ToolHandler } from "@nova/core";
-import { LongRunningCommandError, type LongRunningCommandManager } from "./manager.js";
+import { BackgroundCommandError, type BackgroundCommandManager } from "./manager.js";
 
 const inputSchema = z
   .object({
-    id: z
-      .string()
-      .min(1)
-      .describe("The id returned by runInBackground for the command to read."),
+    id: z.string().min(1).describe("The id returned by runInBackground for the command to read."),
     filter: z
       .string()
       .optional()
-      .describe(
-        "Optional regular expression; only output lines matching it are returned.",
-      ),
+      .describe("Optional regular expression; only output lines matching it are returned."),
   })
   .strict();
 
@@ -31,9 +26,7 @@ function applyFilter(output: string, pattern: string): string {
     .join("\n");
 }
 
-export function getBackgroundOutputTool(
-  manager: LongRunningCommandManager,
-): ToolHandler {
+export function getBackgroundOutputTool(manager: BackgroundCommandManager): ToolHandler {
   return {
     definition: {
       name: "getBackgroundOutput",
@@ -49,9 +42,7 @@ export function getBackgroundOutputTool(
       try {
         const res = manager.read(input.id);
         const body =
-          input.filter !== undefined
-            ? applyFilter(res.output, input.filter)
-            : res.output;
+          input.filter !== undefined ? applyFilter(res.output, input.filter) : res.output;
         const notes: string[] = [`status=${res.status}`];
         if (res.droppedBytes > 0) {
           notes.push(`dropped ${res.droppedBytes} bytes before this read`);
@@ -61,7 +52,7 @@ export function getBackgroundOutputTool(
         return { output: text };
       } catch (err) {
         const msg =
-          err instanceof LongRunningCommandError
+          err instanceof BackgroundCommandError
             ? err.message
             : err instanceof Error
               ? err.message

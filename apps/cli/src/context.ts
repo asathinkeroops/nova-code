@@ -11,10 +11,10 @@ import { SlashRegistry } from "@nova/external";
 import { LspManager, resolveServers } from "@nova/lsp";
 import { Transcript } from "@nova/observability";
 import {
-  LongRunningCommandManager,
+  BackgroundCommandManager,
   TaskStore,
   TodoStore,
-  makeLongRunningNotifier,
+  makeBackgroundNotifier,
   makeTaskReminder,
   makeTodoReminder,
   type InterjectFn,
@@ -221,7 +221,7 @@ export async function createContext(
 
   const todoStore = new TodoStore();
   const taskStore = new TaskStore(workspace, session.id);
-  const longRunningManager = new LongRunningCommandManager();
+  const backgroundManager = new BackgroundCommandManager();
   // LSP code intelligence: one manager per session, rooted at the workspace.
   // Servers are started lazily on first `lsp` tool call and disposed at exit.
   const lspManager = settings.lsp.enabled
@@ -235,7 +235,7 @@ export async function createContext(
       })
     : undefined;
   const tools = new ToolRegistry().registerAll(
-    builtinTools(todoStore, skillsOpts, taskStore, longRunningManager, lspManager),
+    builtinTools(todoStore, skillsOpts, taskStore, backgroundManager, lspManager),
   );
 
   // MCP: connect configured servers and bridge their tools into the registry
@@ -409,6 +409,7 @@ export async function createContext(
     sessionName: null,
     spinner: null,
     toolSpinnerTimer: null,
+    taskStartedAt: null,
     nextPlaceholder: "",
     pendingAutoCompactNotice: null,
     apiKey,
@@ -423,7 +424,7 @@ export async function createContext(
     resetLiveStream,
     todoStore,
     taskStore,
-    longRunningManager,
+    backgroundManager,
     lspManager,
     sandbox: null as unknown as SandboxControl,
     setSandbox: null as unknown as CliContext["setSandbox"],
@@ -790,15 +791,15 @@ export async function createContext(
   registerUiHooks(ctx);
   registerInterject(ctx.agent, makeTodoReminder(todoStore));
   registerInterject(ctx.agent, makeTaskReminder(taskStore));
-  ctx.agent.on("pre_request", makeLongRunningNotifier(longRunningManager));
+  ctx.agent.on("pre_request", makeBackgroundNotifier(backgroundManager));
 
   // Push completion: when a background command finishes while the agent is idle,
   // nudge the REPL to wake and react (the notifier above injects the output on
   // the resulting continuation turn). During a running turn we do nothing — the
   // notifier already delivers on that turn's next request. Headless has no input
   // loop to wake, so wake() is a no-op there.
-  if (ctx.settings.longRunning.autoContinueOnComplete) {
-    longRunningManager.onComplete(() => {
+  if (ctx.settings.background.autoContinueOnComplete) {
+    backgroundManager.onComplete(() => {
       if (!ctx.agent.currentSignal()) ctx.screen.wake();
     });
   }

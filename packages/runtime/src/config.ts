@@ -590,7 +590,7 @@ export const settingsSchema = z.object({
     .default({ enabled: true, maxTurns: 100, maxTokens: 32768 }),
   // OS-level command sandbox (@anthropic-ai/sandbox-runtime). Opt-in
   // (default OFF). When enabled, tools that spawn a subprocess (bash,
-  // runLongRunningCommand) run inside a platform sandbox — macOS Seatbelt via
+  // runInBackground) run inside a platform sandbox — macOS Seatbelt via
   // sandbox-exec, Linux bubblewrap — that confines filesystem *writes* to the
   // workspace roots (the same allowed roots the permission engine uses) plus a
   // few system defaults. Reads stay open and the network is UNRESTRICTED by
@@ -690,14 +690,14 @@ export const settingsSchema = z.object({
         allowGitConfig: true,
       },
     }),
-  // Background commands launched with runLongRunningCommand. When a command
+  // Background commands launched with runInBackground. When a command
   // finishes while the agent is idle (REPL waiting for input),
   // autoContinueOnComplete wakes it with a continuation turn so it can react to
   // the result — the captured output is injected via the same notifier that
   // serves a still-running turn — instead of waiting for the next user message.
   // Off keeps the injection but only delivers it on the next user-triggered
   // turn. REPL-only: a headless (`-p`) run has no input loop to wake.
-  longRunning: z
+  background: z
     .object({
       autoContinueOnComplete: z.boolean().default(true),
     })

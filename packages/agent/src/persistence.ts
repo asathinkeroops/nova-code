@@ -1,6 +1,6 @@
 import { appendFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { messageParamSchema, type MessageParam } from "@nova/core";
+import { messageParamSchema, migrateLegacyMeta, type MessageParam } from "@nova/core";
 
 export interface PersistCursor {
   count: number;
@@ -53,8 +53,7 @@ export async function persistMessages(
   // Fast path: append-only if the on-disk prefix is unchanged.
   if (messages.length > cursor.count) {
     const prefixIntact =
-      cursor.count === 0 ||
-      JSON.stringify(messages[cursor.count - 1]) === cursor.lastLine;
+      cursor.count === 0 || JSON.stringify(messages[cursor.count - 1]) === cursor.lastLine;
     if (prefixIntact) {
       await appendChunk(path, messages.slice(cursor.count));
       return cursorOf(messages);
@@ -77,5 +76,5 @@ export async function loadMessages(path: string): Promise<MessageParam[]> {
   return raw
     .split("\n")
     .filter((l) => l.length > 0)
-    .map((line) => messageParamSchema.parse(JSON.parse(line)));
+    .map((line) => migrateLegacyMeta(messageParamSchema.parse(JSON.parse(line))));
 }

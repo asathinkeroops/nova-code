@@ -1,4 +1,4 @@
-import type { MessageParam, ToolUseBlock } from "@nova/core";
+import { markSynthetic, type MessageParam, type ToolUseBlock } from "@nova/core";
 import { TodoStore } from "./store.js";
 
 export interface TodoReminderOptions {
@@ -15,17 +15,15 @@ export type InterjectFn = (ctx: InterjectCtx) => Promise<MessageParam[] | void>;
 export function makeTodoReminder(store: TodoStore, opts: TodoReminderOptions = {}): InterjectFn {
   const threshold = opts.threshold ?? 3;
   const toolName = opts.toolName ?? "updateTodo";
-  const text = opts.reminderText ?? "<reminder>Update your todos.</reminder>";
+  const text = opts.reminderText ?? "<todo-reminder>Update your todos.</todo-reminder>";
   const clearText =
     opts.clearReminderText ??
-    "<reminder>All todos are completed — call clearTodoList to clear the list.</reminder>";
+    "<todo-reminder>All todos are completed — call clearTodoList to clear the list.</todo-reminder>";
   let streak = 0;
 
   return async ({ toolUses }) => {
     const list = store.list();
-    const hasUnfinished = list.some(
-      (t) => t.status === "pending" || t.status === "in_progress",
-    );
+    const hasUnfinished = list.some((t) => t.status === "pending" || t.status === "in_progress");
 
     // The list is done (non-empty, nothing left in flight) — this is exactly the
     // moment clearTodoList should fire, and the moment the streak logic below
@@ -33,7 +31,12 @@ export function makeTodoReminder(store: TodoStore, opts: TodoReminderOptions = {
     // immediately, regardless of streak or whether this turn touched updateTodo.
     if (list.length > 0 && !hasUnfinished) {
       streak = 0;
-      return [{ role: "user", content: [{ type: "text", text: clearText }] }];
+      return [
+        markSynthetic(
+          { role: "user", content: [{ type: "text", text: clearText }] },
+          "todo-reminder",
+        ),
+      ];
     }
 
     if (toolUses.some((u) => u.name === toolName)) {
@@ -49,6 +52,6 @@ export function makeTodoReminder(store: TodoStore, opts: TodoReminderOptions = {
     if (!hasUnfinished) return;
 
     streak = 0;
-    return [{ role: "user", content: [{ type: "text", text }] }];
+    return [markSynthetic({ role: "user", content: [{ type: "text", text }] }, "todo-reminder")];
   };
 }

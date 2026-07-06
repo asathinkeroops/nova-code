@@ -10,7 +10,7 @@ import type {
 import type { SlashRegistry, McpManager } from "@nova/external";
 import type { LspManager } from "@nova/lsp";
 import type { Transcript } from "@nova/observability";
-import type { LongRunningCommandManager, TaskStore, TodoStore, ToolRegistry } from "@nova/tools";
+import type { BackgroundCommandManager, TaskStore, TodoStore, ToolRegistry } from "@nova/tools";
 import type { Logger, Session, Settings } from "@nova/runtime";
 import type { PermissionEngine } from "@nova/safety";
 import type { SandboxControl } from "@nova/sandbox";
@@ -77,6 +77,14 @@ export interface CliContext {
   // ===== Mutable: UI / per-turn state =====
   spinner: Spinner | null;
   toolSpinnerTimer: NodeJS.Timeout | null;
+  /**
+   * Epoch-ms the current agent turn's work began, or null between turns. The
+   * working spinner is torn down and recreated at every model-call / tool phase
+   * within a turn; anchoring the spinner's elapsed to this (set once per turn in
+   * hooks.ts, cleared on post_turn/error) keeps the timer counting up across the
+   * whole task instead of resetting each phase.
+   */
+  taskStartedAt: number | null;
   nextPlaceholder: string;
   /**
    * Carrier for the auto-compact summary card across the compactor →
@@ -120,7 +128,7 @@ export interface CliContext {
   readonly resetLiveStream: () => void;
   readonly todoStore: TodoStore;
   readonly taskStore: TaskStore;
-  readonly longRunningManager: LongRunningCommandManager;
+  readonly backgroundManager: BackgroundCommandManager;
   /** LSP code-intelligence manager. Undefined when settings.lsp.enabled is false. */
   readonly lspManager: LspManager | undefined;
   /** OS command sandbox handle. Inactive (bridge undefined) unless opted in via settings.sandbox. */

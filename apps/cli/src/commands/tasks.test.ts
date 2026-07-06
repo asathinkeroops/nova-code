@@ -29,7 +29,7 @@ interface ViewerCall {
 }
 
 /**
- * A minimal stand-in for the LongRunningCommandManager. `kills` records every
+ * A minimal stand-in for the BackgroundCommandManager. `kills` records every
  * kill; `list()` returns the current records (tests can mutate the array to
  * simulate status changes between modal loops).
  */
@@ -76,7 +76,7 @@ function makeCtx(
   const hpicks: HPickCall[] = [];
   const viewers: ViewerCall[] = [];
   const ctx = {
-    longRunningManager: makeManager(records, kills),
+    backgroundManager: makeManager(records, kills),
     screen: {
       card: (text: string, opts: Card["opts"] = {}) => cards.push({ text, opts }),
       notice: (text: string, _ttl?: number, tone?: string) => notices.push({ text, tone }),

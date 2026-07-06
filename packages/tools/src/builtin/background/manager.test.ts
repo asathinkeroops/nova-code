@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LongRunningCommandError, LongRunningCommandManager } from "./manager.js";
+import { BackgroundCommandError, BackgroundCommandManager } from "./manager.js";
 
 async function waitFor(predicate: () => boolean, timeoutMs = 3000): Promise<void> {
   const start = Date.now();
@@ -11,9 +11,9 @@ async function waitFor(predicate: () => boolean, timeoutMs = 3000): Promise<void
   }
 }
 
-describe("LongRunningCommandManager", () => {
+describe("BackgroundCommandManager", () => {
   it("runs a command to completion and captures merged output", async () => {
-    const mgr = new LongRunningCommandManager();
+    const mgr = new BackgroundCommandManager();
     const { id } = mgr.start({
       command: "echo hello && echo oops 1>&2",
       cwd: process.cwd(),
@@ -31,7 +31,7 @@ describe("LongRunningCommandManager", () => {
   });
 
   it("maps non-zero exits to error status with reason marker", async () => {
-    const mgr = new LongRunningCommandManager();
+    const mgr = new BackgroundCommandManager();
     const { id } = mgr.start({ command: "exit 17", cwd: process.cwd() });
     await waitFor(() => mgr.get(id)?.status !== "running");
     const rec = mgr.get(id);
@@ -40,7 +40,7 @@ describe("LongRunningCommandManager", () => {
   });
 
   it("returns running status before the child exits", async () => {
-    const mgr = new LongRunningCommandManager();
+    const mgr = new BackgroundCommandManager();
     const { id } = mgr.start({ command: "sleep 0.5", cwd: process.cwd() });
     expect(mgr.get(id)?.status).toBe("running");
     expect(mgr.get(id)?.pid).toBeGreaterThan(0);
@@ -50,7 +50,7 @@ describe("LongRunningCommandManager", () => {
   });
 
   it("list() returns all records with only the public fields", async () => {
-    const mgr = new LongRunningCommandManager();
+    const mgr = new BackgroundCommandManager();
     const a = mgr.start({ command: "echo a", cwd: process.cwd() });
     const b = mgr.start({ command: "echo b", cwd: process.cwd() });
     const records = mgr.list();
@@ -65,16 +65,16 @@ describe("LongRunningCommandManager", () => {
   });
 
   it("rejects start() once the concurrent limit is reached", () => {
-    const mgr = new LongRunningCommandManager({ maxConcurrent: 2 });
+    const mgr = new BackgroundCommandManager({ maxConcurrent: 2 });
     mgr.start({ command: "sleep 1", cwd: process.cwd() });
     mgr.start({ command: "sleep 1", cwd: process.cwd() });
     expect(() => mgr.start({ command: "echo nope", cwd: process.cwd() })).toThrow(
-      LongRunningCommandError,
+      BackgroundCommandError,
     );
   });
 
   it("truncates the output buffer and prefixes a notice", async () => {
-    const mgr = new LongRunningCommandManager({ bufferBytes: 1024 });
+    const mgr = new BackgroundCommandManager({ bufferBytes: 1024 });
     const { id } = mgr.start({
       command: "head -c 8192 /dev/zero | tr '\\0' 'a'",
       cwd: process.cwd(),
@@ -92,14 +92,12 @@ describe("LongRunningCommandManager", () => {
   });
 
   it("drainNotifications() yields ids of finished commands and clears the queue", async () => {
-    const mgr = new LongRunningCommandManager();
+    const mgr = new BackgroundCommandManager();
     expect(mgr.drainNotifications()).toEqual([]);
 
     const a = mgr.start({ command: "echo a", cwd: process.cwd() });
     const b = mgr.start({ command: "exit 3", cwd: process.cwd() });
-    await waitFor(
-      () => mgr.get(a.id)?.status !== "running" && mgr.get(b.id)?.status !== "running",
-    );
+    await waitFor(() => mgr.get(a.id)?.status !== "running" && mgr.get(b.id)?.status !== "running");
 
     const first = mgr.drainNotifications().sort();
     expect(first).toEqual([a.id, b.id].sort());
@@ -111,7 +109,7 @@ describe("LongRunningCommandManager", () => {
   });
 
   it("read() consumes output incrementally and reports nothing new on re-read", async () => {
-    const mgr = new LongRunningCommandManager();
+    const mgr = new BackgroundCommandManager();
     const { id } = mgr.start({ command: "echo hello", cwd: process.cwd() });
     await waitFor(() => mgr.get(id)?.status !== "running");
 
@@ -126,7 +124,7 @@ describe("LongRunningCommandManager", () => {
   });
 
   it("read() reports bytes dropped from the ring buffer between reads", async () => {
-    const mgr = new LongRunningCommandManager({ bufferBytes: 1024 });
+    const mgr = new BackgroundCommandManager({ bufferBytes: 1024 });
     const { id } = mgr.start({
       command: "head -c 8192 /dev/zero | tr '\\0' 'a'",
       cwd: process.cwd(),
@@ -141,12 +139,12 @@ describe("LongRunningCommandManager", () => {
   });
 
   it("read() throws on an unknown id", () => {
-    const mgr = new LongRunningCommandManager();
-    expect(() => mgr.read("nope")).toThrow(LongRunningCommandError);
+    const mgr = new BackgroundCommandManager();
+    expect(() => mgr.read("nope")).toThrow(BackgroundCommandError);
   });
 
   it("peek() snapshots output without advancing the read cursor", async () => {
-    const mgr = new LongRunningCommandManager();
+    const mgr = new BackgroundCommandManager();
     const { id } = mgr.start({ command: "echo hello", cwd: process.cwd() });
     await waitFor(() => mgr.get(id)?.status !== "running");
 
@@ -160,12 +158,12 @@ describe("LongRunningCommandManager", () => {
   });
 
   it("peek() throws on an unknown id", () => {
-    const mgr = new LongRunningCommandManager();
-    expect(() => mgr.peek("nope")).toThrow(LongRunningCommandError);
+    const mgr = new BackgroundCommandManager();
+    expect(() => mgr.peek("nope")).toThrow(BackgroundCommandError);
   });
 
   it("records `label` as the display command while executing `command`", async () => {
-    const mgr = new LongRunningCommandManager();
+    const mgr = new BackgroundCommandManager();
     // `command` is a wrapped form; `label` is what the user/model asked for.
     const { id } = mgr.start({
       command: "/bin/echo wrapped-ran",
@@ -182,7 +180,7 @@ describe("LongRunningCommandManager", () => {
   });
 
   it("disposeAll() terminates running children into error status", async () => {
-    const mgr = new LongRunningCommandManager();
+    const mgr = new BackgroundCommandManager();
     const { id } = mgr.start({ command: "sleep 10", cwd: process.cwd() });
     expect(mgr.get(id)?.status).toBe("running");
     await mgr.disposeAll();
