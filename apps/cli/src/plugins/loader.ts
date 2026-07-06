@@ -1,9 +1,7 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 
-import type { ToolHandler } from "@nova/core";
 import {
   fileCommandToSlash,
   loadFileCommands,
@@ -35,11 +33,10 @@ import {
  * recorded in `errors` and never aborts the load, exactly like MCP connect.
  */
 
-/** A component the loader recognizes but did not wire in this run. */
+/** A component the loader recognizes but does not wire (no nova runtime for it). */
 export interface IgnoredComponent {
-  kind: "monitors" | "tools";
+  kind: "monitors";
   path: string;
-  /** Why it was skipped (e.g. native code disabled). */
   reason?: string;
 }
 
@@ -62,8 +59,6 @@ export interface LoadedPlugin {
   lspServers: ServerConfig[];
   /** Absolute `bin/` directories to prepend to PATH for subprocess tools. */
   binDirs: string[];
-  /** Native tools (namespaced `plugin__<name>__<tool>`); empty unless allowNativeCode. */
-  tools: ToolHandler[];
   /** Recognized-but-unwired components, surfaced by `/plugin list`. */
   ignored: IgnoredComponent[];
 }
@@ -88,8 +83,6 @@ export interface LoadPluginsOpts {
   userDirs: string[];
   /** Plugin names to skip. */
   disabled?: string[];
-  /** Dynamically import native `tools/index.js` modules (executes plugin code). */
-  allowNativeCode?: boolean;
   logger?: Logger;
 }
 
@@ -288,58 +281,11 @@ async function loadPluginBin(root: string): Promise<string[]> {
   return (await isDir(bin)) ? [bin] : [];
 }
 
-/**
- * Dynamically import a plugin's native tools. Gated on `allow` because this
- * EXECUTES plugin code. The module's default export (or `tools` export) is a
- * `ToolHandler[]` or a factory returning one; each tool is namespaced
- * `plugin__<name>__<tool>` to avoid registry collisions.
- */
-async function loadPluginNativeTools(
-  manifest: PluginManifest,
-  root: string,
-  allow: boolean,
-  logger?: Logger,
-): Promise<ToolHandler[]> {
-  if (!allow) return [];
-  const files = asPathList(manifest.tools);
-  const candidates =
-    files.length > 0 ? files.map((f) => resolve(root, f)) : [resolve(root, "tools", "index.js")];
-  const out: ToolHandler[] = [];
-  for (const file of candidates) {
-    if (!(await isFile(file))) continue;
-    try {
-      const mod = (await import(pathToFileURL(file).href)) as {
-        default?: unknown;
-        tools?: unknown;
-      };
-      const exported = mod.default ?? mod.tools;
-      const handlers = typeof exported === "function" ? await (exported as () => unknown)() : exported;
-      if (!Array.isArray(handlers)) continue;
-      for (const h of handlers as ToolHandler[]) {
-        if (!h?.definition?.name || typeof h.run !== "function") continue;
-        out.push({
-          ...h,
-          definition: { ...h.definition, name: `plugin__${manifest.name}__${h.definition.name}` },
-        });
-      }
-    } catch (err) {
-      logger?.warn({ path: file, err: errMsg(err) }, "plugin native tools failed to load");
-    }
-  }
-  return out;
-}
-
-/** Recognized components not wired this run (monitors; native tools when disabled). */
-async function detectIgnored(root: string, allowNativeCode: boolean): Promise<IgnoredComponent[]> {
+/** Recognized components nova has no runtime for (currently just `monitors/`). */
+async function detectIgnored(root: string): Promise<IgnoredComponent[]> {
   const out: IgnoredComponent[] = [];
   const monitors = join(root, "monitors");
   if (await isDir(monitors)) out.push({ kind: "monitors", path: monitors, reason: "not supported" });
-  if (!allowNativeCode) {
-    const tools = join(root, "tools", "index.js");
-    if (await isFile(tools)) {
-      out.push({ kind: "tools", path: tools, reason: "settings.plugins.allowNativeCode is false" });
-    }
-  }
   return out;
 }
 
@@ -347,20 +293,17 @@ async function assemblePlugin(
   manifest: PluginManifest,
   root: string,
   source: "project" | "user",
-  allowNativeCode: boolean,
   logger?: Logger,
 ): Promise<LoadedPlugin> {
-  const [commands, skills, hooks, mcpServers, lspServers, binDirs, tools, ignored] =
-    await Promise.all([
-      loadPluginCommands(manifest, root),
-      loadPluginSkills(manifest, root),
-      loadPluginHooks(manifest, root),
-      loadPluginMcp(manifest, root),
-      loadPluginLsp(manifest, root),
-      loadPluginBin(root),
-      loadPluginNativeTools(manifest, root, allowNativeCode, logger),
-      detectIgnored(root, allowNativeCode),
-    ]);
+  const [commands, skills, hooks, mcpServers, lspServers, binDirs, ignored] = await Promise.all([
+    loadPluginCommands(manifest, root),
+    loadPluginSkills(manifest, root),
+    loadPluginHooks(manifest, root),
+    loadPluginMcp(manifest, root),
+    loadPluginLsp(manifest, root),
+    loadPluginBin(root),
+    detectIgnored(root),
+  ]);
   const agents = loadPluginAgents(manifest, root, logger);
   return {
     manifest,
@@ -373,7 +316,6 @@ async function assemblePlugin(
     mcpServers,
     lspServers,
     binDirs,
-    tools,
     ignored,
   };
 }
@@ -406,9 +348,7 @@ export async function loadPlugins(opts: LoadPluginsOpts): Promise<PluginLoadResu
         );
         if (disabled.has(manifest.name) || seen.has(manifest.name)) continue;
         seen.add(manifest.name);
-        plugins.push(
-          await assemblePlugin(manifest, dir, t.source, opts.allowNativeCode ?? false, opts.logger),
-        );
+        plugins.push(await assemblePlugin(manifest, dir, t.source, opts.logger));
       } catch (err) {
         errors.push({ dir, message: errMsg(err) });
         opts.logger?.warn({ path: manifestPath, err: errMsg(err) }, "plugin load failed");

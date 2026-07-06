@@ -129,7 +129,6 @@ export async function handlePlugin(ctx: CliContext, args: string): Promise<void>
       hookCount > 0 ? `${hookCount} hook` : "",
       Object.keys(p.mcpServers).length > 0 ? `${Object.keys(p.mcpServers).length} mcp` : "",
       p.lspServers.length > 0 ? `${p.lspServers.length} lsp` : "",
-      p.tools.length > 0 ? `${p.tools.length} tool` : "",
       p.binDirs.length > 0 ? "bin" : "",
     ].filter(Boolean);
     const version = p.manifest.version ? dim(` v${p.manifest.version}`) : "";

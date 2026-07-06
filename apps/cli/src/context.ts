@@ -187,7 +187,6 @@ export async function createContext(
         // Installed plugins live in the cache dir; scanned alongside user dirs.
         userDirs: [...settings.plugins.userDirs, DEFAULT_PLUGIN_CACHE_DIR],
         disabled: settings.plugins.disabled,
-        allowNativeCode: settings.plugins.allowNativeCode,
         logger,
       })
     : { plugins: [], errors: [] };
@@ -289,18 +288,6 @@ export async function createContext(
   const tools = new ToolRegistry().registerAll(
     builtinTools(todoStore, skillsOpts, taskStore, backgroundManager, lspManager),
   );
-  // Native plugin tools (namespaced plugin__<name>__<tool>), registered before
-  // the agent reads tools.definitions(). Empty unless settings.plugins.allowNativeCode.
-  let pluginToolCount = 0;
-  for (const p of pluginResult.plugins) {
-    for (const h of p.tools) {
-      tools.register(h);
-      pluginToolCount++;
-    }
-  }
-  if (pluginToolCount > 0) {
-    logger.info({ added: pluginToolCount }, "plugin native tools registered");
-  }
 
   // MCP: connect configured servers and bridge their tools into the registry
   // before the agent reads `tools.definitions()`. A server that fails to connect

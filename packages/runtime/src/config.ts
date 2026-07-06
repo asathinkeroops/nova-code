@@ -818,9 +818,6 @@ export const settingsSchema = z.object({
       projectDirs: z.array(z.string().min(1)).default([".nova/plugins", ".claude/plugins"]),
       userDirs: z.array(z.string().min(1)).default(["~/.nova/plugins", "~/.claude/plugins"]),
       disabled: z.array(z.string().min(1)).default([]),
-      // Load native `tools/index.js` modules from plugins. This EXECUTES plugin
-      // code in-process, so it is opt-in and default OFF.
-      allowNativeCode: z.boolean().default(false),
       // Plugins installed from a source into the cache (~/.nova/plugins/cache),
       // keyed by plugin name → the source they were fetched from. Written by
       // `/plugin install`; the cache dir is scanned at startup like any other.
@@ -834,7 +831,6 @@ export const settingsSchema = z.object({
       projectDirs: [".nova/plugins", ".claude/plugins"],
       userDirs: ["~/.nova/plugins", "~/.claude/plugins"],
       disabled: [],
-      allowNativeCode: false,
       installed: {},
       marketplaces: {},
     }),
