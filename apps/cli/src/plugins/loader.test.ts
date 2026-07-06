@@ -150,15 +150,43 @@ describe("loadPlugins", () => {
     expect(plugins[0]!.commands.map((c) => c.name)).toEqual(["dup:proj"]);
   });
 
-  it("records recognized-but-unsupported components as ignored", async () => {
+  it("loads .lsp.json servers and bin/ dirs; only monitors stay ignored", async () => {
     const base = ".nova/plugins/rich";
     await write(`${base}/.nova-plugin/plugin.json`, JSON.stringify({ name: "rich" }));
-    await write(`${base}/.lsp.json`, "{}");
+    await write(
+      `${base}/.lsp.json`,
+      JSON.stringify([
+        { languageId: "zig", command: "zls", args: ["--stdio"], extensions: ["zig"] },
+      ]),
+    );
     await write(`${base}/monitors/m.json`, "{}");
     await write(`${base}/bin/tool`, "#!/bin/sh\n");
 
     const { plugins } = await loadPlugins(opts());
-    const kinds = plugins[0]!.ignored.map((i) => i.kind).sort();
-    expect(kinds).toEqual(["bin", "lsp", "monitors"]);
+    const p = plugins[0]!;
+    expect(p.lspServers).toEqual([
+      { languageId: "zig", command: "zls", args: ["--stdio"], extensions: ["zig"] },
+    ]);
+    expect(p.binDirs).toEqual([join(root, base, "bin")]);
+    expect(p.ignored.map((i) => i.kind)).toEqual(["monitors"]);
+  });
+
+  it("skips native tools when allowNativeCode is off, loads them when on", async () => {
+    const base = ".nova/plugins/native";
+    await write(`${base}/.nova-plugin/plugin.json`, JSON.stringify({ name: "native" }));
+    await write(
+      `${base}/tools/index.js`,
+      "export default [{ definition: { name: 'ping', description: 'p', inputSchema: {} }, run: async () => ({ output: 'pong' }) }];",
+    );
+
+    const off = await loadPlugins(opts());
+    expect(off.plugins[0]!.tools).toHaveLength(0);
+    expect(off.plugins[0]!.ignored.map((i) => i.kind)).toEqual(["tools"]);
+
+    const on = await loadPlugins({ ...opts(), allowNativeCode: true });
+    const tools = on.plugins[0]!.tools;
+    expect(tools).toHaveLength(1);
+    expect(tools[0]!.definition.name).toBe("plugin__native__ping");
+    expect(on.plugins[0]!.ignored).toHaveLength(0);
   });
 });

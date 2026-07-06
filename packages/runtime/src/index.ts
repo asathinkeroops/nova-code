@@ -46,6 +46,8 @@ export {
   type HookEventName,
   type ProjectHooksResult,
   type Settings,
+  pluginSourceSchema,
+  type PluginSource,
   type PermissionRule,
   type McpServerConfig,
   type McpStdioServerConfig,
