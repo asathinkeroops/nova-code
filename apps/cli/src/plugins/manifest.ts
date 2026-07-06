@@ -44,6 +44,10 @@ export const pluginManifestSchema = z
     agents: componentPath.optional(),
     skills: componentPath.optional(),
     hooks: componentPath.optional(),
+    lsp: componentPath.optional(),
+    // Native tools entry (a `.js` module). Only loaded when
+    // settings.plugins.allowNativeCode is true — it executes plugin code.
+    tools: componentPath.optional(),
     // MCP: either a path to a JSON file, or an inline `{ "<name>": spec }` map.
     mcpServers: z.union([z.string().min(1), z.record(z.unknown())]).optional(),
   })

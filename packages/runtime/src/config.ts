@@ -308,6 +308,26 @@ export const DEFAULT_GOAL = {
   maxEvalTurns: 15,
 } as const;
 
+// Where a plugin (or a plugin marketplace) is fetched from. A bare string is a
+// shorthand — a local filesystem path, or an `owner/repo` GitHub slug. The
+// object form is explicit; unknown fields are preserved (Claude Code parity).
+export const pluginSourceSchema = z.union([
+  z.string().min(1),
+  z
+    .object({
+      source: z.enum(["github", "git", "path", "npm"]),
+      repo: z.string().min(1).optional(),
+      url: z.string().min(1).optional(),
+      path: z.string().min(1).optional(),
+      package: z.string().min(1).optional(),
+      ref: z.string().min(1).optional(),
+      version: z.string().min(1).optional(),
+    })
+    .passthrough(),
+]);
+
+export type PluginSource = z.infer<typeof pluginSourceSchema>;
+
 export const settingsSchema = z.object({
   apiKey: z.string().min(1).optional(),
   model: z.string().default(DEFAULT_MODEL_TIER),
@@ -798,12 +818,25 @@ export const settingsSchema = z.object({
       projectDirs: z.array(z.string().min(1)).default([".nova/plugins", ".claude/plugins"]),
       userDirs: z.array(z.string().min(1)).default(["~/.nova/plugins", "~/.claude/plugins"]),
       disabled: z.array(z.string().min(1)).default([]),
+      // Load native `tools/index.js` modules from plugins. This EXECUTES plugin
+      // code in-process, so it is opt-in and default OFF.
+      allowNativeCode: z.boolean().default(false),
+      // Plugins installed from a source into the cache (~/.nova/plugins/cache),
+      // keyed by plugin name → the source they were fetched from. Written by
+      // `/plugin install`; the cache dir is scanned at startup like any other.
+      installed: z.record(pluginSourceSchema).default({}),
+      // Registered plugin marketplaces (catalogs), keyed by marketplace name →
+      // where its `marketplace.json` lives. Managed by `/plugin marketplace`.
+      marketplaces: z.record(pluginSourceSchema).default({}),
     })
     .default({
       enabled: false,
       projectDirs: [".nova/plugins", ".claude/plugins"],
       userDirs: ["~/.nova/plugins", "~/.claude/plugins"],
       disabled: [],
+      allowNativeCode: false,
+      installed: {},
+      marketplaces: {},
     }),
 });
 

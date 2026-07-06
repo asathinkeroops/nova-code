@@ -232,8 +232,8 @@ export function registerBuiltinSlashCommands(ctx: CliContext): void {
   });
   ctx.registry.register({
     name: "plugin",
-    description: "list loaded plugins and their contributions; enable/disable one by name",
-    argHint: "[list | enable <name> | disable <name>]",
+    description: "manage plugins: list, install/uninstall, enable/disable, marketplace",
+    argHint: "[list | install <src> | uninstall <n> | enable/disable <n> | marketplace …]",
     source: { kind: "builtin" },
     run: async (_c, args) => {
       await handlePlugin(ctx, args);

@@ -51,6 +51,7 @@ import { MODE_COMMAND_TOOLS, resolveModeDecision, resolvePermissionRules } from 
 import { classifyCommandRisk } from "./auto-classify.js";
 import { loadAgents } from "./agents.js";
 import { loadPlugins } from "./plugins/loader.js";
+import { DEFAULT_PLUGIN_CACHE_DIR } from "./plugins/install.js";
 import { readCliVersion } from "./version.js";
 import { UI_FRAME_MS } from "./ui/frame.js";
 import { appendToolDetail, loadDisplaySidecar } from "./display-sidecar.js";
@@ -183,8 +184,10 @@ export async function createContext(
     ? await loadPlugins({
         cwd: workspace,
         projectDirs: settings.plugins.projectDirs,
-        userDirs: settings.plugins.userDirs,
+        // Installed plugins live in the cache dir; scanned alongside user dirs.
+        userDirs: [...settings.plugins.userDirs, DEFAULT_PLUGIN_CACHE_DIR],
         disabled: settings.plugins.disabled,
+        allowNativeCode: settings.plugins.allowNativeCode,
         logger,
       })
     : { plugins: [], errors: [] };
@@ -266,19 +269,38 @@ export async function createContext(
   const backgroundManager = new BackgroundCommandManager();
   // LSP code intelligence: one manager per session, rooted at the workspace.
   // Servers are started lazily on first `lsp` tool call and disposed at exit.
+  const pluginLspServers = pluginResult.plugins.flatMap((p) => p.lspServers);
   const lspManager = settings.lsp.enabled
     ? new LspManager({
         root: workspace,
-        servers: resolveServers(settings.lsp.servers),
+        servers: resolveServers([...(settings.lsp.servers ?? []), ...pluginLspServers]),
         initTimeoutMs: settings.lsp.initTimeoutMs,
         requestTimeoutMs: settings.lsp.requestTimeoutMs,
         diagnosticsTimeoutMs: settings.lsp.diagnosticsTimeoutMs,
         logger,
       })
     : undefined;
+  // Plugin `bin/` dirs join PATH so their executables are on the shell path for
+  // bash / runInBackground (and the sandbox, which wraps the same command).
+  const pluginBinDirs = pluginResult.plugins.flatMap((p) => p.binDirs);
+  if (pluginBinDirs.length > 0) {
+    process.env.PATH = [...pluginBinDirs, process.env.PATH ?? ""].filter(Boolean).join(":");
+  }
   const tools = new ToolRegistry().registerAll(
     builtinTools(todoStore, skillsOpts, taskStore, backgroundManager, lspManager),
   );
+  // Native plugin tools (namespaced plugin__<name>__<tool>), registered before
+  // the agent reads tools.definitions(). Empty unless settings.plugins.allowNativeCode.
+  let pluginToolCount = 0;
+  for (const p of pluginResult.plugins) {
+    for (const h of p.tools) {
+      tools.register(h);
+      pluginToolCount++;
+    }
+  }
+  if (pluginToolCount > 0) {
+    logger.info({ added: pluginToolCount }, "plugin native tools registered");
+  }
 
   // MCP: connect configured servers and bridge their tools into the registry
   // before the agent reads `tools.definitions()`. A server that fails to connect
