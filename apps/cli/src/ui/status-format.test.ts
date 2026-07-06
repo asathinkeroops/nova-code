@@ -5,6 +5,7 @@ import {
   displayCwd,
   fitSegments,
   formatDuration,
+  formatElapsed,
   formatPercent,
   formatTokenCount,
   permissionModeIndicator,
@@ -25,6 +26,27 @@ describe("formatDuration", () => {
   });
   it("clamps negatives to 0s", () => {
     expect(formatDuration(-1000)).toBe("0s");
+  });
+});
+
+describe("formatElapsed", () => {
+  it("shows only seconds under a minute", () => {
+    expect(formatElapsed(40_000)).toBe("40s");
+    expect(formatElapsed(0)).toBe("0s");
+  });
+  it("shows minutes and seconds under an hour", () => {
+    expect(formatElapsed(90_000)).toBe("1m, 30s");
+    expect(formatElapsed(65_000)).toBe("1m, 5s");
+  });
+  it("shows hours, minutes, and seconds past an hour", () => {
+    expect(formatElapsed((1 * 3600 + 3 * 60 + 50) * 1000)).toBe("1h, 3m, 50s");
+  });
+  it("keeps a zero minutes segment once hours are shown", () => {
+    expect(formatElapsed((2 * 3600 + 0 * 60 + 5) * 1000)).toBe("2h, 0m, 5s");
+  });
+  it("floors sub-second remainders and clamps negatives", () => {
+    expect(formatElapsed(1999)).toBe("1s");
+    expect(formatElapsed(-5000)).toBe("0s");
   });
 });
 
@@ -130,7 +152,10 @@ describe("permissionModeIndicator", () => {
   });
 
   it("labels accept-edits, auto, plan, and bypass in distinct colors (hint appended dim by the renderer)", () => {
-    expect(permissionModeIndicator("acceptEdits")).toEqual({ label: "⏵⏵ accept edits on", color: "green" });
+    expect(permissionModeIndicator("acceptEdits")).toEqual({
+      label: "⏵⏵ accept edits on",
+      color: "green",
+    });
     expect(permissionModeIndicator("auto")).toEqual({ label: "⏵⏵ auto mode on", color: "yellow" });
     expect(permissionModeIndicator("plan")).toEqual({ label: "⏸ plan mode on", color: "cyan" });
     expect(permissionModeIndicator("bypassPermissions")).toEqual({

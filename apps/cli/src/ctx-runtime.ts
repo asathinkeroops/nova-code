@@ -87,6 +87,7 @@ export function armToolSpinner(ctx: CliContext): void {
     ctx.spinner = ctx.screen.startSpinner(
       { words: WORKING_WORDS, tint: ACCENT_RGB, colorize: accent },
       INTERRUPT_HINT,
+      ctx.taskStartedAt ?? undefined,
     );
   }, TOOL_SPINNER_DELAY_MS);
 }

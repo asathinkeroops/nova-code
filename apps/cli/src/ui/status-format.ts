@@ -58,6 +58,21 @@ export function formatDuration(ms: number): string {
   return `${s}s`;
 }
 
+/**
+ * Elapsed time for the working spinner, e.g. `40s`, `1m, 30s`, `1h, 3m, 50s`.
+ * Comma-separated units, leading zero units dropped, seconds always shown,
+ * whole seconds (no decimals). Negative input clamps to `0s`.
+ */
+export function formatElapsed(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return `${h}h, ${m}m, ${s}s`;
+  if (m > 0) return `${m}m, ${s}s`;
+  return `${s}s`;
+}
+
 /** Compact token magnitude: 1_500_000 → "1.5M", 1_234 → "1.2K", 512 → "512". */
 export function formatTokenCount(tokens: number): string {
   if (tokens >= 1_000_000) {
@@ -78,11 +93,7 @@ export function formatTokenCount(tokens: number): string {
  * their sum is the full prompt size. Returns null when no prompt tokens have
  * been seen yet — there is no meaningful rate to show.
  */
-export function cacheHitRate(
-  read: number,
-  creation: number,
-  uncachedInput: number,
-): number | null {
+export function cacheHitRate(read: number, creation: number, uncachedInput: number): number | null {
   const total = read + creation + uncachedInput;
   if (total <= 0) return null;
   return read / total;

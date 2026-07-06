@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Box, Text } from "ink";
 import { bold, type Rgb, useTruecolor } from "../colors.js";
 import { UI_FRAME_MS } from "./frame.js";
-import { formatTokenCount } from "./status-format.js";
+import { formatElapsed, formatTokenCount } from "./status-format.js";
 import type { SpinnerSpec } from "./store.js";
 
 const FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -46,10 +46,12 @@ export function Spinner({ spec }: SpinnerProps): React.ReactElement {
     return () => clearInterval(id);
   }, [tickMs]);
 
-  const elapsed = ((Date.now() - spec.startedAt) / 1000).toFixed(1);
+  // spec.startedAt is anchored to the task (turn) start, not this spinner
+  // instance, so the timer counts up across the whole task instead of resetting
+  // when the working spinner is recreated per model-call / tool phase.
+  const elapsed = formatElapsed(Date.now() - spec.startedAt);
   const frameChar = FRAMES[frame % FRAMES.length] ?? "";
-  const upStr =
-    spec.inputTokens != null ? ` · ↑ ${formatTokenCount(spec.inputTokens)} tok` : "";
+  const upStr = spec.inputTokens != null ? ` · ↑ ${formatTokenCount(spec.inputTokens)} tok` : "";
   const downStr = spec.tokens != null ? ` · ↓ ~${formatTokenCount(spec.tokens)} tok` : "";
   const tokenStr = `${upStr}${downStr}`;
   const hintStr = spec.hint ? ` · ${spec.hint}` : "";
@@ -58,11 +60,11 @@ export function Spinner({ spec }: SpinnerProps): React.ReactElement {
   if (canShimmer && tint) {
     const head = shimmer(frameChar, frame + 1, tint);
     const word = shimmer(spec.activeWord, frame, tint);
-    line = `${head} ${word} · ${elapsed}s${tokenStr}${hintStr}`;
+    line = `${head} ${word} · ${elapsed}${tokenStr}${hintStr}`;
   } else {
     const renderedFrame = isStatic ? frameChar : bold(colorize(frameChar));
     const word = isStatic ? spec.activeWord : bold(colorize(spec.activeWord));
-    line = `${renderedFrame} ${word} · ${elapsed}s${tokenStr}${hintStr}`;
+    line = `${renderedFrame} ${word} · ${elapsed}${tokenStr}${hintStr}`;
   }
 
   return (

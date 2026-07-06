@@ -46,9 +46,13 @@ export function registerUiHooks(ctx: CliContext): void {
 
   // `pre_request` is blocking — returning undefined keeps it advisory for us.
   ctx.agent.on("pre_request", () => {
+    // Anchor the working-spinner timer to the first request of the turn, so it
+    // counts total task time rather than resetting each model-call / tool phase.
+    const startedAt = (ctx.taskStartedAt ??= Date.now());
     ctx.spinner = ctx.screen.startSpinner(
       { words: WORKING_WORDS, tint: MAGENTA_RGB, colorize: magenta },
       INTERRUPT_HINT,
+      startedAt,
     );
   });
 
@@ -96,12 +100,14 @@ export function registerUiHooks(ctx: CliContext): void {
   });
 
   ctx.agent.on("post_turn", () => {
+    ctx.taskStartedAt = null;
     stopSpinner(ctx);
     refreshTodoFooter(ctx);
     void refreshTaskFooter(ctx);
   });
 
   ctx.agent.on("error", ({ message }) => {
+    ctx.taskStartedAt = null;
     stopSpinner(ctx);
     ctx.screen.card(`${message}\nsee log: ${ctx.logPath}`, {
       kind: "error",
