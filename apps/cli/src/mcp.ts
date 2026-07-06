@@ -4,11 +4,16 @@ import { makeAuthProviderFactory } from "./mcp-oauth.js";
 
 /**
  * Map validated `settings.mcp.servers` onto transport-agnostic specs, dropping
- * disabled servers and the `enabled` flag itself. Returns null when MCP is
- * turned off or no server is enabled, so the caller can skip the whole
+ * disabled servers and the `enabled` flag itself. `extraSpecs` (e.g. plugin
+ * `.mcp.json` servers, already namespaced) are merged on top. Returns null when
+ * MCP is turned off or no server is enabled, so the caller can skip the whole
  * subsystem (no manager, no connect, no shutdown).
  */
-export function buildMcpManager(settings: Settings, logger: Logger): McpManager | null {
+export function buildMcpManager(
+  settings: Settings,
+  logger: Logger,
+  extraSpecs: Record<string, McpServerSpec> = {},
+): McpManager | null {
   if (!settings.mcp.enabled) return null;
   const specs: Record<string, McpServerSpec> = {};
   for (const [name, cfg] of Object.entries(settings.mcp.servers)) {
@@ -30,6 +35,7 @@ export function buildMcpManager(settings: Settings, logger: Logger): McpManager 
       };
     }
   }
+  for (const [name, spec] of Object.entries(extraSpecs)) specs[name] = spec;
   if (Object.keys(specs).length === 0) return null;
   return new McpManager(specs, {
     logger,

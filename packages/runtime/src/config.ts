@@ -782,6 +782,29 @@ export const settingsSchema = z.object({
   //   - Stop:            runs after the turn ends (advisory, side-effect only).
   // Disable the whole subsystem with `hooks.enabled: false`.
   hooks: hooksConfigSchema.default({}),
+  // Plugins: distributable bundles that package the existing extension types
+  // (slash commands, sub-agents, skills, shell hooks, MCP servers) under one
+  // directory + manifest, so a whole workflow can be shared and versioned as a
+  // unit. Claude-Code-compatible layout: the manifest lives at
+  // `.nova-plugin/plugin.json` (preferred) or `.claude-plugin/plugin.json`
+  // (fallback, so stock Claude Code plugins load unchanged); component dirs
+  // (commands/, agents/, skills/, hooks/hooks.json, .mcp.json) sit at the plugin
+  // root. Discovery mirrors the other markdown loaders — project dirs before
+  // user dirs, first-name-wins, built-ins always win. Default OFF (opt-in). Opt
+  // a single installed plugin out by name via `disabled`.
+  plugins: z
+    .object({
+      enabled: z.boolean().default(false),
+      projectDirs: z.array(z.string().min(1)).default([".nova/plugins", ".claude/plugins"]),
+      userDirs: z.array(z.string().min(1)).default(["~/.nova/plugins", "~/.claude/plugins"]),
+      disabled: z.array(z.string().min(1)).default([]),
+    })
+    .default({
+      enabled: false,
+      projectDirs: [".nova/plugins", ".claude/plugins"],
+      userDirs: ["~/.nova/plugins", "~/.claude/plugins"],
+      disabled: [],
+    }),
 });
 
 export type Settings = z.infer<typeof settingsSchema>;

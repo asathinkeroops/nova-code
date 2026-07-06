@@ -533,7 +533,8 @@ describe("renderItemToString bash command layout", () => {
       result: undefined,
     }) as RenderItem;
 
-  const stripAnsi = (s: string): string => s.replace(/\[[0-9;]*m/g, "");
+  // eslint-disable-next-line no-control-regex -- ANSI SGR sequences require the ESC control char
+  const stripAnsi = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, "");
 
   const headerLine = (out: string): string => stripAnsi(out).split("\n")[0] ?? "";
 

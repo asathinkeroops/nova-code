@@ -16,6 +16,7 @@ import type { PermissionEngine } from "@nova/safety";
 import type { SandboxControl } from "@nova/sandbox";
 import type { AgentRegistry } from "@nova/subagent";
 import type { GoalState } from "./goal.js";
+import type { LoadedPlugin } from "./plugins/loader.js";
 import type { UserHooks } from "./user-hooks.js";
 import type { SnapshotStore } from "./snapshots.js";
 import type { Screen, Spinner } from "./screen.js";
@@ -153,6 +154,8 @@ export interface CliContext {
   readonly agents: AgentRegistry;
   /** Connected MCP servers (tools already bridged into `tools`), or null when disabled/none. */
   readonly mcp: McpManager | null;
+  /** Loaded plugins (contributions already folded into the registries); read by `/plugin`. */
+  readonly plugins: readonly LoadedPlugin[];
   readonly dispatch: ToolExecutor;
   readonly fileLedger: FileAccessLedger;
   readonly permission: PermissionEngine;
