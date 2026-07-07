@@ -18,7 +18,7 @@ function settingsWith(mcp: unknown) {
   return parseSettings({
     apiKey: "x",
     baseURL: "https://api.anthropic.com",
-    model: "claude",
+    model: "pro",
     ...(mcp ? { mcp } : {}),
   });
 }

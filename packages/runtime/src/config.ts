@@ -226,7 +226,20 @@ export const modelModalitiesSchema = z.object({
 
 export type ModelModalities = z.infer<typeof modelModalitiesSchema>;
 
-// A named model "profile" / performance tier (flash / pro / …) in the `models`
+/** Discrete extended-thinking levels, shared by the global `thinking.level`
+ *  setting and the per-tier `thinking` override in a model profile. Mirrors
+ *  @nova/core's THINKING_LEVELS (runtime is a leaf and can't import core). */
+export const thinkingLevelSchema = z.enum(["off", "low", "medium", "high", "max"]);
+
+export type ThinkingLevel = z.infer<typeof thinkingLevelSchema>;
+
+/** Reasoning depth for a model that doesn't pin its own: the fallback used for
+ *  bare model ids and any tier profile that omits `thinking`. Thinking is a
+ *  per-tier property (there is no global `thinking` setting), so this is the
+ *  only floor. "max" preserves the historical default. */
+export const DEFAULT_THINKING_LEVEL: ThinkingLevel = "max";
+
+// A named model "profile" / performance tier (lite / pro / max) in the `models`
 // table. Every entry is an object; the `id` is the concrete model id sent to
 // the provider. Per-tier overrides (maxTokens, contextWindowSize, baseURL,
 // apiKey) are all honored — maxTokens and contextWindowSize fall back to
@@ -250,6 +263,16 @@ export const modelProfileSchema = z.object({
     .describe("Per-tier per-response output cap."),
   baseURL: z.string().url().optional().describe("Per-tier endpoint override."),
   apiKey: z.string().min(1).optional().describe("Per-tier API key override."),
+  // Per-tier reasoning depth: selecting this tier sets the active thinking
+  // level (the CLI seeds ctx.thinkingLevel from it on startup and on /model
+  // switch, so /effort can still override within a session). Omitted → the
+  // tier inherits the global `thinking.level`. This is what makes lite/pro/max
+  // a real capability ladder on a single model id.
+  thinking: thinkingLevelSchema
+    .optional()
+    .describe(
+      "Per-tier extended-thinking level; falls back to the global thinking.level when unset.",
+    ),
   modalities: modelModalitiesSchema.default({ input: ["text"] }),
 });
 
@@ -261,20 +284,33 @@ export const modelEntrySchema = modelProfileSchema;
 export type ModelEntry = z.infer<typeof modelEntrySchema>;
 
 // Default performance tiers, so `/model` is usable out of the box without any
-// config. DeepSeek-flavoured to match this build's tuning (the same two ids the
-// built-in pricing table carries); override by setting `models` in
-// nova.config.json — providing the key REPLACES this default wholesale.
+// config. Three fixed rungs — lite / pro / max — DeepSeek-flavoured to match
+// this build's tuning. `lite` maps to the cheap `deepseek-v4-flash`; `pro` and
+// `max` share the capable `deepseek-v4-pro` id and differ only in reasoning
+// depth via the per-tier `thinking` level (low → high → max), so the ladder is
+// a genuine speed/cost ↔ capability trade-off on the two available models.
+// Override by setting `models` in nova.config.json — providing the key REPLACES
+// this default wholesale.
 export const DEFAULT_MODELS: Record<string, ModelProfile> = {
-  flash: {
+  lite: {
     id: "deepseek-v4-flash",
     maxTokens: 384_000,
     contextWindowSize: 1_000_000,
+    thinking: "low",
     modalities: { input: ["text"] },
   },
   pro: {
     id: "deepseek-v4-pro",
     maxTokens: 384_000,
     contextWindowSize: 1_000_000,
+    thinking: "high",
+    modalities: { input: ["text"] },
+  },
+  max: {
+    id: "deepseek-v4-pro",
+    maxTokens: 384_000,
+    contextWindowSize: 1_000_000,
+    thinking: "max",
     modalities: { input: ["text"] },
   },
 };
@@ -283,8 +319,9 @@ export const DEFAULT_MODELS: Record<string, ModelProfile> = {
 // picker. Keyed by the same names as DEFAULT_MODELS; a user `models` entry in
 // profile-object form can override its own via `description`.
 export const DEFAULT_MODEL_DESCRIPTIONS: Record<string, string> = {
-  flash: "fast & cheap — everyday edits, quick Q&A",
-  pro: "most capable — hard reasoning, long tasks",
+  lite: "fast & cheap — everyday edits, quick Q&A (light thinking)",
+  pro: "balanced — most coding & reasoning, the default (deep thinking)",
+  max: "most capable — hardest reasoning, long tasks (max thinking)",
 };
 
 // Default selected tier (a key into DEFAULT_MODELS) and provider endpoint —
@@ -296,7 +333,7 @@ export const DEFAULT_MODEL_TIER = "pro";
 // need the main `pro` tier. Only meaningful when `models` still carries it;
 // since a user `models` override REPLACES DEFAULT_MODELS wholesale, callers must
 // fall back to the main model when this key is absent.
-export const DEFAULT_CHEAP_TIER = "flash";
+export const DEFAULT_CHEAP_TIER = "lite";
 export const DEFAULT_BASE_URL = "https://api.deepseek.com/anthropic";
 
 // Default goal-mode knobs (the object-level fallback when `goal` is absent).
@@ -330,15 +367,19 @@ export type PluginSource = z.infer<typeof pluginSourceSchema>;
 
 export const settingsSchema = z.object({
   apiKey: z.string().min(1).optional(),
+  // The active tier: a KEY into `models` (lite/pro/max), never a bare model id.
+  // Enforced by the schema-level refine below — a value that isn't a configured
+  // tier is a config error. Tier → concrete id resolution is alias-only
+  // (resolveModelId); switch at runtime with /model.
   model: z.string().default(DEFAULT_MODEL_TIER),
-  // Named model tiers, e.g. { "flash": { id: "deepseek-v4-flash", ... }, "pro": { ... } }.
-  // The `model` field above may be either a bare model id OR a key into this
-  // table; resolveModelId() maps a name to its concrete id and passes unknown
-  // names through unchanged, so existing single-id configs keep working.
+  // Named model tiers, e.g. { "lite": { id: "deepseek-v4-flash", ... }, "pro": { ... } }.
   // Every value is a profile object carrying its own maxTokens / contextWindowSize
-  // (and optionally baseURL / apiKey). Switch tiers at runtime with /model.
-  // Defaults to DEFAULT_MODELS (flash/pro) so /model works with no config;
-  // setting this key REPLACES that default wholesale.
+  // / thinking (and optionally baseURL / apiKey). Distinct tiers may share one
+  // concrete `id` and differ only in their per-tier knobs (e.g. pro/max both →
+  // deepseek-v4-pro, differing in `thinking`), which is why all tier lookups are
+  // keyed by the alias, never reverse-mapped from the id. Defaults to
+  // DEFAULT_MODELS (lite/pro/max) so /model works with no config; setting this
+  // key REPLACES that default wholesale.
   models: z.record(modelEntrySchema).default({ ...DEFAULT_MODELS }),
   baseURL: z.string().url().default(DEFAULT_BASE_URL),
   // Which provider profile drives thinking-param and error/retry behavior.
@@ -446,14 +487,10 @@ export const settingsSchema = z.object({
       pretty: z.boolean().default(true),
     })
     .default({ level: "info", pretty: true }),
-  thinking: z
-    .object({
-      level: z.enum(["off", "low", "medium", "high", "max"]).default("max"),
-      // Explicit override wins over the level mapping when set; lets users
-      // dial in an exact `budget_tokens` without inventing a new level.
-      budgetTokens: z.number().int().positive().optional(),
-    })
-    .default({ level: "max" }),
+  // Extended-thinking depth is NOT a global setting — it lives per model tier
+  // (`models.<tier>.thinking`), seeded into the active session on startup and on
+  // /model switch. /effort adjusts it in-session (and persists into the active
+  // tier); bare ids / tiers that omit it fall back to DEFAULT_THINKING_LEVEL.
   memory: z
     .object({
       filenames: z
@@ -842,49 +879,54 @@ export const settingsSchema = z.object({
       installed: {},
       marketplaces: {},
     }),
-});
+  })
+  // The active `model` must name a configured tier (a key in `models`), not a
+  // bare provider id — tier resolution is alias-only. A stray id here would
+  // silently miss every per-tier lookup (maxTokens/contextWindow/thinking/…), so
+  // reject it at the boundary with an actionable message instead.
+  .superRefine((val, ctx) => {
+    if (!Object.prototype.hasOwnProperty.call(val.models, val.model)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["model"],
+        message: `model "${val.model}" is not a configured tier — set it to one of: ${Object.keys(
+          val.models,
+        ).join(", ")}`,
+      });
+    }
+  });
 
 export type Settings = z.infer<typeof settingsSchema>;
 
 /**
- * Resolve a model name — either a key in `settings.models` or a bare model id —
- * to the concrete id sent to the provider. Unknown names pass through unchanged,
- * so a raw id in `settings.model` (or a `--model <id>` override) still works
- * even with no `models` table.
+ * Resolve a model tier name to the concrete id sent to the provider. Tier
+ * resolution is ALIAS-ONLY: `name` is expected to be a key in `settings.models`
+ * (the main `model` is validated as such — see {@link settingsSchema}). A name
+ * that isn't a configured tier passes through unchanged — this is the escape
+ * hatch for the auxiliary model fields (`subagent.model`, `goal.evalModel`,
+ * `permissions.autoMode.model`) that may name a bare provider id directly; the
+ * main `model` never hits it.
  */
 export function resolveModelId(settings: Settings, name: string): string {
-  const entry = settings.models[name];
-  if (entry === undefined) return name;
-  return entry.id;
+  return settings.models[name]?.id ?? name;
 }
 
 /**
- * The context-window budget in effect for a given model tier: the tier's own
- * `contextWindowSize` when set (profile-object form), else the top-level
- * `DEFAULT_CONTEXT_WINDOW_SIZE`. `name` is a tier key or a bare id; a bare id
- * also matches a profile tier that resolves to the same concrete model, so a
- * config with `model: "deepseek-v4-pro"` still picks up the "pro" tier's window.
- * The default value stays the single fallback and is never mutated, so this
- * can be called fresh at each read site as /model switches the active tier.
+ * The context-window budget for a model tier: the tier's own `contextWindowSize`
+ * (always present — the profile schema defaults it), else
+ * {@link DEFAULT_CONTEXT_WINDOW_SIZE} for a name that isn't a configured tier.
+ * ALIAS-ONLY: matched by tier key, never by reverse-mapping a concrete id (tiers
+ * can share one id, so id-matching would be ambiguous). The default is never
+ * mutated, so this can be called fresh at each read site as /model switches.
  */
 export function resolveContextWindowSize(settings: Settings, name: string): number {
-  const direct = settings.models[name];
-  if (direct?.contextWindowSize) {
-    return direct.contextWindowSize;
-  }
-  const id = resolveModelId(settings, name);
-  for (const entry of Object.values(settings.models)) {
-    if (entry.id === id && entry.contextWindowSize) {
-      return entry.contextWindowSize;
-    }
-  }
-  return DEFAULT_CONTEXT_WINDOW_SIZE;
+  return settings.models[name]?.contextWindowSize ?? DEFAULT_CONTEXT_WINDOW_SIZE;
 }
 
 /**
  * One-line description for a model tier, shown in the /model picker. Prefers a
  * profile entry's own `description`, then the built-in blurb for a known tier
- * name (flash/pro), and falls back to "" when there's nothing to show.
+ * name (lite/pro/max), and falls back to "" when there's nothing to show.
  */
 export function modelDescription(settings: Settings, name: string): string {
   const entry = settings.models[name];
@@ -893,37 +935,31 @@ export function modelDescription(settings: Settings, name: string): string {
 }
 
 /**
- * The per-response output cap in effect for a given model tier, resolved the
- * same way as {@link resolveContextWindowSize}: the tier's own `maxTokens`
- * first, then a same-id profile match, then {@link DEFAULT_MAX_TOKENS}.
+ * The per-response output cap for a model tier: the tier's own `maxTokens`
+ * (always present — schema default), else {@link DEFAULT_MAX_TOKENS}.
+ * ALIAS-ONLY, matched by tier key (see {@link resolveContextWindowSize}).
  */
 export function resolveMaxTokens(settings: Settings, name: string): number {
-  const direct = settings.models[name];
-  if (direct?.maxTokens) {
-    return direct.maxTokens;
-  }
-  const id = resolveModelId(settings, name);
-  for (const entry of Object.values(settings.models)) {
-    if (entry.id === id && entry.maxTokens) {
-      return entry.maxTokens;
-    }
-  }
-  return DEFAULT_MAX_TOKENS;
+  return settings.models[name]?.maxTokens ?? DEFAULT_MAX_TOKENS;
 }
 
 /**
- * The input/output modalities for a given model tier, resolved the same way as
- * {@link resolveMaxTokens}: the tier's own `modalities` first, then a same-id
- * profile match, then a text-only fallback.
+ * The extended-thinking level for a model tier: the tier's own `thinking`, else
+ * {@link DEFAULT_THINKING_LEVEL}. Thinking lives entirely per-tier (there is no
+ * global setting), so this is the single source of the active reasoning depth.
+ * ALIAS-ONLY, matched by tier key (see {@link resolveContextWindowSize}).
+ */
+export function resolveThinkingLevel(settings: Settings, name: string): ThinkingLevel {
+  return settings.models[name]?.thinking ?? DEFAULT_THINKING_LEVEL;
+}
+
+/**
+ * The input/output modalities for a model tier: the tier's own `modalities`
+ * (always present — schema default), else a text-only fallback. ALIAS-ONLY,
+ * matched by tier key (see {@link resolveContextWindowSize}).
  */
 export function resolveModelModalities(settings: Settings, name: string): ModelModalities {
-  const direct = settings.models[name];
-  if (direct?.modalities) return direct.modalities;
-  const id = resolveModelId(settings, name);
-  for (const entry of Object.values(settings.models)) {
-    if (entry.id === id && entry.modalities) return entry.modalities;
-  }
-  return { input: ["text"] };
+  return settings.models[name]?.modalities ?? { input: ["text"] };
 }
 
 /** Normalize a raw locale to a BCP-47-ish tag: take the part before any

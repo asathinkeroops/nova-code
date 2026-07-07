@@ -75,14 +75,19 @@ describe("settingsSchema", () => {
 });
 
 describe("model tiers", () => {
-  it("defaults models to the built-in flash/pro tiers", () => {
+  it("defaults models to the built-in lite/pro/max tiers", () => {
     expect(parseSettings({}).models).toEqual({ ...DEFAULT_MODELS });
   });
 
   it("a provided models table replaces the default wholesale", () => {
-    const s = parseSettings({ models: { mini: { id: "some-mini" } } });
+    const s = parseSettings({ model: "mini", models: { mini: { id: "some-mini" } } });
     expect(s.models).toEqual({
-      mini: { id: "some-mini", maxTokens: DEFAULT_MAX_TOKENS, contextWindowSize: DEFAULT_CONTEXT_WINDOW_SIZE, modalities: { input: ["text"] } },
+      mini: {
+        id: "some-mini",
+        maxTokens: DEFAULT_MAX_TOKENS,
+        contextWindowSize: DEFAULT_CONTEXT_WINDOW_SIZE,
+        modalities: { input: ["text"] },
+      },
     });
   });
 
@@ -112,22 +117,32 @@ describe("model tiers", () => {
   });
 
   it("resolves an alias key to its concrete id", () => {
-    const s = parseSettings({ models: { flash: { id: "deepseek-v4-flash" } } });
+    const s = parseSettings({ model: "flash", models: { flash: { id: "deepseek-v4-flash" } } });
     expect(resolveModelId(s, "flash")).toBe("deepseek-v4-flash");
   });
 
-  it("passes an unknown name through unchanged (bare id)", () => {
-    const s = parseSettings({ models: { flash: { id: "deepseek-v4-flash" } } });
+  it("passes an unknown name through unchanged (aux-model bare id escape hatch)", () => {
+    const s = parseSettings({ models: { flash: { id: "deepseek-v4-flash" }, pro: { id: "x" } } });
     expect(resolveModelId(s, "claude-sonnet-4-5")).toBe("claude-sonnet-4-5");
+  });
+
+  it("rejects a `model` that isn't a configured tier (alias-only)", () => {
+    expect(() =>
+      settingsSchema.parse({ model: "deepseek-v4-pro", models: { pro: { id: "deepseek-v4-pro" } } }),
+    ).toThrow(/not a configured tier/);
+  });
+
+  it("accepts a `model` that names a configured tier", () => {
+    const s = parseSettings({ model: "pro", models: { pro: { id: "deepseek-v4-pro" } } });
+    expect(s.model).toBe("pro");
   });
 });
 
 describe("resolveMaxTokens", () => {
-  const base = (extra: Record<string, unknown> = {}) =>
-    parseSettings({ ...extra });
+  const base = (extra: Record<string, unknown> = {}) => parseSettings({ ...extra });
 
   it("falls back to DEFAULT_MAX_TOKENS when the tier has no override", () => {
-    const s = base({ models: { flash: { id: "deepseek-v4-flash" } } });
+    const s = base({ model: "flash", models: { flash: { id: "deepseek-v4-flash" } } });
     expect(resolveMaxTokens(s, "flash")).toBe(DEFAULT_MAX_TOKENS);
   });
 
@@ -136,9 +151,9 @@ describe("resolveMaxTokens", () => {
     expect(resolveMaxTokens(s, "pro")).toBe(8192);
   });
 
-  it("matches a profile tier by resolved id when given a bare model id", () => {
+  it("is alias-only: a bare id matching a tier's id does NOT resolve to it", () => {
     const s = base({ models: { pro: { id: "deepseek-v4-pro", maxTokens: 8192 } } });
-    expect(resolveMaxTokens(s, "deepseek-v4-pro")).toBe(8192);
+    expect(resolveMaxTokens(s, "deepseek-v4-pro")).toBe(DEFAULT_MAX_TOKENS);
   });
 
   it("falls back for an unknown name with no matching tier", () => {
@@ -148,11 +163,10 @@ describe("resolveMaxTokens", () => {
 });
 
 describe("resolveContextWindowSize", () => {
-  const base = (extra: Record<string, unknown> = {}) =>
-    parseSettings({ ...extra });
+  const base = (extra: Record<string, unknown> = {}) => parseSettings({ ...extra });
 
   it("falls back to DEFAULT_CONTEXT_WINDOW_SIZE when the tier has no override", () => {
-    const s = base({ models: { flash: { id: "deepseek-v4-flash" } } });
+    const s = base({ model: "flash", models: { flash: { id: "deepseek-v4-flash" } } });
     expect(resolveContextWindowSize(s, "flash")).toBe(DEFAULT_CONTEXT_WINDOW_SIZE);
   });
 
@@ -161,9 +175,9 @@ describe("resolveContextWindowSize", () => {
     expect(resolveContextWindowSize(s, "pro")).toBe(800_000);
   });
 
-  it("matches a profile tier by resolved id when given a bare model id", () => {
+  it("is alias-only: a bare id matching a tier's id does NOT resolve to it", () => {
     const s = base({ models: { pro: { id: "deepseek-v4-pro", contextWindowSize: 800_000 } } });
-    expect(resolveContextWindowSize(s, "deepseek-v4-pro")).toBe(800_000);
+    expect(resolveContextWindowSize(s, "deepseek-v4-pro")).toBe(DEFAULT_CONTEXT_WINDOW_SIZE);
   });
 
   it("falls back for an unknown name with no matching tier", () => {
@@ -180,7 +194,8 @@ describe("loadSettings", () => {
       path,
       JSON.stringify({
         apiKey: "sk-test-123",
-        model: "claude-haiku-4-5",
+        model: "haiku",
+        models: { haiku: { id: "claude-haiku-4-5" } },
         baseURL: "https://file.example.com",
         sessionDir: "/tmp/nova-sessions",
       }),
@@ -188,7 +203,7 @@ describe("loadSettings", () => {
     );
     const s = await loadSettings(path);
     expect(s.apiKey).toBe("sk-test-123");
-    expect(s.model).toBe("claude-haiku-4-5");
+    expect(s.model).toBe("haiku");
     expect(s.baseURL).toBe("https://file.example.com");
     expect(s.sessionDir).toBe("/tmp/nova-sessions");
   });

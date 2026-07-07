@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { isThinkingLevel } from "@nova/core";
+import { isThinkingLevel, type ThinkingLevel } from "@nova/core";
 import { loadSettings, type Settings } from "@nova/runtime";
 import { createContext } from "./context.js";
 import { runHeadless, type HeadlessOutputFormat } from "./headless.js";
@@ -27,28 +27,41 @@ interface CliOptions {
   dangerouslySkipPermissions?: boolean;
 }
 
+/** Session-only reasoning overrides parsed from `--think` (see CliRuntimeOptions). */
+interface ThinkOverride {
+  thinkingLevelOverride?: ThinkingLevel;
+  thinkingBudgetOverride?: number;
+}
+
 /**
- * Apply `--model` / `--max-turns` / `--think` onto the loaded settings.
- * Throws on an invalid `--think` value so each entry path can surface it in its
- * own way (Ink fatalExit vs. plain stderr).
+ * Apply `--model` / `--max-turns` onto the loaded settings, and parse `--think`
+ * into a session-only reasoning override (thinking is a per-tier property, not a
+ * persisted global). Throws on an invalid `--think` value so each entry path can
+ * surface it in its own way (Ink fatalExit vs. plain stderr).
  */
-function applyCliOverrides(settings: Settings, opts: CliOptions): void {
-  if (opts.model) settings.model = opts.model;
-  if (opts.maxTurns) settings.maxTurns = opts.maxTurns;
-  if (opts.think) {
-    const raw = opts.think.trim();
-    const asNumber = Number.parseInt(raw, 10);
-    if (Number.isFinite(asNumber) && asNumber > 0 && String(asNumber) === raw) {
-      settings.thinking.budgetTokens = asNumber;
-    } else if (isThinkingLevel(raw)) {
-      settings.thinking.level = raw;
-      settings.thinking.budgetTokens = undefined;
-    } else {
+function applyCliOverrides(settings: Settings, opts: CliOptions): ThinkOverride {
+  if (opts.model) {
+    // Alias-only: --model names a configured tier, not a bare provider id.
+    if (!Object.prototype.hasOwnProperty.call(settings.models, opts.model)) {
       throw new Error(
-        `invalid --think value: ${raw} (expected off|low|medium|high|max or a positive integer)`,
+        `--model "${opts.model}" is not a configured tier — one of: ${Object.keys(settings.models).join(", ")}`,
       );
     }
+    settings.model = opts.model;
   }
+  if (opts.maxTurns) settings.maxTurns = opts.maxTurns;
+  if (!opts.think) return {};
+  const raw = opts.think.trim();
+  const asNumber = Number.parseInt(raw, 10);
+  if (Number.isFinite(asNumber) && asNumber > 0 && String(asNumber) === raw) {
+    return { thinkingBudgetOverride: asNumber };
+  }
+  if (isThinkingLevel(raw)) {
+    return { thinkingLevelOverride: raw };
+  }
+  throw new Error(
+    `invalid --think value: ${raw} (expected off|low|medium|high|max or a positive integer)`,
+  );
 }
 
 /**
@@ -97,8 +110,9 @@ async function runHeadlessMode(
     );
   }
 
+  let think: ThinkOverride = {};
   try {
-    applyCliOverrides(settings, opts);
+    think = applyCliOverrides(settings, opts);
   } catch (err) {
     dieHeadless(err instanceof Error ? err.message : String(err), 2);
   }
@@ -132,6 +146,12 @@ async function runHeadlessMode(
       ...(opts.continue !== undefined ? { continue: opts.continue } : {}),
       ...(opts.noTranscript !== undefined ? { noTranscript: opts.noTranscript } : {}),
       ...(opts.noPretty !== undefined ? { noPretty: opts.noPretty } : {}),
+      ...(think.thinkingLevelOverride !== undefined
+        ? { thinkingLevelOverride: think.thinkingLevelOverride }
+        : {}),
+      ...(think.thinkingBudgetOverride !== undefined
+        ? { thinkingBudgetOverride: think.thinkingBudgetOverride }
+        : {}),
     });
   } catch (err) {
     dieHeadless(err instanceof Error ? err.message : String(err), 1);
@@ -157,10 +177,11 @@ async function run(positional: string[], opts: CliOptions): Promise<void> {
   });
   screen.mount();
 
+  let think: ThinkOverride = {};
   try {
     settings = await ensureSettings(settings, screen);
     try {
-      applyCliOverrides(settings, opts);
+      think = applyCliOverrides(settings, opts);
       // Seed the input-box permission mode from --permission-mode (still
       // shift+tab-cycleable afterwards), and arm the auto-approve bypass from
       // --dangerously-skip-permissions so it works in the REPL, not just -p.
@@ -183,6 +204,12 @@ async function run(positional: string[], opts: CliOptions): Promise<void> {
       ...(opts.continue !== undefined ? { continue: opts.continue } : {}),
       ...(opts.noTranscript !== undefined ? { noTranscript: opts.noTranscript } : {}),
       ...(opts.noPretty !== undefined ? { noPretty: opts.noPretty } : {}),
+      ...(think.thinkingLevelOverride !== undefined
+        ? { thinkingLevelOverride: think.thinkingLevelOverride }
+        : {}),
+      ...(think.thinkingBudgetOverride !== undefined
+        ? { thinkingBudgetOverride: think.thinkingBudgetOverride }
+        : {}),
     });
 
     await pruneOldSessions(ctx);
@@ -200,7 +227,7 @@ program
   .description("A terminal coding agent, deeply tuned for DeepSeek.")
   .argument("[prompt...]", "optional initial prompt (REPL still starts after it runs)")
   .option("-p, --prompt <text>", "run a single turn headless (print the answer and exit)")
-  .option("-m, --model <name>", "override model id")
+  .option("-m, --model <tier>", "override active model tier (a key in `models`, e.g. lite/pro/max)")
   .option(
     "-t, --think <level>",
     "extended thinking level (off|low|medium|high|max or a positive integer budget)",

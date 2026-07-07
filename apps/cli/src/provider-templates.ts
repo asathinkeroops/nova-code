@@ -59,9 +59,9 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
       baseURL: DEFAULT_BASE_URL,
       model: DEFAULT_MODEL_TIER,
       models: DEFAULT_MODELS,
-      // Goal mode on by default; judged by the cheap `flash` tier so the
+      // Goal mode on by default; judged by the cheap `lite` tier so the
       // after-each-turn check stays inexpensive. Persisted to nova.config.json.
-      goal: { ...DEFAULT_GOAL, evalModel: "flash" },
+      goal: { ...DEFAULT_GOAL, evalModel: "lite" },
     },
     apiKeyHint: "DeepSeek API key (input is masked)",
     recommended: true,

@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
 import { resolveBudget } from "@nova/core";
-import { resolveContextWindowSize } from "@nova/runtime";
+import { resolveContextWindowSize, resolveModelId } from "@nova/runtime";
 import { ACCENT_RGB, accent } from "./colors.js";
 import { TOOL_SPINNER_DELAY_MS, WORKING_WORDS } from "./constants.js";
 import { resolveSessionRates } from "./commands/usage.js";
@@ -29,6 +29,7 @@ export function refreshBanner(ctx: CliContext): void {
   ctx.screen.setBanner({
     version: ctx.version,
     model: ctx.settings.model,
+    modelId: resolveModelId(ctx.settings, ctx.settings.model),
     cwd: ctx.workspace,
     home: homedir(),
     sessionId: ctx.session.id,

@@ -11,7 +11,10 @@ import type { Card } from "./store.js";
 /** Data needed to render the startup banner (logo + session metadata). */
 export interface BannerProps {
   version: string;
+  /** Active tier alias (a key in `models`, e.g. "lite"/"pro"/"max"). */
   model: string;
+  /** Concrete provider model id the tier resolves to (e.g. "deepseek-v4-pro"). */
+  modelId?: string;
   cwd: string;
   home?: string;
   sessionId: string;

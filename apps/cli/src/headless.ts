@@ -56,6 +56,12 @@ export async function runHeadless(settings: Settings, opts: HeadlessOptions): Pr
     ...(opts.continue !== undefined ? { continue: opts.continue } : {}),
     ...(opts.noTranscript !== undefined ? { noTranscript: opts.noTranscript } : {}),
     ...(opts.noPretty !== undefined ? { noPretty: opts.noPretty } : {}),
+    ...(opts.thinkingLevelOverride !== undefined
+      ? { thinkingLevelOverride: opts.thinkingLevelOverride }
+      : {}),
+    ...(opts.thinkingBudgetOverride !== undefined
+      ? { thinkingBudgetOverride: opts.thinkingBudgetOverride }
+      : {}),
   });
 
   // `jsonl` streams intermediate events live; register the hooks and emit the

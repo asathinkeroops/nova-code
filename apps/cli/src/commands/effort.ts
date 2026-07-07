@@ -5,13 +5,27 @@ import { thinkingLevelLabel, refreshBanner, type CliContext } from "../context.j
 
 const TITLE = "/effort";
 
-async function persistThinking(ctx: CliContext): Promise<void> {
-  ctx.settings.thinking.level = ctx.thinkingLevel;
-  ctx.settings.thinking.budgetTokens = ctx.thinkingBudgetOverride;
+/** Reflect the current reasoning depth in the status line + banner. */
+function refreshThinkingUi(ctx: CliContext): void {
   ctx.screen.setThinkingLabel(thinkingLevelLabel(ctx));
   refreshBanner(ctx);
+}
+
+/**
+ * Persist a level change into the ACTIVE tier's profile — thinking lives
+ * per-tier now, so `/effort <level>` edits `models.<tier>.thinking` and a later
+ * /model switch re-seeds from it. A bare model id (not a configured tier) has no
+ * profile to write, so it stays session-only. The numeric budget override
+ * (ctx.thinkingBudgetOverride) is always session-only — there's no per-tier
+ * budget field — so it takes the lighter `refreshThinkingUi` path instead.
+ */
+async function persistTierThinking(ctx: CliContext): Promise<void> {
+  refreshThinkingUi(ctx);
+  const tier = ctx.settings.models[ctx.settings.model];
+  if (!tier) return;
+  tier.thinking = ctx.thinkingLevel;
   try {
-    await saveSettings({ thinking: ctx.settings.thinking });
+    await saveSettings({ models: ctx.settings.models });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     ctx.screen.card(`failed to save settings: ${msg}`, { kind: "error", title: TITLE });
@@ -34,17 +48,18 @@ export async function handleEffort(ctx: CliContext, arg: string): Promise<void> 
     }
     ctx.thinkingLevel = pick;
     ctx.thinkingBudgetOverride = undefined;
-    await persistThinking(ctx);
+    await persistTierThinking(ctx);
     ctx.screen.card(`${dim("thinking set to")} ${pick}`, { title: TITLE });
     return;
   }
 
   const asNumber = Number.parseInt(arg, 10);
   if (Number.isFinite(asNumber) && asNumber > 0 && String(asNumber) === arg) {
+    // Session-only numeric budget override (not persisted — no per-tier field).
     ctx.thinkingBudgetOverride = asNumber;
-    await persistThinking(ctx);
+    refreshThinkingUi(ctx);
     ctx.screen.card(
-      `${dim("thinking budget set to")} ${asNumber} ${dim(`tokens (level: ${ctx.thinkingLevel})`)}`,
+      `${dim("thinking budget set to")} ${asNumber} ${dim(`tokens (level: ${ctx.thinkingLevel}, this session)`)}`,
       { title: TITLE },
     );
     return;
@@ -52,12 +67,12 @@ export async function handleEffort(ctx: CliContext, arg: string): Promise<void> 
   if (isThinkingLevel(arg)) {
     ctx.thinkingLevel = arg;
     ctx.thinkingBudgetOverride = undefined;
-    await persistThinking(ctx);
+    await persistTierThinking(ctx);
     ctx.screen.card(`${dim("thinking set to")} ${arg}`, { title: TITLE });
     return;
   }
-  ctx.screen.card(
-    "expected off|low|medium|high|max or a positive integer",
-    { kind: "error", title: TITLE },
-  );
+  ctx.screen.card("expected off|low|medium|high|max or a positive integer", {
+    kind: "error",
+    title: TITLE,
+  });
 }

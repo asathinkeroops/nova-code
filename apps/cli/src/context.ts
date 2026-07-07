@@ -28,6 +28,7 @@ import {
   resolveMaxTokens,
   resolveModelId,
   resolveModelModalities,
+  resolveThinkingLevel,
   type Logger,
   type Settings,
 } from "@nova/runtime";
@@ -58,10 +59,7 @@ import { UI_FRAME_MS } from "./ui/frame.js";
 import { appendToolDetail, loadDisplaySidecar } from "./display-sidecar.js";
 import { appendCard, appendCardsCleared, loadCards } from "./card-store.js";
 import { registerUiHooks } from "./hooks.js";
-import {
-  restoreContextTokensFromTranscript,
-  restoreUsageFromTranscript,
-} from "./usage-restore.js";
+import { restoreContextTokensFromTranscript, restoreUsageFromTranscript } from "./usage-restore.js";
 import { UserHooks } from "./user-hooks.js";
 import { SnapshotStore } from "./snapshots.js";
 import { renderSkillsBlock } from "./skills-render.js";
@@ -462,8 +460,13 @@ export async function createContext(
     settings,
     model: buildModel(settings.model),
     predictModel: buildModel(settings.model, false),
-    thinkingLevel: settings.thinking.level,
-    thinkingBudgetOverride: settings.thinking.budgetTokens,
+    // Seed the active reasoning depth from the selected tier's per-tier
+    // `thinking` level (the lite/pro/max ladder; DEFAULT_THINKING_LEVEL for
+    // bare ids / tiers that omit it). A `--think` flag overrides it for this
+    // run. /effort adjusts it in-session; a later /model switch re-seeds from
+    // the new tier.
+    thinkingLevel: cliOpts.thinkingLevelOverride ?? resolveThinkingLevel(settings, settings.model),
+    thinkingBudgetOverride: cliOpts.thinkingBudgetOverride,
     goal: null,
     sessionName: null,
     spinner: null,

@@ -210,6 +210,8 @@ describe("refreshBanner", () => {
     const banner = setBanner.mock.calls[0]![0] as Record<string, unknown>;
     expect(banner.version).toBe("9.9.9");
     expect(banner.model).toBe(settings.model);
+    // Concrete id the active tier ("pro") resolves to, shown on the status line.
+    expect(banner.modelId).toBe("deepseek-v4-pro");
     expect(banner.cwd).toBe(workspace);
     expect(banner.sessionId).toBe("sess-1");
     expect(banner.thinkingLabel).toBe("high");

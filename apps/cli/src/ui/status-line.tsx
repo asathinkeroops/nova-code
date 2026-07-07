@@ -129,8 +129,13 @@ export function StatusLine({ store, shellMode = false }: StatusLineProps): React
   // First row: model / context / workspace / branch / directory.
   const main: StatusSegment[] = [];
   if (banner?.model) {
-    const window = contextWindowSize > 0 ? ` (${formatTokenCount(contextWindowSize)})` : "";
-    main.push({ icon: "◆", text: `${banner.model.toUpperCase()}${window}`, color: "magenta" });
+    // concrete-id · thinking-level · window, e.g. "deepseek-v4-pro · max · 1M".
+    // Prefer the resolved model id, falling back to the tier alias when it's
+    // absent; the thinking and window segments each drop when unavailable.
+    const window = contextWindowSize > 0 ? ` · ${formatTokenCount(contextWindowSize)}` : "";
+    const name = banner.modelId ?? banner.model;
+    const think = banner.thinkingLabel ? ` · ${banner.thinkingLabel}` : "";
+    main.push({ icon: "◆", text: `${name}${think}${window}`, color: "magenta" });
   }
   if (contextWindowSize > 0) {
     const pct = Math.min(100, Math.round((contextTokens / contextWindowSize) * 100));

@@ -27,6 +27,14 @@ export interface CliRuntimeOptions {
   continue?: boolean;
   noTranscript?: boolean;
   noPretty?: boolean;
+  /**
+   * Session-only reasoning-depth overrides from `--think`. Thinking is a
+   * per-tier property, so these are NOT persisted — they just seed
+   * ctx.thinkingLevel / ctx.thinkingBudgetOverride for this run, over the active
+   * tier's level. `--think <level>` sets the former; `--think <n>` the latter.
+   */
+  thinkingLevelOverride?: ThinkingLevel;
+  thinkingBudgetOverride?: number;
 }
 
 /**
