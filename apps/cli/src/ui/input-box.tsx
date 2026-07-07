@@ -52,6 +52,14 @@ export interface DisplayLine {
   content: string;
   bufStart: number;
   bufEnd: number;
+  /**
+   * True when this line is terminated by an explicit `\n` in the buffer (a
+   * Shift+Enter hard break) rather than a soft width-wrap. The newline char
+   * itself lives in the gap between this line's `bufEnd` and the next line's
+   * `bufStart`, so it belongs to no line's content — but the caret may still sit
+   * on it, which `findCursorPosition` resolves to the end of this line.
+   */
+  hardBreak?: boolean;
 }
 
 const POPUP_MAX_ROWS = 5;
@@ -62,6 +70,17 @@ const RULE_CHAR = "┄";
 const MIN_WIDTH = 20;
 const PROMPT_TEXT = "❯ ";
 const PROMPT_LEN = visibleWidth(PROMPT_TEXT);
+
+/**
+ * Clean text arriving from a keypress or the clipboard for the buffer: fold
+ * CRLF/CR line endings to `\n` so pasted multi-line text keeps its breaks, then
+ * strip every other control char (stray escape sequences must never land in the
+ * buffer). Newlines survive because the buffer now renders them as hard breaks.
+ */
+export function sanitizePastedText(text: string): string {
+  // eslint-disable-next-line no-control-regex
+  return text.replace(/\r\n?/g, "\n").replace(/[\x00-\x09\x0b-\x1f]/g, "");
+}
 
 export function wrapBuffer(buffer: string, width: number): DisplayLine[] {
   const firstCap = Math.max(1, width - 1 - PROMPT_LEN);
@@ -75,27 +94,44 @@ export function wrapBuffer(buffer: string, width: number): DisplayLine[] {
     const cap = lines.length === 0 ? firstCap : restCap;
     let j = i;
     let used = 0;
-    while (j < buffer.length) {
+    // Consume up to `cap` columns, stopping early at an explicit newline so it
+    // forces a hard line break regardless of remaining width.
+    while (j < buffer.length && buffer[j] !== "\n") {
       const w = charDisplayWidth(buffer, j);
       if (used + w > cap) break;
       used += w;
       j++;
     }
-    if (j === i) j = i + 1; // forward progress
-    lines.push({ content: buffer.slice(i, j), bufStart: i, bufEnd: j });
-    i = j;
+    if (j === i && buffer[i] !== "\n") j = i + 1; // forward progress (wide char at col 0)
+    const hardBreak = buffer[j] === "\n";
+    lines.push({ content: buffer.slice(i, j), bufStart: i, bufEnd: j, hardBreak });
+    if (hardBreak) {
+      i = j + 1; // skip the newline; it's part of no line's content
+      // A trailing newline needs an explicit empty final line so the caret has a
+      // row to land on after it.
+      if (i === buffer.length) {
+        lines.push({ content: "", bufStart: i, bufEnd: i });
+      }
+    } else {
+      i = j;
+    }
   }
   return lines;
 }
 
-function findCursorPosition(
+export function findCursorPosition(
   lines: DisplayLine[],
   cursor: number,
 ): { row: number; col: number } {
   for (let li = 0; li < lines.length; li++) {
     const dl = lines[li];
     if (!dl) continue;
-    const inLine = li === lines.length - 1 ? cursor <= dl.bufEnd : cursor < dl.bufEnd;
+    // The last line, and any line ending in a hard `\n` break, own the caret
+    // when it sits exactly at `bufEnd` (the newline offset) — that renders as the
+    // end of this line rather than the start of the next. Soft-wrapped lines keep
+    // the boundary offset on the following line's start.
+    const ownsEnd = li === lines.length - 1 || dl.hardBreak === true;
+    const inLine = ownsEnd ? cursor <= dl.bufEnd : cursor < dl.bufEnd;
     if (cursor >= dl.bufStart && inLine) {
       const col = visibleWidth(dl.content.slice(0, cursor - dl.bufStart));
       return { row: li, col };
@@ -125,11 +161,7 @@ export interface InputHitLayout {
  * a char boundary by walking display widths, so wide (CJK/emoji) chars map
  * correctly; a click past the line's end lands at its end.
  */
-export function hitTestInput(
-  layout: InputHitLayout,
-  row: number,
-  col: number,
-): number | null {
+export function hitTestInput(layout: InputHitLayout, row: number, col: number): number | null {
   const { lines, bodyRows, termRows, bottomChromeRows } = layout;
   // rowForLine(li) = base + li, so li is recovered by subtracting the base.
   const base = termRows - 1 - bottomChromeRows - bodyRows;
@@ -215,8 +247,7 @@ export function matchingFiles(query: string, files: string[], limit: number): st
     scored.push({ path, score });
   }
   scored.sort(
-    (a, b) =>
-      a.score - b.score || a.path.length - b.path.length || (a.path < b.path ? -1 : 1),
+    (a, b) => a.score - b.score || a.path.length - b.path.length || (a.path < b.path ? -1 : 1),
   );
   return scored.slice(0, limit).map((s) => s.path);
 }
@@ -357,11 +388,7 @@ interface LineSlice {
   showCursorAtEnd: boolean;
 }
 
-function buildLineWithCursor(
-  line: DisplayLine,
-  isCursorLine: boolean,
-  cursor: number,
-): LineSlice {
+function buildLineWithCursor(line: DisplayLine, isCursorLine: boolean, cursor: number): LineSlice {
   if (!isCursorLine) {
     return { content: line.content, cursorCol: null, showCursorAtEnd: false };
   }
@@ -555,8 +582,7 @@ export function InputBox({
   // Insert pasted clipboard text. Strip control chars (matches typed-paste
   // handling below) so escape sequences never land in the buffer.
   const insertClipboardText = (text: string): void => {
-    // eslint-disable-next-line no-control-regex
-    const clean = text.replace(/[\x00-\x1f]/g, "");
+    const clean = sanitizePastedText(text);
     if (clean.length > 0) insertAtCaret(clean);
   };
 
@@ -616,8 +642,7 @@ export function InputBox({
       return;
     }
     setInputMouseController({
-      hitTest: (row, col) =>
-        layoutRef.current ? hitTestInput(layoutRef.current, row, col) : null,
+      hitTest: (row, col) => (layoutRef.current ? hitTestInput(layoutRef.current, row, col) : null),
       moveCaret: (offset) => {
         setCursor(Math.max(0, Math.min(offset, bufferRef.current.length)));
         setSelection(null);
@@ -628,187 +653,198 @@ export function InputBox({
     return () => setInputMouseController(null);
   }, [mouseEnabled, active]);
 
-  useInput((input, key) => {
-    // Resolve a non-empty mouse selection to a `[lo, hi)` buffer range, captured
-    // before any clearing below so a Backspace/Delete can act on it.
-    const selLo = selection ? Math.min(selection.anchor, selection.head) : 0;
-    const selHi = selection ? Math.max(selection.anchor, selection.head) : 0;
-    const hasSelection = selHi > selLo;
+  useInput(
+    (input, key) => {
+      // Resolve a non-empty mouse selection to a `[lo, hi)` buffer range, captured
+      // before any clearing below so a Backspace/Delete can act on it.
+      const selLo = selection ? Math.min(selection.anchor, selection.head) : 0;
+      const selHi = selection ? Math.max(selection.anchor, selection.head) : 0;
+      const hasSelection = selHi > selLo;
 
-    if (key.ctrl && input === "c") {
-      onCancel();
-      return;
-    }
-    if (key.ctrl && input === "d") return;
+      if (key.ctrl && input === "c") {
+        onCancel();
+        return;
+      }
+      if (key.ctrl && input === "d") return;
 
-    // Backspace/Delete with an active mouse selection removes the whole selection
-    // (and parks the caret at its start) rather than a single char.
-    if ((key.backspace || key.delete) && hasSelection) {
-      replaceBuffer(buffer.slice(0, selLo) + buffer.slice(selHi), selLo);
-      return;
-    }
-    // Any other keystroke drops a mouse selection (matches editor behaviour: the
-    // next edit or caret move deselects). No-op when nothing is selected.
-    if (selection) setSelection(null);
+      // Backspace/Delete with an active mouse selection removes the whole selection
+      // (and parks the caret at its start) rather than a single char.
+      if ((key.backspace || key.delete) && hasSelection) {
+        replaceBuffer(buffer.slice(0, selLo) + buffer.slice(selHi), selLo);
+        return;
+      }
+      // Any other keystroke drops a mouse selection (matches editor behaviour: the
+      // next edit or caret move deselects). No-op when nothing is selected.
+      if (selection) setSelection(null);
 
-    if (key.return) {
-      // A selected file mention completes in place rather than submitting —
-      // Enter inserts the path and keeps you typing.
-      if (popup?.kind === "file") {
-        const pick = matches[effectivePopupCursor];
-        if (pick) {
-          completeMention(popup.mention, pick.name);
+      // Shift+Enter inserts a literal newline instead of submitting, so a prompt
+      // can span multiple lines. Terminals surface this in two forms Ink hands us
+      // distinctly from a plain Enter: a bare line feed (`\n`, the common
+      // Shift/Ctrl+Enter mapping — plain Enter is CR, `key.return`), or a modified
+      // return that carries the shift bit (kitty/CSI-u keyboard protocol).
+      if (input === "\n" || (key.return && key.shift)) {
+        replaceBuffer(buffer.slice(0, cursor) + "\n" + buffer.slice(cursor), cursor + 1);
+        return;
+      }
+      if (key.return) {
+        // A selected file mention completes in place rather than submitting —
+        // Enter inserts the path and keeps you typing.
+        if (popup?.kind === "file") {
+          const pick = matches[effectivePopupCursor];
+          if (pick) {
+            completeMention(popup.mention, pick.name);
+            return;
+          }
+        }
+        if (buffer.length === 0) return;
+        // A selected slash command submits as that command; otherwise submit the
+        // buffer verbatim.
+        const pick = popup?.kind === "slash" ? matches[effectivePopupCursor] : undefined;
+        const out = pick ? pick.name : buffer;
+        onSubmit(out);
+        clearBuffer();
+        return;
+      }
+      // Ink 5 maps macOS Backspace (\x7f) to key.delete; treat both as backward delete.
+      if (key.backspace || key.delete) {
+        if (cursor > 0) {
+          replaceBuffer(buffer.slice(0, cursor - 1) + buffer.slice(cursor), cursor - 1);
+        }
+        return;
+      }
+      if (key.upArrow) {
+        if (matches.length > 0) {
+          const next = (effectivePopupCursor - 1 + matches.length) % matches.length;
+          setPopupCursor(next);
+          scrollPopupTo(next);
           return;
         }
-      }
-      if (buffer.length === 0) return;
-      // A selected slash command submits as that command; otherwise submit the
-      // buffer verbatim.
-      const pick = popup?.kind === "slash" ? matches[effectivePopupCursor] : undefined;
-      const out = pick ? pick.name : buffer;
-      onSubmit(out);
-      clearBuffer();
-      return;
-    }
-    // Ink 5 maps macOS Backspace (\x7f) to key.delete; treat both as backward delete.
-    if (key.backspace || key.delete) {
-      if (cursor > 0) {
-        replaceBuffer(buffer.slice(0, cursor - 1) + buffer.slice(cursor), cursor - 1);
-      }
-      return;
-    }
-    if (key.upArrow) {
-      if (matches.length > 0) {
-        const next = (effectivePopupCursor - 1 + matches.length) % matches.length;
-        setPopupCursor(next);
-        scrollPopupTo(next);
+        // Recall an older prompt. Save the live draft the first time we leave it.
+        if (historyPos > 0) {
+          if (historyPos === history.length) setDraft(buffer);
+          const next = historyPos - 1;
+          setHistoryPos(next);
+          recall(history[next] ?? "");
+        }
         return;
       }
-      // Recall an older prompt. Save the live draft the first time we leave it.
-      if (historyPos > 0) {
-        if (historyPos === history.length) setDraft(buffer);
-        const next = historyPos - 1;
-        setHistoryPos(next);
-        recall(history[next] ?? "");
-      }
-      return;
-    }
-    if (key.downArrow) {
-      if (matches.length > 0) {
-        const next = (effectivePopupCursor + 1) % matches.length;
-        setPopupCursor(next);
-        scrollPopupTo(next);
+      if (key.downArrow) {
+        if (matches.length > 0) {
+          const next = (effectivePopupCursor + 1) % matches.length;
+          setPopupCursor(next);
+          scrollPopupTo(next);
+          return;
+        }
+        // Walk back toward newer prompts; past the newest, restore the draft.
+        if (historyPos < history.length) {
+          const next = historyPos + 1;
+          setHistoryPos(next);
+          recall(next === history.length ? draft : (history[next] ?? ""));
+        }
         return;
       }
-      // Walk back toward newer prompts; past the newest, restore the draft.
-      if (historyPos < history.length) {
-        const next = historyPos + 1;
-        setHistoryPos(next);
-        recall(next === history.length ? draft : history[next] ?? "");
+      // shift+tab cycles the permission mode. Ink reports it as tab+shift, so this
+      // must run BEFORE the plain-tab autocomplete branch or that would swallow it.
+      // Returns early regardless of popup state, so cycling works mid-popup too.
+      if (key.tab && key.shift) {
+        onCyclePermissionMode?.();
+        return;
       }
-      return;
-    }
-    // shift+tab cycles the permission mode. Ink reports it as tab+shift, so this
-    // must run BEFORE the plain-tab autocomplete branch or that would swallow it.
-    // Returns early regardless of popup state, so cycling works mid-popup too.
-    if (key.tab && key.shift) {
-      onCyclePermissionMode?.();
-      return;
-    }
-    if (key.tab) {
-      const pick = matches[effectivePopupCursor];
-      if (pick) {
-        if (popup?.kind === "file") {
-          completeMention(popup.mention, pick.name);
-        } else {
-          setBuffer(pick.name);
-          setCursor(pick.name.length);
+      if (key.tab) {
+        const pick = matches[effectivePopupCursor];
+        if (pick) {
+          if (popup?.kind === "file") {
+            completeMention(popup.mention, pick.name);
+          } else {
+            setBuffer(pick.name);
+            setCursor(pick.name.length);
+            setPopupDismissed(true);
+            setPopupCursor(0);
+            setPopupOffset(0);
+          }
+        }
+        return;
+      }
+      if (key.escape) {
+        if (!popupDismissed && matches.length > 0) {
           setPopupDismissed(true);
           setPopupCursor(0);
           setPopupOffset(0);
+          return;
         }
-      }
-      return;
-    }
-    if (key.escape) {
-      if (!popupDismissed && matches.length > 0) {
-        setPopupDismissed(true);
-        setPopupCursor(0);
-        setPopupOffset(0);
+        onEscape?.();
         return;
       }
-      onEscape?.();
-      return;
-    }
-    if (key.leftArrow) {
-      if (cursor > 0) setCursor(cursor - 1);
-      return;
-    }
-    if (key.rightArrow) {
-      if (buffer.length === 0 && placeholderText.length > 0) {
-        replaceBuffer(placeholderText, placeholderText.length);
+      if (key.leftArrow) {
+        if (cursor > 0) setCursor(cursor - 1);
         return;
       }
-      if (cursor < buffer.length) setCursor(cursor + 1);
-      return;
-    }
-    if (key.ctrl && input === "a") {
-      if (cursor !== 0) setCursor(0);
-      return;
-    }
-    if (key.ctrl && input === "e") {
-      if (cursor !== buffer.length) setCursor(buffer.length);
-      return;
-    }
-    if (key.ctrl && input === "u") {
-      if (cursor > 0) replaceBuffer(buffer.slice(cursor), 0);
-      return;
-    }
-    if (key.ctrl && input === "k") {
-      if (cursor < buffer.length) replaceBuffer(buffer.slice(0, cursor), cursor);
-      return;
-    }
-    if (key.ctrl && input === "w") {
-      if (cursor > 0) {
-        const left = buffer.slice(0, cursor);
-        const trimmed = left.replace(/\S*\s*$/, "");
-        replaceBuffer(trimmed + buffer.slice(cursor), trimmed.length);
+      if (key.rightArrow) {
+        if (buffer.length === 0 && placeholderText.length > 0) {
+          replaceBuffer(placeholderText, placeholderText.length);
+          return;
+        }
+        if (cursor < buffer.length) setCursor(cursor + 1);
+        return;
       }
-      return;
-    }
-    // Ctrl+V: paste from the clipboard. An image (screenshot / copied image) is
-    // saved to a file and inserted as its path; otherwise we fall back to the
-    // clipboard text so Ctrl+V still works as a normal paste (notably on Windows,
-    // where Ctrl+V *is* the paste key). On macOS, Cmd+V is owned by the terminal
-    // and never reaches us, so Ctrl+V is the image gesture there.
-    if (key.ctrl && input === "v") {
-      if (onClipboardPaste) {
-        void onClipboardPaste().then((res) => {
-          if (!res) return;
-          if (res.kind === "image") {
-            insertImagePath(res.path);
-            onImageAttached?.(res.path);
-          } else {
-            insertClipboardText(res.text);
-          }
-        });
+      if (key.ctrl && input === "a") {
+        if (cursor !== 0) setCursor(0);
+        return;
       }
-      return;
-    }
-    if (!input) return;
-    // A drag-and-dropped image file arrives as a single pasted path chunk;
-    // normalize it to a clean absolute path and treat it as an attachment.
-    const dropped = normalizeDroppedImagePath(input);
-    if (dropped) {
-      insertImagePath(dropped);
-      onImageAttached?.(dropped);
-      return;
-    }
-    // eslint-disable-next-line no-control-regex
-    const text = input.replace(/[\x00-\x1f]/g, "");
-    if (text.length === 0) return;
-    replaceBuffer(buffer.slice(0, cursor) + text + buffer.slice(cursor), cursor + text.length);
-  }, { isActive: active });
+      if (key.ctrl && input === "e") {
+        if (cursor !== buffer.length) setCursor(buffer.length);
+        return;
+      }
+      if (key.ctrl && input === "u") {
+        if (cursor > 0) replaceBuffer(buffer.slice(cursor), 0);
+        return;
+      }
+      if (key.ctrl && input === "k") {
+        if (cursor < buffer.length) replaceBuffer(buffer.slice(0, cursor), cursor);
+        return;
+      }
+      if (key.ctrl && input === "w") {
+        if (cursor > 0) {
+          const left = buffer.slice(0, cursor);
+          const trimmed = left.replace(/\S*\s*$/, "");
+          replaceBuffer(trimmed + buffer.slice(cursor), trimmed.length);
+        }
+        return;
+      }
+      // Ctrl+V: paste from the clipboard. An image (screenshot / copied image) is
+      // saved to a file and inserted as its path; otherwise we fall back to the
+      // clipboard text so Ctrl+V still works as a normal paste (notably on Windows,
+      // where Ctrl+V *is* the paste key). On macOS, Cmd+V is owned by the terminal
+      // and never reaches us, so Ctrl+V is the image gesture there.
+      if (key.ctrl && input === "v") {
+        if (onClipboardPaste) {
+          void onClipboardPaste().then((res) => {
+            if (!res) return;
+            if (res.kind === "image") {
+              insertImagePath(res.path);
+              onImageAttached?.(res.path);
+            } else {
+              insertClipboardText(res.text);
+            }
+          });
+        }
+        return;
+      }
+      if (!input) return;
+      // A drag-and-dropped image file arrives as a single pasted path chunk;
+      // normalize it to a clean absolute path and treat it as an attachment.
+      const dropped = normalizeDroppedImagePath(input);
+      if (dropped) {
+        insertImagePath(dropped);
+        onImageAttached?.(dropped);
+        return;
+      }
+      const text = sanitizePastedText(input);
+      if (text.length === 0) return;
+      replaceBuffer(buffer.slice(0, cursor) + text + buffer.slice(cursor), cursor + text.length);
+    },
+    { isActive: active },
+  );
 
   const rule = RULE_CHAR.repeat(width);
   const isEmpty = buffer.length === 0;
@@ -901,7 +937,8 @@ export function InputBox({
     if (active) {
       const cols = stdout?.columns ?? width;
       const promptOffset = cursorRow === 0 ? PROMPT_LEN : 0;
-      const row = cursorTracking.termRows - 1 - cursorTracking.bottomChromeRows - (bodyRows - cursorRow);
+      const row =
+        cursorTracking.termRows - 1 - cursorTracking.bottomChromeRows - (bodyRows - cursorRow);
       const col = 2 + promptOffset + cursorCol;
       setCursorTarget({
         row: Math.max(1, Math.min(row, cursorTracking.termRows - 1)),
@@ -920,7 +957,7 @@ export function InputBox({
     const content = mask ? "*".repeat(slice.content.length) : slice.content;
     return (
       <Box key={idx}>
-        <Text>{" "}</Text>
+        <Text> </Text>
         {idx === 0 ? <Text color={BASH_HEX}>{PROMPT_TEXT}</Text> : null}
         {styledSpans(
           content,
@@ -944,9 +981,7 @@ export function InputBox({
       {queuedMoreRow ? (
         <Text dimColor>{` ↳ +${queued.length - QUEUED_MAX_ROWS} more queued`}</Text>
       ) : null}
-      {matches.length > 0 && safeOffset > 0 ? (
-        <Text dimColor> ↑ {safeOffset} more</Text>
-      ) : null}
+      {matches.length > 0 && safeOffset > 0 ? <Text dimColor> ↑ {safeOffset} more</Text> : null}
       {matches.slice(safeOffset, safeOffset + POPUP_MAX_ROWS).map((m, i) => {
         const absIndex = i + safeOffset;
         const isSel = absIndex === effectivePopupCursor;
@@ -954,10 +989,7 @@ export function InputBox({
         // Truncate the name to the box width so a long file path never wraps
         // (which would throw off the popup row count fed to onMeasure).
         const label = truncateToWidth(m.name, Math.max(10, width - 4));
-        const nameWidth = Math.min(
-          20,
-          Math.max(...matches.map((mm) => visibleWidth(mm.name))),
-        );
+        const nameWidth = Math.min(20, Math.max(...matches.map((mm) => visibleWidth(mm.name))));
         // Pad to align descriptions (slash commands). File rows carry no
         // description, so they need no padding.
         const pad = m.description
@@ -1008,4 +1040,3 @@ export function InputBox({
     </Box>
   );
 }
-

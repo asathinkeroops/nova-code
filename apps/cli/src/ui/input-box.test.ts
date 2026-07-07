@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   commandTokenRange,
+  findCursorPosition,
   hitTestInput,
   historyRule,
   matchingFiles,
   mentionTokenAt,
+  sanitizePastedText,
   sessionNameBadge,
   wrapBuffer,
   type InputHitLayout,
@@ -137,6 +139,82 @@ describe("historyRule", () => {
     // left + badge + trail still spans the full frame width
     expect(left.length + badge.badge.length + badge.trail.length).toBe(60);
     expect(left).toContain(" History 3/9 ");
+  });
+});
+
+describe("wrapBuffer with explicit newlines", () => {
+  // Wide enough that width-wrapping never triggers; only `\n` breaks lines.
+  const W = 80;
+
+  it("breaks a line at each `\\n`, leaving the newline in no line's content", () => {
+    const lines = wrapBuffer("ab\ncd", W);
+    expect(lines.map((l) => l.content)).toEqual(["ab", "cd"]);
+    // First line spans [0,2); the `\n` at offset 2 belongs to neither line.
+    expect(lines[0]).toMatchObject({ bufStart: 0, bufEnd: 2, hardBreak: true });
+    expect(lines[1]).toMatchObject({ bufStart: 3, bufEnd: 5 });
+    // Content length always matches its buffer span (render invariant).
+    for (const l of lines) expect(l.content.length).toBe(l.bufEnd - l.bufStart);
+  });
+
+  it("renders a blank row between consecutive newlines", () => {
+    const lines = wrapBuffer("a\n\nb", W);
+    expect(lines.map((l) => l.content)).toEqual(["a", "", "b"]);
+    expect(lines[1]).toMatchObject({ bufStart: 2, bufEnd: 2, hardBreak: true });
+  });
+
+  it("appends an empty final row for a trailing newline so the caret has a home", () => {
+    const lines = wrapBuffer("hi\n", W);
+    expect(lines.map((l) => l.content)).toEqual(["hi", ""]);
+    expect(lines[1]).toMatchObject({ bufStart: 3, bufEnd: 3 });
+  });
+
+  it("still soft-wraps by width within a hard-broken line", () => {
+    // width 6 → firstCap = 6-1-2 = 3, restCap = 6-1 = 5.
+    const lines = wrapBuffer("abcdef\nx", 6);
+    expect(lines.map((l) => l.content)).toEqual(["abc", "def", "x"]);
+    // The soft-wrap boundary (abc→def) is not a hard break; the `\n` one is.
+    expect(lines[0]?.hardBreak).toBe(false);
+    expect(lines[1]?.hardBreak).toBe(true);
+  });
+});
+
+describe("findCursorPosition across hard breaks", () => {
+  const W = 80;
+
+  it("places the caret at the end of a line when it sits on that line's `\\n`", () => {
+    const lines = wrapBuffer("ab\ncd", W);
+    // Offset 2 is the newline itself → end of the first line, not start of second.
+    expect(findCursorPosition(lines, 2)).toEqual({ row: 0, col: 2 });
+    // Offset 3 is before 'c' → start of the second line.
+    expect(findCursorPosition(lines, 3)).toEqual({ row: 1, col: 0 });
+  });
+
+  it("lands the caret on a blank row after a trailing newline", () => {
+    const lines = wrapBuffer("hi\n", W);
+    expect(findCursorPosition(lines, 3)).toEqual({ row: 1, col: 0 });
+  });
+
+  it("resolves each row of a double newline distinctly", () => {
+    const lines = wrapBuffer("a\n\nb", W);
+    expect(findCursorPosition(lines, 1)).toEqual({ row: 0, col: 1 }); // end of "a"
+    expect(findCursorPosition(lines, 2)).toEqual({ row: 1, col: 0 }); // blank row
+    expect(findCursorPosition(lines, 3)).toEqual({ row: 2, col: 0 }); // start of "b"
+  });
+});
+
+describe("sanitizePastedText", () => {
+  it("folds CRLF and lone CR to LF so pasted multi-line text keeps its breaks", () => {
+    expect(sanitizePastedText("a\r\nb\rc\nd")).toBe("a\nb\nc\nd");
+  });
+
+  it("strips control bytes (NUL, ESC, TAB) but preserves newlines", () => {
+    // Only the control bytes are removed — matching the prior strip, the
+    // printable tail of an escape sequence stays put.
+    expect(sanitizePastedText("a\x00b\x1bc\td\ne")).toBe("abcd\ne");
+  });
+
+  it("leaves plain text untouched", () => {
+    expect(sanitizePastedText("hello world")).toBe("hello world");
   });
 });
 
