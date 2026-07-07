@@ -1,10 +1,37 @@
-import {
-  DEFAULT_BASE_URL,
-  DEFAULT_GOAL,
-  DEFAULT_MODELS,
-  DEFAULT_MODEL_TIER,
-  type ModelProfile,
-} from "@nova/runtime";
+import { DEFAULT_GOAL, DEFAULT_MODEL_TIER, type ModelProfile } from "@nova/runtime";
+
+/**
+ * DeepSeek's built-in performance tiers, written verbatim into the config when
+ * the DeepSeek template is chosen. Three fixed rungs — lite / pro / max: `lite`
+ * maps to the cheap `deepseek-v4-flash`; `pro` and `max` share the capable
+ * `deepseek-v4-pro` id and differ only in reasoning depth via the per-tier
+ * `thinking` level (low → high → max), a genuine speed/cost ↔ capability ladder
+ * on the two available models. The config schema no longer defaults `models`,
+ * so this provider-specific set lives with the provider template that uses it.
+ */
+const DEEPSEEK_MODELS: Record<string, ModelProfile> = {
+  lite: {
+    id: "deepseek-v4-flash",
+    maxTokens: 384_000,
+    contextWindowSize: 1_000_000,
+    thinking: "low",
+    modalities: { input: ["text"] },
+  },
+  pro: {
+    id: "deepseek-v4-pro",
+    maxTokens: 384_000,
+    contextWindowSize: 1_000_000,
+    thinking: "high",
+    modalities: { input: ["text"] },
+  },
+  max: {
+    id: "deepseek-v4-pro",
+    maxTokens: 384_000,
+    contextWindowSize: 1_000_000,
+    thinking: "max",
+    modalities: { input: ["text"] },
+  },
+};
 
 /**
  * A built-in provider preset surfaced in the first-run setup picker. Choosing
@@ -22,9 +49,10 @@ export interface ProviderTemplate {
   label: string;
   /**
    * Settings persisted (besides the API key) when this template is chosen. Any
-   * omitted field falls back to the config-schema default. DeepSeek leaves this
-   * empty because the schema defaults (baseURL / model / models) already target
-   * it; a third-party provider sets at least `baseURL`, `model`, and `models`.
+   * omitted field falls back to the config-schema default. `baseURL` and
+   * `models` have no schema default (they are provider-specific), so any
+   * template must set at least `baseURL`, `model`, and `models` for a usable
+   * out-of-the-box config.
    */
   settings: {
     provider?: "deepseek" | "other";
@@ -52,13 +80,16 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
   {
     id: "deepseek",
     label: "DeepSeek",
-    // Mirrors the config-schema defaults (same source of truth), written
-    // explicitly so the saved nova.config.json is self-describing.
+    // Every field written explicitly so the saved nova.config.json is fully
+    // self-describing — the schema no longer defaults baseURL or models.
     settings: {
       provider: "deepseek",
-      baseURL: DEFAULT_BASE_URL,
+      // DeepSeek's Anthropic-compatible endpoint, written explicitly here so the
+      // saved config is self-describing. This is the sole place a DeepSeek base
+      // URL is hardcoded — the config schema no longer defaults `baseURL`.
+      baseURL: "https://api.deepseek.com/anthropic",
       model: DEFAULT_MODEL_TIER,
-      models: DEFAULT_MODELS,
+      models: DEEPSEEK_MODELS,
       // Goal mode on by default; judged by the cheap `lite` tier so the
       // after-each-turn check stays inexpensive. Persisted to nova.config.json.
       goal: { ...DEFAULT_GOAL, evalModel: "lite" },

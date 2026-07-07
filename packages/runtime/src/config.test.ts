@@ -5,7 +5,6 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_MAX_TOKENS,
   DEFAULT_CONTEXT_WINDOW_SIZE,
-  DEFAULT_MODELS,
   DEFAULT_SANDBOX_ALLOW_WRITE,
   hooksConfigSchema,
   isDangerousBash,
@@ -20,6 +19,16 @@ import {
   settingsSchema,
   type HooksConfig,
 } from "./config.js";
+
+// The schema requires a complete lite/pro/max ladder in any non-empty `models`
+// table. This builds one, letting a test spread per-tier overrides (or extra
+// tiers) on top while still querying whichever tier it cares about.
+const tiers = (overrides: Record<string, unknown> = {}) => ({
+  lite: { id: "lite-id" },
+  pro: { id: "pro-id" },
+  max: { id: "max-id" },
+  ...overrides,
+});
 
 describe("settingsSchema", () => {
   it("applies defaults when empty input is given", () => {
@@ -75,31 +84,36 @@ describe("settingsSchema", () => {
 });
 
 describe("model tiers", () => {
-  it("defaults models to the built-in lite/pro/max tiers", () => {
-    expect(parseSettings({}).models).toEqual({ ...DEFAULT_MODELS });
+  it("leaves models empty by default (populated by a provider template)", () => {
+    expect(parseSettings({}).models).toEqual({});
   });
 
-  it("a provided models table replaces the default wholesale", () => {
-    const s = parseSettings({ model: "mini", models: { mini: { id: "some-mini" } } });
-    expect(s.models).toEqual({
-      mini: {
-        id: "some-mini",
-        maxTokens: DEFAULT_MAX_TOKENS,
-        contextWindowSize: DEFAULT_CONTEXT_WINDOW_SIZE,
-        modalities: { input: ["text"] },
-      },
+  it("accepts an empty/unconfigured config without failing tier validation", () => {
+    // A fresh/missing config parses (models empty) so setup can run before the
+    // provider template writes a real tier table; the model ∈ models refine is
+    // skipped while models is empty.
+    expect(() => parseSettings({})).not.toThrow();
+    expect(parseSettings({}).model).toBe("pro");
+  });
+
+  it("normalizes each profile entry, filling per-tier defaults", () => {
+    const s = parseSettings({ models: tiers() });
+    expect(s.models.lite).toEqual({
+      id: "lite-id",
+      maxTokens: DEFAULT_MAX_TOKENS,
+      contextWindowSize: DEFAULT_CONTEXT_WINDOW_SIZE,
+      modalities: { input: ["text"] },
     });
   });
 
   it("accepts profile-object entries with per-tier overrides", () => {
     const s = parseSettings({
-      models: {
-        flash: { id: "deepseek-v4-flash" },
+      models: tiers({
         pro: { id: "deepseek-v4-pro", maxTokens: 8192, contextWindowSize: 128_000 },
-      },
+      }),
     });
-    expect(s.models.flash).toEqual({
-      id: "deepseek-v4-flash",
+    expect(s.models.lite).toEqual({
+      id: "lite-id",
       maxTokens: DEFAULT_MAX_TOKENS,
       contextWindowSize: DEFAULT_CONTEXT_WINDOW_SIZE,
       modalities: { input: ["text"] },
@@ -113,75 +127,89 @@ describe("model tiers", () => {
   });
 
   it("rejects a profile object missing id", () => {
-    expect(() => settingsSchema.parse({ models: { pro: { maxTokens: 8192 } } })).toThrow();
+    expect(() =>
+      settingsSchema.parse({ models: tiers({ pro: { maxTokens: 8192 } }) }),
+    ).toThrow();
+  });
+
+  it("requires the full lite/pro/max ladder in a non-empty table", () => {
+    expect(() =>
+      settingsSchema.parse({ model: "pro", models: { lite: { id: "a" }, pro: { id: "b" } } }),
+    ).toThrow(/must configure all tiers.*missing: max/);
+  });
+
+  it("allows extra tiers on top of the required ladder", () => {
+    const s = parseSettings({ models: tiers({ vision: { id: "vision-id" } }) });
+    expect(resolveModelId(s, "vision")).toBe("vision-id");
   });
 
   it("resolves an alias key to its concrete id", () => {
-    const s = parseSettings({ model: "flash", models: { flash: { id: "deepseek-v4-flash" } } });
-    expect(resolveModelId(s, "flash")).toBe("deepseek-v4-flash");
+    const s = parseSettings({ model: "lite", models: tiers({ lite: { id: "deepseek-v4-flash" } }) });
+    expect(resolveModelId(s, "lite")).toBe("deepseek-v4-flash");
   });
 
   it("passes an unknown name through unchanged (aux-model bare id escape hatch)", () => {
-    const s = parseSettings({ models: { flash: { id: "deepseek-v4-flash" }, pro: { id: "x" } } });
+    const s = parseSettings({ models: tiers() });
     expect(resolveModelId(s, "claude-sonnet-4-5")).toBe("claude-sonnet-4-5");
   });
 
   it("rejects a `model` that isn't a configured tier (alias-only)", () => {
     expect(() =>
-      settingsSchema.parse({ model: "deepseek-v4-pro", models: { pro: { id: "deepseek-v4-pro" } } }),
+      settingsSchema.parse({ model: "deepseek-v4-pro", models: tiers() }),
     ).toThrow(/not a configured tier/);
   });
 
   it("accepts a `model` that names a configured tier", () => {
-    const s = parseSettings({ model: "pro", models: { pro: { id: "deepseek-v4-pro" } } });
+    const s = parseSettings({ model: "pro", models: tiers() });
     expect(s.model).toBe("pro");
   });
 });
 
 describe("resolveMaxTokens", () => {
-  const base = (extra: Record<string, unknown> = {}) => parseSettings({ ...extra });
+  // Merge per-tier overrides onto the required lite/pro/max ladder.
+  const base = (models: Record<string, unknown> = {}) => parseSettings({ models: tiers(models) });
 
   it("falls back to DEFAULT_MAX_TOKENS when the tier has no override", () => {
-    const s = base({ model: "flash", models: { flash: { id: "deepseek-v4-flash" } } });
-    expect(resolveMaxTokens(s, "flash")).toBe(DEFAULT_MAX_TOKENS);
+    const s = base();
+    expect(resolveMaxTokens(s, "lite")).toBe(DEFAULT_MAX_TOKENS);
   });
 
   it("uses the tier's own maxTokens when set (by tier key)", () => {
-    const s = base({ models: { pro: { id: "deepseek-v4-pro", maxTokens: 8192 } } });
+    const s = base({ pro: { id: "deepseek-v4-pro", maxTokens: 8192 } });
     expect(resolveMaxTokens(s, "pro")).toBe(8192);
   });
 
   it("is alias-only: a bare id matching a tier's id does NOT resolve to it", () => {
-    const s = base({ models: { pro: { id: "deepseek-v4-pro", maxTokens: 8192 } } });
+    const s = base({ pro: { id: "deepseek-v4-pro", maxTokens: 8192 } });
     expect(resolveMaxTokens(s, "deepseek-v4-pro")).toBe(DEFAULT_MAX_TOKENS);
   });
 
   it("falls back for an unknown name with no matching tier", () => {
-    const s = base({ models: { pro: { id: "deepseek-v4-pro", maxTokens: 8192 } } });
+    const s = base({ pro: { id: "deepseek-v4-pro", maxTokens: 8192 } });
     expect(resolveMaxTokens(s, "claude-sonnet-4-5")).toBe(DEFAULT_MAX_TOKENS);
   });
 });
 
 describe("resolveContextWindowSize", () => {
-  const base = (extra: Record<string, unknown> = {}) => parseSettings({ ...extra });
+  const base = (models: Record<string, unknown> = {}) => parseSettings({ models: tiers(models) });
 
   it("falls back to DEFAULT_CONTEXT_WINDOW_SIZE when the tier has no override", () => {
-    const s = base({ model: "flash", models: { flash: { id: "deepseek-v4-flash" } } });
-    expect(resolveContextWindowSize(s, "flash")).toBe(DEFAULT_CONTEXT_WINDOW_SIZE);
+    const s = base();
+    expect(resolveContextWindowSize(s, "lite")).toBe(DEFAULT_CONTEXT_WINDOW_SIZE);
   });
 
   it("uses the tier's own contextWindowSize when set (by tier key)", () => {
-    const s = base({ models: { pro: { id: "deepseek-v4-pro", contextWindowSize: 800_000 } } });
+    const s = base({ pro: { id: "deepseek-v4-pro", contextWindowSize: 800_000 } });
     expect(resolveContextWindowSize(s, "pro")).toBe(800_000);
   });
 
   it("is alias-only: a bare id matching a tier's id does NOT resolve to it", () => {
-    const s = base({ models: { pro: { id: "deepseek-v4-pro", contextWindowSize: 800_000 } } });
+    const s = base({ pro: { id: "deepseek-v4-pro", contextWindowSize: 800_000 } });
     expect(resolveContextWindowSize(s, "deepseek-v4-pro")).toBe(DEFAULT_CONTEXT_WINDOW_SIZE);
   });
 
   it("falls back for an unknown name with no matching tier", () => {
-    const s = base({ models: { pro: { id: "deepseek-v4-pro", contextWindowSize: 800_000 } } });
+    const s = base({ pro: { id: "deepseek-v4-pro", contextWindowSize: 800_000 } });
     expect(resolveContextWindowSize(s, "claude-sonnet-4-5")).toBe(DEFAULT_CONTEXT_WINDOW_SIZE);
   });
 });
@@ -195,7 +223,7 @@ describe("loadSettings", () => {
       JSON.stringify({
         apiKey: "sk-test-123",
         model: "haiku",
-        models: { haiku: { id: "claude-haiku-4-5" } },
+        models: tiers({ haiku: { id: "claude-haiku-4-5" } }),
         baseURL: "https://file.example.com",
         sessionDir: "/tmp/nova-sessions",
       }),
@@ -212,7 +240,7 @@ describe("loadSettings", () => {
     const dir = await mkdtemp(join(tmpdir(), "nova-config-"));
     const s = await loadSettings(join(dir, "nova.config.json"));
     expect(s.model).toBe("pro");
-    expect(s.baseURL).toBe("https://api.deepseek.com/anthropic");
+    expect(s.baseURL).toBeUndefined();
     expect(s.apiKey).toBeUndefined();
     expect(s.sessionDir).toBeUndefined();
   });
@@ -223,7 +251,7 @@ describe("loadSettings", () => {
     await writeFile(
       path,
       JSON.stringify({
-        models: { pro: { id: "deepseek-v4-pro", maxTokens: 4096 } },
+        models: tiers({ pro: { id: "deepseek-v4-pro", maxTokens: 4096 } }),
       }),
       "utf8",
     );

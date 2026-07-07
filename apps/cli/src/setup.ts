@@ -21,10 +21,11 @@ type Choice =
 const EXAMPLE_CONFIG = `{
   "apiKey": "<your-api-key>",
   "baseURL": "<anthropic-compatible-url>",
-  "model": "default",
+  "model": "pro",
   "models": {
-    "default": { "id": "<provider-model-id>", "contextWindowSize": 200000, "maxTokens": 8192 },
-    "vision": { "id": "<provider-vision-model-id>", "contextWindowSize": 200000, "maxTokens": 8192, "modalities": { "input": ["text", "image"] } }
+    "lite": { "id": "<fast-cheap-model-id>", "contextWindowSize": 200000, "maxTokens": 8192 },
+    "pro":  { "id": "<capable-model-id>", "contextWindowSize": 200000, "maxTokens": 8192 },
+    "max":  { "id": "<most-capable-model-id>", "contextWindowSize": 200000, "maxTokens": 8192, "modalities": { "input": ["text", "image"] } }
   }
 }`;
 
@@ -69,9 +70,9 @@ export async function ensureSettings(
   configPath: string = DEFAULT_CONFIG_PATH,
 ): Promise<Settings> {
   const raw = await readRawConfig(configPath);
-  // The only value we must collect interactively is the API key — baseURL,
-  // model and the models table all carry DeepSeek-flavoured schema defaults,
-  // so a key alone makes the CLI usable out of the box.
+  // The only value we must collect interactively is the API key — a chosen
+  // provider template supplies baseURL / model / the models table (the schema
+  // no longer defaults baseURL or models), so a key alone completes setup.
   if (hasValue(raw, "apiKey")) return settings;
 
   screen.beginSetup({
@@ -104,8 +105,8 @@ export async function ensureSettings(
     // config-file path and let them author nova.config.json themselves.
     if (choice.kind === "other") return exitForManualConfig(screen, configPath);
 
-    // A templated provider: its baseURL / model / models come from the template
-    // (or the schema defaults), so only the API key is left to ask for.
+    // A templated provider: its baseURL / model / models all come from the
+    // template's settings, so only the API key is left to ask for.
     const { template } = choice;
     let value: string | null = null;
     while (value === null) {

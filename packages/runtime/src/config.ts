@@ -283,58 +283,32 @@ export const modelEntrySchema = modelProfileSchema;
 
 export type ModelEntry = z.infer<typeof modelEntrySchema>;
 
-// Default performance tiers, so `/model` is usable out of the box without any
-// config. Three fixed rungs — lite / pro / max — DeepSeek-flavoured to match
-// this build's tuning. `lite` maps to the cheap `deepseek-v4-flash`; `pro` and
-// `max` share the capable `deepseek-v4-pro` id and differ only in reasoning
-// depth via the per-tier `thinking` level (low → high → max), so the ladder is
-// a genuine speed/cost ↔ capability trade-off on the two available models.
-// Override by setting `models` in nova.config.json — providing the key REPLACES
-// this default wholesale.
-export const DEFAULT_MODELS: Record<string, ModelProfile> = {
-  lite: {
-    id: "deepseek-v4-flash",
-    maxTokens: 384_000,
-    contextWindowSize: 1_000_000,
-    thinking: "low",
-    modalities: { input: ["text"] },
-  },
-  pro: {
-    id: "deepseek-v4-pro",
-    maxTokens: 384_000,
-    contextWindowSize: 1_000_000,
-    thinking: "high",
-    modalities: { input: ["text"] },
-  },
-  max: {
-    id: "deepseek-v4-pro",
-    maxTokens: 384_000,
-    contextWindowSize: 1_000_000,
-    thinking: "max",
-    modalities: { input: ["text"] },
-  },
-};
-
 // One-line blurbs for the built-in tiers, shown next to each row in the /model
-// picker. Keyed by the same names as DEFAULT_MODELS; a user `models` entry in
-// profile-object form can override its own via `description`.
+// picker. Keyed by tier name (lite/pro/max); a user `models` entry in
+// profile-object form can override its own via `description`. Falls back to ""
+// for any tier name not listed here, so third-party providers are unaffected.
 export const DEFAULT_MODEL_DESCRIPTIONS: Record<string, string> = {
   lite: "fast & cheap — everyday edits, quick Q&A (light thinking)",
   pro: "balanced — most coding & reasoning, the default (deep thinking)",
   max: "most capable — hardest reasoning, long tasks (max thinking)",
 };
 
-// Default selected tier (a key into DEFAULT_MODELS) and provider endpoint —
-// DeepSeek-flavoured to match this build's tuning. Exported so the setup
-// provider templates can reference the same source of truth.
+// The tier a templated provider selects by default (a key into the `models`
+// table that provider writes). DeepSeek-flavoured to match this build's tuning;
+// exported so the setup provider templates reference one source of truth.
 export const DEFAULT_MODEL_TIER = "pro";
 // Cheapest built-in tier — the sensible default for auxiliary, latency- and
 // cost-sensitive model calls (e.g. the auto-mode command classifier) that don't
-// need the main `pro` tier. Only meaningful when `models` still carries it;
-// since a user `models` override REPLACES DEFAULT_MODELS wholesale, callers must
-// fall back to the main model when this key is absent.
+// need the main `pro` tier. Only meaningful when `models` actually carries it;
+// a config whose `models` omits this key must fall back to the main model.
 export const DEFAULT_CHEAP_TIER = "lite";
-export const DEFAULT_BASE_URL = "https://api.deepseek.com/anthropic";
+
+// The fixed tier ladder. Every configured `models` table MUST define all three
+// rungs (see the schema refine) so `/model lite|pro|max`, DEFAULT_CHEAP_TIER and
+// the goal-mode eval tier always resolve — regardless of provider. A table may
+// carry extra tiers on top, but never fewer. (An empty table is the one
+// exception: it means "unconfigured", tolerated so setup can run first.)
+export const REQUIRED_MODEL_TIERS = ["lite", "pro", "max"] as const;
 
 // Default goal-mode knobs (the object-level fallback when `goal` is absent).
 // `evalModel` is intentionally omitted here so the schema default reuses the
@@ -369,19 +343,28 @@ export const settingsSchema = z.object({
   apiKey: z.string().min(1).optional(),
   // The active tier: a KEY into `models` (lite/pro/max), never a bare model id.
   // Enforced by the schema-level refine below — a value that isn't a configured
-  // tier is a config error. Tier → concrete id resolution is alias-only
-  // (resolveModelId); switch at runtime with /model.
+  // tier is a config error (skipped only while `models` is still empty, i.e. an
+  // unconfigured config pre-setup). Tier → concrete id resolution is alias-only
+  // (resolveModelId); switch at runtime with /model. The default is a
+  // placeholder that a chosen provider template (or the user's config)
+  // overwrites alongside `models`.
   model: z.string().default(DEFAULT_MODEL_TIER),
   // Named model tiers, e.g. { "lite": { id: "deepseek-v4-flash", ... }, "pro": { ... } }.
   // Every value is a profile object carrying its own maxTokens / contextWindowSize
   // / thinking (and optionally baseURL / apiKey). Distinct tiers may share one
   // concrete `id` and differ only in their per-tier knobs (e.g. pro/max both →
   // deepseek-v4-pro, differing in `thinking`), which is why all tier lookups are
-  // keyed by the alias, never reverse-mapped from the id. Defaults to
-  // DEFAULT_MODELS (lite/pro/max) so /model works with no config; setting this
-  // key REPLACES that default wholesale.
-  models: z.record(modelEntrySchema).default({ ...DEFAULT_MODELS }),
-  baseURL: z.string().url().default(DEFAULT_BASE_URL),
+  // keyed by the alias, never reverse-mapped from the id. No schema default:
+  // the tier set is provider-specific, so it is only populated when a provider
+  // template is chosen (DeepSeek writes lite/pro/max — see provider-templates.ts)
+  // or when the user hand-authors a config. An empty table means "unconfigured".
+  models: z.record(modelEntrySchema).default({}),
+  // No schema default: the base endpoint is provider-specific, so it is only
+  // written when a provider template is chosen (or the user sets it). Callers
+  // treat an absent value as "use the SDK's own default endpoint" — see the
+  // `config.baseURL ? …` guards in model.ts / context.ts. The DeepSeek setup
+  // template writes its own endpoint explicitly (see provider-templates.ts).
+  baseURL: z.string().url().optional(),
   // Which provider profile drives thinking-param and error/retry behavior.
   // "deepseek" — DeepSeek's Anthropic-compatible endpoint (effort knob,
   // translated error diagnostics, transient-status retry). "other" — any generic
@@ -880,11 +863,31 @@ export const settingsSchema = z.object({
       marketplaces: {},
     }),
   })
-  // The active `model` must name a configured tier (a key in `models`), not a
-  // bare provider id — tier resolution is alias-only. A stray id here would
-  // silently miss every per-tier lookup (maxTokens/contextWindow/thinking/…), so
-  // reject it at the boundary with an actionable message instead.
+  // Two tier-table invariants, both skipped while `models` is empty — that's an
+  // unconfigured config (a fresh/missing file parsed before setup runs, which
+  // loadSettings must not reject); setup then writes a populated table that both
+  // checks apply to.
   .superRefine((val, ctx) => {
+    if (Object.keys(val.models).length === 0) return;
+    // (1) The fixed ladder must be complete: every config must define all of
+    // lite/pro/max (extra tiers are fine) so tier switching and the built-in
+    // cheap/eval tiers always resolve, whatever the provider.
+    const missing = REQUIRED_MODEL_TIERS.filter(
+      (t) => !Object.prototype.hasOwnProperty.call(val.models, t),
+    );
+    if (missing.length > 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["models"],
+        message: `models must configure all tiers (${REQUIRED_MODEL_TIERS.join(
+          ", ",
+        )}) — missing: ${missing.join(", ")}`,
+      });
+    }
+    // (2) The active `model` must name a configured tier (a key in `models`),
+    // not a bare provider id — tier resolution is alias-only. A stray id here
+    // would silently miss every per-tier lookup (maxTokens/contextWindow/
+    // thinking/…), so reject it at the boundary with an actionable message.
     if (!Object.prototype.hasOwnProperty.call(val.models, val.model)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
