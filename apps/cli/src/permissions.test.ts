@@ -55,6 +55,7 @@ describe("resolvePermissionRules", () => {
         "updateTask",
         "updateTodo",
         "webfetch",
+        "websearch",
       ].sort(),
     );
     // Path-fenced read-only tools must not be flat-allowed here.

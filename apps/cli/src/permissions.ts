@@ -116,6 +116,10 @@ export const DEFAULT_PERMISSION_RULES: readonly PermissionRule[] = [
   // Outbound requests are still subject to sandbox network confinement when
   // configured (sandbox.network.*).
   { tool: "webfetch", effect: "allow" },
+  // Searching the public web is read-only (returns title/url/snippet only) and,
+  // like webfetch, stays subject to sandbox network confinement when configured.
+  // Auto-allow so the model can discover URLs without a per-call prompt.
+  { tool: "websearch", effect: "allow" },
 ];
 
 // Read-only tools fenced to the workspace by `path` containment. All take a
