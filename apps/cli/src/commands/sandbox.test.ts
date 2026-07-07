@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { Settings } from "@nova/runtime";
 import type { CliContext } from "../context.js";
 
-const saveSettings = vi.fn(async () => {});
+const saveSettings = vi.fn(async (_patch: Partial<Settings>) => {});
 vi.mock("@nova/runtime", async (importActual) => ({
   ...(await importActual<typeof import("@nova/runtime")>()),
   saveSettings,
@@ -14,10 +15,7 @@ interface Card {
   opts: { title?: string; kind?: string };
 }
 
-function makeCtx(
-  cards: Card[],
-  opts: { active?: boolean; reason?: string } = {},
-): { ctx: CliContext; setSandbox: ReturnType<typeof vi.fn> } {
+function makeCtx(cards: Card[], opts: { active?: boolean; reason?: string } = {}) {
   const setSandbox = vi.fn(async (enabled: boolean) => {
     ctx.settings.sandbox.enabled = enabled;
     return { active: opts.active ?? enabled, ...(opts.reason ? { reason: opts.reason } : {}) };
