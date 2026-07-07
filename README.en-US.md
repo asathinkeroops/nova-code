@@ -18,11 +18,11 @@ No `cache_control` to tweak, no wire format to guess, no error-code docs to dig 
 **Cache-friendly by design.**
 History is append-only, keeping the byte-stable prefix DeepSeek's server-side cache depends on — faster responses, fewer tokens billed. Micro-compaction is off by default (it breaks the cache prefix); auto-compaction only fires under real window pressure.
 
-**Sandbox-on, defense in depth.**
-Subprocess writes are confined to the workspace by an OS-level sandbox (macOS Seatbelt / Linux bubblewrap), layered on top of the permission engine. Unsupported platforms degrade silently — you get protection with zero config.
+**OS-level sandbox, one line to enable.**
+Turn it on and subprocess writes are confined to the workspace by an OS-level sandbox (macOS Seatbelt / Linux bubblewrap), layered on top of the permission engine. Off by default — flip `sandbox.enabled: true` (or `/sandbox on` in-session) to opt in; unsupported platforms degrade silently.
 
-**Extend with markdown.**
-Define custom sub-agents, slash commands, skills, or lifecycle hooks — drop a `.md` file with frontmatter and you're done. No code changes, ships with the repo.
+**Extend with markdown, package as plugins.**
+Define custom sub-agents, slash commands, skills, or lifecycle hooks — drop a `.md` file with frontmatter and you're done. No code changes, ships with the repo. To share a whole bundle, install it as a plugin: `nova plugin install` from a local path, GitHub repo, git url, or marketplace — a single plugin can contribute commands, agents, skills, hooks, MCP / LSP servers, and `bin/` executables, all in the Claude Code-compatible plugin format.
 
 **Bring your habits, not a manual.**
 Nova closely mirrors the Claude Code workflow — the same slash commands, keybindings, approval prompts, memory files, and replayable sessions. If you've used Claude Code there's nothing new to learn: install and keep working the way you already do, just on an engine tuned for DeepSeek underneath.
@@ -37,7 +37,7 @@ pnpm dev                           # launch the REPL
 pnpm dev -p "explain this code"    # headless: one turn, print & exit
 ```
 
-First launch walks through an interactive setup (API key, model, etc.) → `~/.nova/nova.config.json`.
+First launch walks through an interactive setup (API key, model, etc.) → `~/.nova/nova.config.json`. Models are configured as a `lite` / `pro` / `max` ladder, each tier with its own thinking level; `/model` and `--model` switch tiers, not raw provider ids.
 
 ## Features
 
@@ -63,7 +63,7 @@ Tools the model can call — covering read/write, search, execution, code intell
 | Command | Capability |
 | --- | --- |
 | `/help` | See all commands |
-| `/model` · `/effort` | Switch models, adjust the thinking level |
+| `/model` · `/effort` | Switch model tier (lite/pro/max), adjust the thinking level |
 | `/compact` | Summarize long history |
 | `/clear` · `/resume` · `/rewind` | Start a fresh session, resume a past one, roll back history |
 | `/rename` | Give the current session a custom name (shown on the input frame) |
@@ -72,7 +72,8 @@ Tools the model can call — covering read/write, search, execution, code intell
 | `/diff` · `/review` | Browse and review uncommitted changes |
 | `/init` | Analyze the codebase to generate `NOVA.md` |
 | `/agents` · `/agent` | See sub-agent types, delegate a task |
-| `/commands` · `/skills` · `/mcp` · `/lsp` | See registered commands, skills, MCP servers, language servers |
+| `/commands` · `/skills` · `/mcp` · `/lsp` · `/plugin` | See registered commands, skills, MCP servers, language servers, loaded plugins |
+| `/sandbox` | Enable/disable the OS command sandbox for this session (`on` / `off`) |
 | `/usage` · `/context` | See token usage, cache hits, context fill |
 | `/tasks` | View and manage background commands (`runInBackground`) — list / stop |
 | `/predict` | Toggle next-input prediction |
@@ -83,11 +84,12 @@ Tools the model can call — covering read/write, search, execution, code intell
 | Capability | What it gives you |
 | --- | --- |
 | Sub-agents | Work with fresh context and their own tool set: `explore` (read-only retrieval), `plan` (read-only planning), `general-purpose` (full access), plus custom types |
-| Permissions & sandbox | `shift+tab` cycles `default` / `acceptEdits` / `plan`; an OS-level sandbox confines subprocess writes to the workspace (macOS Seatbelt / Linux bubblewrap), default-on |
+| Permissions & sandbox | `shift+tab` cycles `default` / `acceptEdits` / `auto` / `plan`; an OS-level sandbox confines subprocess writes to the workspace (macOS Seatbelt / Linux bubblewrap), off by default and one flag to enable |
 | File guarding | Files must be read before they're edited, and external changes are detected — no accidental clobbering |
 | MCP | Connect external MCP servers (`stdio` / `http` / `sse`) and use their tools like built-ins, under the same permission gating |
 | Skills | Write reusable playbooks as `SKILL.md`, loaded on demand by the model — token-cheap and distributable with the repo |
 | Markdown extensions | Custom slash commands, sub-agents, and lifecycle hooks: drop a `.md` into `.nova/`, configure via frontmatter, no code changes |
+| Plugins | `nova plugin` installs / enables / disables plugins from a local path, GitHub, git url, or marketplace; one plugin can contribute commands, agents, skills, hooks, MCP / LSP servers, and `bin/` executables, in the Claude Code-compatible plugin format |
 | Three-layer memory | Global → user → project, loaded by `NOVA.md` > `CLAUDE.md` > `AGENTS.md` priority |
 | TUI | Full-screen Ink/React REPL, streaming output + mouse; `@path` / `/` completion, `↑` `↓` history; live status line with token usage, cache hits, cost, DeepSeek balance, git branch, context fill |
 

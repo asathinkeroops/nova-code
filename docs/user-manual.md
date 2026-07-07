@@ -25,16 +25,17 @@
 15. [自定义 Slash 命令](#15-自定义-slash-命令)
 16. [MCP 外部工具](#16-mcp-外部工具)
 17. [LSP 代码智能](#17-lsp-代码智能)
-18. [会话、检查点与数据落盘](#18-会话检查点与数据落盘)
-19. [配置文件完整参考](#19-配置文件完整参考)
-20. [常见问题与排查](#20-常见问题与排查)
+18. [插件（Plugins）](#18-插件plugins)
+19. [会话、检查点与数据落盘](#19-会话检查点与数据落盘)
+20. [配置文件完整参考](#20-配置文件完整参考)
+21. [常见问题与排查](#21-常见问题与排查)
 
 ---
 
 ## 1. 它能做什么
 
 - **Agentic 编码循环** —— 给它一个目标，它自己读代码、改文件、跑命令，一步步把任务做完。同一轮里互相独立的工具调用以**有界并发**运行（默认每轮 3 个）。
-- **代码与系统工具** —— 文件 read / write / edit，`glob` + `grep` 搜索，`bash` 与后台长任务，web fetch / search，notebook 编辑，向你提问。
+- **代码与系统工具** —— 文件 read / write / edit，`glob` + `grep` 搜索，`bash` 与后台长任务（`runInBackground`），web fetch / search，向你提问。
 - **LSP 代码智能** —— 直连语言服务器做 go-to-definition、find-references、hover、诊断、符号搜索，比 grep 更懂作用域和类型。
 - **扩展 thinking** —— 五档（`off`/`low`/`medium`/`high`/`max`）或显式 token 预算。
 - **Plan 模式与子 agent** —— 把庞大的调查/规划交给全新上下文的 worker，结论汇报回来，主对话保持干净。
@@ -67,15 +68,16 @@ pnpm dev "帮我给这个函数加单测"   # 先跑一轮 prompt，再进入 RE
 
 ## 3. 首次配置向导
 
-第一次启动时，如果 `~/.nova/nova.config.json` 里缺少必填项，Nova 会进入一个交互式向导，依次询问三项并写回配置文件：
+第一次启动时，如果 `~/.nova/nova.config.json` 里缺少 `apiKey`，Nova 会进入一个交互式向导，两步完成配置并写回文件：
 
-| 字段 | 说明 |
+| 步骤 | 说明 |
 |------|------|
-| **Base URL** | 必须是 Anthropic 兼容端点（如 `https://api.anthropic.com`，或 DeepSeek 的兼容端点） |
+| **选择 provider** | 从内置模板里选（目前只有 **DeepSeek**，或「Other provider」）。选模板会自动填好 `baseURL`、默认档位和 `lite`/`pro`/`max` 模型表，所以只剩 API key 需要问 |
 | **API key** | 你的 provider API key（输入时被掩码） |
-| **Model** | 模型 id，例如 `claude-sonnet-4-5` |
 
-按 `Ctrl+C` 可中止向导。已有的字段不会再问。你也可以随时手动编辑 `~/.nova/nova.config.json`（完整字段见 [§19](#19-配置文件完整参考)）。
+DeepSeek 模板写入 `baseURL: https://api.deepseek.com/anthropic`，并把 `lite`→`deepseek-v4-flash`、`pro`/`max`→`deepseek-v4-pro`（默认档位 `pro`）。选「Other provider」则不进交互流程，Nova 会打印配置文件路径让你手动照 `lite`/`pro`/`max` 的骨架填写（schema 不再为 `baseURL`/`models` 提供默认值）。
+
+按 `Ctrl+C` 可中止向导。`apiKey` 已存在则跳过向导。你也可以随时手动编辑 `~/.nova/nova.config.json`（完整字段见 [§20](#20-配置文件完整参考)）。
 
 > 如果启动时 `apiKey` 仍为空，Nova 会报错退出并提示去配置文件里补上。
 
@@ -86,10 +88,12 @@ pnpm dev "帮我给这个函数加单测"   # 先跑一轮 prompt，再进入 RE
 ```bash
 nova [prompt...]                   # 先跑一轮初始 prompt，再留在 REPL
   -p, --prompt <text>              # 初始 prompt（位置参数的替代写法）
-  -m, --model <name>               # 临时覆盖模型 id
+  -m, --model <tier>               # 临时切换模型档位（只认已配置档位名，如 lite/pro/max）
   -t, --think off|low|medium|high|max   # thinking 等级，或一个正整数 token 预算
       --max-turns <n>              # 单轮最大循环次数
       --cwd <dir>                  # 工具的工作目录（工作区根）
+      --permission-mode default|acceptEdits|auto|plan   # 初始权限模式（默认 default）
+      --dangerously-skip-permissions   # 全自动批准（适合 CI/无人值守）
       --resume <id>                # 恢复指定 id 的 session
   -c, --continue                   # 恢复最近一个 session
       --list-sessions              # 列出历史 session 后退出（非交互）
@@ -151,21 +155,30 @@ Nova 是一个全屏 Ink/React REPL：顶部是滚动的历史区，底部是固
 |------|------|
 | `/help` | 显示帮助；列出按来源分组（Built-in / Project / User）的命令 |
 | `/effort [<level>]` | 查看或切换 thinking 等级（`off`/`low`/`medium`/`high`/`max` 或整数预算） |
+| `/model [<tier>]` | 查看或切换当前会话的**模型档位**（`lite`/`pro`/`max` 等已配置档位，仅本次会话不持久化）；只接受配置过的档位名，裸模型 id 会被拒绝；无参数弹出交互列表 |
 | `/clear` | 清空当前会话历史（session 仍保留） |
+| `/rename [<name>\|clear]` | 给当前 session 起个名字（显示在输入框边框上）；`clear` 清除 |
 | `/compact [focus…]` | 把历史压缩成单条摘要消息；可附带关注点提示 |
 | `/resume [<id>]` | 切换到指定 session；不带参数则弹出列表选择 |
 | `/rewind [<n>]` | 回退到此前某条消息——其后的对话历史与文件改动都会被丢弃 |
 | `/plan <goal>` | 把调查交给一个只读的 plan 子 agent，返回分步实现计划 |
+| `/goal [<condition>\|clear]` | 设定一个成功条件，Nova 自动推进直到达成；`clear` 取消 |
+| `/diff [pathspec]` | 交互式浏览未提交变更，选中后查看语法高亮差异（只读） |
+| `/review [focus…]` | 审查当前未提交的 diff，只读地报告问题（不改动任何文件） |
+| `/init [focus…]` | 探索代码库后生成 / 刷新项目记忆（`NOVA.md`） |
+| `/agents [reload]` · `/agent <name> <task>` | 列出子 agent 类型 / 委派一项任务 |
+| `/usage` · `/context` | 累计 token 用量与缓存命中 / 上下文窗口占用可视化 |
 | `/predict [on\|off]` | 查看或切换「下一条输入预测」 |
 | `/commands [reload]` | 列出已注册的 slash 命令；`reload` 重新扫盘加载自定义命令 |
 | `/skills` | 列出已发现的 `SKILL.md`（及各自来源） |
 | `/mcp [tools]` | 查看 MCP 服务器状态；`tools` 列出所有桥接的工具 |
 | `/lsp` | 查看已配置的语言服务器（是否在 PATH、本 session 是否已启动） |
+| `/plugin` | 列出已加载的插件及其贡献（安装 / 启停用 `nova plugin` CLI，见 [§18](#18-插件plugins)） |
+| `/sandbox [on\|off]` | 本会话内开关 OS 命令沙箱（见 [§11](#11-命令沙箱)） |
+| `/tasks [list\|stop <id\|all>]` | 查看和管理后台命令（`runInBackground`），支持 list / stop |
 | `/exit`, `/quit` | 退出 |
 
-实际注册的内置命令为：`help`、`think`、`clear`、`compact`、`resume`、`rewind`、`plan`、`predict`、`commands`、`skills`、`mcp`、`lsp`、`exit`、`quit`。
-
-`/help` 与 `/commands` 会把**内置 + 项目 + 用户**三层命令都列出来。自定义命令的加载规则见 [§15](#15-自定义-slash-命令)。
+`/help` 与 `/commands` 会把**内置 + 项目 + 用户**三层命令都列出来。`/model` 只按已配置的档位名切换（如 `/model pro`），裸模型 id 会被拒绝。自定义命令的加载规则见 [§15](#15-自定义-slash-命令)。
 
 ---
 
@@ -200,7 +213,7 @@ Nova 把「extended thinking」暴露成五个等级，或一个显式的 token 
 
 同一轮里的多个 `createSubAgent` 调用会**并发执行**（受 `toolConcurrency` 限制）。父 agent 只会收到每个子 agent 的**最终一条消息**——庞大的中间调查被挡在主上下文之外。
 
-通过 `settings.subagent` 配置：`enabled` / `model`（默认随父模型）/ `maxTurns`（默认 50）/ `maxTokens`（默认 32768）。每个子 agent 的 transcript 落在 `~/.nova/sessions/{id}/subagents/`。子 agent 触顶 `maxTurns` 时不再直接报错丢弃，而是追加一轮「禁用工具、立即收尾」的请求,让它基于已收集信息产出一份尽力而为的报告。
+通过 `settings.subagent` 配置：`enabled` / `model`（默认随父模型）/ `maxTurns`（默认 100）/ `maxTokens`（默认 32768）。每个子 agent 的 transcript 落在 `~/.nova/sessions/{id}/subagents/`。子 agent 触顶 `maxTurns` 时不再直接报错丢弃，而是追加一轮「禁用工具、立即收尾」的请求,让它基于已收集信息产出一份尽力而为的报告。
 
 > 注：子 agent 调用 todo/task/长任务这类「有状态」工具时，操作的是**父 session** 的共享存储。
 
@@ -261,8 +274,9 @@ Nova 把「extended thinking」暴露成五个等级，或一个显式的 token 
 
 | 工具 | 权限 | 说明 |
 |------|------|------|
-| `runLongRunningCommand` | 需批准 | 后台起一个命令（dev server / watcher 等），立即返回 id；session 退出时子进程被杀 |
-| `checkLongRunningCommand` | 只读 | 查后台命令状态（`running`/`completed`/`error`）；只报状态，不回传输出 |
+| `runInBackground` | 需批准 | 后台起一个命令（dev server / watcher 等），立即返回 id；session 退出时子进程被杀 |
+| `getBackgroundOutput` | 只读 | 取某个后台命令累计的输出与状态 |
+| `killBackground` | 需批准 | 终止一个后台命令 |
 
 ### Skills
 
@@ -292,8 +306,21 @@ Nova 把「extended thinking」暴露成五个等级，或一个显式的 token 
 
 ### 默认放行 vs 默认询问
 
-- **默认放行（只读类）**：`read`/`glob`/`grep`（限定在工作区内，见下）、`webfetch`、`askUserQuestion`、所有 `get*` 查询、`checkLongRunningCommand`、`lsp`、`loadSkill`、`createSubAgent`、todo 全套。
-- **默认询问（会改东西的）**：`write`、`edit`、`bash`、`runLongRunningCommand`、task 的写操作等——落到 `defaultEffect`（默认 `ask`）。
+- **默认放行（只读类）**：`read`/`glob`/`grep`（限定在工作区内，见下）、`webfetch`、`websearch`、`askUserQuestion`、所有 `get*` 查询（含 `getBackgroundOutput`）、`lsp`、`loadSkill`、`createSubAgent`、todo 全套。
+- **默认询问（会改东西的）**：`write`、`edit`、`bash`、`runInBackground`、task 的写操作等——落到 `defaultEffect`（默认 `ask`）。
+
+### 权限模式（Shift+Tab 切换）
+
+输入框右下角有一个**权限模式**指示，按 `Shift+Tab` 在四档间循环（`bypassPermissions` 仅在 `--dangerously-skip-permissions` 启用后才加入循环）。它在权限引擎之前介入，临时改变写类工具的裁决倾向——只影响当前会话、不写盘：
+
+| 模式 | 状态行 | 行为 |
+|------|--------|------|
+| `default` | （无额外行） | 不改变任何裁决，`write`/`edit`/`bash` 照常落到引擎的 `ask` |
+| `acceptEdits` | ⏵⏵ accept edits on | **工作区内**的 `write`/`edit` 自动放行；`bash` 与工作区外的写仍然询问 |
+| `auto` | ⏵⏵ auto mode on | **自主模式**：在 `acceptEdits` 基础上，命令工具（`bash`、`runInBackground`）也自动放行、无人值守运行（先过一层风险分类器）。比 `acceptEdits` 更宽，但仍窄于 `bypassPermissions`——工作区外的写和用户 `deny` 规则不被绕过 |
+| `plan` | ⏸ plan mode on | **只读**：`write`/`edit`/`bash` 一律拒绝，逼模型先调查、给出分步计划——与只读 `/plan` 子 agent 同源 |
+
+启动时可用 `--permission-mode` 指定初始档位；`--dangerously-skip-permissions` 直接进入 `bypassPermissions`（每次审批自动放行，适合 CI/无人值守）。
 
 ### 读操作被限定在工作区
 
@@ -344,12 +371,12 @@ Nova 把「extended thinking」暴露成五个等级，或一个显式的 token 
 
 ## 11. 命令沙箱
 
-在权限引擎之上再叠一层 **OS 级纵深防御**：把会起子进程的工具（`bash`、`runLongRunningCommand`）放进操作系统沙箱里跑，把**文件写入**限制在工作区根内。底层是 [`@anthropic-ai/sandbox-runtime`](https://github.com/anthropic-experimental/sandbox-runtime)：macOS 用 Seatbelt（`sandbox-exec`），Linux 用 bubblewrap。
+在权限引擎之上再叠一层 **OS 级纵深防御**：把会起子进程的工具（`bash`、`runInBackground`）放进操作系统沙箱里跑，把**文件写入**限制在工作区根内。底层是 [`@anthropic-ai/sandbox-runtime`](https://github.com/anthropic-experimental/sandbox-runtime)：macOS 用 Seatbelt（`sandbox-exec`），Linux 用 bubblewrap。
 
 要点：
 
-- **默认开启（opt-out）。** 读放行、**网络不限制**（只管文件系统）。
-- **自动降级安全。** 仅 macOS / Linux 支持；不支持的平台或缺依赖（macOS 需 `ripgrep`；Linux 还需 `bubblewrap`/`socat`）会**静默降级**为不沙箱，agent 照常运行。所以默认开是安全的；要彻底关掉设 `sandbox.enabled: false`。
+- **默认关闭（opt-in）。** 需显式设 `sandbox.enabled: true` 才开启（或会话内 `/sandbox on`）。开启后读放行、**网络不限制**（只管文件系统）。
+- **自动降级安全。** 仅 macOS / Linux 支持；不支持的平台或缺依赖（macOS 需 `ripgrep`；Linux 还需 `bubblewrap`/`socat`）会**静默降级**为不沙箱，agent 照常运行。
 - **常见缓存默认放行。** npm/pnpm/yarn/cargo/rustup/go 等工具链缓存目录已预置进白名单，常用命令开箱即用。显式设置 `filesystem.allowWrite` 会**替换**这组默认值。
 - **SDK 强制保护的危险路径。** 即使在工作区里，这些也写不了：`.git/hooks`、`.git/config`、`.vscode/`、`.idea/`、`.claude/{commands,agents}`，以及 `.gitconfig`/`.zshrc`/`.mcp.json` 等 dotfile。其中只有 `.git/config` 能通过 `allowGitConfig`（默认 `true`）放行（`git config --local`、`git remote set-url` 需要它）；`.git/hooks` 始终拦。要写其它被保护路径，只能整个关掉沙箱。
 
@@ -500,7 +527,32 @@ Nova 可在启动时连接外部 [MCP](https://modelcontextprotocol.io) 服务�
 
 ---
 
-## 18. 会话、检查点与数据落盘
+## 18. 插件（Plugins）
+
+插件把可复用的扩展打包成**「一个目录 + 一份 manifest」**，一条命令即可安装、启停、分发。**纯声明式 —— 不执行任何插件代码**，只是把目录里的扩展登记进来。格式**兼容 Claude Code 插件**。
+
+Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin.json`（回退，二者不合并）。一个插件可同时贡献：
+
+- **slash 命令、子 agent、skills、生命周期 hooks** —— 与你手写的 `.md` 扩展（[§14](#14-skills)/[§15](#15-自定义-slash-命令)）同源，只是随插件一起分发；命令 / agent 名以 `<插件名>:<名字>` 命名空间化。
+- **MCP servers、LSP servers** —— 桥接进 [§16](#16-mcp-外部工具)/[§17](#17-lsp-代码智能) 的同一套机制。
+- **`bin/` 可执行文件** —— 其目录被加进 `PATH`，供 `bash`/`runInBackground`（及沙箱）调用。
+
+用 `nova plugin` 子命令从 shell 管理（它编辑 `~/.nova/nova.config.json` 的 `plugins` 块）：
+
+| 命令 | 作用 |
+|------|------|
+| `nova plugin install <来源>` | 从本地路径、GitHub 仓库、git URL 或 marketplace 安装 |
+| `nova plugin uninstall <name>` | 卸载一个插件 |
+| `nova plugin list` | 列出已加载的插件及各自的贡献 |
+| `nova plugin enable / disable <name>` | 启用 / 停用（停用不卸载） |
+| `nova plugin marketplace add <来源>` | 注册一个 marketplace（插件目录），来源同 install |
+| `nova plugin marketplace list / remove <name>` | 列出 / 移除已注册的 marketplace |
+
+> 整个插件子系统**默认关闭**（`plugins.enabled` 默认 `false`）—— 即便装了插件，也要设 `plugins.enabled: true` 才会加载。REPL 内的 `/plugin` 只用于**查看**已加载插件及其贡献；安装 / 启停等改配置的操作走 `nova plugin` CLI。插件状态（`installed` / `marketplaces` / `enabled` / `disabled`）都落在 `nova.config.json` 的 `plugins` 块；已安装插件缓存在 `~/.nova/plugins/cache`，扫描目录默认含 `.nova/plugins`、`~/.nova/plugins`（及 `.claude/plugins` 兼容路径）。项目级插件遮蔽同名的用户级插件（首次出现者胜）。
+
+---
+
+## 19. 会话、检查点与数据落盘
 
 ### 恢复与切换
 
@@ -533,7 +585,7 @@ Nova 可在启动时连接外部 [MCP](https://modelcontextprotocol.io) 服务�
 
 ---
 
-## 19. 配置文件完整参考
+## 20. 配置文件完整参考
 
 配置文件位于 `~/.nova/nova.config.json`，是一份 JSON。下面列出全部字段及默认值（来自 zod schema，**每个可配项都有默认值，缺省即用默认**）。
 
@@ -542,12 +594,13 @@ Nova 可在启动时连接外部 [MCP](https://modelcontextprotocol.io) 服务�
 | 字段 | 默认 | 说明 |
 |------|------|------|
 | `apiKey` | （无） | provider API key（首次向导会写入） |
-| `model` | `"claude-sonnet-4-5"` | 模型 id |
+| `model` | `"pro"` | 当前**档位**：`models` 表中的 key（`lite`/`pro`/`max`），**永远不是裸模型 id** |
+| `models` | `{}` | 命名的模型档位映射表（value 为裸 id 或含 `id`/`thinking` 等的对象）。非空时**必须至少含 `lite`/`pro`/`max` 三档**（schema 强制）；首次向导按 provider 模板写入，schema 不再提供默认值 |
 | `baseURL` | （无） | Anthropic 兼容端点 URL |
 | `sessionDir` | （无→ `~/.nova/sessions`） | session 存放目录 |
 | `maxTokens` | `32768` | 单次响应输出上限（DeepSeek 端点上限 8192，需手动调低） |
 | `contextWindowTokens` | `1000000` | 上下文窗口大小（用于压缩阈值估算） |
-| `maxTurns` | `40` | 单轮最大循环次数 |
+| `maxTurns` | `100` | 单轮最大循环次数 |
 | `toolConcurrency` | `3` | 单轮内工具并发上限（1 = 全串行） |
 
 ### `permissions`
@@ -609,10 +662,11 @@ Nova 可在启动时连接外部 [MCP](https://modelcontextprotocol.io) 服务�
 | `memory.userPaths` / `globalPath` | （无） | 覆盖用户层/全局记忆路径 |
 | `slash.enabled` | `true` | 自定义 slash 命令开关；`projectDirs`/`userPaths`/`extraDirs` 额外目录 |
 | `skills.enabled` | `true` | Skills 开关；`maxIndexBytes`=8192、`maxResponseBytes`=16384，及额外目录 |
-| `subagent.enabled` | `true` | 子 agent 开关；`model`（默认随父）/`maxTurns`=50/`maxTokens`=32768 |
+| `subagent.enabled` | `true` | 子 agent 开关；`model`（默认随父）/`maxTurns`=100/`maxTokens`=32768 |
 | `lsp.*` | `enabled:true` | LSP，见 [§17](#17-lsp-代码智能) |
 | `mcp.*` | `enabled:true` | MCP，见 [§16](#16-mcp-外部工具) |
-| `sandbox.*` | `enabled:true` | 命令沙箱，见 [§11](#11-命令沙箱) |
+| `sandbox.*` | `enabled:false` | 命令沙箱（**默认关**），见 [§11](#11-命令沙箱) |
+| `plugins.*` | `enabled:false` | 插件子系统（**默认关**）；`projectDirs`/`userDirs`/`disabled`/`installed`/`marketplaces`，见 [§18](#18-插件plugins) |
 | `hooks.*` | `enabled:true` | 用户事件 shell 钩子，见下方 [`hooks`](#hooks用户事件-shell-钩子) |
 
 > 临时覆盖：`-m/--model`、`-t/--think`、`--max-turns`、`--cwd`、`--no-transcript`、`--no-pretty` 只影响本次会话，不写回文件。
@@ -724,7 +778,7 @@ Nova 可在启动时连接外部 [MCP](https://modelcontextprotocol.io) 服务�
 
 ---
 
-## 20. 常见问题与排查
+## 21. 常见问题与排查
 
 **Q：启动报 “Nova requires an interactive terminal (TTY)”。**
 A：Nova 必须在交互式终端里跑，不支持管道/重定向/无 PTY 的 CI。换一个真正的终端。

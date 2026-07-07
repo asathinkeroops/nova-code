@@ -192,11 +192,12 @@
       <a class="nav-link" href="#sec-15" data-nav="sec-15">15 · 自定义 Slash 命令</a>
       <a class="nav-link" href="#sec-16" data-nav="sec-16">16 · MCP 外部工具</a>
       <a class="nav-link" href="#sec-17" data-nav="sec-17">17 · LSP 代码智能</a>
+      <a class="nav-link" href="#sec-18" data-nav="sec-18">18 · 插件 Plugins</a>
 
       <div class="nav-group">运维与参考</div>
-      <a class="nav-link" href="#sec-18" data-nav="sec-18">18 · 会话与数据落盘</a>
-      <a class="nav-link" href="#sec-19" data-nav="sec-19">19 · 配置完整参考</a>
-      <a class="nav-link" href="#sec-20" data-nav="sec-20">20 · FAQ 与排查</a>
+      <a class="nav-link" href="#sec-19" data-nav="sec-19">19 · 会话与数据落盘</a>
+      <a class="nav-link" href="#sec-20" data-nav="sec-20">20 · 配置完整参考</a>
+      <a class="nav-link" href="#sec-21" data-nav="sec-21">21 · FAQ 与排查</a>
 
       <p id="no-results" class="hidden text-xs text-mute px-3 py-4">没有匹配的章节</p>
     </nav>
@@ -230,7 +231,7 @@
           <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>记忆、Skills、自定义命令、MCP、Hook</strong> —— 项目 / 用户级的知识与工具扩展；Shell 钩子在工具调用 / 用户提交 / 压缩等生命周期节点插入自定义逻辑。</span></li>
           <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>权限与沙箱</strong> —— 基于规则的拦截 + OS 级文件写入隔离，双层防护。危险 bash 模式（rm -rf /、fork bomb、mkfs 等）直接拒绝，不可绕过。</span></li>
           <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>可恢复会话</strong> —— append-only 持久化，随时 <code>--resume</code> / <code>--continue</code>，<code>/rewind</code> 回到更早节点（含文件改动预览确认）。</span></li>
-          <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>DeepSeek 深度定制</strong> —— thinking 映射到 DeepSeek 的 <code>output_config.effort</code>，请求结构对自动上下文缓存友好，错误码翻译与瞬时重试。模型默认 <code>deepseek-v4-pro</code>，支持命名层级（<code>flash</code>/<code>pro</code>）和 <code>/model</code> 运行时切换。</span></li>
+          <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>DeepSeek 深度定制</strong> —— thinking 映射到 DeepSeek 的 <code>output_config.effort</code>，请求结构对自动上下文缓存友好，错误码翻译与瞬时重试。模型按 <code>lite</code>/<code>pro</code>/<code>max</code> 三档配置（DeepSeek 模板：<code>lite</code>→<code>deepseek-v4-flash</code>，<code>pro</code>/<code>max</code>→<code>deepseek-v4-pro</code>，各档 thinking 深度不同），默认档位 <code>pro</code>，支持 <code>/model</code> 运行时切换。</span></li>
         </ul>
       </section>
 
@@ -259,16 +260,16 @@
       <!-- §3 -->
       <section id="sec-3" class="mb-20">
         <div class="flex items-center gap-3 mb-5"><span class="sec-num">03</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">首次配置向导</h2></div>
-        <p>第一次启动时，如果 <code>~/.nova/nova.config.json</code> 里缺少必填项，Nova 会进入一个交互式向导，依次询问三项并写回配置文件：</p>
+        <p>第一次启动时，如果 <code>~/.nova/nova.config.json</code> 里缺少 <code>apiKey</code>，Nova 会进入一个交互式向导，两步完成配置并写回文件：</p>
         <div class="tbl-wrap"><table class="doc">
-          <thead><tr><th>字段</th><th>说明</th></tr></thead>
+          <thead><tr><th>步骤</th><th>说明</th></tr></thead>
           <tbody>
-            <tr><td><strong>Base URL</strong></td><td>必须是 Anthropic 兼容端点（如 <code>https://api.anthropic.com</code>，或 DeepSeek 的兼容端点）</td></tr>
+            <tr><td><strong>选择 provider</strong></td><td>从内置模板里选（目前只有 <strong>DeepSeek</strong>，或「Other provider」）。选模板会自动填好 <code>baseURL</code>、默认档位和 <code>lite</code>/<code>pro</code>/<code>max</code> 模型表，所以只剩 API key 需要问</td></tr>
             <tr><td><strong>API key</strong></td><td>你的 provider API key（输入时被掩码）</td></tr>
-            <tr><td><strong>Model</strong></td><td>模型 id，例如 <code>deepseek-v4-pro</code>（通过 <code>/model</code> 或 <code>-m</code> 可随时切换）</td></tr>
           </tbody>
         </table></div>
-        <p>按 <span class="kbd">Ctrl+C</span> 可中止向导。已有的字段不会再问。你也可以随时手动编辑 <code>~/.nova/nova.config.json</code>（完整字段见 <a class="inline-link" href="#sec-19">§19</a>）。</p>
+        <p>DeepSeek 模板写入 <code>baseURL: https://api.deepseek.com/anthropic</code>，并把 <code>lite</code>→<code>deepseek-v4-flash</code>、<code>pro</code>/<code>max</code>→<code>deepseek-v4-pro</code>（默认档位 <code>pro</code>）。选「Other provider」则不进交互流程，Nova 会打印配置文件路径让你手动照 <code>lite</code>/<code>pro</code>/<code>max</code> 的骨架填写（schema 不再为 <code>baseURL</code>/<code>models</code> 提供默认值）。</p>
+        <p>按 <span class="kbd">Ctrl+C</span> 可中止向导。<code>apiKey</code> 已存在则跳过向导。你也可以随时手动编辑 <code>~/.nova/nova.config.json</code>（完整字段见 <a class="inline-link" href="#sec-20">§20</a>）。</p>
         <div class="callout callout-warn">
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg>
           <div><div class="callout-title">apiKey 仍为空？</div><p>如果启动时 <code>apiKey</code> 仍为空，Nova 会报错退出并提示去配置文件里补上。</p></div>
@@ -291,7 +292,7 @@
       <span class="tok-f">--no-transcript</span>             <span class="tok-c"># 本次不写 transcript</span>
       <span class="tok-f">--no-pretty</span>                 <span class="tok-c"># 关闭 pretty 日志</span>
       <span class="tok-f">--output-format</span> text|json     <span class="tok-c"># 无头模式输出格式（默认 text）</span>
-      <span class="tok-f">--permission-mode</span> default|acceptEdits|plan  <span class="tok-c"># 初始权限模式（默认 default）</span>
+      <span class="tok-f">--permission-mode</span> default|acceptEdits|auto|plan  <span class="tok-c"># 初始权限模式（默认 default）</span>
       <span class="tok-f">--dangerously-skip-permissions</span>    <span class="tok-c"># 自动批准所有权限提示（无头模式等效 allow）</span></code></pre>
         </div>
         <p class="mt-6 font-medium" style="color:var(--text)">要点：</p>
@@ -351,16 +352,17 @@
         <div class="tbl-wrap"><table class="doc"><thead><tr><th>命令</th><th>作用</th></tr></thead><tbody>
           <tr><td><code>/help</code></td><td>显示帮助；列出按来源分组（Built-in / Project / User）的命令</td></tr>
           <tr><td><code>/effort [&lt;level&gt;]</code></td><td>查看或切换 thinking 等级（<code>off</code>/<code>low</code>/<code>medium</code>/<code>high</code>/<code>max</code> 或整数预算）</td></tr>
-          <tr><td><code>/model [&lt;name|id&gt;]</code></td><td>查看或切换当前会话的模型（仅本次会话，不持久化）；无参数弹出交互列表</td></tr>
+          <tr><td><code>/model [&lt;tier&gt;]</code></td><td>查看或切换当前会话的<strong>模型档位</strong>（<code>lite</code>/<code>pro</code>/<code>max</code> 等已配置档位，仅本次会话不持久化）；只接受配置过的档位名，裸模型 id 会被拒绝；无参数弹出交互列表</td></tr>
           <tr><td><code>/clear</code></td><td>清空当前会话历史（session 仍保留）</td></tr>
+          <tr><td><code>/rename [&lt;name&gt;|clear]</code></td><td>给当前 session 起个名字（显示在输入框边框上）；<code>clear</code> 清除</td></tr>
           <tr><td><code>/compact [focus…]</code></td><td>把历史压缩成单条摘要消息；可附带关注点提示</td></tr>
           <tr><td><code>/resume [&lt;id&gt;]</code></td><td>切换到指定 session；不带参数则弹出列表选择</td></tr>
           <tr><td><code>/rewind [&lt;n&gt;]</code></td><td>回退到此前某条消息 —— 其后的对话历史与文件改动都会被丢弃（会预览受影响的文件并请求确认）</td></tr>
           <tr><td><code>/init [focus…]</code></td><td>探索代码库后生成 / 刷新项目记忆（<code>NOVA.md</code>，可附关注点）</td></tr>
           <tr><td><code>/plan &lt;goal&gt;</code></td><td>把调查交给一个只读的 plan 子 agent，返回分步实现计划</td></tr>
+          <tr><td><code>/goal [&lt;condition&gt;|clear]</code></td><td>设定一个成功条件，Nova 自动推进直到达成；<code>clear</code> 取消</td></tr>
           <tr><td><code>/diff [pathspec]</code></td><td>交互式浏览未提交变更：列出文件列表（含 staged/unstaged 状态），选中后查看语法高亮差异（只读）</td></tr>
           <tr><td><code>/review [focus…]</code></td><td>审查当前未提交的 diff，只读地报告问题（不改动任何文件）</td></tr>
-          <tr><td><code>/commit [guidance…]</code></td><td>审查待提交改动、跟随仓库提交风格，创建本地提交（<strong>不 push</strong>）</td></tr>
           <tr><td><code>/usage</code></td><td>显示当前会话累计 token 用量和缓存命中率；若配置了价格则估算费用</td></tr>
           <tr><td><code>/context</code></td><td>可视化上下文窗口占用：按类别（system prompt、memory、skills、tools、MCP、messages + 空闲空间）分解为彩色条形图</td></tr>
           <tr><td><code>/predict [on|off]</code></td><td>查看或切换「下一条输入预测」</td></tr>
@@ -370,11 +372,14 @@
           <tr><td><code>/agent &lt;name&gt; &lt;task&gt;</code></td><td>把一项任务委派给指定的子 agent</td></tr>
           <tr><td><code>/mcp [tools]</code></td><td>查看 MCP 服务器状态；<code>tools</code> 列出所有桥接的工具</td></tr>
           <tr><td><code>/lsp</code></td><td>查看已配置的语言服务器（是否在 PATH、本 session 是否已启动）</td></tr>
+          <tr><td><code>/plugin</code></td><td>列出已加载的插件及其贡献（安装 / 启停用 <code>nova plugin</code> CLI，见 <a class="inline-link" href="#sec-18">§18</a>）</td></tr>
+          <tr><td><code>/sandbox [on|off]</code></td><td>本会话内开关 OS 命令沙箱（见 <a class="inline-link" href="#sec-11">§11</a>）</td></tr>
+          <tr><td><code>/tasks [list|stop &lt;id|all&gt;]</code></td><td>查看和管理后台命令（<code>runInBackground</code>），支持 list / stop</td></tr>
           <tr><td><code>/exit</code>, <code>/quit</code></td><td>退出</td></tr>
         </tbody></table></div>
         <div class="callout callout-info">
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
-          <div><p><code>/diff</code> 是交互式只读差异查看器；<code>/commit</code> 与 <code>/review</code> 展开成引导 prompt 交给主 agent，让它用自己的工具去查 <code>git status</code>/<code>diff</code> 并完成提交或审查。<code>/context</code> 与 <code>/usage</code> 分别展示上下文占用的即时快照和累计用量。<code>/model</code> 允许在会话内按模型 key 或裸 id 切换模型（如 <code>/model pro</code>、<code>/model deepseek-v4-flash</code>）。token 流式渲染由配置项 <code>stream.enabled</code> 控制（无对应 slash 命令）。<code>/help</code> 与 <code>/commands</code> 会把<strong>内置 + 项目 + 用户</strong>三层命令都列出来；自定义命令的加载规则见 <a class="inline-link" href="#sec-15">§15</a>。</p></div>
+          <div><p><code>/diff</code> 是交互式只读差异查看器；<code>/review</code> 展开成引导 prompt 交给主 agent，让它用自己的工具去查 <code>git status</code>/<code>diff</code> 并完成审查。<code>/context</code> 与 <code>/usage</code> 分别展示上下文占用的即时快照和累计用量。<code>/model</code> 只按<strong>已配置的档位名</strong>切换（如 <code>/model pro</code>），裸模型 id 会被拒绝。token 流式渲染由配置项 <code>stream.enabled</code> 控制（无对应 slash 命令）。<code>/help</code> 与 <code>/commands</code> 会把<strong>内置 + 项目 + 用户</strong>三层命令都列出来；自定义命令的加载规则见 <a class="inline-link" href="#sec-15">§15</a>。</p></div>
         </div>
       </section>
 
@@ -416,7 +421,7 @@
           <tr><td><code>general-purpose</code></td><td>完整工具</td><td>需要真正改文件或跑命令的活儿</td></tr>
         </tbody></table></div>
         <p>同一轮里的多个 <code>createSubAgent</code> 调用会<strong>并发执行</strong>（受 <code>toolConcurrency</code> 限制）。父 agent 只会收到每个子 agent 的<strong>最终一条消息</strong> —— 庞大的中间调查被挡在主上下文之外。</p>
-        <p>通过 <code>settings.subagent</code> 配置：<code>enabled</code> / <code>model</code>（默认随父模型）/ <code>maxTurns</code>（默认 50）/ <code>maxTokens</code>（默认 32768；DeepSeek 端点输出上限 8192，需调低）。每个子 agent 的 transcript 落在 <code>~/.nova/sessions/{id}/subagents/</code>。</p>
+        <p>通过 <code>settings.subagent</code> 配置：<code>enabled</code> / <code>model</code>（默认随父模型）/ <code>maxTurns</code>（默认 100）/ <code>maxTokens</code>（默认 32768；DeepSeek 端点输出上限 8192，需调低）。每个子 agent 的 transcript 落在 <code>~/.nova/sessions/{id}/subagents/</code>。</p>
         <div class="callout callout-info">
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
           <div><p>子 agent 调用 todo / task / 长任务这类「有状态」工具时，操作的是<strong>父 session</strong> 的共享存储。</p></div>
@@ -520,15 +525,16 @@
         </ol>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">权限模式（Shift+Tab 切换）</h3>
-        <p>输入框右下角有一个<strong>权限模式</strong>指示，按 <span class="kbd">Shift+Tab</span> 在三档间循环。它在权限引擎之前介入，临时改变写类工具的裁决倾向 —— 只影响当前会话、不写盘：</p>
+        <p>输入框右下角有一个<strong>权限模式</strong>指示，按 <span class="kbd">Shift+Tab</span> 在四档间循环（<code>bypassPermissions</code> 仅在 <code>--dangerously-skip-permissions</code> 启用后才加入循环）。它在权限引擎之前介入，临时改变写类工具的裁决倾向 —— 只影响当前会话、不写盘：</p>
         <div class="tbl-wrap"><table class="doc"><thead><tr><th>模式</th><th>状态行</th><th>行为</th></tr></thead><tbody>
           <tr><td><code>default</code></td><td>（无额外行）</td><td>不改变任何裁决，<code>write</code>/<code>edit</code>/<code>bash</code> 照常落到引擎的 <code>ask</code></td></tr>
           <tr><td><code>acceptEdits</code></td><td><span style="color:#059669">⏵⏵ accept edits on</span></td><td><strong>工作区内</strong>的 <code>write</code>/<code>edit</code> 自动放行（不再逐次询问）；<code>bash</code> 与工作区外的写仍然询问</td></tr>
+          <tr><td><code>auto</code></td><td><span style="color:#ca8a04">⏵⏵ auto mode on</span></td><td><strong>自主模式</strong>：在 <code>acceptEdits</code> 基础上，命令工具（<code>bash</code>、<code>runInBackground</code>）也自动放行、无人值守运行（先过一层风险分类器）。比 <code>acceptEdits</code> 更宽，但仍窄于 <code>bypassPermissions</code> —— 工作区外的写和用户 <code>deny</code> 规则不被绕过</td></tr>
           <tr><td><code>plan</code></td><td><span style="color:#0891b2">⏸ plan mode on</span></td><td><strong>只读</strong>：<code>write</code>/<code>edit</code>/<code>bash</code> 一律拒绝，逼模型先调查、给出分步计划，而不动手改 —— 与只读 <code>/plan</code> 子 agent 同源</td></tr>
         </tbody></table></div>
         <div class="callout callout-info">
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
-          <div><p>权限模式只是「在引擎之前」加一层偏置：<code>acceptEdits</code> 只放宽工作区内的写、<code>plan</code> 只收紧写类工具，其余裁决（危险 bash 拒绝、配置规则、读工具放行等）一律不变。想退出 plan 模式动手改动，再按 <span class="kbd">Shift+Tab</span> 切回即可。</p></div>
+          <div><p>权限模式只是「在引擎之前」加一层偏置：<code>acceptEdits</code>/<code>auto</code> 放宽写类（以及 <code>auto</code> 的命令）工具、<code>plan</code> 只收紧写类工具，其余裁决（危险 bash 拒绝、配置规则、读工具放行等）一律不变。想退出 plan 模式动手改动，再按 <span class="kbd">Shift+Tab</span> 切回即可。</p></div>
         </div>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">默认放行 vs 默认询问</h3>
@@ -579,10 +585,10 @@
       <!-- §11 -->
       <section id="sec-11" class="mb-20">
         <div class="flex items-center gap-3 mb-5"><span class="sec-num">11</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">命令沙箱</h2></div>
-        <p>在权限引擎之上再叠一层 <strong>OS 级纵深防御</strong>：把会起子进程的工具（<code>bash</code>、<code>runLongRunningCommand</code>）放进操作系统沙箱里跑，把<strong>文件写入</strong>限制在工作区根内。底层是 <code>@anthropic-ai/sandbox-runtime</code>：macOS 用 Seatbelt（<code>sandbox-exec</code>），Linux 用 bubblewrap。</p>
+        <p>在权限引擎之上再叠一层 <strong>OS 级纵深防御</strong>：把会起子进程的工具（<code>bash</code>、<code>runInBackground</code>）放进操作系统沙箱里跑，把<strong>文件写入</strong>限制在工作区根内。底层是 <code>@anthropic-ai/sandbox-runtime</code>：macOS 用 Seatbelt（<code>sandbox-exec</code>），Linux 用 bubblewrap。</p>
         <ul class="space-y-2">
-          <li><strong>默认开启（opt-out）。</strong>读放行、<strong>网络不限制</strong>（只管文件系统）。</li>
-          <li><strong>自动降级安全。</strong>仅 macOS / Linux 支持；不支持的平台或缺依赖（macOS 需 <code>ripgrep</code>；Linux 还需 <code>bubblewrap</code>/<code>socat</code>）会<strong>静默降级</strong>为不沙箱，agent 照常运行。要彻底关掉设 <code>sandbox.enabled: false</code>。</li>
+          <li><strong>默认关闭（opt-in）。</strong>需显式设 <code>sandbox.enabled: true</code> 才开启（或会话内 <code>/sandbox on</code>）。开启后读放行、<strong>网络不限制</strong>（只管文件系统）。</li>
+          <li><strong>自动降级安全。</strong>仅 macOS / Linux 支持；不支持的平台或缺依赖（macOS 需 <code>ripgrep</code>；Linux 还需 <code>bubblewrap</code>/<code>socat</code>）会<strong>静默降级</strong>为不沙箱，agent 照常运行。</li>
           <li><strong>常见缓存默认放行。</strong>npm/pnpm/yarn/cargo/rustup/go/pip 等工具链缓存目录（<code>~/.npm</code>、<code>~/.cache</code>、<code>~/Library/Caches</code>、<code>~/.cargo</code>、<code>~/.rustup</code>、<code>~/go</code>、<code>~/.local/share/pnpm</code>、<code>~/Library/pnpm</code>、<code>~/.yarn</code>）已预置进白名单。显式设置 <code>filesystem.allowWrite</code> 会<strong>替换</strong>这组默认值。</li>
           <li><strong>SDK 强制保护的危险路径。</strong>即使在工作区里也写不了：<code>.git/hooks</code>、<code>.git/config</code>、<code>.vscode/</code>、<code>.idea/</code>、<code>.claude/{commands,agents}</code>，以及 <code>.gitconfig</code>/<code>.zshrc</code>/<code>.mcp.json</code> 等 dotfile。</li>
         </ul>
@@ -743,7 +749,32 @@
 
       <!-- §18 -->
       <section id="sec-18" class="mb-20">
-        <div class="flex items-center gap-3 mb-5"><span class="sec-num">18</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">会话、检查点与数据落盘</h2></div>
+        <div class="flex items-center gap-3 mb-5"><span class="sec-num">18</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">插件（Plugins）</h2></div>
+        <p>插件把可复用的扩展打包成<strong>「一个目录 + 一份 manifest」</strong>，一条命令即可安装、启停、分发。<strong>纯声明式 —— 不执行任何插件代码</strong>，只是把目录里的扩展登记进来。格式<strong>兼容 Claude Code 插件</strong>。</p>
+        <p>Manifest 位于 <code>.nova-plugin/plugin.json</code>（优先）或 <code>.claude-plugin/plugin.json</code>（回退，二者不合并）。一个插件可同时贡献：</p>
+        <ul class="space-y-2">
+          <li><strong>slash 命令、子 agent、skills、生命周期 hooks</strong> —— 与你手写的 <code>.md</code> 扩展（<a class="inline-link" href="#sec-14">§14</a>/<a class="inline-link" href="#sec-15">§15</a>）同源，只是随插件一起分发；命令 / agent 名以 <code>&lt;插件名&gt;:&lt;名字&gt;</code> 命名空间化。</li>
+          <li><strong>MCP servers、LSP servers</strong> —— 桥接进 <a class="inline-link" href="#sec-16">§16</a>/<a class="inline-link" href="#sec-17">§17</a> 的同一套机制。</li>
+          <li><strong><code>bin/</code> 可执行文件</strong> —— 其目录被加进 <code>PATH</code>，供 <code>bash</code>/<code>runInBackground</code>（及沙箱）调用。</li>
+        </ul>
+        <p>用 <code>nova plugin</code> 子命令从 shell 管理（它编辑 <code>~/.nova/nova.config.json</code> 的 <code>plugins</code> 块）：</p>
+        <div class="tbl-wrap"><table class="doc"><thead><tr><th>命令</th><th>作用</th></tr></thead><tbody>
+          <tr><td><code>nova plugin install &lt;来源&gt;</code></td><td>从本地路径、GitHub 仓库、git URL 或 marketplace 安装</td></tr>
+          <tr><td><code>nova plugin uninstall &lt;name&gt;</code></td><td>卸载一个插件</td></tr>
+          <tr><td><code>nova plugin list</code></td><td>列出已加载的插件及各自的贡献</td></tr>
+          <tr><td><code>nova plugin enable / disable &lt;name&gt;</code></td><td>启用 / 停用（停用不卸载）</td></tr>
+          <tr><td><code>nova plugin marketplace add &lt;来源&gt;</code></td><td>注册一个 marketplace（插件目录），来源同 install</td></tr>
+          <tr><td><code>nova plugin marketplace list / remove &lt;name&gt;</code></td><td>列出 / 移除已注册的 marketplace</td></tr>
+        </tbody></table></div>
+        <div class="callout callout-info">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          <div><p>整个插件子系统<strong>默认关闭</strong>（<code>plugins.enabled</code> 默认 <code>false</code>）—— 即便装了插件，也要设 <code>plugins.enabled: true</code> 才会加载。REPL 内的 <code>/plugin</code> 只用于<strong>查看</strong>已加载插件及其贡献；安装 / 启停等改配置的操作走 <code>nova plugin</code> CLI。插件状态（<code>installed</code> / <code>marketplaces</code> / <code>enabled</code> / <code>disabled</code>）都落在 <code>nova.config.json</code> 的 <code>plugins</code> 块；已安装插件缓存在 <code>~/.nova/plugins/cache</code>，扫描目录默认含 <code>.nova/plugins</code>、<code>~/.nova/plugins</code>（及 <code>.claude/plugins</code> 兼容路径）。项目级插件遮蔽同名的用户级插件（首次出现者胜）。</p></div>
+        </div>
+      </section>
+
+      <!-- §19 -->
+      <section id="sec-19" class="mb-20">
+        <div class="flex items-center gap-3 mb-5"><span class="sec-num">19</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">会话、检查点与数据落盘</h2></div>
         <h3 class="text-base font-semibold mt-2 mb-3" style="color:var(--text)">恢复与切换</h3>
         <ul class="space-y-2">
           <li><code>nova -c</code> / <code>nova --continue</code>：恢复最近一个 session。</li>
@@ -770,22 +801,22 @@
         </div>
       </section>
 
-      <!-- §19 -->
-      <section id="sec-19" class="mb-20">
-        <div class="flex items-center gap-3 mb-5"><span class="sec-num">19</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">配置文件完整参考</h2></div>
+      <!-- §20 -->
+      <section id="sec-20" class="mb-20">
+        <div class="flex items-center gap-3 mb-5"><span class="sec-num">20</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">配置文件完整参考</h2></div>
         <p>配置文件位于 <code>~/.nova/nova.config.json</code>，是一份 JSON。下面列出全部字段及默认值（来自 zod schema，<strong>每个可配项都有默认值，缺省即用默认</strong>）。</p>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">顶层与模型</h3>
         <div class="tbl-wrap"><table class="doc"><thead><tr><th>字段</th><th>默认</th><th>说明</th></tr></thead><tbody>
           <tr><td><code>apiKey</code></td><td>（无）</td><td>provider API key（首次向导会写入）</td></tr>
-          <tr><td><code>model</code></td><td><code>"deepseek-v4-pro"</code></td><td>当前模型 id 或 <code>models</code> 表中的 key</td></tr>
-          <tr><td><code>models</code></td><td><code>{ flash: "deepseek-v4-flash", pro: "deepseek-v4-pro" }</code></td><td>命名的模型层级映射表（value 为裸 id 或含 profile 的对象）。设此 key 会<strong>整体替换</strong>默认值</td></tr>
+          <tr><td><code>model</code></td><td><code>"pro"</code></td><td>当前<strong>档位</strong>：<code>models</code> 表中的 key（<code>lite</code>/<code>pro</code>/<code>max</code>），<strong>永远不是裸模型 id</strong></td></tr>
+          <tr><td><code>models</code></td><td><code>{}</code></td><td>命名的模型档位映射表（value 为裸 id 或含 <code>id</code>/<code>thinking</code> 等的对象）。非空时<strong>必须至少含 <code>lite</code>/<code>pro</code>/<code>max</code> 三档</strong>（schema 强制）；首次向导按 provider 模板写入，schema 不再提供默认值</td></tr>
           <tr><td><code>baseURL</code></td><td>（无）</td><td>Anthropic 兼容端点 URL</td></tr>
           <tr><td><code>sessionDir</code></td><td><code>~/.nova/sessions</code></td><td>session 存放目录</td></tr>
           <tr><td><code>maxTokens</code></td><td><code>32768</code></td><td>单次响应输出上限（DeepSeek 端点上限 8192，需调低）</td></tr>
           <tr><td><code>maxTokensContinuations</code></td><td><code>3</code></td><td>当 <code>max_tokens</code> 截断且无工具调用时，连续重提示模型继续的最多次数；<code>0</code> 禁用（硬停止）。每次有进展时计数器重置</td></tr>
           <tr><td><code>contextWindowTokens</code></td><td><code>1000000</code></td><td>上下文窗口大小（用于压缩阈值估算）</td></tr>
-          <tr><td><code>maxTurns</code></td><td><code>50</code></td><td>单轮最大循环次数</td></tr>
+          <tr><td><code>maxTurns</code></td><td><code>100</code></td><td>单轮最大循环次数</td></tr>
           <tr><td><code>toolConcurrency</code></td><td><code>3</code></td><td>单轮内工具并发上限（1 = 全串行）</td></tr>
         </tbody></table></div>
 
@@ -864,10 +895,11 @@
           <tr><td><code>memory.userPaths</code> / <code>globalPath</code></td><td>（无）</td><td>覆盖用户层 / 全局记忆路径</td></tr>
           <tr><td><code>slash.enabled</code></td><td><code>true</code></td><td>自定义 slash 命令开关；可覆写的发现目录：<code>projectDirs</code>、<code>userPaths</code>、<code>extraDirs</code></td></tr>
           <tr><td><code>skills.enabled</code></td><td><code>true</code></td><td>Skills 开关；<code>maxIndexBytes</code>=8192、<code>maxResponseBytes</code>=16384；可覆写的发现目录：<code>projectDirs</code>、<code>userPaths</code>、<code>extraDirs</code></td></tr>
-          <tr><td><code>subagent.enabled</code></td><td><code>true</code></td><td>子 agent 开关；<code>model</code>（默认随父）/<code>maxTurns</code>=50/<code>maxTokens</code>=32768；子 agent 的 <code>maxTokensContinuations</code> 继承顶层设置；自定义类型目录：<code>projectDirs</code>/<code>userPaths</code>/<code>extraDirs</code></td></tr>
+          <tr><td><code>subagent.enabled</code></td><td><code>true</code></td><td>子 agent 开关；<code>model</code>（默认随父）/<code>maxTurns</code>=100/<code>maxTokens</code>=32768；子 agent 的 <code>maxTokensContinuations</code> 继承顶层设置；自定义类型目录：<code>projectDirs</code>/<code>userPaths</code>/<code>extraDirs</code></td></tr>
           <tr><td><code>lsp.*</code></td><td><code>enabled:true</code></td><td>LSP，见 <a class="inline-link" href="#sec-17">§17</a>；超时可配：<code>initTimeoutMs</code>=15000、<code>requestTimeoutMs</code>=15000、<code>diagnosticsTimeoutMs</code>=3000</td></tr>
           <tr><td><code>mcp.*</code></td><td><code>enabled:true</code>, <code>timeoutMs:60000</code></td><td>MCP，见 <a class="inline-link" href="#sec-16">§16</a></td></tr>
-          <tr><td><code>sandbox.*</code></td><td><code>enabled:true</code>, <code>monitorViolations:true</code></td><td>命令沙箱，见 <a class="inline-link" href="#sec-11">§11</a></td></tr>
+          <tr><td><code>sandbox.*</code></td><td><code>enabled:false</code>, <code>monitorViolations:true</code></td><td>命令沙箱（<strong>默认关</strong>），见 <a class="inline-link" href="#sec-11">§11</a></td></tr>
+          <tr><td><code>plugins.*</code></td><td><code>enabled:false</code></td><td>插件子系统（<strong>默认关</strong>）；<code>projectDirs</code>/<code>userDirs</code>/<code>disabled</code>/<code>installed</code>/<code>marketplaces</code>，见 <a class="inline-link" href="#sec-18">§18</a></td></tr>
         </tbody></table></div>
         <div class="callout callout-info">
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
@@ -875,9 +907,9 @@
         </div>
       </section>
 
-      <!-- §20 -->
-      <section id="sec-20" class="mb-12">
-        <div class="flex items-center gap-3 mb-5"><span class="sec-num">20</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">常见问题与排查</h2></div>
+      <!-- §21 -->
+      <section id="sec-21" class="mb-12">
+        <div class="flex items-center gap-3 mb-5"><span class="sec-num">21</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">常见问题与排查</h2></div>
         <div class="space-y-3">
           <details class="group bg-surface border border-line rounded-xl overflow-hidden" open>
             <summary class="cursor-pointer list-none px-5 py-3.5 flex items-center justify-between gap-3 font-medium select-none" style="color:var(--text)">
@@ -947,7 +979,7 @@
               <span>如何切换模型？</span>
               <svg class="w-4 h-4 text-mute transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
             </summary>
-            <p class="px-5 pb-4 pt-0 text-sm m-0 max-w-none">REPL 内用 <code>/model</code>（无参数弹出交互列表），或 <code>/model &lt;name|id&gt;</code>（如 <code>/model pro</code> 或 <code>/model deepseek-v4-flash</code>）。CLI 启动时用 <code>-m</code> / <code>--model</code>。模型层级在配置的 <code>models</code> 字段定义（默认 <code>flash</code> / <code>pro</code>）。</p>
+            <p class="px-5 pb-4 pt-0 text-sm m-0 max-w-none">REPL 内用 <code>/model</code>（无参数弹出交互列表），或 <code>/model &lt;tier&gt;</code>（如 <code>/model pro</code>）—— 只接受配置过的<strong>档位名</strong>，裸模型 id 会被拒绝。CLI 启动时用 <code>-m</code> / <code>--model</code>（同样只认档位名）。模型档位在配置的 <code>models</code> 字段定义，非空时须含 <code>lite</code>/<code>pro</code>/<code>max</code>。</p>
           </details>
         </div>
       </section>
@@ -982,9 +1014,10 @@
         <a class="toc-link" href="#sec-15" data-toc="sec-15">自定义 Slash 命令</a>
         <a class="toc-link" href="#sec-16" data-toc="sec-16">MCP 外部工具</a>
         <a class="toc-link" href="#sec-17" data-toc="sec-17">LSP 代码智能</a>
-        <a class="toc-link" href="#sec-18" data-toc="sec-18">会话与数据落盘</a>
-        <a class="toc-link" href="#sec-19" data-toc="sec-19">配置完整参考</a>
-        <a class="toc-link" href="#sec-20" data-toc="sec-20">FAQ 与排查</a>
+        <a class="toc-link" href="#sec-18" data-toc="sec-18">插件 Plugins</a>
+        <a class="toc-link" href="#sec-19" data-toc="sec-19">会话与数据落盘</a>
+        <a class="toc-link" href="#sec-20" data-toc="sec-20">配置完整参考</a>
+        <a class="toc-link" href="#sec-21" data-toc="sec-21">FAQ 与排查</a>
       </nav>
       <a href="#top" class="mt-6 inline-flex items-center gap-1.5 text-xs text-mute hover:text-brand-500 transition">
         <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m18 15-6-6-6 6"/></svg> 回到顶部
