@@ -1,4 +1,4 @@
-import { detectThinkingFormat } from "./model.js";
+import { RETRY_LIMITS, backoffMs, isMalformedToolJsonError } from "./retry.js";
 
 /**
  * DeepSeek-specific error diagnostics.
@@ -96,58 +96,20 @@ const DEEPSEEK_ERROR_TABLE: Record<number, DeepSeekErrorInfo> = {
   },
 };
 
-/**
- * Detect the SDK stream-accumulation failure that surfaces when the model emits
- * malformed JSON for a tool call's arguments — a frequent DeepSeek slip (a
- * missing comma between properties, an unterminated value). As the stream
- * closes, the Anthropic SDK parses the accumulated `partial_json` and, on a
- * *structural* error (not mere truncation), rejects `finalMessage()` with an
- * AnthropicError whose message is the underlying JSON `SyntaxError`. There's no
- * HTTP status, so it never becomes a {@link DeepSeekApiError}; we match on the
- * V8 parse-error wording instead ("… in JSON at position N", "Unexpected end of
- * JSON input", etc.), checking both the error and its `cause`.
- *
- * Callers treat it as retryable: re-issuing the request almost always yields
- * well-formed JSON (the model samples at non-zero temperature), turning what was
- * a fatal loop termination into a transparent retry.
- */
-export function isMalformedToolJsonError(err: unknown): boolean {
-  const parts: string[] = [];
-  if (err instanceof Error) {
-    parts.push(err.message);
-    if (err.cause instanceof Error) parts.push(err.cause.message);
-  } else {
-    parts.push(String(err));
-  }
-  return /\bin JSON\b|JSON input|JSON at position/i.test(parts.join(" "));
-}
+// Malformed tool-call JSON is a model hiccup any provider can produce, so its
+// detection lives in the shared retry layer. Re-exported here for back-compat
+// (and this module's own tests), and used by the DeepSeek profile.
+export { isMalformedToolJsonError } from "./retry.js";
 
 /**
- * Internal retry policy for DeepSeek's *transient* failures (429/500/503) and
- * malformed tool-call JSON. `maxAttempts` counts the first try, so 4 means
- * "1 + up to 3 retries".
+ * DeepSeek's retry policy is just the shared retry budget — its *transient*
+ * failures (429/500/503) and malformed tool-call JSON both back off on the same
+ * schedule. Aliased (not redefined) so there is a single source of truth.
  */
-export const DEEPSEEK_RETRY = {
-  maxAttempts: 4,
-  baseDelayMs: 1_000,
-  maxDelayMs: 30_000,
-} as const;
+export const DEEPSEEK_RETRY = RETRY_LIMITS;
 
-/**
- * Backoff before the next attempt. Honors a server `retry-after` when present;
- * otherwise exponential (base · 2^(failedAttempt−1)). Both are clamped to
- * `maxDelayMs`. `failedAttempt` is 1-based: 1 = first try just failed.
- */
-export function deepSeekRetryDelayMs(
-  failedAttempt: number,
-  retryAfterSeconds?: number,
-): number {
-  if (retryAfterSeconds !== undefined) {
-    return Math.min(retryAfterSeconds * 1_000, DEEPSEEK_RETRY.maxDelayMs);
-  }
-  const exp = DEEPSEEK_RETRY.baseDelayMs * 2 ** Math.max(0, failedAttempt - 1);
-  return Math.min(exp, DEEPSEEK_RETRY.maxDelayMs);
-}
+/** Backoff before the next attempt — the shared exponential/`retry-after` schedule. */
+export const deepSeekRetryDelayMs = backoffMs;
 
 /** Look up the diagnostic for a DeepSeek HTTP status, if it's one we document. */
 export function describeDeepSeekStatus(
@@ -240,17 +202,17 @@ function readRetryAfter(err: unknown): number | undefined {
 }
 
 /**
- * Translate a thrown model error into a {@link DeepSeekApiError} when (a) the
- * model is a DeepSeek model and (b) the error carries a status code DeepSeek
- * documents. Otherwise returns the error unchanged — non-DeepSeek models,
- * user aborts and connection failures (status `undefined`), and undocumented
- * statuses all pass straight through.
+ * Wrap a thrown model error into a {@link DeepSeekApiError} when it carries a
+ * status code DeepSeek documents; return `null` for anything else (user aborts
+ * and connection failures with status `undefined`, undocumented statuses). This
+ * is the *un-gated* core — it does NOT check whether the model is a DeepSeek
+ * model, because its only callers already know it is (the DeepSeek provider
+ * profile, and the gated {@link translateDeepSeekError} below).
  */
-export function translateDeepSeekError(err: unknown, model: string): unknown {
-  if (detectThinkingFormat(model) !== "deepseek") return err;
+export function toDeepSeekApiError(err: unknown): DeepSeekApiError | null {
   if (err instanceof DeepSeekApiError) return err;
   const info = describeDeepSeekStatus(readStatus(err));
-  if (!info) return err;
+  if (!info) return null;
   const serverDetail = readServerDetail(err);
   const retryAfterSeconds = info.retryable ? readRetryAfter(err) : undefined;
   return new DeepSeekApiError(info, {
@@ -258,4 +220,15 @@ export function translateDeepSeekError(err: unknown, model: string): unknown {
     ...(serverDetail ? { serverDetail } : {}),
     ...(retryAfterSeconds !== undefined ? { retryAfterSeconds } : {}),
   });
+}
+
+/**
+ * Translate a thrown model error into a {@link DeepSeekApiError} when (a) the
+ * model is a DeepSeek model and (b) the error carries a status code DeepSeek
+ * documents. Otherwise returns the error unchanged. Retained for back-compat;
+ * the provider profile calls {@link toDeepSeekApiError} directly.
+ */
+export function translateDeepSeekError(err: unknown, model: string): unknown {
+  if (!/deepseek/i.test(model)) return err;
+  return toDeepSeekApiError(err) ?? err;
 }

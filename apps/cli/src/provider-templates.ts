@@ -27,6 +27,7 @@ export interface ProviderTemplate {
    * it; a third-party provider sets at least `baseURL`, `model`, and `models`.
    */
   settings: {
+    provider?: "deepseek" | "other";
     baseURL?: string;
     model?: string;
     models?: Record<string, ModelProfile>;
@@ -54,6 +55,7 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
     // Mirrors the config-schema defaults (same source of truth), written
     // explicitly so the saved nova.config.json is self-describing.
     settings: {
+      provider: "deepseek",
       baseURL: DEFAULT_BASE_URL,
       model: DEFAULT_MODEL_TIER,
       models: DEFAULT_MODELS,

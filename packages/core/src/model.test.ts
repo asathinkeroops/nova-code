@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { DeepSeekApiError } from "./deepseek-errors.js";
 import { createAnthropicModel, detectThinkingFormat, type RetryNotice } from "./model.js";
+import { otherProfile } from "./providers/other.js";
 
 // Stub the Anthropic SDK so we can inspect the params our adapter sends
 // without making a network call. The adapter streams, so `stream(...)` returns
@@ -148,6 +149,19 @@ describe("createAnthropicModel thinking params", () => {
     // The uploaded count rides along with every later output update.
     expect(seen.at(-1)?.inputTokens).toBe(125);
     expect(seen.at(-1)?.outputTokens).toBeGreaterThan(0);
+  });
+
+  it("an explicit provider overrides the model-name guess", async () => {
+    // A deepseek-named model, but forced onto the `other` profile — it must send
+    // budget_tokens (anthropic shape), not effort. Proves behavior is driven by
+    // the provider, not the model string.
+    mockCreate.mockResolvedValueOnce(okResponse());
+    const m = createAnthropicModel({ apiKey: "x", model: "deepseek-chat", provider: otherProfile });
+    await m.call({ ...baseReq, thinkingBudgetTokens: 16_000 });
+    const params = mockCreate.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(params.thinking).toEqual({ type: "enabled", budget_tokens: 16_000 });
+    expect(params.output_config).toBeUndefined();
+    expect(params.max_tokens).toBe(16_000 + 8192);
   });
 
   it("sends explicit thinking: disabled and no output_config when budget is 0", async () => {

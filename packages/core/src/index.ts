@@ -18,6 +18,15 @@ export {
 } from "./thinking.js";
 export { decide, type StopDecision } from "./stop-reason.js";
 export {
+  PROVIDERS,
+  resolveProfile,
+  type ProviderProfile,
+  type ProviderId,
+  type ThinkingParams,
+  type ErrorDecision,
+} from "./providers/index.js";
+export { RETRY_LIMITS, backoffMs, isMalformedToolJsonError } from "./retry.js";
+export {
   createAnthropicModel,
   detectThinkingFormat,
   toWireTools,
@@ -35,7 +44,7 @@ export {
   DeepSeekApiError,
   deepSeekRetryDelayMs,
   describeDeepSeekStatus,
-  isMalformedToolJsonError,
+  toDeepSeekApiError,
   translateDeepSeekError,
   type DeepSeekErrorInfo,
 } from "./deepseek-errors.js";

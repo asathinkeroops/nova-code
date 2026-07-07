@@ -3,6 +3,7 @@ import { createAgent, emptyCursor, loadMessages, type Agent } from "@nova/agent"
 import { loadMemory, sliceFromLastCompacted } from "@nova/context";
 import {
   createAnthropicModel,
+  resolveProfile,
   type AskUserFn,
   type ModelClient,
   type ToolExecutor,
@@ -437,15 +438,18 @@ export async function createContext(
   // both /model tiers and raw ids work. Resolving here means every caller —
   // ctx.model, predictModel, and the sub-agent model cache — gets alias support
   // for free, and the resolved id is what reaches cost/pricing matching.
-  const buildModel = (name: string, trackTokens = true): ModelClient =>
-    createAnthropicModel({
+  const buildModel = (name: string, trackTokens = true): ModelClient => {
+    const model = resolveModelId(settings, name);
+    return createAnthropicModel({
       apiKey,
-      model: resolveModelId(settings, name),
+      model,
+      provider: resolveProfile(settings.provider, model),
       ...(settings.baseURL ? { baseURL: settings.baseURL } : {}),
       ...(trackTokens
         ? { onStreamProgress: pushSpinnerTokens, onStreamText: pushLiveText, onRetry }
         : {}),
     });
+  };
 
   const ctx: CliContext = {
     session,

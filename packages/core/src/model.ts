@@ -1,14 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { zodToJsonSchema } from "zod-to-json-schema";
-import {
-  DEEPSEEK_RETRY,
-  DeepSeekApiError,
-  deepSeekRetryDelayMs,
-  isMalformedToolJsonError,
-  translateDeepSeekError,
-} from "./deepseek-errors.js";
+import { resolveProfile, type ProviderProfile } from "./providers/index.js";
+import { RETRY_LIMITS, backoffMs, isMalformedToolJsonError } from "./retry.js";
 import { toWireMessages } from "./messages.js";
-import { THINKING_BUDGETS } from "./thinking.js";
 import type {
   AssistantTurn,
   ContentBlock,
@@ -49,6 +43,12 @@ export interface AnthropicModelConfig {
   apiKey: string;
   model: string;
   baseURL?: string;
+  /**
+   * Provider profile driving thinking-param and error/retry behavior. When
+   * omitted, it's resolved from the model name (see `resolveProfile`) so callers
+   * that don't wire providers keep the legacy name-based behavior.
+   */
+  provider?: ProviderProfile;
   /**
    * Live progress callback for this request. High-frequency and best-effort —
    * callers should throttle their own UI updates. The exact final numbers are
@@ -112,16 +112,13 @@ export interface StreamProgress {
   outputTokens: number;
 }
 
+/**
+ * Legacy name-based classifier for the thinking-knob wire format. Superseded by
+ * explicit provider profiles (see `providers/`), but retained as the fallback
+ * `resolveProfile` uses when a config predates the `provider` field.
+ */
 export function detectThinkingFormat(model: string): ThinkingFormat {
   return /deepseek/i.test(model) ? "deepseek" : "anthropic";
-}
-
-// DeepSeek only exposes "high" and "max". Anything below our `max` budget
-// (32k tokens, see THINKING_BUDGETS) rounds to "high"; at-or-above rounds to
-// "max" — matches DeepSeek's documented behavior where low/medium are
-// rewritten to high on their side.
-function budgetToEffort(budget: number): "high" | "max" {
-  return budget >= THINKING_BUDGETS.max ? "max" : "high";
 }
 
 /**
@@ -175,37 +172,17 @@ export function createAnthropicModel(config: AnthropicModelConfig): ModelClient 
     apiKey: config.apiKey,
     ...(config.baseURL ? { baseURL: config.baseURL } : {}),
   });
-  const format = detectThinkingFormat(config.model);
+  const provider = config.provider ?? resolveProfile(undefined, config.model);
 
   return {
     async call(req: ModelRequest): Promise<AssistantTurn> {
       const tools = toWireTools(req.tools);
 
       const budget = req.thinkingBudgetTokens ?? 0;
-      const thinkingEnabled = budget > 0;
-      // Anthropic requires max_tokens > budget_tokens; DeepSeek doesn't take a
-      // budget so there's nothing to outgrow.
-      const maxTokens =
-        thinkingEnabled && format === "anthropic"
-          ? Math.max(req.maxTokens, budget + 8192)
-          : req.maxTokens;
-      let thinkingParams: Record<string, unknown> = {};
-      if (thinkingEnabled) {
-        if (format === "deepseek") {
-          thinkingParams = {
-            thinking: { type: "enabled" as const },
-            output_config: { effort: budgetToEffort(budget) },
-          };
-        } else {
-          thinkingParams = {
-            thinking: { type: "enabled" as const, budget_tokens: budget },
-          };
-        }
-      } else {
-        thinkingParams = {
-          thinking: { type: "disabled" },
-        };
-      }
+      // The provider owns the thinking-knob wire shape and any max_tokens floor
+      // it imposes (Anthropic needs max_tokens > budget_tokens; DeepSeek doesn't).
+      const { params: thinkingParams, minMaxTokens } = provider.thinking(budget);
+      const maxTokens = minMaxTokens ? Math.max(req.maxTokens, minMaxTokens) : req.maxTokens;
 
       // Stream rather than buffer the full response. A long non-streaming
       // generation holds one connection open for the whole turn, which gateways
@@ -304,15 +281,13 @@ export function createAnthropicModel(config: AnthropicModelConfig): ModelClient 
       };
 
       // Two error classes are retried here with backoff:
-      //   1. DeepSeek's documented transient HTTP errors (429 rate limit,
-      //      500/503 server) — re-thrown otherwise (400/401/402/422 and all
-      //      non-DeepSeek errors), translated into actionable guidance.
-      //   2. Malformed tool-call JSON the SDK chokes on while accumulating the
+      //   1. Malformed tool-call JSON the SDK chokes on while accumulating the
       //      stream — a model hiccup (any provider), not an API failure, so it
-      //      carries no status. Retrying almost always yields valid JSON.
-      // Each branch self-gates, so a generic non-DeepSeek error still throws on
-      // the first attempt even though the loop budget allows retries.
-      const maxAttempts = DEEPSEEK_RETRY.maxAttempts;
+      //      carries no status. Handled generically, before the provider.
+      //   2. Provider-classified API failures — the profile decides whether a
+      //      given error is a transient it wants retried, and what final error to
+      //      surface otherwise (e.g. DeepSeek's translated diagnostics).
+      const maxAttempts = RETRY_LIMITS.maxAttempts;
       let res: Anthropic.Message;
       let streamedThinking = "";
       let attempt = 0;
@@ -324,29 +299,25 @@ export function createAnthropicModel(config: AnthropicModelConfig): ModelClient 
           streamedThinking = out.thinkingText;
           break;
         } catch (err) {
-          const translated = translateDeepSeekError(err, config.model);
-          const retryableApi = translated instanceof DeepSeekApiError && translated.retryable;
-          // Match on the raw error: the JSON SyntaxError wording is what the SDK
-          // wrapped, and translateDeepSeekError leaves a status-less error as-is.
-          const retryableJson =
-            !(translated instanceof DeepSeekApiError) && isMalformedToolJsonError(err);
-          if ((retryableApi || retryableJson) && attempt < maxAttempts && !req.signal?.aborted) {
-            const retryAfter = retryableApi
-              ? (translated as DeepSeekApiError).retryAfterSeconds
-              : undefined;
-            const delayMs = deepSeekRetryDelayMs(attempt, retryAfter);
-            config.onRetry?.({
-              attempt,
-              maxAttempts,
-              delayMs,
-              ...(retryableApi
-                ? { status: (translated as DeepSeekApiError).status }
-                : { reason: "malformed-json" }),
-            });
+          const canRetry = attempt < maxAttempts && !req.signal?.aborted;
+          if (canRetry && isMalformedToolJsonError(err)) {
+            const delayMs = backoffMs(attempt);
+            config.onRetry?.({ attempt, maxAttempts, delayMs, reason: "malformed-json" });
             await sleep(delayMs, req.signal);
             continue;
           }
-          throw translated;
+          const decision = provider.onError(err, attempt);
+          if (canRetry && decision.retry) {
+            config.onRetry?.({
+              attempt,
+              maxAttempts,
+              delayMs: decision.delayMs,
+              ...(decision.status !== undefined ? { status: decision.status } : {}),
+            });
+            await sleep(decision.delayMs, req.signal);
+            continue;
+          }
+          throw decision.error;
         }
       }
 
