@@ -49,7 +49,12 @@ import { buildCompactor } from "./compactor.js";
 import { loadGoal } from "./goal.js";
 import { buildMcpManager } from "./mcp.js";
 import { canonicalizePath, canonicalizeRoots, PATH_INPUT_TOOLS } from "./path-safety.js";
-import { MODE_COMMAND_TOOLS, resolveModeDecision, resolvePermissionRules } from "./permissions.js";
+import {
+  applyToolDenylist,
+  MODE_COMMAND_TOOLS,
+  resolveModeDecision,
+  resolvePermissionRules,
+} from "./permissions.js";
 import { classifyCommandRisk } from "./auto-classify.js";
 import { loadAgents } from "./agents.js";
 import { loadPlugins } from "./plugins/loader.js";
@@ -849,6 +854,20 @@ export async function createContext(
         }),
       }),
     );
+  }
+
+  // permissions.deny (bare-name removal): now that every tool is registered —
+  // builtins, MCP tools/resources, and createSubAgent — drop each denied name
+  // from the shared registry so it disappears from the model's advertised tools,
+  // sub-agents, and /context, and can't be dispatched. The rules-based
+  // `effect: "deny"` still exists for call-time rejection; this is the stronger
+  // "model never sees it" form (and saves the tool's schema tokens per request).
+  const denylist = applyToolDenylist(ctx.tools, settings.permissions.deny);
+  for (const name of denylist.removed) {
+    logger.info({ tool: name }, "tool disabled via permissions.deny");
+  }
+  for (const name of denylist.missing) {
+    logger.warn({ tool: name }, "permissions.deny lists an unknown tool (ignored)");
   }
 
   registerUiHooks(ctx);

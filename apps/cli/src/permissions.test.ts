@@ -2,6 +2,7 @@ import { parseSettings } from "@nova/runtime";
 import { PermissionEngine } from "@nova/safety";
 import { describe, expect, it } from "vitest";
 import {
+  applyToolDenylist,
   autoMemoryRules,
   DEFAULT_PERMISSION_RULES,
   resolveModeDecision,
@@ -62,6 +63,42 @@ describe("resolvePermissionRules", () => {
     expect(tools).not.toContain("read");
     expect(tools).not.toContain("glob");
     expect(tools).not.toContain("grep");
+  });
+});
+
+describe("applyToolDenylist", () => {
+  // Faithful to ToolRegistry.unregister: Set.delete returns true iff present.
+  const registryOf = (...names: string[]) => {
+    const tools = new Set(names);
+    return { tools, unregister: (name: string) => tools.delete(name) };
+  };
+
+  it("removes each denied tool from the registry", () => {
+    const reg = registryOf("read", "bash", "websearch", "webfetch");
+    const result = applyToolDenylist(reg, ["websearch", "webfetch"]);
+    expect(result).toEqual({ removed: ["websearch", "webfetch"], missing: [] });
+    expect([...reg.tools].sort()).toEqual(["bash", "read"]);
+  });
+
+  it("reports names that matched no registered tool as missing (typos ignored)", () => {
+    const reg = registryOf("read", "bash");
+    const result = applyToolDenylist(reg, ["bash", "web_search", "nope"]);
+    expect(result).toEqual({ removed: ["bash"], missing: ["web_search", "nope"] });
+    expect([...reg.tools]).toEqual(["read"]);
+  });
+
+  it("is a no-op for an empty denylist (the schema default)", () => {
+    const reg = registryOf("read", "bash");
+    expect(applyToolDenylist(reg, parseSettings({}).permissions.deny)).toEqual({
+      removed: [],
+      missing: [],
+    });
+    expect([...reg.tools].sort()).toEqual(["bash", "read"]);
+  });
+
+  it("parses a configured denylist off the settings schema", () => {
+    const settings = parseSettings({ permissions: { deny: ["websearch", "bash"] } });
+    expect(settings.permissions.deny).toEqual(["websearch", "bash"]);
   });
 });
 

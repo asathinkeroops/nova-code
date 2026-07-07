@@ -399,6 +399,15 @@ export const settingsSchema = z.object({
     .object({
       defaultEffect: z.enum(["allow", "deny", "ask"]).default("ask"),
       rules: z.array(permissionRuleSchema).default([]),
+      // Bare-name tool denylist (mirrors Claude Code's bare `WebSearch` deny):
+      // each name here is unregistered from the tool registry at startup, so the
+      // tool never appears in the request's `tools` array and the model cannot
+      // call it. This is the stronger "the model never sees it" form of deny —
+      // contrast a `rules` entry with `effect: "deny"`, which keeps advertising
+      // the tool and only rejects calls at dispatch time (and can match on
+      // input). Names are wire tool identifiers (e.g. "websearch", "webfetch",
+      // "bash", or an MCP "mcp__server__tool"); unknown names are ignored.
+      deny: z.array(z.string().min(1)).default([]),
       // Extra directories (beyond the workspace cwd) that file tools may touch
       // without a per-call prompt. Mirrors Claude Code's `--add-dir`. Relative
       // entries resolve against the workspace; each is canonicalized (realpath)
@@ -433,6 +442,7 @@ export const settingsSchema = z.object({
     .default({
       defaultEffect: "ask",
       rules: [],
+      deny: [],
       additionalDirectories: [],
       autoMode: { llmClassifier: true, classifierTimeoutMs: 8000 },
     }),

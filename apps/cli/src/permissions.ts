@@ -185,6 +185,30 @@ export function autoMemoryRules(autoDir: string): PermissionRule[] {
  * other defaults so a global user override still wins. `roots` and
  * `autoMemoryDir` must already be canonicalized (see canonicalizeRoots).
  */
+/**
+ * Apply the bare-name tool denylist (`permissions.deny`): remove each listed
+ * tool from the registry so it vanishes from every `definitions()` consumer —
+ * the model's advertised tools, sub-agents, and `/context` — and can no longer
+ * be dispatched (an unknown tool becomes an `is_error` tool_result). This is the
+ * "remove from the tools array" form of deny (mirrors Claude Code's bare
+ * `WebSearch`), distinct from a `rules` entry with `effect: "deny"`, which keeps
+ * advertising the tool and rejects calls at dispatch time. Callers must apply it
+ * AFTER every tool (builtins, MCP, createSubAgent) is registered. Returns which
+ * names were actually removed vs. matched nothing (typos / already-absent) so
+ * the caller can log the difference.
+ */
+export function applyToolDenylist(
+  registry: { unregister(name: string): boolean },
+  deny: readonly string[],
+): { removed: string[]; missing: string[] } {
+  const removed: string[] = [];
+  const missing: string[] = [];
+  for (const name of deny) {
+    (registry.unregister(name) ? removed : missing).push(name);
+  }
+  return { removed, missing };
+}
+
 export function resolvePermissionRules(
   settings: Settings,
   roots: readonly string[],
