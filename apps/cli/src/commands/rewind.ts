@@ -1,6 +1,6 @@
 import { relative } from "node:path";
 import { blocksOf, extractText, type MessageParam } from "@nova/core";
-import { dim, green, red } from "../colors.js";
+import { dim, green, red, yellow } from "../colors.js";
 import { persist, type CliContext } from "../context.js";
 import { pickerArrow } from "../ui/picker.js";
 
@@ -46,8 +46,11 @@ export function collectUserTurns(messages: MessageParam[]): UserTurn[] {
  * the input box for editing/resending. Files that `write`/`edit` touched at or
  * after that turn are also rolled back to their pre-turn state (via the
  * snapshot store) — modified files restored, newly-created files deleted —
- * after a confirmation preview. Side effects from `bash` (rm, sed -i,
- * redirects) are not snapshotted and so are left untouched.
+ * after a confirmation preview. A file whose current content has diverged from
+ * what nova last wrote (edited by `bash`, a sub-agent, another session, git, or
+ * by hand) is shown as a conflict and left untouched, so rewind never clobbers
+ * changes nova didn't make. Side effects from `bash` (rm, sed -i, redirects)
+ * are likewise not snapshotted and so are left as-is.
  *
  * `/rewind` with no arg opens a picker (newest turn pre-selected). `/rewind N`
  * counts back from the most recent turn (1 = undo the last exchange).
@@ -94,21 +97,39 @@ export async function handleRewind(ctx: CliContext, arg: string): Promise<void> 
 
   // File restoration: roll any file changed at/after this turn back to its
   // pre-turn state. `target.index` is the message length at the turn's start,
-  // which is exactly the epoch the snapshot store tags captures with.
-  const plan = ctx.snapshots.plan(target.index);
+  // which is exactly the epoch the snapshot store tags captures with. Files
+  // whose on-disk content has diverged from nova's last write come back as
+  // conflicts — shown, but never overwritten.
+  const plan = await ctx.snapshots.plan(target.index);
   const fileCount = plan.toModify.length + plan.toRemove.length;
-  if (fileCount > 0) {
+  if (fileCount > 0 || plan.conflicts.length > 0) {
     const rel = (p: string): string => relative(ctx.workspace, p) || p;
+    const header =
+      fileCount > 0
+        ? `will restore ${plan.toModify.length} file(s), delete ${plan.toRemove.length} newly-created file(s):`
+        : "no files can be auto-reverted (all changed outside nova):";
+    const conflictNote =
+      plan.conflicts.length > 0
+        ? [
+            "",
+            dim(
+              `${plan.conflicts.length} file(s) changed outside nova since that turn ` +
+                `— left untouched to avoid clobbering newer work:`,
+            ),
+            ...plan.conflicts.map((c) => `  ${yellow("!")} ${rel(c.path)}`),
+          ]
+        : [];
     const preview = [
-      dim(`will restore ${plan.toModify.length} file(s), delete ${plan.toRemove.length} newly-created file(s):`),
+      dim(header),
       ...plan.toModify.map((m) => `  ${green("~")} ${rel(m.path)}`),
       ...plan.toRemove.map((p) => `  ${red("-")} ${rel(p)}`),
+      ...conflictNote,
     ].join("\n");
     const confirm = await ctx.screen.pickHorizontal<boolean>({
       items: [true, false],
       header: preview,
       footer: dim("←→ navigate · enter confirm · esc cancel"),
-      label: (ok) => (ok ? "restore & rewind" : "cancel"),
+      label: (ok) => (ok ? (fileCount > 0 ? "restore & rewind" : "rewind history only") : "cancel"),
     });
     if (confirm === null) return; // esc — leave the feed quiet
     if (!confirm) {
@@ -139,9 +160,11 @@ export async function handleRewind(ctx: CliContext, arg: string): Promise<void> 
   // ones don't resurface on resume. reset() only clears the in-memory copy.
   ctx.screen.clearCards();
   const fileNote = fileCount > 0 ? ` restored ${fileCount} file(s).` : "";
+  const skipNote =
+    plan.conflicts.length > 0 ? ` skipped ${plan.conflicts.length} file(s) changed outside nova.` : "";
   ctx.screen.card(
     dim(
-      `rewound to turn #${target.turn}; dropped ${dropped} message(s).${fileNote} ` +
+      `rewound to turn #${target.turn}; dropped ${dropped} message(s).${fileNote}${skipNote} ` +
         `your message is back in the prompt (→ to edit).`,
     ),
     { title: TITLE },

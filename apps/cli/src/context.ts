@@ -401,10 +401,12 @@ export async function createContext(
   // runInBackground) — and the sub-agent calls that reuse this dispatch —
   // wrap their commands before spawning.
   const dispatch: ToolExecutor = async (use, toolCtx) => {
+    let snapshotPath: string | undefined;
     if (use.name === "write" || use.name === "edit") {
       const raw = (use.input as { path?: unknown }).path;
       if (typeof raw === "string" && raw.length > 0) {
-        await ctx.snapshots.capture(resolve(workspace, raw));
+        snapshotPath = resolve(workspace, raw);
+        await ctx.snapshots.capture(snapshotPath);
       }
     }
     // ctx.sandbox is assigned after allowedRoots below; its bridge is undefined
@@ -412,7 +414,14 @@ export async function createContext(
     // turn, long after ctx.sandbox is set.
     const bridge = ctx.sandbox?.bridge;
     const execCtx = bridge ? { ...toolCtx, sandbox: bridge } : toolCtx;
-    return rawDispatch(use, execCtx);
+    const result = await rawDispatch(use, execCtx);
+    // Record what the tool actually left on disk so /rewind can tell "still
+    // nova's version" from "changed underneath us" and refuse to clobber the
+    // latter. Skip on error — the file wasn't (fully) written.
+    if (snapshotPath && !result.is_error) {
+      await ctx.snapshots.recordResult(snapshotPath);
+    }
+    return result;
   };
   const registry = new SlashRegistry();
 
