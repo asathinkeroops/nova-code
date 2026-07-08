@@ -158,10 +158,7 @@ async function authenticateServer(ctx: CliContext, name: string): Promise<void> 
       openBrowser(url);
 
       const waited = await waitForBrowserAuth(ctx, server, name, url);
-      if (waited.kind === "cancelled") {
-        ctx.screen.card(dim(`authorization cancelled for ${cyan(name)}.`), { title: TITLE });
-        return;
-      }
+      if (waited.kind === "cancelled") return; // esc — leave the feed quiet
       if (waited.kind === "error") {
         ctx.screen.card(`${red("authorization did not complete:")} ${dim(waited.message)}`, {
           title: TITLE,

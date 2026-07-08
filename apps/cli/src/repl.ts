@@ -93,6 +93,8 @@ async function runBang(ctx: CliContext, command: string): Promise<void> {
       { command },
       { cwd: ctx.workspace, signal: controller.signal, ...(bridge ? { sandbox: bridge } : {}) },
     );
+    // Esc mid-run is a deliberate interrupt — leave the feed quiet, no card.
+    if (controller.signal.aborted) return;
     // Keep the card title to a single line so a multi-line command doesn't blow
     // up the header.
     const title = `! ${command.split("\n", 1)[0]}`;
@@ -239,6 +241,8 @@ async function maybeContinueForGoal(ctx: CliContext): Promise<string | null> {
   try {
     verdict = await evaluateGoalWithAgent(ctx, goal, controller.signal);
   } catch (err) {
+    // Esc skips the goal check — a deliberate user action, not a failure; stay quiet.
+    if (controller.signal.aborted) return null;
     const msg = err instanceof Error ? err.message : String(err);
     ctx.logger.warn({ err: msg }, "goal evaluation failed");
     ctx.screen.card(dim(`goal check skipped: ${msg}`), { kind: "warn", title: GOAL_TITLE });

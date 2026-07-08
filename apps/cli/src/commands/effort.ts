@@ -42,10 +42,7 @@ export async function handleEffort(ctx: CliContext, arg: string): Promise<void> 
       initialIndex: currentIdx >= 0 ? currentIdx : 0,
       label: (level) => level,
     });
-    if (!pick) {
-      ctx.screen.card(dim("cancelled."), { title: TITLE });
-      return;
-    }
+    if (!pick) return; // esc — leave the feed quiet
     ctx.thinkingLevel = pick;
     ctx.thinkingBudgetOverride = undefined;
     await persistTierThinking(ctx);

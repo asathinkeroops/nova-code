@@ -89,10 +89,7 @@ export async function handleRewind(ctx: CliContext, arg: string): Promise<void> 
       border: false,
       render: (t, isSelected) => `${pickerArrow(isSelected)} ${dim(`#${t.turn}`)}  ${t.label}`,
     });
-    if (!target) {
-      ctx.screen.card(dim("cancelled."), { title: TITLE });
-      return;
-    }
+    if (!target) return; // esc — leave the feed quiet
   }
 
   // File restoration: roll any file changed at/after this turn back to its
@@ -113,7 +110,9 @@ export async function handleRewind(ctx: CliContext, arg: string): Promise<void> 
       footer: dim("←→ navigate · enter confirm · esc cancel"),
       label: (ok) => (ok ? "restore & rewind" : "cancel"),
     });
+    if (confirm === null) return; // esc — leave the feed quiet
     if (!confirm) {
+      // Deliberate "cancel" selection (not esc) still gets a note.
       ctx.screen.card(dim("cancelled; nothing changed."), { title: TITLE });
       return;
     }

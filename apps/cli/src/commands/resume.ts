@@ -44,10 +44,7 @@ export async function handleResume(ctx: CliContext, arg: string): Promise<void> 
         return `${pickerArrow(isSelected)} ${marker} ${s.id}  ${dim(formatTimestamp(s.createdAt))}  ${dim(label)}`;
       },
     });
-    if (!pick) {
-      ctx.screen.card(dim("cancelled."), { title: TITLE });
-      return;
-    }
+    if (!pick) return; // esc — leave the feed quiet
     target = pick.session;
   }
 

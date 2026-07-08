@@ -99,9 +99,6 @@ export async function handleModel(ctx: CliContext, arg: string): Promise<void> {
       return `${pickerArrow(isSelected)} ${marker} ${name}${detail}`;
     },
   });
-  if (!pick) {
-    ctx.screen.card(dim("cancelled."), { title: TITLE });
-    return;
-  }
+  if (!pick) return; // esc — leave the feed quiet
   applyModel(ctx, pick);
 }
