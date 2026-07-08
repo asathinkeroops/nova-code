@@ -446,9 +446,9 @@ export async function createContext(
     screen.setSpinnerTokens(progress);
   };
   // Transient model failures are retried inside the model adapter — DeepSeek's
-  // 429/500/503 (carry a `status`) and malformed tool-call JSON (carries a
-  // `reason`). Surface each retry in the live spinner (n/max) so a stalled turn
-  // isn't a silent freeze.
+  // 429/500/503 (carry a `status`), malformed tool-call JSON, and dropped
+  // connections (both carry a `reason` — "malformed-json" / "network"). Surface
+  // each retry in the live spinner (n/max) so a stalled turn isn't a silent freeze.
   const onRetry = (info: {
     attempt: number;
     maxAttempts: number;

@@ -201,7 +201,7 @@ describe("createAnthropicModel deepseek error handling", () => {
     const res = await p;
     expect(res.content).toEqual([{ type: "text", text: "ok" }]);
     expect(mockCreate).toHaveBeenCalledTimes(2);
-    expect(retries).toEqual([{ attempt: 1, maxAttempts: 4, delayMs: 1_000, status: 429 }]);
+    expect(retries).toEqual([{ attempt: 1, maxAttempts: 10, delayMs: 1_000, status: 429 }]);
   });
 
   it("retries malformed tool-call JSON (no status) and then succeeds", async () => {
@@ -223,7 +223,7 @@ describe("createAnthropicModel deepseek error handling", () => {
     expect(res.content).toEqual([{ type: "text", text: "ok" }]);
     expect(mockCreate).toHaveBeenCalledTimes(2);
     expect(retries).toEqual([
-      { attempt: 1, maxAttempts: 4, delayMs: 1_000, reason: "malformed-json" },
+      { attempt: 1, maxAttempts: 10, delayMs: 1_000, reason: "malformed-json" },
     ]);
   });
 
@@ -239,17 +239,79 @@ describe("createAnthropicModel deepseek error handling", () => {
     expect(mockCreate).toHaveBeenCalledTimes(2);
   });
 
+  it("retries a dropped connection (read ECONNRESET, no status) and then succeeds", async () => {
+    vi.useFakeTimers();
+    const reset = Object.assign(new Error("read ECONNRESET"), {
+      code: "ECONNRESET",
+      syscall: "read",
+    });
+    mockCreate.mockRejectedValueOnce(reset).mockResolvedValueOnce(okResponse());
+    const retries: RetryNotice[] = [];
+    const m = createAnthropicModel({
+      apiKey: "x",
+      model: "deepseek-chat",
+      onRetry: (i) => retries.push(i),
+    });
+    const p = m.call({ ...baseReq });
+    await vi.advanceTimersByTimeAsync(1_000);
+    const res = await p;
+    expect(res.content).toEqual([{ type: "text", text: "ok" }]);
+    expect(mockCreate).toHaveBeenCalledTimes(2);
+    expect(retries).toEqual([{ attempt: 1, maxAttempts: 10, delayMs: 1_000, reason: "network" }]);
+  });
+
+  it("retries a dropped connection for non-deepseek models too", async () => {
+    vi.useFakeTimers();
+    // undici's `TypeError: terminated` with the socket error nested as the cause.
+    const socket = Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" });
+    mockCreate
+      .mockRejectedValueOnce(new Error("terminated", { cause: socket }))
+      .mockResolvedValueOnce(okResponse());
+    const m = createAnthropicModel({ apiKey: "x", model: "claude-sonnet-4-5" });
+    const p = m.call({ ...baseReq });
+    await vi.advanceTimersByTimeAsync(1_000);
+    const res = await p;
+    expect(res.content).toEqual([{ type: "text", text: "ok" }]);
+    expect(mockCreate).toHaveBeenCalledTimes(2);
+  });
+
+  it("gives up after max attempts on a persistent dropped connection, rethrowing the raw error", async () => {
+    vi.useFakeTimers();
+    const reset = Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" });
+    mockCreate.mockRejectedValue(reset);
+    const m = createAnthropicModel({ apiKey: "x", model: "deepseek-chat" });
+    const caught = m.call({ ...baseReq }).catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(200_000); // 9 backoffs: 1+2+4+8+16+30+30+30+30 = 151s
+    const err = await caught;
+    // No documented status → passed through untranslated, exactly as thrown.
+    expect(err).toBe(reset);
+    expect(mockCreate).toHaveBeenCalledTimes(10); // 1 + 9 retries
+  });
+
+  it("does not retry a connection error once the request signal has aborted", async () => {
+    const ac = new AbortController();
+    const reset = Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" });
+    mockCreate.mockImplementation(() => {
+      ac.abort(); // the socket died because the user cancelled
+      return Promise.reject(reset);
+    });
+    const m = createAnthropicModel({ apiKey: "x", model: "deepseek-chat" });
+    const err = await m.call({ ...baseReq, signal: ac.signal }).catch((e: unknown) => e);
+    expect(err).toBe(reset);
+    expect(mockCreate).toHaveBeenCalledTimes(1); // no retry after abort
+  });
+
   it("gives up after max attempts and throws a translated DeepSeekApiError", async () => {
     vi.useFakeTimers();
     mockCreate.mockRejectedValue(apiError(503));
     const m = createAnthropicModel({ apiKey: "x", model: "deepseek-chat" });
     const caught = m.call({ ...baseReq }).catch((e: unknown) => e);
-    // Exhaust all backoffs: 1s + 2s + 4s.
-    await vi.advanceTimersByTimeAsync(10_000);
+    // Exhaust all 9 backoffs: 1+2+4+8+16+30+30+30+30 = 151s.
+    await vi.advanceTimersByTimeAsync(200_000);
     const err = await caught;
     expect(err).toBeInstanceOf(DeepSeekApiError);
     expect((err as DeepSeekApiError).status).toBe(503);
-    expect(mockCreate).toHaveBeenCalledTimes(4); // 1 + 3 retries
+    expect(mockCreate).toHaveBeenCalledTimes(10); // 1 + 9 retries
   });
 
   it("throws a translated error for non-retryable (402) without retrying", async () => {

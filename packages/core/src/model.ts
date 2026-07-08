@@ -1,7 +1,12 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { resolveProfile, type ProviderProfile } from "./providers/index.js";
-import { RETRY_LIMITS, backoffMs, isMalformedToolJsonError } from "./retry.js";
+import {
+  RETRY_LIMITS,
+  backoffMs,
+  isMalformedToolJsonError,
+  isTransientNetworkError,
+} from "./retry.js";
 import { toWireMessages } from "./messages.js";
 import type {
   AssistantTurn,
@@ -84,10 +89,12 @@ export interface RetryNotice {
    */
   status?: number;
   /**
-   * Machine-readable cause when the retry wasn't an HTTP error. Currently only
-   * "malformed-json": the model streamed unparseable tool-call arguments.
+   * Machine-readable cause when the retry wasn't an HTTP error:
+   * - "malformed-json": the model streamed unparseable tool-call arguments.
+   * - "network": a transient transport failure (e.g. read ECONNRESET, socket
+   *   hang up) dropped the connection before the response completed.
    */
-  reason?: "malformed-json";
+  reason?: "malformed-json" | "network";
 }
 
 export interface StreamTextDelta {
@@ -280,11 +287,17 @@ export function createAnthropicModel(config: AnthropicModelConfig): ModelClient 
         return { message, thinkingText };
       };
 
-      // Two error classes are retried here with backoff:
+      // Three error classes are retried here with backoff:
       //   1. Malformed tool-call JSON the SDK chokes on while accumulating the
       //      stream — a model hiccup (any provider), not an API failure, so it
       //      carries no status. Handled generically, before the provider.
-      //   2. Provider-classified API failures — the profile decides whether a
+      //   2. Transient network/transport failures (read ECONNRESET, socket hang
+      //      up, DNS blip) — the connection dropped before the response landed,
+      //      independent of any provider, and carries no HTTP status either. Also
+      //      handled generically before the provider, so every profile (not just
+      //      DeepSeek's status table) recovers from a reset socket instead of
+      //      failing the whole turn or sub-agent on the first blip.
+      //   3. Provider-classified API failures — the profile decides whether a
       //      given error is a transient it wants retried, and what final error to
       //      surface otherwise (e.g. DeepSeek's translated diagnostics).
       const maxAttempts = RETRY_LIMITS.maxAttempts;
@@ -303,6 +316,12 @@ export function createAnthropicModel(config: AnthropicModelConfig): ModelClient 
           if (canRetry && isMalformedToolJsonError(err)) {
             const delayMs = backoffMs(attempt);
             config.onRetry?.({ attempt, maxAttempts, delayMs, reason: "malformed-json" });
+            await sleep(delayMs, req.signal);
+            continue;
+          }
+          if (canRetry && isTransientNetworkError(err)) {
+            const delayMs = backoffMs(attempt);
+            config.onRetry?.({ attempt, maxAttempts, delayMs, reason: "network" });
             await sleep(delayMs, req.signal);
             continue;
           }

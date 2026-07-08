@@ -25,7 +25,12 @@ export {
   type ThinkingParams,
   type ErrorDecision,
 } from "./providers/index.js";
-export { RETRY_LIMITS, backoffMs, isMalformedToolJsonError } from "./retry.js";
+export {
+  RETRY_LIMITS,
+  backoffMs,
+  isMalformedToolJsonError,
+  isTransientNetworkError,
+} from "./retry.js";
 export {
   createAnthropicModel,
   detectThinkingFormat,
