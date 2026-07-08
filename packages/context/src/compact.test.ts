@@ -170,7 +170,7 @@ describe("autoCompact", () => {
     const huge: MessageParam[] = [{ role: "user", content: "y".repeat(200_000) }];
     await autoCompact(huge, { model });
     const prompt = seen[0] ?? "";
-    expect(prompt).toContain("Summarize this conversation");
+    expect(prompt).toContain("Write a structured summary");
     expect(prompt).toContain("y".repeat(200_000));
   });
 });

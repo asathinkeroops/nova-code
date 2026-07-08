@@ -2,7 +2,7 @@ import { markSynthetic, type MessageParam, type ModelClient } from "@nova/core";
 
 export const COMPACT_MARKER = "[compacted]";
 
-const DEFAULT_MAX_SUMMARY_TOKENS = 2000;
+const DEFAULT_MAX_SUMMARY_TOKENS = 4000;
 const DEFAULT_CONTEXT_WINDOW_PERCENT = 0.5;
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -92,14 +92,30 @@ export interface AutoCompactResult {
 }
 
 const DEFAULT_SUMMARY_SYSTEM =
-  "You compress conversation history for an AI coding agent. Output only the summary text — no preamble.";
+  "You are an AI coding agent compacting your own conversation so you can keep working after " +
+  "the older messages are dropped from your context. The summary you write REPLACES that history — " +
+  "it is the only memory of it you will have. Capture everything needed to resume without re-reading. " +
+  "Preserve concrete details (file paths, symbols, commands, error text) verbatim. " +
+  "Output only the summary — no preamble.";
 
 const SUMMARY_INSTRUCTIONS = [
-  "Summarize this conversation for continuity. Include:",
-  "1) What was accomplished,",
-  "2) Current state of files / tasks,",
-  "3) Key decisions and any open questions.",
-  "Be concise but preserve critical details.",
+  "Write a structured summary so you can seamlessly continue the work.",
+  "Use these sections; drop one only if genuinely empty:",
+  "",
+  "## Goal",
+  "The user's original request and current objective — in their words where wording matters.",
+  "## Progress so far",
+  "What is done and verified, with the concrete files / functions / commands involved.",
+  "## Current state",
+  "The exact point work is at right now — what was just underway and the immediate next step.",
+  "## Problems & dead-ends",
+  "Errors hit, failed approaches, and options ruled out, so they aren't retried.",
+  "## Decisions & constraints",
+  "Design choices and why; user preferences, instructions, or restrictions to honor.",
+  "## Key references",
+  "Specific paths, symbols, commands, test names, and short critical code/config snippets to keep verbatim.",
+  "",
+  "Prefer detail over brevity; when in doubt, keep it.",
 ].join("\n");
 
 /**
