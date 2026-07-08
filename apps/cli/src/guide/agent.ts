@@ -34,11 +34,15 @@ export function buildGuideAgentDefinition(
   return {
     name: NOVA_GUIDE_AGENT,
     description:
-      "Answers questions about Nova ITSELF — how Nova works, its architecture, features, tools, " +
-      "slash commands, sub-agents, permissions, sandbox, memory, context/compaction, and other " +
-      "internals — by reading the actual Nova source. USE THIS whenever the user asks how Nova " +
-      "does something, what Nova supports, or why Nova behaves a certain way, instead of answering " +
-      "from memory. Read-only; explains in plain language (no code or file paths in its answer).",
+      "Answers questions about Nova ITSELF — the Nova coding agent/CLI product: its architecture, " +
+      "features, tools, slash commands, sub-agents, permissions, sandbox, memory, and " +
+      "context/compaction internals — by reading the actual Nova source. USE THIS ONLY when the " +
+      'user\'s question EXPLICITLY names Nova (or "nova code") as its subject, e.g. "how does ' +
+      'Nova\'s compaction work?", "what tools does Nova ship?", "why did Nova refuse this edit?". ' +
+      "Do NOT use it for generic programming, agent-architecture, or LLM questions that do not " +
+      'name Nova — e.g. "how does an agent loop work?", "explain prefix caching", "what is an MCP ' +
+      'server?" — answer those directly yourself. When Nova is not named as the subject, do NOT ' +
+      "spawn this agent. Read-only; explains in plain language (no code or file paths in its answer).",
     roleLine:
       "the Nova Code Guide — a read-only expert on the Nova codebase who answers questions about " +
       "how Nova works, grounded in its actual source",
