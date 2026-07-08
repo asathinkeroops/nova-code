@@ -1,7 +1,14 @@
 import { Command } from "commander";
 import { isThinkingLevel, type ThinkingLevel } from "@nova/core";
-import { loadSettings, type Settings } from "@nova/runtime";
+import { type Settings } from "@nova/runtime";
 import { createContext } from "./context.js";
+import {
+  buildDoctorCommand,
+  diagnoseConfig,
+  formatInvalidConfigError,
+  formatIssues,
+  summarizeReport,
+} from "./doctor.js";
 import { runHeadless, type HeadlessOutputFormat } from "./headless.js";
 import { buildMcpCommand } from "./mcp-cli.js";
 import { buildPluginCommand } from "./plugin-cli.js";
@@ -160,13 +167,29 @@ async function runHeadlessMode(
 }
 
 async function run(positional: string[], opts: CliOptions): Promise<void> {
-  let settings = await loadSettings();
+  // Startup config check: never throws, so a broken file surfaces as a friendly,
+  // specific report instead of an uncaught boot crash. When the config is VALID
+  // (`report.valid`), `settings` is the parsed config and any issues are soft
+  // warnings we show and continue past. When it's INVALID, `settings` is
+  // all-defaults — unusable — so we stop with the real errors rather than
+  // continue and misreport downstream (e.g. a bogus "apiKey is not set").
+  const { report, settings: loaded } = await diagnoseConfig({
+    workspace: opts.cwd ?? process.cwd(),
+  });
+  let settings = loaded;
 
   // `-p`/`--prompt` is the headless trigger (run once, print, exit); a non-TTY
   // environment also forces headless even without it. The bare positional
   // prompt stays interactive: it seeds the first turn, then the REPL takes over.
   const isTTY = Boolean(process.stdin.isTTY && process.stdout.isTTY);
   if (opts.prompt !== undefined || !isTTY) {
+    // Headless keeps stdout for the machine-readable result, so config problems
+    // go to stderr.
+    if (!report.valid) {
+      process.stderr.write(`\n${formatInvalidConfigError(report)}\n`);
+      process.exit(1);
+    }
+    if (report.issues.length > 0) process.stderr.write(`\n${formatIssues(report)}\n\n`);
     await runHeadlessMode(settings, positional, opts);
   }
 
@@ -176,6 +199,21 @@ async function run(positional: string[], opts: CliOptions): Promise<void> {
     cursorFollow: settings.terminal.cursorFollow,
   });
   screen.mount();
+
+  // An invalid config can't be run on — stop with the specific errors (the
+  // alt-screen buffer hides pre-mount output, so this goes through fatalExit,
+  // which prints after unmount).
+  if (!report.valid) {
+    await fatalExit(screen, formatInvalidConfigError(report), 1);
+  }
+  // Valid config with soft warnings (e.g. no apiKey yet): surface as a card in
+  // the feed once the UI is up, then continue.
+  if (report.issues.length > 0) {
+    screen.card(formatIssues(report), {
+      kind: "warn",
+      title: `config check — ${summarizeReport(report)}`,
+    });
+  }
 
   let think: ThinkOverride = {};
   try {
@@ -252,6 +290,7 @@ program
   )
   .action((positional: string[], opts: CliOptions) => run(positional, opts));
 
+program.addCommand(buildDoctorCommand());
 program.addCommand(buildMcpCommand());
 program.addCommand(buildPluginCommand());
 

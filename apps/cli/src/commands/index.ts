@@ -5,6 +5,7 @@ export { handleCommands } from "./commands.js";
 export { handleCompact } from "./compact.js";
 export { handleContext } from "./context.js";
 export { handleDiff } from "./diff.js";
+export { handleDoctor } from "./doctor.js";
 export { handleGoal } from "./goal.js";
 export { handleHelp } from "./help.js";
 export { handleInit } from "./init.js";

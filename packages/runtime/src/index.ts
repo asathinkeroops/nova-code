@@ -3,6 +3,7 @@ export {
   permissionRuleSchema,
   loadSettings,
   parseSettings,
+  resolveLanguage,
   saveSettings,
   isDangerousBash,
   DEFAULT_CONFIG_PATH,

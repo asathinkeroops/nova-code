@@ -7,6 +7,7 @@ import {
   handleCompact,
   handleContext,
   handleDiff,
+  handleDoctor,
   handleEffort,
   handleGoal,
   handleHelp,
@@ -244,6 +245,12 @@ export function registerBuiltinSlashCommands(ctx: CliContext): void {
       handleLsp(ctx);
       return handled;
     },
+  });
+  ctx.registry.register({
+    name: "doctor",
+    description: "re-check the global nova config (press f to have the agent fix issues)",
+    source: { kind: "builtin" },
+    run: async () => handleDoctor(ctx),
   });
   ctx.registry.register({
     name: "plugin",

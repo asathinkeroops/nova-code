@@ -275,6 +275,12 @@ export interface HorizontalPickerOptions<T> {
   initialIndex?: number;
   /** Separator between items (defaults to two spaces). */
   separator?: string;
+  /**
+   * Optional single-key shortcuts: a plain (non-modifier) keypress that resolves
+   * the picker immediately with the mapped item, without moving the selection.
+   * e.g. `{ f: fixAction }` lets `f` pick "Fix" directly.
+   */
+  hotkeys?: Record<string, T>;
 }
 
 interface PickHorizontalProps<T> {
@@ -296,6 +302,15 @@ export function PickHorizontal<T>({ opts, onResolve }: PickHorizontalProps<T>): 
     if (key.return) {
       onResolve(items[selected] ?? null);
       return;
+    }
+    // Single-key shortcuts resolve immediately. Guard on no modifiers so bound
+    // keys (e.g. ctrl+f = next) still navigate rather than fire the shortcut.
+    if (opts.hotkeys && !key.ctrl && !key.meta && input && input in opts.hotkeys) {
+      const target = opts.hotkeys[input];
+      if (target !== undefined) {
+        onResolve(target);
+        return;
+      }
     }
     if (key.leftArrow || (key.ctrl && input === "b") || input === "h") {
       setSelected((s) => (s - 1 + items.length) % items.length);
