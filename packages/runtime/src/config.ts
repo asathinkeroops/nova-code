@@ -646,6 +646,48 @@ export const settingsSchema = z.object({
       maxTokens: z.number().int().positive().default(32768),
     })
     .default({ enabled: true, maxTurns: 100, maxTokens: 32768 }),
+  // Nova Code Guide: a read-only Q&A agent that answers questions about Nova
+  // itself from a local checkout of the Nova source. The `/nova-code-guide`
+  // command spawns a read-only sub-agent scoped to that checkout; enabled by
+  // default but also gated on `subagent.enabled` (the guide runs as a
+  // sub-agent).
+  //
+  // `source` picks where the source comes from:
+  //   "remote" (default) — shallow-clone `repoUrl` (branch `ref`) into
+  //       `cacheDir` and refresh it before each question. Answering history
+  //       questions ("how did X evolve") is out of scope — the clone is shallow
+  //       (--depth 1); only the current source is available.
+  //   "local" — read directly from `localPath` (or the current workspace when
+  //       unset); no clone/fetch. Use this when developing Nova itself so the
+  //       guide answers from the code you're editing rather than upstream.
+  guide: z
+    .object({
+      enabled: z.boolean().default(true),
+      source: z.enum(["remote", "local"]).default("remote"),
+      repoUrl: z.string().min(1).default("https://github.com/asathinkeroops/nova-code.git"),
+      ref: z.string().min(1).default("main"),
+      // Where the checkout is materialized (source: "remote"). `~` and relative
+      // paths resolve against the home directory; the default sits beside
+      // nova.config.json.
+      cacheDir: z.string().min(1).default("~/.nova/nova-code-guide"),
+      // Local Nova source dir (source: "local"). `~` expands to home; a relative
+      // path resolves against the workspace cwd. When unset, the workspace cwd
+      // itself is used — the common case when developing Nova in its own repo.
+      localPath: z.string().min(1).optional(),
+      // How often (hours) to refresh the remote checkout. An existing checkout
+      // refreshed within this window is served as-is with no network fetch, so
+      // the silent every-launch warm doesn't hit the network each time. 0
+      // disables throttling (always fetch). Ignored for source: "local".
+      refreshIntervalHours: z.number().nonnegative().default(24),
+    })
+    .default({
+      enabled: true,
+      source: "remote",
+      repoUrl: "https://github.com/asathinkeroops/nova-code.git",
+      ref: "main",
+      cacheDir: "~/.nova/nova-code-guide",
+      refreshIntervalHours: 24,
+    }),
   // OS-level command sandbox (@anthropic-ai/sandbox-runtime). Opt-in
   // (default OFF). When enabled, tools that spawn a subprocess (bash,
   // runInBackground) run inside a platform sandbox — macOS Seatbelt via

@@ -59,6 +59,8 @@ import { classifyCommandRisk } from "./auto-classify.js";
 import { loadAgents } from "./agents.js";
 import { loadPlugins } from "./plugins/loader.js";
 import { DEFAULT_PLUGIN_CACHE_DIR } from "./plugins/install.js";
+import { buildGuideAgentDefinition } from "./guide/agent.js";
+import { ensureFresh, resolveGuideSourceDir } from "./guide/provisioner.js";
 import { readCliVersion } from "./version.js";
 import { UI_FRAME_MS } from "./ui/frame.js";
 import { appendToolDetail, loadDisplaySidecar } from "./display-sidecar.js";
@@ -247,6 +249,16 @@ export async function createContext(
   // on when sub-agents are enabled. Built-ins win on name collisions. The
   // createSubAgent tool and /agents both read this registry; /agents reload
   // refreshes it in place.
+  // Nova Code Guide source: the read-only guide sub-agent answers from this
+  // directory — a remote clone (source: "remote", materialized on first
+  // /nova-code-guide) or a local dir (source: "local"). Resolved once here so
+  // both the agent definition (which bakes the path into its guidance) and the
+  // permission roots below agree on the same directory.
+  const guideDir =
+    settings.guide.enabled && settings.subagent.enabled
+      ? resolveGuideSourceDir(settings.guide, workspace)
+      : undefined;
+
   const agents = new AgentRegistry();
   if (settings.subagent.enabled) {
     const { defs, errors } = loadAgents(settings, workspace, logger);
@@ -268,6 +280,41 @@ export async function createContext(
   if (pluginAgents.length > 0) {
     const skipped = agents.addCustom(pluginAgents);
     logger.info({ parsed: pluginAgents.length, skipped: skipped.length }, "plugin agents loaded");
+  }
+  // Register the built-in Nova Code Guide sub-agent, scoped to the local Nova
+  // checkout. Added last (users can't shadow it — the name is reserved) and only
+  // when the guide is enabled and sub-agents are on (it runs as a sub-agent).
+  if (guideDir) {
+    agents.addCustom([
+      buildGuideAgentDefinition(guideDir, { local: settings.guide.source === "local" }),
+    ]);
+  }
+  // Silently warm the remote checkout in the background so the guide is ready
+  // even when the MAIN agent auto-delegates to it — that path spawns the
+  // sub-agent directly and never runs /nova-code-guide, which is what otherwise
+  // clones. Fire-and-forget: no UI, non-blocking, failures only logged. Skipped
+  // for source: "local" (nothing to clone); `ensureFresh` de-dupes against a
+  // concurrent /nova-code-guide so this never double-clones.
+  if (guideDir && settings.guide.source === "remote") {
+    // Deferred via Promise.resolve().then so even a synchronous throw inside
+    // ensureFresh becomes a rejection this .catch handles — nothing can escape
+    // to disturb startup.
+    void Promise.resolve()
+      .then(() =>
+        ensureFresh({
+          repoUrl: settings.guide.repoUrl,
+          ref: settings.guide.ref,
+          cacheDir: settings.guide.cacheDir,
+          maxAgeMs: settings.guide.refreshIntervalHours * 3_600_000,
+          logger,
+        }),
+      )
+      .catch((err: unknown) => {
+        logger.warn(
+          { err: err instanceof Error ? err.message : String(err) },
+          "nova-code-guide: background checkout warm failed",
+        );
+      });
   }
 
   const todoStore = new TodoStore();
@@ -551,7 +598,13 @@ export async function createContext(
   // permissions.additionalDirectories. Canonicalized once here so the engine's
   // `within` matcher compares real on-disk paths (a symlinked cwd still matches).
   const allowedRoots = await canonicalizeRoots(
-    [workspace, ...settings.permissions.additionalDirectories],
+    [
+      workspace,
+      ...settings.permissions.additionalDirectories,
+      // The Nova Code Guide checkout is a read root so the guide sub-agent's
+      // read/grep/glob calls into it pass the workspace-containment gate.
+      ...(guideDir ? [guideDir] : []),
+    ],
     workspace,
   );
   // The agent maintains its own auto-memory store under this directory; auto-allow

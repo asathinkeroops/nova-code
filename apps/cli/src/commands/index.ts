@@ -12,6 +12,7 @@ export { handleLsp } from "./lsp.js";
 export { handleMcp } from "./mcp.js";
 export { handlePlugin } from "./plugin.js";
 export { handleModel } from "./model.js";
+export { handleNovaCodeGuide } from "./nova-code-guide.js";
 export { handlePlan } from "./plan.js";
 export { handlePredict } from "./predict.js";
 export { handleRename } from "./rename.js";
