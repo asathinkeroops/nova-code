@@ -25,6 +25,7 @@ import {
   splitDisplayLines,
 } from "./diff.js";
 import { renderMarkdown } from "./markdown.js";
+import { formatTokenCount } from "./status-format.js";
 import { visibleWidth } from "./width.js";
 import type { Card, CardKind } from "./store.js";
 import type { BannerProps, RenderItem } from "./render-item.js";
@@ -67,19 +68,15 @@ function displayCwd(cwd: string, home: string | undefined): string {
   return cwd;
 }
 
+// Mirror the statusline's model segment (`status-line.tsx`): concrete id
+// (falling back to the tier alias), then thinking level, then context window —
+// each joined with ` · ` and dropped when unavailable, e.g.
+// "deepseek-v4-pro · high · 1M". Keeps the banner and status row identical.
 function formatModel(b: BannerProps): string {
-  const base = b.contextWindowSize
-    ? (() => {
-        const window =
-          b.contextWindowSize >= 1_000_000
-            ? `${Math.round(b.contextWindowSize / 1_000_000)}m`
-            : b.contextWindowSize >= 1_000
-              ? `${Math.round(b.contextWindowSize / 1_000)}k`
-              : `${b.contextWindowSize}`;
-        return `${b.model}[${window}]`;
-      })()
-    : b.model;
-  return b.thinkingLabel ? `${base} with ${accent(bold(b.thinkingLabel))} effort` : base;
+  const name = b.modelId ?? b.model;
+  const think = b.thinkingLabel ? ` · ${b.thinkingLabel}` : "";
+  const window = b.contextWindowSize ? ` · ${formatTokenCount(b.contextWindowSize)}` : "";
+  return `${name}${think}${window}`;
 }
 
 function renderBanner(b: BannerProps, width: number): string {
