@@ -10,6 +10,7 @@ import type { BannerProps } from "./render-item.js";
 import type { BoxedInputOptions, SlashCommand } from "./input-box.js";
 import { appendInputHistory } from "./input-history.js";
 import type { HorizontalPickerOptions, PickerOptions, ViewerOptions } from "./picker.js";
+import type { SliderPickerOptions } from "./slider.js";
 import type { SetupEntry, SetupState } from "./setup-view.js";
 import type { PermissionMode } from "../permissions.js";
 import type { ClipboardPaste } from "../image-paste.js";
@@ -91,6 +92,7 @@ export type ModalState =
   | { kind: "ask"; req: AskUserRequest }
   | { kind: "pick"; opts: PickerOptions<unknown> }
   | { kind: "pickH"; opts: HorizontalPickerOptions<unknown> }
+  | { kind: "slider"; opts: SliderPickerOptions<unknown> }
   | { kind: "viewer"; opts: ViewerOptions };
 
 export interface SpinnerHandle {
@@ -413,6 +415,7 @@ export interface AppActions {
   openAskModal: (req: AskUserRequest, opts?: { signal?: AbortSignal }) => Promise<AskUserResponse>;
   openPickModal: <T>(opts: PickerOptions<T>) => Promise<T | null>;
   openPickHorizontalModal: <T>(opts: HorizontalPickerOptions<T>) => Promise<T | null>;
+  openSliderModal: <T>(opts: SliderPickerOptions<T>) => Promise<T | null>;
   openViewerModal: (opts: ViewerOptions, signal?: AbortSignal) => Promise<void>;
   reset: () => void;
   setTerminalSize: (cols: number, rows: number) => void;
@@ -836,6 +839,14 @@ export function createAppStore(opts: AppStoreOptions = {}): AppStoreApi {
       openPickHorizontalModal<T>(opts: HorizontalPickerOptions<T>) {
         return openModal<T | null>(
           { kind: "pickH", opts: opts as HorizontalPickerOptions<unknown> },
+          undefined,
+          null,
+        );
+      },
+
+      openSliderModal<T>(opts: SliderPickerOptions<T>) {
+        return openModal<T | null>(
+          { kind: "slider", opts: opts as SliderPickerOptions<unknown> },
           undefined,
           null,
         );

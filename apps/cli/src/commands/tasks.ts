@@ -1,8 +1,9 @@
 import type { CommandRecord } from "@nova/tools";
 
-import { bold, dim, green, red, yellow } from "../colors.js";
+import { bold, dim, green, PURPLE_HEX, red, yellow } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { pickerArrow } from "../ui/picker.js";
+import { overlayNotice } from "./overlay-notice.js";
 
 const TITLE = "/tasks";
 
@@ -131,9 +132,9 @@ export async function handleTasks(ctx: CliContext, args: string): Promise<void> 
   for (;;) {
     const records = ctx.backgroundManager.list();
     if (records.length === 0) {
-      ctx.screen.card(dim("no background tasks — start one with the runInBackground tool."), {
-        title: TITLE,
-      });
+      await overlayNotice(ctx, TITLE, [
+        dim("no background tasks — start one with the runInBackground tool."),
+      ]);
       return;
     }
 
@@ -147,6 +148,8 @@ export async function handleTasks(ctx: CliContext, args: string): Promise<void> 
       initialIndex: Math.min(cursor, records.length - 1),
       render: (r, selected) =>
         `${pickerArrow(selected)}  ${statusDot(r.status)}   ${oneLine(r.command, CMD_MAX).padEnd(cmdWidth)}   ${metaColumn(r, pidWidth)}`,
+      border: false,
+      topRuleColor: PURPLE_HEX,
     });
     if (!pick) break;
     cursor = Math.max(
@@ -172,6 +175,8 @@ async function openTaskActions(ctx: CliContext, id: string): Promise<void> {
     label: (a) => (a === "view" ? "View output" : "Stop"),
     header: `${statusDot(rec.status)} ${bold(oneLine(rec.command))}  ${dim(`${statusWord(rec.status)} · pid ${rec.pid}`)}`,
     footer: dim("←→ choose · enter select · esc back"),
+    border: false,
+    topRuleColor: PURPLE_HEX,
   });
   if (!action) return;
 
@@ -188,5 +193,7 @@ async function openTaskActions(ctx: CliContext, id: string): Promise<void> {
     header: `${bold(oneLine(snap.command))}  ${dim(statusWord(snap.status))}\n`,
     footer: `\n${dim("↑↓/PgUp/PgDn scroll · g/G top/bottom · enter/esc/q back")}`,
     pageSize: 24,
+    border: false,
+    topRuleColor: PURPLE_HEX,
   });
 }

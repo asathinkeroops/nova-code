@@ -390,17 +390,32 @@ export interface HorizontalPickerOptions<T> {
    * e.g. `{ f: fixAction }` lets `f` pick "Fix" directly.
    */
   hotkeys?: Record<string, T>;
+  /** Draw the round border around the row. Defaults to true. */
+  border?: boolean;
+  /**
+   * When set (and `border` is false), draw only a top rule in this color instead
+   * of a full box — the lighter 弹层 chrome shared with {@link PickList}. The
+   * panel then spans the viewport's inner width. Ignored while a full `border`
+   * is drawn.
+   */
+  topRuleColor?: string;
 }
 
 interface PickHorizontalProps<T> {
   opts: HorizontalPickerOptions<T>;
   onResolve: (value: T | null) => void;
+  /**
+   * Width the top-rule panel spans — the viewport's inner (H_PAD-inset) width.
+   * Falls back to the terminal width so the component still renders standalone.
+   */
+  panelWidth?: number;
 }
 
-export function PickHorizontal<T>({ opts, onResolve }: PickHorizontalProps<T>): React.ReactElement {
+export function PickHorizontal<T>({ opts, onResolve, panelWidth }: PickHorizontalProps<T>): React.ReactElement {
   const items = opts.items;
   const initialIndex = Math.min(Math.max(0, opts.initialIndex ?? 0), Math.max(0, items.length - 1));
   const separator = opts.separator ?? "  ";
+  const { stdout } = useStdout();
   const [selected, setSelected] = useState(initialIndex);
 
   useInput((input, key) => {
@@ -458,8 +473,22 @@ export function PickHorizontal<T>({ opts, onResolve }: PickHorizontalProps<T>): 
     );
   });
 
+  // Default: a round box hugging the button row. Opt into the 弹层 chrome
+  // (border:false + topRuleColor) for a purple top rule spanning the panel's
+  // inner width, matching the list/status overlays.
+  const bordered = opts.border ?? true;
+  const fullWidth = !bordered && !!opts.topRuleColor;
+  const cols = panelWidth ?? stdout?.columns ?? 80;
+  const borderProps = overlayBorderProps(bordered, opts.topRuleColor);
   return (
-    <Box width={'fit-content'} flexDirection="column" borderStyle={'round'} marginTop={1} marginBottom={1} padding={1}>
+    <Box
+      flexDirection="column"
+      marginTop={1}
+      marginBottom={1}
+      {...(bordered ? { width: "fit-content" as const, padding: 1 } : {})}
+      {...(fullWidth ? { width: cols } : {})}
+      {...borderProps}
+    >
       {opts.header ? <Text>{opts.header}</Text> : null}
       <Text> </Text>
       <Box>{cells}</Box>

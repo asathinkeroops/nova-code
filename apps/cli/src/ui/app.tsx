@@ -140,7 +140,10 @@ export function App({ store }: AppProps): React.ReactElement {
   // have distinct prompt semantics and aren't full-screen popups.)
   const overlayModal =
     modal !== null &&
-    (modal.kind === "pick" || modal.kind === "pickH" || modal.kind === "viewer");
+    (modal.kind === "pick" ||
+      modal.kind === "pickH" ||
+      modal.kind === "slider" ||
+      modal.kind === "viewer");
 
   // Ctrl+C: interrupt a running turn if one is active, else ask the idle REPL
   // to exit. Escape: interrupt only — never exits — and does nothing when idle.

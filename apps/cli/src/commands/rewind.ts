@@ -1,8 +1,9 @@
 import { relative } from "node:path";
 import { blocksOf, extractText, type MessageParam } from "@nova/core";
-import { dim, green, red, yellow } from "../colors.js";
+import { dim, green, PURPLE_HEX, red, yellow } from "../colors.js";
 import { persist, type CliContext } from "../context.js";
 import { pickerArrow } from "../ui/picker.js";
+import { overlayNotice } from "./overlay-notice.js";
 
 const TITLE = "/rewind";
 
@@ -59,7 +60,7 @@ export async function handleRewind(ctx: CliContext, arg: string): Promise<void> 
   const messages = ctx.screen.getMessages();
   const turns = collectUserTurns(messages);
   if (turns.length === 0) {
-    ctx.screen.card(dim("nothing to rewind to."), { title: TITLE });
+    await overlayNotice(ctx, TITLE, [dim("nothing to rewind to.")]);
     return;
   }
 
@@ -90,6 +91,7 @@ export async function handleRewind(ctx: CliContext, arg: string): Promise<void> 
       footer: dim("↑↓ navigate · enter confirm · esc cancel"),
       pageSize: 10,
       border: false,
+      topRuleColor: PURPLE_HEX,
       render: (t, isSelected) => `${pickerArrow(isSelected)} ${dim(`#${t.turn}`)}  ${t.label}`,
     });
     if (!target) return; // esc — leave the feed quiet
@@ -130,6 +132,8 @@ export async function handleRewind(ctx: CliContext, arg: string): Promise<void> 
       header: preview,
       footer: dim("←→ navigate · enter confirm · esc cancel"),
       label: (ok) => (ok ? (fileCount > 0 ? "restore & rewind" : "rewind history only") : "cancel"),
+      border: false,
+      topRuleColor: PURPLE_HEX,
     });
     if (confirm === null) return; // esc — leave the feed quiet
     if (!confirm) {

@@ -1,9 +1,10 @@
 import { execFileSync } from "node:child_process";
 
-import { bold, diffSign, dim, green, red, yellow } from "../colors.js";
+import { bold, diffSign, dim, green, PURPLE_HEX, red, yellow } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { highlightContent } from "../ui/diff.js";
 import { pickerArrow, type ViewerLine } from "../ui/picker.js";
+import { overlayNotice } from "./overlay-notice.js";
 
 const TITLE = "/diff";
 
@@ -282,7 +283,7 @@ export async function handleDiff(ctx: CliContext, args: string): Promise<void> {
 
   if (changes.length === 0) {
     const scope = pathspec ? ` matching "${pathspec}"` : "";
-    ctx.screen.card(dim(`working tree clean — no changes${scope}.`), { title: TITLE });
+    await overlayNotice(ctx, TITLE, [dim(`working tree clean — no changes${scope}.`)]);
     return;
   }
 
@@ -302,6 +303,8 @@ export async function handleDiff(ctx: CliContext, args: string): Promise<void> {
         const name = c.path.padEnd(pathWidth, " ");
         return `${pickerArrow(selected)} ${statusCode(c)}  ${name}  ${statusLabel(c)}${stat}`;
       },
+      border: false,
+      topRuleColor: PURPLE_HEX,
     });
     if (!pick) break;
     cursor = Math.max(0, changes.indexOf(pick));
@@ -315,6 +318,8 @@ export async function handleDiff(ctx: CliContext, args: string): Promise<void> {
       header: `${bold(pick.path)}  ${statusLabel(pick)}`,
       footer: dim("↑↓/PgUp/PgDn scroll · g/G top/bottom · enter/esc/q back to list"),
       pageSize: 24,
+      border: false,
+      topRuleColor: PURPLE_HEX,
     });
   }
 }

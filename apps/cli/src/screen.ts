@@ -26,6 +26,7 @@ import {
   type PickerOptions,
   type ViewerOptions,
 } from "./ui/picker.js";
+import { type SliderPickerOptions } from "./ui/slider.js";
 import {
   createAppStore,
   type AppStoreApi,
@@ -665,6 +666,12 @@ export class Screen {
   async pickHorizontal<T>(opts: HorizontalPickerOptions<T>): Promise<T | null> {
     if (opts.items.length === 0) return null;
     return this.store.getState().openPickHorizontalModal(opts);
+  }
+
+  /** Open a labelled 1-D "effort slider" (see {@link SliderPicker}). */
+  async pickSlider<T>(opts: SliderPickerOptions<T>): Promise<T | null> {
+    if (opts.items.length === 0) return null;
+    return this.store.getState().openSliderModal(opts);
   }
 
   /**

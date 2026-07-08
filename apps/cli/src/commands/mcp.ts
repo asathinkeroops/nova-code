@@ -1,5 +1,5 @@
 import type { McpManager, McpServerState, McpServerStatus } from "@nova/external";
-import { bold, cyan, dim, green, magenta, red, yellow } from "../colors.js";
+import { bold, cyan, dim, green, magenta, PURPLE_HEX, red, yellow } from "../colors.js";
 import type { CliContext } from "../context.js";
 import {
   FileOAuthStore,
@@ -8,6 +8,7 @@ import {
   type CallbackServer,
 } from "../mcp-oauth.js";
 import { pickerArrow } from "../ui/picker.js";
+import { overlayNotice } from "./overlay-notice.js";
 
 const TITLE = "/mcp";
 
@@ -26,15 +27,14 @@ const AUTH_TIMEOUT_MS = 5 * 60_000;
  */
 export async function handleMcp(ctx: CliContext, args: string): Promise<void> {
   if (!ctx.settings.mcp.enabled) {
-    ctx.screen.card(dim("MCP is disabled (settings.mcp.enabled = false)."), { title: TITLE });
+    await overlayNotice(ctx, TITLE, [dim("MCP is disabled (settings.mcp.enabled = false).")]);
     return;
   }
   const mcp = ctx.mcp;
   if (!mcp || mcp.serverCount === 0) {
-    ctx.screen.card(
+    await overlayNotice(ctx, TITLE, [
       dim("no MCP servers configured. Add them under `mcp.servers` in nova.config.json."),
-      { title: TITLE },
-    );
+    ]);
     return;
   }
 
@@ -73,6 +73,8 @@ async function runMenu(ctx: CliContext, mcp: McpManager): Promise<void> {
       items: servers,
       render: (s, sel) => `${pickerArrow(sel)} ${rowLabel(s)}`,
       pageSize: 12,
+      border: false,
+      topRuleColor: PURPLE_HEX,
     });
     if (!pick) return;
     await serverActions(ctx, mcp, pick.name);
@@ -104,6 +106,8 @@ async function serverActions(ctx: CliContext, mcp: McpManager, name: string): Pr
     footer: dim("↑↓ select · enter run · esc back"),
     items: actions,
     render: (a, sel) => `${pickerArrow(sel)} ${a.label}`,
+    border: false,
+    topRuleColor: PURPLE_HEX,
   });
   if (!pick || pick.key === "back") return;
 
@@ -236,6 +240,8 @@ async function viewTools(ctx: CliContext, mcp: McpManager, name: string): Promis
     header: `${cyan(name)} — ${s?.toolNames.length ?? 0} tool(s)`,
     lines: lines.length > 0 ? lines : [dim("(no tools bridged)")],
     footer: dim("esc / q to close"),
+    border: false,
+    topRuleColor: PURPLE_HEX,
   });
 }
 
@@ -379,6 +385,8 @@ async function waitForBrowserAuth(
         "",
         dim("press esc to cancel"),
       ],
+      border: false,
+      topRuleColor: PURPLE_HEX,
     },
     { signal: controller.signal },
   );

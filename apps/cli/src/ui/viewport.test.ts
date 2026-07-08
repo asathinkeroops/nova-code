@@ -71,4 +71,17 @@ describe("pickHorizontalRows", () => {
     // chrome 6 + 3 header lines + (blank+buttons+blank = 3) + 1 footer = 13.
     expect(pickHorizontalRows(opts as HorizontalPickerOptions<unknown>, 80)).toBe(13);
   });
+
+  it("drops the side border + padding for a top-rule overlay", () => {
+    const opts: HorizontalPickerOptions<boolean> = {
+      items: [true, false],
+      label: (b) => (b ? "ok" : "cancel"),
+      header: "line1\nline2\nline3",
+      footer: "esc",
+      border: false,
+      topRuleColor: "#7c3aed",
+    };
+    // chrome 3 (margin 2 + top rule 1) + 3 header + 3 spacers/buttons + 1 footer = 10.
+    expect(pickHorizontalRows(opts as HorizontalPickerOptions<unknown>, 80)).toBe(10);
+  });
 });

@@ -1,7 +1,8 @@
 import { listSessions, type Session } from "@nova/runtime";
-import { dim, green } from "../colors.js";
+import { dim, green, PURPLE_HEX } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { pickerArrow } from "../ui/picker.js";
+import { overlayNotice } from "./overlay-notice.js";
 import {
   buildSessionRows,
   formatTimestamp,
@@ -14,7 +15,7 @@ const TITLE = "/resume";
 export async function handleResume(ctx: CliContext, arg: string): Promise<void> {
   const list = await listSessions(ctx.settings.sessionDir);
   if (list.length === 0) {
-    ctx.screen.card(dim("no sessions to resume."), { title: TITLE });
+    await overlayNotice(ctx, TITLE, [dim("no sessions to resume.")]);
     return;
   }
 
@@ -29,7 +30,7 @@ export async function handleResume(ctx: CliContext, arg: string): Promise<void> 
   } else {
     const items: SessionRow[] = await buildSessionRows(ctx.settings.sessionDir);
     if (items.length === 0) {
-      ctx.screen.card(dim("no sessions to resume."), { title: TITLE });
+      await overlayNotice(ctx, TITLE, [dim("no sessions to resume.")]);
       return;
     }
     const currentIdx = items.findIndex((it) => it.session.id === ctx.session.id);
@@ -39,6 +40,8 @@ export async function handleResume(ctx: CliContext, arg: string): Promise<void> 
       footer: dim("↑↓ navigate · enter confirm · esc cancel"),
       pageSize: 10,
       initialIndex: currentIdx >= 0 ? currentIdx : 0,
+      border: false,
+      topRuleColor: PURPLE_HEX,
       render: ({ session: s, label }, isSelected) => {
         const marker = s.id === ctx.session.id ? green("*") : " ";
         return `${pickerArrow(isSelected)} ${marker} ${s.id}  ${dim(formatTimestamp(s.createdAt))}  ${dim(label)}`;

@@ -14,6 +14,7 @@ import {
   ScrollViewer,
   viewerLineText,
 } from "./picker.js";
+import { type SliderPickerOptions, SliderPicker, sliderRows } from "./slider.js";
 import { buildLiveDraftItems, buildRenderItems } from "./render-item.js";
 import { highlightWholeLine } from "./selection.js";
 import { blinkPendingOff, hasPendingDot } from "./render-strings.js";
@@ -296,6 +297,8 @@ function chromeRowsFor(
         return pickListRows(modal.opts as PickerOptions<unknown>, cols);
       case "pickH":
         return pickHorizontalRows(modal.opts as HorizontalPickerOptions<unknown>, cols);
+      case "slider":
+        return sliderRows(modal.opts as SliderPickerOptions<unknown>, cols);
       case "viewer":
         return viewerRows(modal.opts as ViewerOptions, cols);
       default:
@@ -372,8 +375,12 @@ export function viewerRows(opts: ViewerOptions, cols: number): number {
  * single row of buttons, another blank spacer, and an optional footer.
  */
 export function pickHorizontalRows(opts: HorizontalPickerOptions<unknown>, cols: number): number {
-  const inner = Math.max(1, cols - 4); // border(2) + padding(2) columns
-  let n = 6; // border(2) + margin(2) + vertical padding(2)
+  const bordered = opts.border ?? true;
+  // Round box: border(2) + padding(2) eat 4 columns and 6 chrome rows (border 2
+  // + margin 2 + vertical padding 2). Top-rule overlay: no side border/padding,
+  // so just margin(2) + top rule(1) and the panel spans the full inner width.
+  const inner = Math.max(1, bordered ? cols - 4 : cols);
+  let n = bordered ? 6 : opts.topRuleColor ? 3 : 2;
   if (opts.header) n += countWrappedLines(opts.header, inner);
   n += 1 + 1 + 1; // blank spacer + buttons row + blank spacer
   if (opts.footer) n += countWrappedLines(opts.footer, inner);
@@ -421,6 +428,15 @@ function InStreamModal({
         <PickHorizontal
           opts={modal.opts as HorizontalPickerOptions<unknown>}
           onResolve={(value) => resolveModal(value)}
+          panelWidth={width}
+        />
+      );
+    case "slider":
+      return (
+        <SliderPicker
+          opts={modal.opts as SliderPickerOptions<unknown>}
+          onResolve={(value) => resolveModal(value)}
+          panelWidth={width}
         />
       );
     case "viewer":

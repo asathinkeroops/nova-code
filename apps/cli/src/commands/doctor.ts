@@ -3,7 +3,7 @@ import { estimateTokens, sliceFromLastCompacted } from "@nova/context";
 import { toWireTools } from "@nova/core";
 import type { SlashOutcome } from "@nova/external";
 import { resolveContextWindowSize } from "@nova/runtime";
-import { bold, dim, green } from "../colors.js";
+import { bold, dim, green, PURPLE_HEX } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { buildFixPrompt, diagnoseConfig, formatIssues, summarizeReport } from "../doctor.js";
 import { formatPercent, formatTokenCount } from "../ui/status-format.js";
@@ -86,6 +86,8 @@ export async function handleDoctor(ctx: CliContext): Promise<SlashOutcome> {
     footer: canFix
       ? "f fix · ←/→ choose · Enter confirm · Esc close"
       : "Enter / Esc to close",
+    border: false,
+    topRuleColor: PURPLE_HEX,
     ...(canFix ? { hotkeys: { f: "fix" as Action } } : {}),
   });
 
