@@ -13,6 +13,7 @@ export { handleMcp } from "./mcp.js";
 export { handlePlugin } from "./plugin.js";
 export { handleModel } from "./model.js";
 export { handleNovaCodeGuide } from "./nova-code-guide.js";
+export { handleNovaCodeGuideUpdate } from "./nova-code-guide-update.js";
 export { handlePlan } from "./plan.js";
 export { handlePredict } from "./predict.js";
 export { handleRename } from "./rename.js";

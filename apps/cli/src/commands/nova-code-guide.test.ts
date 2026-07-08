@@ -33,7 +33,10 @@ function makeCtx(guideOverrides: Record<string, unknown> = {}, subagentEnabled =
         ...guideOverrides,
       },
     },
-    screen: { card: (text: string) => cards.push(text) },
+    screen: {
+      card: (text: string) => cards.push(text),
+      startSpinner: () => ({ stop() {} }),
+    },
     logger: { debug() {}, warn() {}, info() {} },
   } as unknown as CliContext;
 }

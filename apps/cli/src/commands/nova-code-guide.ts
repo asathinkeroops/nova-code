@@ -1,11 +1,33 @@
 import { stat } from "node:fs/promises";
 import type { SlashOutcome } from "@nova/external";
-import { dim } from "../colors.js";
-import type { CliContext } from "../context.js";
+import { ACCENT_RGB, accent, dim } from "../colors.js";
+import { stopSpinner, type CliContext } from "../context.js";
 import { NOVA_GUIDE_AGENT } from "../guide/agent.js";
 import { ensureFresh, resolveGuideSourceDir } from "../guide/provisioner.js";
 
 const TITLE = "/nova-code-guide";
+
+/**
+ * Spinner label shown while git fetches/clones the checkout. Object form (not a
+ * bare string) so it renders with the accent color/shimmer, matching the tool
+ * spinner — a bare string would show an uncolored, static label. Shared with
+ * {@link ./nova-code-guide-update.js}.
+ */
+export const FETCH_SPINNER = {
+  words: ["Fetching nova code guide"],
+  tint: ACCENT_RGB,
+  colorize: accent,
+};
+
+/**
+ * Actionable next-steps appended to a remote-provisioning failure (the
+ * initial-clone case, where there is no cached checkout to fall back to). Shared
+ * with {@link ./nova-code-guide-update.js} so both surfaces tell the user the
+ * same two ways out.
+ */
+export const PROVISION_HINT =
+  `Fix the network/git issue and retry with /nova-code-guide-update, or set ` +
+  `settings.guide.source to "local" to read a local Nova checkout instead.`;
 
 /**
  * `/nova-code-guide <question>` — ask the read-only Nova Code Guide about Nova
@@ -49,7 +71,10 @@ export async function handleNovaCodeGuide(ctx: CliContext, args: string): Promis
     }
     ctx.screen.card(dim(`Using local Nova source at ${dir}.`), { title: TITLE });
   } else {
-    ctx.screen.card(dim("Fetching the latest Nova source…"), { title: TITLE });
+    // Live spinner while git fetches/clones (may take several seconds) so the
+    // TUI doesn't look frozen. Torn down on every exit path below. Skipped when
+    // the checkout is fresh within the TTL — ensureFresh returns near-instantly.
+    ctx.spinner = ctx.screen.startSpinner(FETCH_SPINNER);
     let result;
     try {
       result = await ensureFresh({
@@ -60,9 +85,11 @@ export async function handleNovaCodeGuide(ctx: CliContext, args: string): Promis
         logger: ctx.logger,
       });
     } catch (err) {
+      stopSpinner(ctx);
       const msg = err instanceof Error ? err.message : String(err);
-      return { kind: "error", message: `could not prepare the Nova source: ${msg}` };
+      return { kind: "error", message: `could not prepare the Nova source: ${msg}\n${PROVISION_HINT}` };
     }
+    stopSpinner(ctx);
     if (result.offline) {
       ctx.screen.card(dim(`Offline — answering from the cached checkout at ${result.dir}.`), {
         title: TITLE,

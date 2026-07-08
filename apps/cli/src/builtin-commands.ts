@@ -15,6 +15,7 @@ import {
   handleMcp,
   handleModel,
   handleNovaCodeGuide,
+  handleNovaCodeGuideUpdate,
   handlePlan,
   handlePlugin,
   handlePredict,
@@ -208,6 +209,12 @@ export function registerBuiltinSlashCommands(ctx: CliContext): void {
     argHint: "<question about Nova>",
     source: { kind: "builtin" },
     run: (_c, args) => handleNovaCodeGuide(ctx, args),
+  });
+  ctx.registry.register({
+    name: "nova-code-guide-update",
+    description: "manually (re)fetch the Nova source the guide reads (remote mode)",
+    source: { kind: "builtin" },
+    run: () => handleNovaCodeGuideUpdate(ctx),
   });
   ctx.registry.register({
     name: "tasks",
