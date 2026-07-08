@@ -5,19 +5,23 @@ describe("HeadlessScreen", () => {
   it("reports the configured permission mode", () => {
     expect(new HeadlessScreen().getPermissionMode()).toBe("default");
     expect(new HeadlessScreen({ permissionMode: "plan" }).getPermissionMode()).toBe("plan");
-    expect(
-      new HeadlessScreen({ permissionMode: "acceptEdits" }).getPermissionMode(),
-    ).toBe("acceptEdits");
+    expect(new HeadlessScreen({ permissionMode: "acceptEdits" }).getPermissionMode()).toBe(
+      "acceptEdits",
+    );
+  });
+
+  it("reports itself as non-interactive (a headless 'no' is policy, not a human deny)", () => {
+    expect(new HeadlessScreen().interactive).toBe(false);
   });
 
   it("denies approval prompts by default and allows them when policy is allow", async () => {
     await expect(new HeadlessScreen().promptApproval()).resolves.toBe("no");
-    await expect(
-      new HeadlessScreen({ approvalPolicy: "deny" }).promptApproval(),
-    ).resolves.toBe("no");
-    await expect(
-      new HeadlessScreen({ approvalPolicy: "allow" }).promptApproval(),
-    ).resolves.toBe("always-allow");
+    await expect(new HeadlessScreen({ approvalPolicy: "deny" }).promptApproval()).resolves.toBe(
+      "no",
+    );
+    await expect(new HeadlessScreen({ approvalPolicy: "allow" }).promptApproval()).resolves.toBe(
+      "always-allow",
+    );
   });
 
   it("returns a cancelled response for askUser (no human to answer)", async () => {

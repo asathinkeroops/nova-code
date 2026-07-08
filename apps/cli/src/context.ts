@@ -531,7 +531,20 @@ export async function createContext(
       promptOpts.signal = signal;
       promptOpts.onCancel = () => ctx.agent.abort(new Error("interrupted by user"));
     }
-    return await ctx.screen.promptApproval(decision, input, promptOpts);
+    const answer = await ctx.screen.promptApproval(decision, input, promptOpts);
+    // A deliberate "Deny" at an interactive prompt ends the whole turn, exactly
+    // like Esc — the user is rejecting this action, so don't keep prompting for
+    // the remaining tools in the batch one by one. Aborting the in-flight turn
+    // makes the loop cancel every sibling tool (granted-but-unrun via the signal
+    // check in phase 2, not-yet-prompted via phase 1) and stop without another
+    // model round-trip. Esc already resolves to "no" via onCancel above, so that
+    // re-abort is a no-op; an explicit Deny click reaches here without having
+    // aborted yet. Gated on `interactive` so a headless "deny" policy — which
+    // returns "no" with no human present — keeps its per-tool denial semantics.
+    if (answer === "no" && ctx.screen.interactive) {
+      ctx.agent.abort(new Error("tool permission denied by user"));
+    }
+    return answer;
   };
 
   // The workspace cwd is always an allowed root; users widen the set via

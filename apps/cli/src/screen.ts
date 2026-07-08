@@ -115,6 +115,17 @@ export class Screen {
     });
   }
 
+  /**
+   * Whether this screen is a real interactive terminal UI driving Ink modals.
+   * The base Screen prompts a human; `HeadlessScreen` overrides this to `false`
+   * since it answers permission prompts from a fixed policy with nobody present.
+   * Callers use it to tell a deliberate human "Deny" (which should end the turn)
+   * apart from a headless policy denial.
+   */
+  get interactive(): boolean {
+    return true;
+  }
+
   mount(): void {
     if (this.mounted) return;
 

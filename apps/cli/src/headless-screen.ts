@@ -52,6 +52,10 @@ export class HeadlessScreen extends Screen {
   }
 
   // ===== Permission — report the configured mode; never open a modal. =====
+  override get interactive(): boolean {
+    return false;
+  }
+
   override getPermissionMode(): PermissionMode {
     return this.mode;
   }

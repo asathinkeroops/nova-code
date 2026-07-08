@@ -16,6 +16,10 @@ describe("Screen permission state", () => {
     expect(screen.getPermissionMode()).toBe("plan");
   });
 
+  it("reports itself as interactive (a Deny here is a real human rejection)", () => {
+    expect(new Screen().interactive).toBe(true);
+  });
+
   it("promptApproval auto-approves once the bypass is armed", async () => {
     const screen = new Screen();
     screen.enableBypass();
