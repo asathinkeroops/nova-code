@@ -139,6 +139,11 @@ export const orange = (s: string): string => {
   if (useTruecolor) return rgbFg([255, 140, 50], s);
   return wrap(33, 39, s);
 };
+export const purple = (s: string): string => {
+  if (!useColor) return s;
+  if (useTruecolor) return rgbFg([124, 58, 237], s);
+  return wrap(35, 39, s);
+};
 export const bold = (s: string): string => wrap(1, 22, s);
 export const italic = (s: string): string => wrap(3, 23, s);
 export const underline = (s: string): string => wrap(4, 24, s);

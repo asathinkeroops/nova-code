@@ -13,6 +13,7 @@ import {
   italic,
   magenta,
   orange,
+  purple,
   red,
 } from "../colors.js";
 import { LOGO, bannerLine } from "./logo.js";
@@ -74,7 +75,15 @@ function displayCwd(cwd: string, home: string | undefined): string {
 // "deepseek-v4-pro · high · 1M". Keeps the banner and status row identical.
 function formatModel(b: BannerProps): string {
   const name = b.modelId ?? b.model;
-  const think = b.thinkingLabel ? ` · ${b.thinkingLabel}` : "";
+  // Highlight the two highest thinking levels: "high" in orange, "max" in
+  // purple; other labels stay plain.
+  const label =
+    b.thinkingLabel === "high"
+      ? orange(b.thinkingLabel)
+      : b.thinkingLabel === "max"
+        ? purple(b.thinkingLabel)
+        : b.thinkingLabel;
+  const think = label ? ` · ${label}` : "";
   const window = b.contextWindowSize ? ` · ${formatTokenCount(b.contextWindowSize)}` : "";
   return `${name}${think}${window}`;
 }
