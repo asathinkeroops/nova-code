@@ -36,8 +36,8 @@ export function registerBuiltinSlashCommands(ctx: CliContext): void {
     name: "help",
     description: "show this help",
     source: { kind: "builtin" },
-    run: () => {
-      handleHelp(ctx);
+    run: async () => {
+      await handleHelp(ctx);
       return handled;
     },
   });
@@ -182,8 +182,8 @@ export function registerBuiltinSlashCommands(ctx: CliContext): void {
     name: "skills",
     description: "list discovered skills (SKILL.md)",
     source: { kind: "builtin" },
-    run: () => {
-      handleSkills(ctx);
+    run: async () => {
+      await handleSkills(ctx);
       return handled;
     },
   });
@@ -241,8 +241,8 @@ export function registerBuiltinSlashCommands(ctx: CliContext): void {
     name: "lsp",
     description: "show configured language servers and their status",
     source: { kind: "builtin" },
-    run: () => {
-      handleLsp(ctx);
+    run: async () => {
+      await handleLsp(ctx);
       return handled;
     },
   });
@@ -265,8 +265,8 @@ export function registerBuiltinSlashCommands(ctx: CliContext): void {
     name: "usage",
     description: "show this session's token usage and cache hit rate",
     source: { kind: "builtin" },
-    run: () => {
-      handleUsage(ctx);
+    run: async () => {
+      await handleUsage(ctx);
       return handled;
     },
   });
@@ -274,8 +274,8 @@ export function registerBuiltinSlashCommands(ctx: CliContext): void {
     name: "context",
     description: "visualize the context window: what fills it, by category",
     source: { kind: "builtin" },
-    run: () => {
-      handleContext(ctx);
+    run: async () => {
+      await handleContext(ctx);
       return handled;
     },
   });

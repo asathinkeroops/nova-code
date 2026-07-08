@@ -17,6 +17,30 @@ export function highlightRow(text: string, width: number): string {
   return applyInverse(padded, 0, Math.max(width, tw));
 }
 
+/**
+ * Ink border props shared by the picker and viewer overlays: a full round box
+ * when `bordered`, else — if `topRuleColor` is set — a single top-only rule in
+ * that color (no left/right/bottom border, just a colored line above the
+ * content), else no chrome at all.
+ */
+export function overlayBorderProps(
+  bordered: boolean,
+  topRuleColor: string | undefined,
+): Record<string, unknown> {
+  if (bordered) return { borderStyle: "round" as const };
+  if (topRuleColor) {
+    return {
+      borderStyle: "single" as const,
+      borderColor: topRuleColor,
+      borderTop: true,
+      borderBottom: false,
+      borderLeft: false,
+      borderRight: false,
+    };
+  }
+  return {};
+}
+
 export interface PickerOptions<T> {
   items: T[];
   /** Rendered once per row; `selected` is true for the highlighted item. */
@@ -29,13 +53,58 @@ export interface PickerOptions<T> {
   pageSize?: number;
   /** Initial highlighted index (defaults to 0). */
   initialIndex?: number;
+  /**
+   * Optional predicate marking an item as non-selectable — a divider, section
+   * header, or note. Navigation skips over these (they never get the highlight
+   * bar) and the initial selection lands on the first selectable item. Defaults
+   * to every item being selectable.
+   */
+  selectable?: (item: T) => boolean;
   /** Draw the round border around the list. Defaults to true. */
   border?: boolean;
+  /**
+   * When set (and `border` is false), draw only a top rule in this color
+   * instead of a full box — a lighter chrome (just a colored line above the
+   * list). Ignored while a full `border` is drawn.
+   */
+  topRuleColor?: string;
 }
 
 interface PickListProps<T> {
   opts: PickerOptions<T>;
   onResolve: (value: T | null) => void;
+  /**
+   * Width the top-rule panel spans and truncates its rows to — the viewport's
+   * inner (H_PAD-inset) content width. Falls back to the terminal width so the
+   * component still renders standalone.
+   */
+  panelWidth?: number;
+}
+
+/** Index of the first selectable row, or 0 when none are selectable. */
+export function firstSelectableIndex(selectable: boolean[]): number {
+  const i = selectable.indexOf(true);
+  return i === -1 ? 0 : i;
+}
+
+/** Index of the last selectable row, or the last index when none are. */
+export function lastSelectableIndex(selectable: boolean[]): number {
+  const i = selectable.lastIndexOf(true);
+  return i === -1 ? Math.max(0, selectable.length - 1) : i;
+}
+
+/**
+ * Wrap-around step from `from` to the next selectable row in `dir` (+1 down,
+ * -1 up), skipping non-selectable rows. Stays put if nothing else is selectable.
+ */
+export function stepSelectable(from: number, selectable: boolean[], dir: 1 | -1): number {
+  const n = selectable.length;
+  let i = from;
+  for (let k = 0; k < n; k++) {
+    i = (i + dir + n) % n;
+    if (selectable[i]) return i;
+  }
+  return from;
 }
 
 function clampWindow(selected: number, count: number, pageSize: number): number {
@@ -47,11 +116,26 @@ function clampWindow(selected: number, count: number, pageSize: number): number 
   return start;
 }
 
-export function PickList<T>({ opts, onResolve }: PickListProps<T>): React.ReactElement {
+export function PickList<T>({ opts, onResolve, panelWidth }: PickListProps<T>): React.ReactElement {
   const items = opts.items;
   const pageSize = Math.max(1, opts.pageSize ?? 10);
-  const initialIndex = Math.min(Math.max(0, opts.initialIndex ?? 0), Math.max(0, items.length - 1));
-  const [selected, setSelected] = useState(initialIndex);
+  const { stdout } = useStdout();
+
+  // Top-rule overlays (border:false + topRuleColor) render as a panel that fills
+  // the viewport's inner width: the box spans it and the selection bar fills the
+  // row, rather than hugging the widest glyph run.
+  const bordered = opts.border ?? true;
+  const fullWidth = !bordered && !!opts.topRuleColor;
+  const cols = panelWidth ?? stdout?.columns ?? 80;
+
+  // Per-row selectable flags: navigation skips non-selectable rows (headers /
+  // dividers / notes) so the highlight only ever lands on a real choice.
+  const flags = items.map((it) => (opts.selectable ? opts.selectable(it) : true));
+
+  const clampedInit = Math.min(Math.max(0, opts.initialIndex ?? 0), Math.max(0, items.length - 1));
+  const [selected, setSelected] = useState(
+    flags[clampedInit] ? clampedInit : firstSelectableIndex(flags),
+  );
 
   useInput((input, key) => {
     if (key.escape || (key.ctrl && input === "c")) {
@@ -63,19 +147,19 @@ export function PickList<T>({ opts, onResolve }: PickListProps<T>): React.ReactE
       return;
     }
     if (key.upArrow || (key.ctrl && input === "p")) {
-      setSelected((s) => (s - 1 + items.length) % items.length);
+      setSelected((s) => stepSelectable(s, flags, -1));
       return;
     }
     if (key.downArrow || (key.ctrl && input === "n")) {
-      setSelected((s) => (s + 1) % items.length);
+      setSelected((s) => stepSelectable(s, flags, 1));
       return;
     }
     if (key.ctrl && input === "a") {
-      setSelected(0);
+      setSelected(firstSelectableIndex(flags));
       return;
     }
     if (key.ctrl && input === "e") {
-      setSelected(items.length - 1);
+      setSelected(lastSelectableIndex(flags));
       return;
     }
   });
@@ -99,27 +183,39 @@ export function PickList<T>({ opts, onResolve }: PickListProps<T>): React.ReactE
   for (let i = windowStart; i < end; i++) {
     rendered.push(opts.render(items[i] as T, i === selected));
   }
-  const barWidth = Math.max(
+  const contentWidth = Math.max(
     0,
     ...rendered.map(visibleWidth),
     opts.header ? visibleWidth(opts.header) : 0,
     opts.footer ? visibleWidth(opts.footer) : 0,
     indicator ? visibleWidth(indicator) : 0,
   );
+  // Full-width panels give every row a single terminal-width line: the bar fills
+  // the row, and `truncate-end` clips overflow instead of wrapping. That keeps a
+  // row's height fixed at 1 whether or not it's selected, so highlighting a long
+  // row can't reflow the panel and clip the header (Ink word-wraps, so padding a
+  // wrapped row to full width would otherwise change its line count). Bordered
+  // lists size the bar to their widest line and let the box hug its content.
+  const barWidth = fullWidth ? cols : contentWidth;
   const rows: React.ReactNode[] = [];
   for (let i = windowStart; i < end; i++) {
     const text = rendered[i - windowStart] as string;
     const body = i === selected && useColor ? highlightRow(text, barWidth) : text;
-    rows.push(<Text key={i}>{body}</Text>);
+    rows.push(
+      <Text key={i} {...(fullWidth ? { wrap: "truncate-end" as const } : {})}>
+        {body}
+      </Text>,
+    );
   }
 
-  const bordered = opts.border ?? true;
+  const borderProps = overlayBorderProps(bordered, opts.topRuleColor);
   return (
     <Box
       flexDirection="column"
       marginTop={1}
       marginBottom={1}
-      {...(bordered ? { borderStyle: "round" as const } : {})}
+      {...(fullWidth ? { width: cols } : {})}
+      {...borderProps}
     >
       {opts.header ? <Text>{opts.header}</Text> : null}
       {rows}
@@ -153,6 +249,11 @@ export interface ViewerOptions {
   pageSize?: number;
   /** Draw the round border around the viewer. Defaults to true. */
   border?: boolean;
+  /**
+   * When set (and `border` is false), draw only a top rule in this color
+   * instead of a full box — see {@link overlayBorderProps}.
+   */
+  topRuleColor?: string;
 }
 
 /** Full rendered text of a viewer line (gutter + body), for width/height measurement. */
@@ -163,6 +264,8 @@ export function viewerLineText(line: string | ViewerLine): string {
 interface ScrollViewerProps {
   opts: ViewerOptions;
   onResolve: (value: null) => void;
+  /** Width the top-rule panel spans — the viewport's inner (H_PAD-inset) width. */
+  panelWidth?: number;
 }
 
 /**
@@ -195,7 +298,7 @@ function tintRow(text: string, width: number, kind: "add" | "del"): string {
  * space), or jumps to ends (g / G); any confirm/quit key (enter / esc / q)
  * closes it. Used by `/diff` to page through a single file's patch.
  */
-export function ScrollViewer({ opts, onResolve }: ScrollViewerProps): React.ReactElement {
+export function ScrollViewer({ opts, onResolve, panelWidth }: ScrollViewerProps): React.ReactElement {
   const lines: ViewerLine[] = opts.lines.map((l) =>
     typeof l === "string" ? { text: l } : l,
   );
@@ -228,7 +331,8 @@ export function ScrollViewer({ opts, onResolve }: ScrollViewerProps): React.Reac
   const end = Math.min(lines.length, start + pageSize);
   const visible = lines.slice(start, end);
   const bordered = opts.border ?? true;
-  const barWidth = tintBarWidth(visible, stdout?.columns ?? 80, bordered);
+  const cols = panelWidth ?? stdout?.columns ?? 80;
+  const barWidth = tintBarWidth(visible, cols, bordered);
   const rows: React.ReactNode[] = [];
   for (let i = 0; i < visible.length; i++) {
     const line = visible[i] as ViewerLine;
@@ -243,12 +347,17 @@ export function ScrollViewer({ opts, onResolve }: ScrollViewerProps): React.Reac
         : `  (${start + 1}–${end}/${lines.length})`
       : null;
 
+  // Top-rule overlays span the panel's inner width so the rule reaches both
+  // margins, matching PickList's 弹层 chrome.
+  const fullWidth = !bordered && !!opts.topRuleColor;
+  const borderProps = overlayBorderProps(bordered, opts.topRuleColor);
   return (
     <Box
       flexDirection="column"
       marginTop={1}
       marginBottom={1}
-      {...(bordered ? { borderStyle: "round" as const } : {})}
+      {...(fullWidth ? { width: cols } : {})}
+      {...borderProps}
     >
       {opts.header ? <Text>{opts.header}</Text> : null}
       {rows}

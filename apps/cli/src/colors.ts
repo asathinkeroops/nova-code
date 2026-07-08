@@ -39,6 +39,9 @@ export const ACCENT_RGB: Rgb = [255, 60, 170];
 /** The accent as a hex string, for Ink `<Text color>` props. */
 export const ACCENT_HEX = "#ff3caa";
 
+/** Purple (#7c3aed) as a hex string, for Ink border/`<Text color>` props. */
+export const PURPLE_HEX = "#7c3aed";
+
 /**
  * Bash-mode accent (green) for the InputBox frame when the buffer is a `!`
  * shell command. Signals that the line runs in the shell, not the model.

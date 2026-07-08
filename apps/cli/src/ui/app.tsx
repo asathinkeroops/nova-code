@@ -133,6 +133,15 @@ export function App({ store }: AppProps): React.ReactElement {
   // Actions are stable across renders — grab them once via getState().
   const { resolveModal } = store.getState();
 
+  // The pick / pickH / viewer modals are full popup overlays ("弹层"): while one
+  // is open it owns the screen, so the pinned bottom chrome (InputBox +
+  // StatusLine + mode indicator) is hidden and its reserved rows are handed to
+  // the Viewport that hosts the overlay. (approval / ask keep the chrome — they
+  // have distinct prompt semantics and aren't full-screen popups.)
+  const overlayModal =
+    modal !== null &&
+    (modal.kind === "pick" || modal.kind === "pickH" || modal.kind === "viewer");
+
   // Ctrl+C: interrupt a running turn if one is active, else ask the idle REPL
   // to exit. Escape: interrupt only — never exits — and does nothing when idle.
   const onCtrlC = React.useCallback(() => {
@@ -162,11 +171,11 @@ export function App({ store }: AppProps): React.ReactElement {
   );
 
   // The permanent InputBox owns the real-cursor target; while setup commandeers
-  // the screen it isn't mounted, so clear the target ourselves so the cursor
-  // doesn't park at a stale caret from before the wizard opened.
+  // the screen — or a full-screen overlay hides the InputBox — it isn't mounted,
+  // so clear the target ourselves so the cursor doesn't park at a stale caret.
   React.useEffect(() => {
-    if (setup) setCursorTarget(null);
-  }, [setup]);
+    if (setup || overlayModal) setCursorTarget(null);
+  }, [setup, overlayModal]);
 
   // Setup mode commandeers the whole screen — everything else (banner,
   // messages, cards, spinner, footer) is suppressed until the wizard finishes.
@@ -203,8 +212,10 @@ export function App({ store }: AppProps): React.ReactElement {
 
   // Leave a 1-row safety margin so the layout never sums to exactly termRows.
   // Some terminals (Warp) push content one row up when the live region fills
-  // the screen edge-to-edge, which would clip the top of the viewport.
-  const viewportRows = Math.max(3, termRows - pinnedBottomRows(inputRows, indicatorRows) - 1);
+  // the screen edge-to-edge, which would clip the top of the viewport. A
+  // full-screen overlay hides the bottom chrome, so reclaim all of its rows.
+  const bottomChromeRows = overlayModal ? 0 : pinnedBottomRows(inputRows, indicatorRows);
+  const viewportRows = Math.max(3, termRows - bottomChromeRows - 1);
 
   // The InputBox is a permanent fixture: it stays mounted (and visible) the
   // whole session so the user can type mid-turn. It only goes inert while an
@@ -220,48 +231,52 @@ export function App({ store }: AppProps): React.ReactElement {
   return (
     <Box flexDirection="column" height={Math.max(MIN_FRAME_ROWS, termRows - 1)} overflowY="hidden">
       <Viewport store={store} rows={viewportRows} resolveModal={resolveModal} />
-      <JumpToBottomHint
-        store={store}
-        enabled={modal === null}
-        termRows={termRows}
-        termCols={termCols}
-        inputRows={inputRows}
-        indicatorRows={indicatorRows}
-      />
-      <Box flexShrink={0} flexDirection="column">
-        <InputBox
-          options={{
-            commands: slashCommands,
-            files: mentionFiles,
-            placeholder: inputPlaceholder,
-            history: inputHistory,
-            queued: inputQueue,
-            ...(sessionName ? { sessionName } : {}),
-          }}
-          active={modal === null}
-          onSubmit={onSubmitInput}
-          onCancel={onCtrlC}
-          onEscape={onEscape}
-          onMeasure={onMeasureInput}
-          onCyclePermissionMode={onCyclePermissionMode}
-          onShellModeChange={setShellMode}
-          cursorTracking={{
-            termRows,
-            bottomChromeRows: STATUS_LINE_ROWS + indicatorRows,
-          }}
-          onClipboardPaste={imagePaste?.capture}
-          onImageAttached={imagePaste?.attached}
-        />
-      </Box>
-      <Box flexShrink={0} flexDirection="column">
-        <StatusLine store={store} shellMode={shellMode} />
-        {modeIndicator ? (
-          <Box>
-            <Text color={modeIndicator.color}>{` ${modeIndicator.label}`}</Text>
-            <Text dimColor>{` ${PERMISSION_MODE_HINT}`}</Text>
+      {overlayModal ? null : (
+        <>
+          <JumpToBottomHint
+            store={store}
+            enabled={modal === null}
+            termRows={termRows}
+            termCols={termCols}
+            inputRows={inputRows}
+            indicatorRows={indicatorRows}
+          />
+          <Box flexShrink={0} flexDirection="column">
+            <InputBox
+              options={{
+                commands: slashCommands,
+                files: mentionFiles,
+                placeholder: inputPlaceholder,
+                history: inputHistory,
+                queued: inputQueue,
+                ...(sessionName ? { sessionName } : {}),
+              }}
+              active={modal === null}
+              onSubmit={onSubmitInput}
+              onCancel={onCtrlC}
+              onEscape={onEscape}
+              onMeasure={onMeasureInput}
+              onCyclePermissionMode={onCyclePermissionMode}
+              onShellModeChange={setShellMode}
+              cursorTracking={{
+                termRows,
+                bottomChromeRows: STATUS_LINE_ROWS + indicatorRows,
+              }}
+              onClipboardPaste={imagePaste?.capture}
+              onImageAttached={imagePaste?.attached}
+            />
           </Box>
-        ) : null}
-      </Box>
+          <Box flexShrink={0} flexDirection="column">
+            <StatusLine store={store} shellMode={shellMode} />
+            {modeIndicator ? (
+              <Box>
+                <Text color={modeIndicator.color}>{` ${modeIndicator.label}`}</Text>
+                <Text dimColor>{` ${PERMISSION_MODE_HINT}`}</Text>
+              </Box>
+            ) : null}
+          </Box>
+        </>
+      )}
     </Box>
   );
 }

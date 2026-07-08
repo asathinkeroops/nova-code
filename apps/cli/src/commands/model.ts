@@ -4,11 +4,22 @@ import {
   resolveThinkingLevel,
   saveSettings,
 } from "@nova/runtime";
-import { dim, green } from "../colors.js";
+import { accent, dim, green, PURPLE_HEX } from "../colors.js";
 import { refreshBanner, thinkingLevelLabel, type CliContext } from "../context.js";
 import { pickerArrow } from "../ui/picker.js";
 
 const TITLE = "/model";
+
+/** Open the standard /model overlay (top-ruled 弹层) with the given body lines. */
+function notice(ctx: CliContext, lines: string[]): Promise<void> {
+  return ctx.screen.viewer({
+    lines,
+    header: accent(TITLE),
+    footer: dim("enter/esc/q close"),
+    border: false,
+    topRuleColor: PURPLE_HEX,
+  });
+}
 
 /**
  * Switch the active model and persist to nova.config.json. `name` is a key in
@@ -18,7 +29,7 @@ const TITLE = "/model";
  * choice survives restarts. Sub-agents read ctx.settings.model lazily, so they
  * follow the switch when nothing more specific is set.
  */
-function applyModel(ctx: CliContext, name: string): void {
+async function applyModel(ctx: CliContext, name: string): Promise<void> {
   ctx.settings.model = name;
   ctx.model = ctx.buildModel(name);
   ctx.predictModel = ctx.buildModel(name, false);
@@ -37,13 +48,13 @@ function applyModel(ctx: CliContext, name: string): void {
   refreshBanner(ctx);
   const resolved = resolveModelId(ctx.settings, name);
   const suffix = resolved === name ? "" : dim(` (${resolved})`);
+  // A save failure surfaces in its own overlay (openModal cancels whatever
+  // modal is showing) — it's async and fire-and-forget, so don't await it.
   saveSettings({ model: name }).catch((err) => {
     const msg = err instanceof Error ? err.message : String(err);
-    ctx.screen.card(`failed to save settings: ${msg}`, { kind: "error", title: TITLE });
+    void notice(ctx, [`failed to save settings: ${msg}`]);
   });
-  ctx.screen.card(`${dim("model set to")} ${name}${suffix}`, {
-    title: TITLE,
-  });
+  await notice(ctx, [`${dim("model set to")} ${name}${suffix}`]);
 }
 
 export async function handleModel(ctx: CliContext, arg: string): Promise<void> {
@@ -54,25 +65,21 @@ export async function handleModel(ctx: CliContext, arg: string): Promise<void> {
   // than silently set as an unresolvable model.
   if (arg) {
     if (!Object.prototype.hasOwnProperty.call(ctx.settings.models, arg)) {
-      ctx.screen.card(
-        `${dim("unknown tier")} ${arg}${
-          names.length ? `\n${dim("configured tiers:")} ${names.join(", ")}` : ""
-        }`,
-        { kind: "error", title: TITLE },
-      );
+      await notice(ctx, [
+        `${dim("unknown tier")} ${arg}`,
+        ...(names.length ? [`${dim("configured tiers:")} ${names.join(", ")}`] : []),
+      ]);
       return;
     }
-    applyModel(ctx, arg);
+    await applyModel(ctx, arg);
     return;
   }
 
   if (names.length === 0) {
-    ctx.screen.card(
-      `${dim("current model:")} ${ctx.settings.model}\n${dim(
-        'no tiers configured — add a "models" map to nova.config.json',
-      )}`,
-      { title: TITLE },
-    );
+    await notice(ctx, [
+      `${dim("current model:")} ${ctx.settings.model}`,
+      dim('no tiers configured — add a "models" map to nova.config.json'),
+    ]);
     return;
   }
 
@@ -83,10 +90,12 @@ export async function handleModel(ctx: CliContext, arg: string): Promise<void> {
   const currentIdx = names.findIndex((n) => n === ctx.settings.model);
   const pick = await ctx.screen.pickOne<string>({
     items: names,
-    header: dim("select model:"),
+    header: `${accent(TITLE)}  ${dim("select model")}`,
     footer: dim("↑↓ navigate · enter confirm · esc cancel"),
     pageSize: 10,
     initialIndex: currentIdx >= 0 ? currentIdx : 0,
+    border: false,
+    topRuleColor: PURPLE_HEX,
     render: (name, isSelected) => {
       const resolved = resolveModelId(ctx.settings, name);
       const marker = name === ctx.settings.model ? green("*") : " ";
@@ -100,5 +109,5 @@ export async function handleModel(ctx: CliContext, arg: string): Promise<void> {
     },
   });
   if (!pick) return; // esc — leave the feed quiet
-  applyModel(ctx, pick);
+  await applyModel(ctx, pick);
 }

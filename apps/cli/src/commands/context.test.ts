@@ -3,9 +3,10 @@ import { describe, expect, it } from "vitest";
 import type { CliContext } from "../context.js";
 import { handleContext } from "./context.js";
 
-interface Card {
-  text: string;
-  opts: { title?: string; kind?: string };
+interface Viewer {
+  lines: string[];
+  header?: string;
+  footer?: string;
 }
 
 interface StubOpts {
@@ -18,7 +19,7 @@ interface StubOpts {
   contextWindowSize?: number;
 }
 
-function makeCtx(cards: Card[], o: StubOpts = {}): CliContext {
+function makeCtx(viewers: Viewer[], o: StubOpts = {}): CliContext {
   const toolNames = o.toolNames ?? ["read", "write", "mcp__srv__do"];
   const windowTokens = o.contextWindowSize ?? 128_000;
   return {
@@ -41,7 +42,9 @@ function makeCtx(cards: Card[], o: StubOpts = {}): CliContext {
         })),
     },
     screen: {
-      card: (text: string, opts: Card["opts"] = {}) => cards.push({ text, opts }),
+      viewer: async (opts: { lines: string[]; header?: string; footer?: string }) => {
+        viewers.push({ lines: opts.lines, header: opts.header, footer: opts.footer });
+      },
       getMessages: () => o.messages ?? [],
     },
   } as unknown as CliContext;
@@ -50,51 +53,56 @@ function makeCtx(cards: Card[], o: StubOpts = {}): CliContext {
 /** Strip ANSI so assertions match on plain text. */
 function plain(s: string): string {
   // eslint-disable-next-line no-control-regex
-  return s.replace(/\[[0-9;]*m/g, "");
+  return s.replace(/\[[0-9;]*m/g, "");
+}
+
+/** The header + body lines of the one viewer that was opened, ANSI-stripped. */
+function viewerText(viewers: Viewer[]): string {
+  expect(viewers).toHaveLength(1);
+  const v = viewers[0]!;
+  return plain([v.header ?? "", ...v.lines].join("\n"));
 }
 
 describe("handleContext", () => {
-  it("renders a /context card with the core category rows and window total", () => {
-    const cards: Card[] = [];
-    handleContext(makeCtx(cards, { messages: [{ role: "user", content: "hello world" }] }));
-    expect(cards).toHaveLength(1);
-    expect(cards[0]?.opts.title).toBe("/context");
-    const text = plain(cards[0]!.text);
+  it("opens a /context viewer with the core category rows and window total", async () => {
+    const viewers: Viewer[] = [];
+    await handleContext(makeCtx(viewers, { messages: [{ role: "user", content: "hello world" }] }));
+    const text = viewerText(viewers);
     for (const label of ["system prompt", "tools", "messages", "free space"]) {
       expect(text).toContain(label);
     }
-    // Header carries the active model and window size.
+    // Header carries the active model; the gauge line carries the window size.
     expect(text).toContain("test-model");
     expect(text).toContain("128K");
   });
 
-  it("hides the memory row when no memory bundle is loaded, shows it otherwise", () => {
-    const without: Card[] = [];
-    handleContext(makeCtx(without, { memory: "" }));
-    expect(plain(without[0]!.text)).not.toContain("memory files");
+  it("hides the memory row when no memory bundle is loaded, shows it otherwise", async () => {
+    const without: Viewer[] = [];
+    await handleContext(makeCtx(without, { memory: "" }));
+    expect(viewerText(without)).not.toContain("memory files");
 
-    const withMem: Card[] = [];
-    handleContext(makeCtx(withMem, { memory: "# Project rules\n".repeat(50) }));
-    expect(plain(withMem[0]!.text)).toContain("memory files");
+    const withMem: Viewer[] = [];
+    await handleContext(makeCtx(withMem, { memory: "# Project rules\n".repeat(50) }));
+    expect(viewerText(withMem)).toContain("memory files");
   });
 
-  it("splits MCP tools into their own row", () => {
-    const cards: Card[] = [];
-    handleContext(makeCtx(cards, { toolNames: ["read", "mcp__srv__do"] }));
-    expect(plain(cards[0]!.text)).toContain("mcp tools");
+  it("splits MCP tools into their own row", async () => {
+    const cards: Viewer[] = [];
+    await handleContext(makeCtx(cards, { toolNames: ["read", "mcp__srv__do"] }));
+    expect(viewerText(cards)).toContain("mcp tools");
 
-    const noMcp: Card[] = [];
-    handleContext(makeCtx(noMcp, { toolNames: ["read", "write"] }));
-    expect(plain(noMcp[0]!.text)).not.toContain("mcp tools");
+    const noMcp: Viewer[] = [];
+    await handleContext(makeCtx(noMcp, { toolNames: ["read", "write"] }));
+    expect(viewerText(noMcp)).not.toContain("mcp tools");
   });
 
-  it("reserves an autocompact buffer when auto-compact is on, none when off", () => {
-    const on: Card[] = [];
-    handleContext(makeCtx(on, { autoCompact: { enabled: true, contextWindowPercent: 0.5 } }));
-    expect(plain(on[0]!.text)).toContain("autocompact buffer");
+  it("reserves an autocompact buffer when auto-compact is on, none when off", async () => {
+    const on: Viewer[] = [];
+    await handleContext(makeCtx(on, { autoCompact: { enabled: true, contextWindowPercent: 0.5 } }));
+    expect(viewerText(on)).toContain("autocompact buffer");
 
-    const off: Card[] = [];
-    handleContext(makeCtx(off, { autoCompact: { enabled: false } }));
-    expect(plain(off[0]!.text)).not.toContain("autocompact buffer");
+    const off: Viewer[] = [];
+    await handleContext(makeCtx(off, { autoCompact: { enabled: false } }));
+    expect(viewerText(off)).not.toContain("autocompact buffer");
   });
 });

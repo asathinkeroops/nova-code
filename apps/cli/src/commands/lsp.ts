@@ -1,4 +1,4 @@
-import { dim, green, red, yellow } from "../colors.js";
+import { accent, dim, green, PURPLE_HEX, red, yellow } from "../colors.js";
 import type { CliContext } from "../context.js";
 
 const TITLE = "/lsp";
@@ -8,9 +8,21 @@ const TITLE = "/lsp";
  * whether a server has been started this session. Servers start lazily on the
  * first `lsp` tool call, so "installed but idle" is the normal pre-use state.
  */
-export function handleLsp(ctx: CliContext): void {
+export async function handleLsp(ctx: CliContext): Promise<void> {
+  // Both status and empty states render in the same top-ruled overlay, so /lsp
+  // always opens a 弹层 rather than dropping an inline card.
+  const show = (lines: string[]): Promise<void> =>
+    ctx.screen.viewer({
+      lines,
+      header: accent(TITLE),
+      footer: dim("↑↓ scroll · enter/esc/q close"),
+      pageSize: 24,
+      border: false,
+      topRuleColor: PURPLE_HEX,
+    });
+
   if (!ctx.settings.lsp.enabled || !ctx.lspManager) {
-    ctx.screen.card(dim("LSP is disabled (settings.lsp.enabled = false)."), { title: TITLE });
+    await show([dim("LSP is disabled (settings.lsp.enabled = false).")]);
     return;
   }
 
@@ -18,7 +30,7 @@ export function handleLsp(ctx: CliContext): void {
     a.languageId.localeCompare(b.languageId),
   );
   if (status.length === 0) {
-    ctx.screen.card(dim("no language servers configured."), { title: TITLE });
+    await show([dim("no language servers configured.")]);
     return;
   }
 
@@ -46,5 +58,5 @@ export function handleLsp(ctx: CliContext): void {
     lines.push(dim("missing servers must be installed on PATH (Nova does not install them)"));
   }
 
-  ctx.screen.card(lines.join("\n"), { title: TITLE });
+  await show(lines);
 }

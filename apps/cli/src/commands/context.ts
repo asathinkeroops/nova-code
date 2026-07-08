@@ -2,7 +2,7 @@ import { buildSystemPrompt } from "@nova/agent";
 import { computeThreshold, estimateTokens, sliceFromLastCompacted } from "@nova/context";
 import { toWireTools } from "@nova/core";
 import { resolveContextWindowSize } from "@nova/runtime";
-import { accent, blue, bold, cyan, dim, green, magenta, yellow } from "../colors.js";
+import { accent, blue, bold, cyan, dim, green, magenta, PURPLE_HEX, yellow } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { contextBar, formatPercent, formatTokenCount } from "../ui/status-format.js";
 
@@ -39,7 +39,7 @@ interface Row {
  * split into usable space (up to the compaction threshold) and a reserved
  * "autocompact buffer" above it.
  */
-export function handleContext(ctx: CliContext): void {
+export async function handleContext(ctx: CliContext): Promise<void> {
   const windowTokens = resolveContextWindowSize(ctx.settings, ctx.settings.model);
 
   // System prompt = core instructions + memory bundle + skills block. We size
@@ -117,5 +117,12 @@ export function handleContext(ctx: CliContext): void {
     );
   }
 
-  ctx.screen.card(lines.join("\n"), { title: TITLE });
+  await ctx.screen.viewer({
+    lines,
+    header: `${accent(TITLE)}  ${dim(ctx.settings.model)}`,
+    footer: dim("↑↓ scroll · enter/esc/q close"),
+    pageSize: 24,
+    border: false,
+    topRuleColor: PURPLE_HEX,
+  });
 }

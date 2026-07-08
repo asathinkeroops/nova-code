@@ -1,7 +1,8 @@
 import type { AgentDefinition } from "@nova/subagent";
 import { loadAgents } from "../agents.js";
-import { dim } from "../colors.js";
+import { accent, dim, PURPLE_HEX } from "../colors.js";
 import type { CliContext } from "../context.js";
+import { pickerArrow } from "../ui/picker.js";
 
 const TITLE = "/agents";
 
@@ -50,11 +51,19 @@ export async function handleAgents(ctx: CliContext, arg: string): Promise<void> 
 
   const defs = ctx.agents.list();
   const nameWidth = Math.min(24, Math.max(...defs.map((d) => d.name.length)));
-  const lines = defs.map((d) => {
-    const tag = dim(SOURCE_TAG[d.source]);
-    const name = d.name.padEnd(nameWidth, " ");
-    return `${tag} ${name}  ${d.description}${metaOf(d)}`;
+  await ctx.screen.pickOne({
+    items: defs,
+    header: `${accent(TITLE)}  ${dim(`${defs.length} agent${defs.length === 1 ? "" : "s"}`)}`,
+    footer: dim(
+      "delegate with /agent <name> <task> · ↑↓ navigate · ⌃a/⌃e top/bottom · enter/esc close",
+    ),
+    pageSize: 24,
+    border: false,
+    topRuleColor: PURPLE_HEX,
+    render: (d, selected) => {
+      const tag = dim(SOURCE_TAG[d.source]);
+      const name = d.name.padEnd(nameWidth, " ");
+      return `${pickerArrow(selected)} ${tag} ${name}  ${d.description}${metaOf(d)}`;
+    },
   });
-  const hint = dim("delegate with /agent <name> <task>, or let the agent pick via createSubAgent.");
-  ctx.screen.card(`${lines.join("\n")}\n\n${hint}`, { title: TITLE });
 }

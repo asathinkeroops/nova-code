@@ -330,11 +330,17 @@ export function pickListRows(opts: PickerOptions<unknown>, cols: number): number
   const pageSize = Math.max(1, opts.pageSize ?? 10);
   const visible = opts.items.slice(0, Math.min(opts.items.length, pageSize));
   const bordered = opts.border ?? true;
+  // Full-width top-rule panels give each row a single truncated line (see
+  // PickList), so an item never wraps regardless of description length.
+  const fullWidth = !bordered && !!opts.topRuleColor;
   const inner = Math.max(1, bordered ? cols - 2 : cols); // round border eats 2 columns
-  // marginTop(1) + marginBottom(1), plus borderTop+borderBottom when bordered.
-  let n = bordered ? 4 : 2;
+  // marginTop(1) + marginBottom(1), plus borderTop+borderBottom when bordered,
+  // or just borderTop(1) for a top-rule overlay (border:false + topRuleColor).
+  let n = bordered ? 4 : opts.topRuleColor ? 3 : 2;
   if (opts.header) n += countWrappedLines(opts.header, inner);
-  for (const it of visible) n += countWrappedLines(opts.render(it, false), inner);
+  for (const it of visible) {
+    n += fullWidth ? 1 : countWrappedLines(opts.render(it, false), inner);
+  }
   if (opts.items.length > pageSize) n += 1; // indicator line
   if (opts.footer) n += countWrappedLines(opts.footer, inner);
   return n;
@@ -351,7 +357,8 @@ export function viewerRows(opts: ViewerOptions, cols: number): number {
   const visible = opts.lines.slice(0, Math.min(opts.lines.length, pageSize));
   const bordered = opts.border ?? true;
   const inner = Math.max(1, bordered ? cols - 2 : cols);
-  let n = bordered ? 4 : 2;
+  // Top-rule overlays (border:false + topRuleColor) render a single top border.
+  let n = bordered ? 4 : opts.topRuleColor ? 3 : 2;
   if (opts.header) n += countWrappedLines(opts.header, inner);
   for (const line of visible) n += countWrappedLines(viewerLineText(line), inner);
   if (opts.lines.length > pageSize) n += 1; // indicator line
@@ -406,6 +413,7 @@ function InStreamModal({
         <PickList
           opts={modal.opts as PickerOptions<unknown>}
           onResolve={(value) => resolveModal(value)}
+          panelWidth={width}
         />
       );
     case "pickH":
@@ -420,6 +428,7 @@ function InStreamModal({
         <ScrollViewer
           opts={modal.opts as ViewerOptions}
           onResolve={(value) => resolveModal(value)}
+          panelWidth={width}
         />
       );
     default:

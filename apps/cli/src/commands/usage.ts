@@ -6,7 +6,7 @@ import {
   type ModelRates,
 } from "@nova/observability";
 import { DEFAULT_MODEL_PRICING, resolveModelId } from "@nova/runtime";
-import { bold, cyan, dim } from "../colors.js";
+import { accent, bold, cyan, dim, PURPLE_HEX } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { cacheHitRate, formatPercent, formatTokenCount } from "../ui/status-format.js";
 
@@ -48,12 +48,18 @@ export function resolveSessionRates(ctx: CliContext): ModelRates | undefined {
  * (user `models` overriding the built-in table); an unpriced model shows tokens
  * only.
  */
-export function handleUsage(ctx: CliContext): void {
+export async function handleUsage(ctx: CliContext): Promise<void> {
   const u = ctx.screen.usage();
   const promptTotal = u.cacheReadTokens + u.cacheCreationTokens + u.uncachedInputTokens;
   const rate = cacheHitRate(u.cacheReadTokens, u.cacheCreationTokens, u.uncachedInputTokens);
   if (rate === null) {
-    ctx.screen.card(dim("no model requests yet this session."), { title: TITLE });
+    await ctx.screen.viewer({
+      lines: [dim("no model requests yet this session.")],
+      header: `${accent(TITLE)}  ${dim(ctx.settings.model)}`,
+      footer: dim("enter/esc/q close"),
+      border: false,
+      topRuleColor: PURPLE_HEX,
+    });
     return;
   }
 
@@ -99,5 +105,12 @@ export function handleUsage(ctx: CliContext): void {
     );
   }
 
-  ctx.screen.card(lines.join("\n"), { title: TITLE });
+  await ctx.screen.viewer({
+    lines,
+    header: `${accent(TITLE)}  ${dim(ctx.settings.model)}`,
+    footer: dim("↑↓ scroll · enter/esc/q close"),
+    pageSize: 24,
+    border: false,
+    topRuleColor: PURPLE_HEX,
+  });
 }

@@ -1,12 +1,24 @@
 import { getSkillList } from "@nova/tools";
-import { dim } from "../colors.js";
+import { accent, dim, PURPLE_HEX } from "../colors.js";
 import type { CliContext } from "../context.js";
+import { pickerArrow } from "../ui/picker.js";
 
 const TITLE = "/skills";
 
-export function handleSkills(ctx: CliContext): void {
+export async function handleSkills(ctx: CliContext): Promise<void> {
+  // Both empty states render in the same top-ruled overlay as the list, so the
+  // command always opens a 弹层 rather than dropping an inline card.
+  const notice = (text: string): Promise<void> =>
+    ctx.screen.viewer({
+      lines: [dim(text)],
+      header: accent(TITLE),
+      footer: dim("enter/esc/q close"),
+      border: false,
+      topRuleColor: PURPLE_HEX,
+    });
+
   if (!ctx.settings.skills.enabled) {
-    ctx.screen.card(dim("skills disabled in settings."), { title: TITLE });
+    await notice("skills disabled in settings.");
     return;
   }
   const items = getSkillList({
@@ -17,16 +29,23 @@ export function handleSkills(ctx: CliContext): void {
     logger: ctx.logger,
   });
   if (items.length === 0) {
-    ctx.screen.card(dim("no skills found."), { title: TITLE });
+    await notice("no skills found.");
     return;
   }
   const sorted = [...items].sort((a, b) => a.name.localeCompare(b.name));
   const nameWidth = Math.min(24, Math.max(...sorted.map((s) => s.name.length)));
-  const lines = sorted.map((s) => {
-    const name = s.name.padEnd(nameWidth, " ");
-    const trig =
-      s.triggers.length > 0 ? `  ${dim(`triggers: ${s.triggers.join(", ")}`)}` : "";
-    return `  ${name}  ${s.description}${trig}`;
+  await ctx.screen.pickOne({
+    items: sorted,
+    header: `${accent(TITLE)}  ${dim(`${sorted.length} skill${sorted.length === 1 ? "" : "s"}`)}`,
+    footer: dim("↑↓ navigate · ⌃a/⌃e top/bottom · enter/esc close"),
+    pageSize: 24,
+    border: false,
+    topRuleColor: PURPLE_HEX,
+    render: (s, selected) => {
+      const name = s.name.padEnd(nameWidth, " ");
+      const trig =
+        s.triggers.length > 0 ? `  ${dim(`triggers: ${s.triggers.join(", ")}`)}` : "";
+      return `${pickerArrow(selected)} ${name}  ${s.description}${trig}`;
+    },
   });
-  ctx.screen.card(lines.join("\n"), { title: TITLE });
 }

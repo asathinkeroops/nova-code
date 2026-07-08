@@ -33,6 +33,25 @@ describe("pickListRows", () => {
     expect(bordered - borderless).toBe(2);
   });
 
+  it("keeps one top-border row for a top-rule overlay (border:false + topRuleColor)", () => {
+    const base = { header: "pick:", footer: "esc", items: ["a"] };
+    const bordered = pickListRows(list({ ...base }), 80);
+    const topRule = pickListRows(list({ ...base, border: false, topRuleColor: "#7c3aed" }), 80);
+    // Only the bottom border row is dropped; the top rule still occupies a row.
+    expect(bordered - topRule).toBe(1);
+  });
+
+  it("counts each row as one line in a full-width panel (rows truncate, never wrap)", () => {
+    // A row far wider than the terminal would wrap to many lines in a plain
+    // borderless list, but a top-rule panel truncates it to a single line — so
+    // selecting a long row can't change the panel height (no header-clipping jump).
+    const long = "x".repeat(400);
+    const panel = pickListRows(list({ items: [long], border: false, topRuleColor: "#7c3aed" }), 80);
+    expect(panel).toBe(4); // margins(2) + top rule(1) + 1 item line
+    const plain = pickListRows(list({ items: [long], border: false }), 80);
+    expect(plain).toBeGreaterThan(panel); // plain borderless still wraps
+  });
+
   it("caps item rows at pageSize and adds the (n/m) indicator", () => {
     const many = Array.from({ length: 50 }, (_, i) => `item-${i}`);
     const rows = pickListRows(list({ items: many, pageSize: 10 }), 80);

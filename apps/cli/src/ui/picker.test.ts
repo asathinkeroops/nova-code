@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { highlightRow, tintBarWidth, type ViewerLine } from "./picker.js";
+import {
+  firstSelectableIndex,
+  highlightRow,
+  lastSelectableIndex,
+  stepSelectable,
+  tintBarWidth,
+  type ViewerLine,
+} from "./picker.js";
 import { stripAnsi, visibleWidth } from "./width.js";
 
 // The drag-selection background reused for the picker's selected row.
@@ -35,6 +42,41 @@ describe("highlightRow", () => {
     const out = highlightRow("你好", 6); // 你好 == 4 visible columns
     expect(stripAnsi(out)).toBe("你好  ");
     expect(visibleWidth(out)).toBe(6);
+  });
+});
+
+describe("selectable-row navigation", () => {
+  // A /help-shaped list: header (F), commands (T), header, commands, trailing notes.
+  const help = [false, true, true, false, true, false, false];
+
+  it("starts on the first selectable row when index 0 is a header", () => {
+    expect(firstSelectableIndex(help)).toBe(1);
+    expect(lastSelectableIndex(help)).toBe(4);
+  });
+
+  it("steps down skipping over the section header between groups", () => {
+    // 1 → 2 (adjacent command), then 2 → 4 (skips the header at 3).
+    expect(stepSelectable(1, help, 1)).toBe(2);
+    expect(stepSelectable(2, help, 1)).toBe(4);
+  });
+
+  it("steps up skipping the header, wrapping past the trailing notes", () => {
+    expect(stepSelectable(4, help, -1)).toBe(2);
+    // From the top command, wrap around to the last selectable (skips notes+header).
+    expect(stepSelectable(1, help, -1)).toBe(4);
+  });
+
+  it("stays put when no other row is selectable", () => {
+    const one = [false, true, false];
+    expect(stepSelectable(1, one, 1)).toBe(1);
+    expect(stepSelectable(1, one, -1)).toBe(1);
+  });
+
+  it("falls back to safe indices when nothing is selectable", () => {
+    const none = [false, false, false];
+    expect(firstSelectableIndex(none)).toBe(0);
+    expect(lastSelectableIndex(none)).toBe(2);
+    expect(lastSelectableIndex([])).toBe(0);
   });
 });
 
