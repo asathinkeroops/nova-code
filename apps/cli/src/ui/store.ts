@@ -485,6 +485,14 @@ export interface AppActions {
    * blocking until one arrives, or `null` when an exit was requested.
    */
   takeInput: () => Promise<string | null>;
+  /**
+   * Non-blocking peek-and-consume for the agent loop's `pre_continue` hook: if
+   * the head of `inputQueue` is a plain model-bound prompt (not empty, not a `/`
+   * slash or `!` shell line), dequeue and return it so the running turn can fold
+   * it in mid-task. Slash / shell lines and an empty queue return `null`, leaving
+   * them for the REPL's own `takeInput` to dispatch.
+   */
+  takeQueuedPrompt: () => string | null;
   /** Ask the idle REPL to stop (Ctrl+C with no turn running). */
   requestExit: () => void;
   /**
@@ -1084,6 +1092,19 @@ export function createAppStore(opts: AppStoreOptions = {}): AppStoreApi {
         return new Promise<string | null>((resolve) => {
           inputSlot.waiter = resolve;
         });
+      },
+
+      takeQueuedPrompt() {
+        const q = get().inputQueue;
+        const head = q[0];
+        if (head === undefined) return null;
+        const line = head.trim();
+        // Only consume plain prompts bound for the model here. Slash (`/`) and
+        // shell (`!`) lines carry local side effects, so leave them queued for
+        // the REPL's dispatchLine; an empty line is likewise dropped by the REPL.
+        if (line === "" || line.startsWith("/") || line.startsWith("!")) return null;
+        set({ inputQueue: q.slice(1) });
+        return line;
       },
 
       requestExit() {

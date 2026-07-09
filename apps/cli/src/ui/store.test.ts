@@ -61,6 +61,41 @@ describe("input queue", () => {
   });
 });
 
+describe("takeQueuedPrompt (pre_continue mid-task consumption)", () => {
+  it("consumes and trims a plain model-bound prompt from the head", () => {
+    const store = createAppStore();
+    store.getState().enqueueInput("  build the thing  ");
+    expect(store.getState().takeQueuedPrompt()).toBe("build the thing");
+    expect(store.getState().inputQueue).toEqual([]);
+  });
+
+  it("returns null on an empty queue", () => {
+    const store = createAppStore();
+    expect(store.getState().takeQueuedPrompt()).toBeNull();
+  });
+
+  it("leaves slash and shell lines queued for the REPL", () => {
+    const store = createAppStore();
+    store.getState().enqueueInput("/clear");
+    expect(store.getState().takeQueuedPrompt()).toBeNull();
+    expect(store.getState().inputQueue).toEqual(["/clear"]);
+
+    const shell = createAppStore();
+    shell.getState().enqueueInput("!ls");
+    expect(shell.getState().takeQueuedPrompt()).toBeNull();
+    expect(shell.getState().inputQueue).toEqual(["!ls"]);
+  });
+
+  it("does not skip past a leading slash line to reach a later prompt", () => {
+    const store = createAppStore();
+    store.getState().enqueueInput("/model");
+    store.getState().enqueueInput("keep going");
+    // Only the head is considered; the slash command must be dispatched first.
+    expect(store.getState().takeQueuedPrompt()).toBeNull();
+    expect(store.getState().inputQueue).toEqual(["/model", "keep going"]);
+  });
+});
+
 describe("setSpinnerHint", () => {
   it("is a no-op when no spinner is active", () => {
     const store = createAppStore();

@@ -498,6 +498,15 @@ export class Screen {
     return this.store.getState().takeInput();
   }
 
+  /**
+   * Non-blocking: consume the next queued *model-bound* prompt (for the agent
+   * loop's `pre_continue` hook), or null when the queue head is a slash/shell
+   * line or the queue is empty. See store `takeQueuedPrompt`.
+   */
+  takeQueuedPrompt(): string | null {
+    return this.store.getState().takeQueuedPrompt();
+  }
+
   /** Wake an idle REPL for a background continuation (see store `wake`). */
   wake(): void {
     this.store.getState().wake();

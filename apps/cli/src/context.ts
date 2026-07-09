@@ -4,6 +4,7 @@ import { loadMemory, sliceFromLastCompacted } from "@nova/context";
 import {
   createAnthropicModel,
   resolveProfile,
+  userText,
   type AskUserFn,
   type ModelClient,
   type ToolExecutor,
@@ -971,6 +972,24 @@ export async function createContext(
   }
 
   registerUiHooks(ctx);
+
+  // Consume queued input MID-TASK: `pre_continue` fires at each tool-iteration
+  // boundary, so a prompt the user typed while the agent is still working gets
+  // injected as a user message right away — the model folds it into the running
+  // task instead of the user waiting for the turn to end. Registered before the
+  // reminder interjects (pre_continue is first-non-undefined-wins) so a real
+  // user prompt outranks a todo/task nudge; the nudge just fires a turn later. A
+  // task that ends with no tool calls never reaches pre_continue — the loop
+  // returns and the REPL's own takeInput drains the queue into the next round.
+  // Only plain prompts are taken here (see takeQueuedPrompt); `/` slash and `!`
+  // shell lines stay queued for the REPL. Gated live so /config toggles it.
+  ctx.agent.on("pre_continue", () => {
+    if (!ctx.settings.queue.consumeInLoop) return undefined;
+    const line = ctx.screen.takeQueuedPrompt();
+    if (line === null) return undefined;
+    return { messages: [userText(line)] };
+  });
+
   registerInterject(ctx.agent, makeTodoReminder(todoStore));
   registerInterject(ctx.agent, makeTaskReminder(taskStore));
   ctx.agent.on("pre_request", makeBackgroundNotifier(backgroundManager));

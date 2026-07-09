@@ -812,6 +812,19 @@ export const settingsSchema = z.object({
       autoContinueOnComplete: z.boolean().default(true),
     })
     .default({ autoContinueOnComplete: true }),
+  // Queued input handling. Prompts typed while a turn runs pile up in the input
+  // queue and are normally drained one-per-turn back at the REPL once the turn
+  // ends. When `consumeInLoop` is on, a running turn instead folds the next
+  // queued prompt in *mid-task* — it's injected as a user message at the agent
+  // loop's `pre_continue` boundary (between tool iterations), so the model reacts
+  // without waiting for the current task to finish. Only plain prompts are
+  // consumed this way; `/` slash and `!` shell lines stay queued for the REPL to
+  // dispatch. Off restores the classic REPL-drained behavior.
+  queue: z
+    .object({
+      consumeInLoop: z.boolean().default(true),
+    })
+    .default({ consumeInLoop: true }),
   // LSP code intelligence. When enabled, the `lsp` tool talks to language
   // servers (over JSON-RPC/stdio) for definition, references, hover,
   // diagnostics, and symbol search. Servers are NOT installed by Nova — they
