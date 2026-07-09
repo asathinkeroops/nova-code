@@ -331,9 +331,9 @@ describe("createSubAgentTool", () => {
     expect(names).not.toContain("bash");
   });
 
-  it("passes the definition's model override to getModel", async () => {
+  it("passes the full definition to getModel so the host can resolve per-agent", async () => {
     const model = recordingModel([textTurn("ok")], []);
-    const getModel = vi.fn((_id?: string) => model);
+    const getModel = vi.fn((_def: AgentDefinition) => model);
     const registry = new AgentRegistry();
     registry.addCustom([
       {
@@ -352,7 +352,9 @@ describe("createSubAgentTool", () => {
 
     await tool.run({ description: "x", prompt: "y", type: "fancy" }, { cwd: tmp });
 
-    expect(getModel).toHaveBeenCalledWith("special-model");
+    expect(getModel).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "fancy", model: "special-model" }),
+    );
   });
 
   it("streams thinking/tool_use/final details to onDetail, keyed by tool_use id", async () => {

@@ -633,7 +633,17 @@ export const settingsSchema = z.object({
   subagent: z
     .object({
       enabled: z.boolean().default(true),
-      model: z.string().min(1).optional(),
+      // Per-agent model selection, keyed by sub-agent name (e.g. "plan",
+      // "explore", "general-purpose", "nova-code-guide", or any custom agent).
+      // Values are tier keys (lite/pro/max) or bare provider ids — the same
+      // space as the top-level `model`. Resolution precedence, most specific
+      // first (see getSubagentModel): this map's per-name entry → the shipped
+      // built-in default for that agent (general-purpose/plan → max, explore/
+      // nova-code-guide → pro) → a custom agent's own `model` frontmatter → the
+      // active main model. A per-name entry here overrides the built-in default,
+      // one agent at a time — listing one agent does not disturb the others.
+      // Omit entirely to leave every sub-agent on its default.
+      model: z.record(z.string().min(1), z.string().min(1)).optional(),
       projectDirs: z.array(z.string().min(1)).optional(),
       userPaths: z.array(z.string().min(1)).optional(),
       extraDirs: z.array(z.string().min(1)).optional(),
@@ -958,7 +968,7 @@ export type Settings = z.infer<typeof settingsSchema>;
  * resolution is ALIAS-ONLY: `name` is expected to be a key in `settings.models`
  * (the main `model` is validated as such — see {@link settingsSchema}). A name
  * that isn't a configured tier passes through unchanged — this is the escape
- * hatch for the auxiliary model fields (`subagent.model`, `goal.evalModel`,
+ * hatch for the auxiliary model fields (`subagent.model` values, `goal.evalModel`,
  * `permissions.autoMode.model`) that may name a bare provider id directly; the
  * main `model` never hits it.
  */

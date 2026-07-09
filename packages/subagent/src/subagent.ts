@@ -118,12 +118,12 @@ export interface SubAgentDeps {
    */
   getAgentRegistry: () => AgentRegistry;
   /**
-   * Resolve the model the sub-agent runs on. `modelId` is the definition's
-   * optional model override; pass undefined for the default. Read
-   * per-invocation so the active model is honored. The host is expected to
-   * cache by id.
+   * Resolve the model the sub-agent runs on. Receives the full definition so
+   * the host can select per-agent (by `def.name`) and honor `def.model` as a
+   * fallback. Read per-invocation so the active model is honored. The host is
+   * expected to cache by resolved id.
    */
-  getModel: (modelId?: string) => ModelClient;
+  getModel: (def: AgentDefinition) => ModelClient;
   /**
    * Parent tool definitions. The sub-agent gets these MINUS createSubAgent
    * (filtered here) to prevent unbounded recursion. Read per-invocation so the
@@ -242,7 +242,7 @@ export function createSubAgentTool(deps: SubAgentDeps): ToolHandler {
         setPersistCursor: (c) => {
           cursor = c;
         },
-        getModel: () => deps.getModel(def.model),
+        getModel: () => deps.getModel(def),
         getThinkingBudget: () => 0,
         getSettings,
         getTools: () => childTools,

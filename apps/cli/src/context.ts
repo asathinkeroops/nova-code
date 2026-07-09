@@ -34,7 +34,7 @@ import {
 } from "@nova/runtime";
 import { PermissionDeniedError, PermissionEngine } from "@nova/safety";
 import { createSandbox, type SandboxControl } from "@nova/sandbox";
-import { AgentRegistry, createSubAgentTool } from "@nova/subagent";
+import { AgentRegistry, createSubAgentTool, type AgentDefinition } from "@nova/subagent";
 import {
   InMemoryFileAccessLedger,
   ToolRegistry,
@@ -59,7 +59,7 @@ import { classifyCommandRisk } from "./auto-classify.js";
 import { loadAgents } from "./agents.js";
 import { loadPlugins } from "./plugins/loader.js";
 import { DEFAULT_PLUGIN_CACHE_DIR } from "./plugins/install.js";
-import { buildGuideAgentDefinition } from "./guide/agent.js";
+import { buildGuideAgentDefinition, NOVA_GUIDE_AGENT } from "./guide/agent.js";
 import { ensureFresh, resolveGuideSourceDir } from "./guide/provisioner.js";
 import { readCliVersion } from "./version.js";
 import { UI_FRAME_MS } from "./ui/frame.js";
@@ -106,6 +106,22 @@ export {
   refreshTodoFooter,
   stopSpinner,
   thinkingLevelLabel,
+};
+
+/**
+ * Built-in per-agent model defaults, keyed by sub-agent name. These are the
+ * shipped tiers each built-in runs on when the user hasn't overridden it via
+ * `settings.subagent.model[name]`. Single source of truth — the agent
+ * definitions themselves carry no `model` pin. Values are tier keys resolved by
+ * `buildModel`; all three (pro/max) are REQUIRED_MODEL_TIERS rungs, so they
+ * always resolve. `general-purpose`/`plan` want the deepest reasoning; the
+ * read-only retrieval/guide agents run on the capable-but-cheaper `pro`.
+ */
+const DEFAULT_SUBAGENT_MODELS: Record<string, string> = {
+  "general-purpose": "max",
+  explore: "pro",
+  plan: "max",
+  [NOVA_GUIDE_AGENT]: "pro",
 };
 
 /** Wire an `InterjectFn` onto the agent's `pre_continue` hook. */
@@ -872,12 +888,21 @@ export async function createContext(
     // parent spinner's "↓ ~N tok" flicker between agents and read as garbage.
     // They therefore always run on a non-tracked model, cached per model-id.
     //
-    // Model precedence: the definition's `model` override → settings.subagent.model
-    // (global sub-agent default) → the active main model (so sub-agents follow
-    // /model changes when nothing more specific is set).
+    // Model precedence, most specific first: settings.subagent.model[def.name]
+    // (per-agent override, keyed by sub-agent name) → the built-in default tier
+    // for a shipped agent (DEFAULT_SUBAGENT_MODELS) → a custom agent's own
+    // `model` frontmatter → the active main model (so sub-agents follow /model
+    // changes when nothing more specific is set). The per-name config wins over
+    // everything, so any built-in default is user-overridable one agent at a
+    // time without disturbing the others. Cached per resolved model-id, so
+    // agents that land on the same id share one client.
     const subagentModelCache = new Map<string, ModelClient>();
-    const getSubagentModel = (modelId?: string): ModelClient => {
-      const id = modelId ?? settings.subagent.model ?? ctx.settings.model;
+    const getSubagentModel = (def: AgentDefinition): ModelClient => {
+      const id =
+        settings.subagent.model?.[def.name] ??
+        DEFAULT_SUBAGENT_MODELS[def.name] ??
+        def.model ??
+        ctx.settings.model;
       let model = subagentModelCache.get(id);
       if (!model) {
         model = buildModel(id, false);
