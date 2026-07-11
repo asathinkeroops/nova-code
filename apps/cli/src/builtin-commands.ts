@@ -12,6 +12,7 @@ import {
   handleGoal,
   handleHelp,
   handleInit,
+  handleLoop,
   handleLsp,
   handleMcp,
   handleModel,
@@ -48,6 +49,16 @@ export function registerBuiltinSlashCommands(ctx: CliContext): void {
     source: { kind: "builtin" },
     run: async (_c, args) => {
       await handleEffort(ctx, args.trim());
+      return handled;
+    },
+  });
+  ctx.registry.register({
+    name: "loop",
+    description: "re-run a prompt or slash command on a fixed interval",
+    argHint: "<interval> <prompt|/cmd> | stop",
+    source: { kind: "builtin" },
+    run: async (_c, args) => {
+      await handleLoop(ctx, args.trim());
       return handled;
     },
   });

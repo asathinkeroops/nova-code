@@ -437,6 +437,8 @@ export async function runRepl(ctx: CliContext, initialPrompt: string): Promise<v
     fields: { reason: "exit" },
   });
 
+  ctx.loop?.stop();
+  ctx.loop = null;
   await ctx.transcript.flush();
   await ctx.backgroundManager.disposeAll();
   if (ctx.lspManager) await ctx.lspManager.disposeAll();

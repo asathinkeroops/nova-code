@@ -159,6 +159,10 @@ export async function switchToSession(
 
   await ctx.transcript.flush();
 
+  // The loop is scoped to the outgoing session — end it before switching in.
+  ctx.loop?.stop();
+  ctx.loop = null;
+
   ctx.session = newSession;
   ctx.logPath = join(newSession.dir, "session.log");
   ctx.logger = ctx.buildLogger(ctx.logPath);

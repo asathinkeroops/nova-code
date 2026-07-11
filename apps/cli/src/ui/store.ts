@@ -479,7 +479,7 @@ export interface AppActions {
    * `takeInput`) it's delivered immediately; otherwise it's appended to
    * `inputQueue` for the next turn.
    */
-  enqueueInput: (line: string) => void;
+  enqueueInput: (line: string, opts?: { record?: boolean }) => void;
   /**
    * Consumer side, called by the REPL. Resolves with the next queued prompt,
    * blocking until one arrives, or `null` when an exit was requested.
@@ -1061,13 +1061,17 @@ export function createAppStore(opts: AppStoreOptions = {}): AppStoreApi {
         });
       },
 
-      enqueueInput(line) {
+      enqueueInput(line, options) {
         // Record into ↑/↓ recall before dispatching, so every submitted line is
         // captured whether it's handed straight to a waiting REPL or queued.
-        const nextHistory = appendInputHistory(get().inputHistory, line);
-        if (nextHistory !== get().inputHistory) {
-          set({ inputHistory: nextHistory });
-          opts.persistInputHistory?.(nextHistory);
+        // Programmatic submitters (e.g. a `/loop` tick) pass record:false so an
+        // auto-injected line doesn't hijack recall or churn the on-disk history.
+        if (options?.record !== false) {
+          const nextHistory = appendInputHistory(get().inputHistory, line);
+          if (nextHistory !== get().inputHistory) {
+            set({ inputHistory: nextHistory });
+            opts.persistInputHistory?.(nextHistory);
+          }
         }
         if (inputSlot.waiter) {
           const w = inputSlot.waiter;

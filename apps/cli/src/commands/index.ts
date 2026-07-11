@@ -9,6 +9,7 @@ export { handleDoctor } from "./doctor.js";
 export { handleGoal } from "./goal.js";
 export { handleHelp } from "./help.js";
 export { handleInit } from "./init.js";
+export { handleLoop } from "./loop.js";
 export { handleLsp } from "./lsp.js";
 export { handleMcp } from "./mcp.js";
 export { handlePlugin } from "./plugin.js";

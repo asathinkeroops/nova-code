@@ -825,6 +825,18 @@ export const settingsSchema = z.object({
       consumeInLoop: z.boolean().default(true),
     })
     .default({ consumeInLoop: true }),
+  // Recurring `/loop` command. `/loop <interval> <prompt|/cmd>` re-runs a payload
+  // on a fixed schedule until `/loop stop` (or a session switch / exit). Iterations
+  // are driven inline by the REPL between turns — a tick that comes due while a turn
+  // is running fires as soon as the REPL is free, so ticks never overlap or pile up.
+  // `maxIterations` is a safety cap (the loop stops and warns on reach);
+  // `minIntervalMs` rejects too-tight intervals that would peg the model.
+  loop: z
+    .object({
+      maxIterations: z.number().int().positive().default(100),
+      minIntervalMs: z.number().int().positive().default(1000),
+    })
+    .default({ maxIterations: 100, minIntervalMs: 1000 }),
   // LSP code intelligence. When enabled, the `lsp` tool talks to language
   // servers (over JSON-RPC/stdio) for definition, references, hover,
   // diagnostics, and symbol search. Servers are NOT installed by Nova — they

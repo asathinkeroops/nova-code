@@ -16,6 +16,7 @@ import type { PermissionEngine } from "@nova/safety";
 import type { SandboxControl } from "@nova/sandbox";
 import type { AgentRegistry } from "@nova/subagent";
 import type { GoalState } from "./goal.js";
+import type { LoopController } from "./loop-controller.js";
 import type { LoadedPlugin } from "./plugins/loader.js";
 import type { UserHooks } from "./user-hooks.js";
 import type { SnapshotStore } from "./snapshots.js";
@@ -82,6 +83,14 @@ export interface CliContext {
    * session switch (`/resume`, `/clear`).
    */
   sessionName: string | null;
+
+  /**
+   * Active `/loop`, or null. While set, the REPL runs its payload (a prompt or
+   * slash command) on a fixed interval between turns (see `runLoopIteration` in
+   * repl.ts). Session-scoped and not persisted — cleared on `/loop stop`,
+   * `/clear`, `/resume`, and exit.
+   */
+  loop: LoopController | null;
 
   // ===== Mutable: UI / per-turn state =====
   spinner: Spinner | null;

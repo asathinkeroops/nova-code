@@ -547,6 +547,7 @@ export async function createContext(
     thinkingBudgetOverride: cliOpts.thinkingBudgetOverride,
     goal: null,
     sessionName: null,
+    loop: null,
     spinner: null,
     toolSpinnerTimer: null,
     taskStartedAt: null,
