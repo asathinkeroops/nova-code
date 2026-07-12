@@ -72,8 +72,11 @@ Tools the model can call — covering read/write, search, execution, code intell
 | `/diff` · `/review` | Browse and review uncommitted changes |
 | `/init` | Analyze the codebase to generate `NOVA.md` |
 | `/agents` · `/agent` | See sub-agent types, delegate a task |
+| `/nova-code-guide` · `/nova-code-guide-update` | Read-only Q&A agent about Nova itself; the latter pulls the newest source |
 | `/commands` · `/skills` · `/mcp` · `/lsp` · `/plugin` | See registered commands, skills, MCP servers, language servers, loaded plugins |
 | `/sandbox` | Enable/disable the OS command sandbox for this session (`on` / `off`) |
+| `/loop` | Re-run a prompt or command on an interval (`/loop <interval> <prompt|/cmd>`, `/loop stop` to end) |
+| `/doctor` | Health-check the global config (JSON/schema, model/key, hooks, MCP), report issues, optionally hand them to the agent to fix in place |
 | `/usage` · `/context` | See token usage, cache hits, context fill |
 | `/tasks` | View and manage background commands (`runInBackground`) — list / stop |
 | `/predict` | Toggle next-input prediction |
@@ -83,7 +86,7 @@ Tools the model can call — covering read/write, search, execution, code intell
 
 | Capability | What it gives you |
 | --- | --- |
-| Sub-agents | Work with fresh context and their own tool set: `explore` (read-only retrieval), `plan` (read-only planning), `general-purpose` (full access), plus custom types |
+| Sub-agents | Work with fresh context and their own tool set: `explore` (read-only retrieval), `plan` (read-only planning), `general-purpose` (full access), `nova-code-guide` (Q&A about Nova), plus custom types; each agent can run on its own model tier via `subagent.model` |
 | Permissions & sandbox | `shift+tab` cycles `default` / `acceptEdits` / `auto` / `plan`; an OS-level sandbox confines subprocess writes to the workspace (macOS Seatbelt / Linux bubblewrap), off by default and one flag to enable |
 | File guarding | Files must be read before they're edited, and external changes are detected — no accidental clobbering |
 | MCP | Connect external MCP servers (`stdio` / `http` / `sse`) and use their tools like built-ins, under the same permission gating |

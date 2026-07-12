@@ -72,8 +72,11 @@ pnpm dev -p "解释这段代码"           # headless 模式：只跑一轮，�
 | `/diff` · `/review` | 浏览、评审未提交改动 |
 | `/init` | 分析代码库生成 `NOVA.md` |
 | `/agents` · `/agent` | 查看子 agent 类型、委派任务 |
+| `/nova-code-guide` · `/nova-code-guide-update` | 就 Nova 自身答疑的只读 Q&A agent；后者拉取最新源码 |
 | `/commands` · `/skills` · `/mcp` · `/lsp` · `/plugin` | 查看已注册命令、skills、MCP 服务器、语言服务器、已加载插件 |
 | `/sandbox` | 本会话内开关 OS 命令沙箱（`on` / `off`） |
+| `/loop` | 按间隔重复跑某条 prompt 或命令（`/loop <间隔> <prompt|/cmd>`，`/loop stop` 停止） |
+| `/doctor` | 体检全局配置（JSON/schema、模型/key、hooks、MCP），报告问题，可交给 agent 就地修复 |
 | `/usage` · `/context` | 查看 token 用量、缓存命中、上下文占用 |
 | `/tasks` | 查看和管理后台命令（`runInBackground`），支持 list / stop |
 | `/predict` | 开关下一条输入预测 |
@@ -83,7 +86,7 @@ pnpm dev -p "解释这段代码"           # headless 模式：只跑一轮，�
 
 | 特性 | 能力 |
 | --- | --- |
-| 子 agent | 带全新上下文、独立工具集干活：`explore` 只读检索、`plan` 只读规划、`general-purpose` 全权限，可自定义 |
+| 子 agent | 带全新上下文、独立工具集干活：`explore` 只读检索、`plan` 只读规划、`general-purpose` 全权限、`nova-code-guide` 答疑，可自定义；每个 agent 可经 `subagent.model` 单独指定模型档位 |
 | 权限与沙箱 | `shift+tab` 切换 `default` / `acceptEdits` / `auto` / `plan`；OS 级沙箱把子进程写入隔离在工作区（macOS Seatbelt / Linux bubblewrap），默认关闭、可一键开启 |
 | 文件防护 | 改文件前强制先读、检测外部改动，避免误覆盖 |
 | MCP | 接入外部 MCP 服务器（`stdio` / `http` / `sse`），把它们的工具当内置工具用，同样受权限管控 |
