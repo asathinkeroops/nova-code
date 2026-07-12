@@ -29,12 +29,12 @@ Nova closely mirrors the Claude Code workflow — the same slash commands, keybi
 
 ## Quick start
 
-Requires **Node ≥ 20** and **pnpm 10.28.2**.
+Requires **Node ≥ 20**.
 
 ```bash
-pnpm install
-pnpm dev                           # launch the REPL
-pnpm dev -p "explain this code"    # headless: one turn, print & exit
+npm install @asathinkeroops/nova-code -g
+nova                               # launch the REPL
+nova -p "explain this code"        # headless: one turn, print & exit
 ```
 
 First launch walks through an interactive setup (API key, model, etc.) → `~/.nova/nova.config.json`. Models are configured as a `lite` / `pro` / `max` ladder, each tier with its own thinking level; `/model` and `--model` switch tiers, not raw provider ids.

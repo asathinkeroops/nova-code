@@ -29,12 +29,12 @@ Nova 读代码、跑命令、改文件——通过工具调用把任务推到完
 
 ## 快速开始
 
-环境要求：**Node ≥ 20**，**pnpm 10.28.2**。
+环境要求：**Node ≥ 20**。
 
 ```bash
-pnpm install
-pnpm dev                           # 启动 REPL
-pnpm dev -p "解释这段代码"           # headless 模式：只跑一轮，输出后退出
+npm install @asathinkeroops/nova-code -g
+nova                               # 启动 REPL
+nova -p "解释这段代码"              # headless 模式：只跑一轮，输出后退出
 ```
 
 首次启动进入交互式配置向导，写入 `~/.nova/nova.config.json`（API key、模型、session 目录等）。模型按 `lite` / `pro` / `max` 三档配置，各档可单独设置 thinking 等级；`/model`、`--model` 切换的是档位而非裸 provider id。
