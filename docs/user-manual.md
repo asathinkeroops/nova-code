@@ -167,6 +167,9 @@ Nova 是一个全屏 Ink/React REPL：顶部是滚动的历史区，底部是固
 | `/review [focus…]` | 审查当前未提交的 diff，只读地报告问题（不改动任何文件） |
 | `/init [focus…]` | 探索代码库后生成 / 刷新项目记忆（`NOVA.md`） |
 | `/agents [reload]` · `/agent <name> <task>` | 列出子 agent 类型 / 委派一项任务 |
+| `/nova-code-guide <question>` · `/nova-code-guide-update` | 就 Nova 自身答疑的只读 Q&A 子 agent；`-update` 拉取 / 刷新它读取的 Nova 源码 |
+| `/loop <interval> <prompt\|/cmd>` | 按固定间隔重复投递某条 prompt 或命令；`/loop stop` 停止，`/clear`/`/resume`/退出 亦终止（配置见 [§20](#20-配置文件完整参考) `loop.*`） |
+| `/doctor` | 体检全局配置（JSON/schema、模型/key、项目 hook 文件、MCP 摘要）并在弹窗里报告；按 `f` 把问题交给 agent 就地修复 |
 | `/usage` · `/context` | 累计 token 用量与缓存命中 / 上下文窗口占用可视化 |
 | `/predict [on\|off]` | 查看或切换「下一条输入预测」 |
 | `/commands [reload]` | 列出已注册的 slash 命令；`reload` 重新扫盘加载自定义命令 |
@@ -210,10 +213,11 @@ Nova 把「extended thinking」暴露成五个等级，或一个显式的 token 
 | `explore` | 只读（无 write/edit/bash） | 检索定位代码，汇报路径/调用点 |
 | `plan` | 只读（无 write/edit/bash） | 调查后给出分步实现计划 |
 | `general-purpose` | 完整工具 | 需要真正改文件或跑命令的活儿 |
+| `nova-code-guide` | 只读（限于 Nova 源码检出） | 就 Nova 自身答疑（`/nova-code-guide`，见 [§6](#6-slash-命令大全)） |
 
 同一轮里的多个 `createSubAgent` 调用会**并发执行**（受 `toolConcurrency` 限制）。父 agent 只会收到每个子 agent 的**最终一条消息**——庞大的中间调查被挡在主上下文之外。
 
-通过 `settings.subagent` 配置：`enabled` / `model`（默认随父模型）/ `maxTurns`（默认 100）/ `maxTokens`（默认 32768）。每个子 agent 的 transcript 落在 `~/.nova/sessions/{id}/subagents/`。子 agent 触顶 `maxTurns` 时不再直接报错丢弃，而是追加一轮「禁用工具、立即收尾」的请求,让它基于已收集信息产出一份尽力而为的报告。
+通过 `settings.subagent` 配置：`enabled` / `model` / `maxTurns`（默认 100）/ `maxTokens`（默认 32768）。`model` 是一张**按子 agent 名索引的表**（如 `{"plan":"max","explore":"pro"}`），可给每个 agent 单独指定模型档位；解析顺序由具体到宽泛：该表的对应条目 → 内置默认（`general-purpose`/`plan`→`max`，`explore`/`nova-code-guide`→`pro`）→ 自定义 agent 自己 frontmatter 里的 `model` → 当前主模型。整张表省略则全部沿用默认。每个子 agent 的 transcript 落在 `~/.nova/sessions/{id}/subagents/`。子 agent 触顶 `maxTurns` 时不再直接报错丢弃，而是追加一轮「禁用工具、立即收尾」的请求,让它基于已收集信息产出一份尽力而为的报告。
 
 > 注：子 agent 调用 todo/task/长任务这类「有状态」工具时，操作的是**父 session** 的共享存储。
 
@@ -662,7 +666,8 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 | `memory.userPaths` / `globalPath` | （无） | 覆盖用户层/全局记忆路径 |
 | `slash.enabled` | `true` | 自定义 slash 命令开关；`projectDirs`/`userPaths`/`extraDirs` 额外目录 |
 | `skills.enabled` | `true` | Skills 开关；`maxIndexBytes`=8192、`maxResponseBytes`=16384，及额外目录 |
-| `subagent.enabled` | `true` | 子 agent 开关；`model`（默认随父）/`maxTurns`=100/`maxTokens`=32768 |
+| `subagent.enabled` | `true` | 子 agent 开关；`model`（按子 agent 名索引的档位表，见 [§8](#8-plan-模式与子-agent)）/`maxTurns`=100/`maxTokens`=32768 |
+| `loop.*` | `maxIterations`=100 | `/loop` 重复任务：`maxIterations` 安全上限、`minIntervalMs`=1000 拒绝过密间隔，见 [§6](#6-slash-命令大全) |
 | `lsp.*` | `enabled:true` | LSP，见 [§17](#17-lsp-代码智能) |
 | `mcp.*` | `enabled:true` | MCP，见 [§16](#16-mcp-外部工具) |
 | `sandbox.*` | `enabled:false` | 命令沙箱（**默认关**），见 [§11](#11-命令沙箱) |
