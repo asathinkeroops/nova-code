@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { CliContext } from "../context.js";
 import { handleLoop } from "./loop.js";
 
@@ -14,17 +14,17 @@ interface Notice {
 function makeCtx() {
   const cards: Card[] = [];
   const notices: Notice[] = [];
-  const enqueued: string[] = [];
+  const wake = vi.fn();
   const ctx = {
     settings: { loop: { maxIterations: 100, minIntervalMs: 1000 } },
     loop: null,
     screen: {
       card: (text: string, opts: Card["opts"] = {}) => cards.push({ text, opts }),
       notice: (text: string, _ttl?: number, tone?: string) => notices.push({ text, tone }),
-      enqueueInput: (line: string) => enqueued.push(line),
+      wake,
     },
   } as unknown as CliContext;
-  return { ctx, cards, notices, enqueued };
+  return { ctx, cards, notices, wake };
 }
 
 describe("handleLoop", () => {
@@ -35,14 +35,13 @@ describe("handleLoop", () => {
     expect(cards.at(-1)!.text).toContain("usage:");
   });
 
-  it("starts a loop for a valid interval + payload and enqueues immediately", async () => {
-    const { ctx, cards, enqueued } = makeCtx();
+  it("starts a loop for a valid interval + payload and arms the first iteration", async () => {
+    const { ctx, cards } = makeCtx();
     await handleLoop(ctx, "5s /usage");
     expect(ctx.loop).not.toBeNull();
     expect(ctx.loop!.intervalMs).toBe(5000);
     expect(ctx.loop!.payload).toBe("/usage");
-    expect(enqueued).toEqual(["/usage"]); // start() enqueues the first tick now
-    expect(ctx.loop!.count()).toBe(1);
+    expect(ctx.loop!.isDue()).toBe(true); // armFirst → runs immediately, no timer
     expect(cards.at(-1)!.text).toContain("running now");
     ctx.loop!.stop();
   });

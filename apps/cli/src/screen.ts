@@ -499,16 +499,6 @@ export class Screen {
   }
 
   /**
-   * Programmatically submit a line into the input queue, as if typed — delivered
-   * straight to a parked REPL, else queued and drained on the next turn. Used by
-   * a `/loop` tick; `record:false` keeps the auto-injected line out of ↑/↓ recall
-   * and off the on-disk history.
-   */
-  enqueueInput(line: string, opts?: { record?: boolean }): void {
-    this.store.getState().enqueueInput(line, opts);
-  }
-
-  /**
    * Non-blocking: consume the next queued *model-bound* prompt (for the agent
    * loop's `pre_continue` hook), or null when the queue head is a slash/shell
    * line or the queue is empty. See store `takeQueuedPrompt`.

@@ -1,13 +1,12 @@
 /**
- * Backing state + timer for the `/loop` command. Pure and `ctx`-free: on each
- * tick it just drops the payload into the input queue (via the injected
- * `enqueue` callback) and lets the REPL's normal machinery run it — a parked
- * `takeInput` gets it immediately, otherwise it queues for the next turn, the
- * same path a typed line takes. The controller never drives the agent itself.
- *
- * The cadence is steady wall-clock (setInterval-like): the next tick is armed
- * one interval after each fire, independent of how long a turn runs. A total of
- * `maxIterations` payloads are enqueued, then the loop stops and calls `onCap`.
+ * Backing state + timer for the `/loop` command. Pure and `ctx`-free: it only
+ * flips a `due` flag and wakes a parked REPL; the REPL runs each iteration
+ * inline (see `runLoopIteration` in repl.ts) and calls `rearm()` once the turn
+ * completes. Scheduling is therefore **completion-relative** — the next tick is
+ * armed one interval *after* the previous iteration finishes, never on a free
+ * wall clock. Two iterations can never overlap, and nothing piles up: at most
+ * one `due` is ever pending, and the timer is armed exactly once per completed
+ * iteration. The loop stops after `maxIterations` iterations.
  */
 
 const SECOND = 1000;
@@ -40,28 +39,27 @@ export class LoopController {
   readonly payload: string;
   readonly intervalMs: number;
   readonly maxIterations: number;
-  /** Called after the loop stops itself on reaching the iteration cap. */
-  onCap: () => void = () => {};
   private iterations = 0;
+  private due = false;
   private active = true;
   private timer: NodeJS.Timeout | null = null;
-  private readonly enqueue: (line: string) => void;
+  private readonly wake: () => void;
 
   constructor(opts: {
     payload: string;
     intervalMs: number;
     maxIterations: number;
-    enqueue: (line: string) => void;
+    wake: () => void;
   }) {
     this.payload = opts.payload;
     this.intervalMs = opts.intervalMs;
     this.maxIterations = opts.maxIterations;
-    this.enqueue = opts.enqueue;
+    this.wake = opts.wake;
   }
 
-  /** Payloads enqueued so far. */
-  count(): number {
-    return this.iterations;
+  /** True when an iteration is waiting to run at the next REPL idle point. */
+  isDue(): boolean {
+    return this.active && this.due;
   }
 
   /** True until stopped or the cap is reached. */
@@ -69,31 +67,55 @@ export class LoopController {
     return this.active;
   }
 
-  /** Enqueue the first payload immediately, then keep ticking every interval. */
-  start(): void {
-    if (this.active) this.fire();
+  /** Iterations run so far. */
+  count(): number {
+    return this.iterations;
   }
 
-  /** Enqueue one payload and arm the next tick. */
-  private fire(): void {
+  /**
+   * Mark the first iteration ready to run immediately. No timer/wake needed: the
+   * `/loop` command returns straight to the REPL top, which sees `isDue()`.
+   */
+  armFirst(): void {
+    if (this.active) this.due = true;
+  }
+
+  /**
+   * Consume the pending `due` and count this iteration. Returns true when the
+   * safety cap is reached (the caller then stops the loop instead of re-arming).
+   */
+  noteIteration(): boolean {
+    this.due = false;
     this.iterations += 1;
-    this.enqueue(this.payload);
-    if (this.iterations >= this.maxIterations) {
-      this.stop();
-      this.onCap();
-      return;
-    }
-    // `.unref()` so a pending tick never keeps the Node process alive on exit.
+    return this.iterations >= this.maxIterations;
+  }
+
+  /**
+   * Schedule the next iteration one interval out — called by the REPL *after*
+   * the current iteration's turn completes, so cadence is completion-relative
+   * and iterations can't overlap. On fire it flips `due` and wakes a parked
+   * REPL. `.unref()` so a pending tick never keeps the Node process alive.
+   */
+  rearm(): void {
+    if (!this.active) return;
+    this.clearTimer();
     this.timer = setTimeout(() => {
       this.timer = null;
-      if (this.active) this.fire();
+      if (!this.active) return;
+      this.due = true;
+      this.wake();
     }, this.intervalMs);
     this.timer.unref?.();
   }
 
-  /** Cancel the loop: no more ticks. Idempotent. */
+  /** Cancel the loop: no more ticks, `isDue()` goes false. Idempotent. */
   stop(): void {
     this.active = false;
+    this.due = false;
+    this.clearTimer();
+  }
+
+  private clearTimer(): void {
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = null;

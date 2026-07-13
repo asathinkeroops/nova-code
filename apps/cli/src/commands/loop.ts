@@ -85,23 +85,15 @@ export async function handleLoop(ctx: CliContext, args: string): Promise<void> {
     payload,
     intervalMs,
     maxIterations: ctx.settings.loop.maxIterations,
-    // Each tick drops the payload into the input queue; the REPL runs it like a
-    // typed line. record:false keeps it out of ↑/↓ recall.
-    enqueue: (line) => ctx.screen.enqueueInput(line, { record: false }),
+    wake: () => ctx.screen.wake(),
   });
-  loop.onCap = () => {
-    if (ctx.loop === loop) ctx.loop = null;
-    ctx.screen.card(`loop reached its ${loop.maxIterations}-iteration cap; stopping.`, {
-      kind: "warn",
-      title: TITLE,
-    });
-  };
+  // Run the first iteration now; the REPL re-arms the interval after each turn
+  // completes (completion-relative, so iterations never overlap).
+  loop.armFirst();
   ctx.loop = loop;
   ctx.screen.card(
     `${replacing ? "replaced loop — " : ""}running now, then every ${formatDuration(intervalMs)}` +
-      ` (max ${loop.maxIterations}). /loop stop to end.\n${dim(payload)}`,
+      ` after each run completes (max ${loop.maxIterations}). /loop stop to end.\n${dim(payload)}`,
     { title: TITLE },
   );
-  // Enqueue the first payload after the confirmation card so it reads in order.
-  loop.start();
 }

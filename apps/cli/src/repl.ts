@@ -10,6 +10,7 @@ import { readClipboard } from "./image-paste.js";
 import { evaluateGoalWithAgent } from "./goal-eval.js";
 import { clearGoal, saveGoal } from "./goal.js";
 import { listWorkspaceFiles } from "./file-index.js";
+import { formatDuration } from "./loop-controller.js";
 import { predictNextInput } from "./predict.js";
 import { toUiSlashCommands } from "./slash.js";
 import { CONTINUE_SENTINEL } from "./ui/store.js";
@@ -212,6 +213,60 @@ function shouldAutoContinue(ctx: CliContext): boolean {
   );
 }
 
+/**
+ * True when an active `/loop` has a tick due and the agent is idle. Checked at
+ * the top of the REPL loop (beside {@link shouldAutoContinue}) so a due tick
+ * runs the moment the REPL is free — if the timer woke a busy REPL, the `due`
+ * flag persists and this catches it once the current turn ends.
+ */
+function shouldRunLoopIteration(ctx: CliContext): boolean {
+  return !!ctx.loop?.isDue() && !ctx.agent.currentSignal();
+}
+
+/**
+ * Run one `/loop` iteration inline, then re-arm the schedule. Running inline
+ * (not via the input queue) keeps loop ticks off the shared queue, so they never
+ * fold into an unrelated running turn and can't pile up. The payload is
+ * dispatched through the same path as a typed line ({@link dispatchLine}), so a
+ * `/command` payload runs as a command and a plain payload runs as a turn. The
+ * next tick is armed only *after* the turn completes (completion-relative), so
+ * iterations never overlap. Esc aborts only the current turn (its `ok` is
+ * ignored here); the loop keeps its schedule. On the safety cap it stops.
+ */
+async function runLoopIteration(ctx: CliContext): Promise<void> {
+  const loop = ctx.loop;
+  if (!loop) return;
+  const capped = loop.noteIteration();
+  ctx.screen.card(
+    dim(`iteration ${loop.count()}/${loop.maxIterations} · next ${formatDuration(loop.intervalMs)} after this`),
+    { title: "/loop", persist: false },
+  );
+
+  const action = await dispatchLine(ctx, loop.payload);
+  // "exit" from a looped payload (e.g. /exit) ends the loop, not the REPL.
+  if (action !== "exit" && action !== "continue") {
+    await runTurnWithStopHooks(ctx, action.prompt);
+    void refreshMentionFiles(ctx);
+    void refreshBalance(ctx);
+  }
+
+  // The payload may have run `/loop stop` / `/clear` / a new `/loop`, nulling or
+  // replacing ctx.loop; don't resurrect a loop that's no longer ours.
+  if (ctx.loop !== loop) return;
+  if (action === "exit" || capped) {
+    loop.stop();
+    ctx.loop = null;
+    if (capped) {
+      ctx.screen.card(`loop reached its ${loop.maxIterations}-iteration cap; stopping.`, {
+        kind: "warn",
+        title: "/loop",
+      });
+    }
+    return;
+  }
+  loop.rearm();
+}
+
 /** Hard cap on Stop-hook forced continuations, so a misbehaving hook can't loop forever. */
 const MAX_STOP_CONTINUATIONS = 8;
 
@@ -402,14 +457,27 @@ export async function runRepl(ctx: CliContext, initialPrompt: string): Promise<v
       continue;
     }
 
+    // A `/loop` tick is due (fired immediately on start, or its timer woke us);
+    // run the iteration inline before parking for input.
+    if (shouldRunLoopIteration(ctx)) {
+      await runLoopIteration(ctx);
+      continue;
+    }
+
     ctx.screen.setInputPlaceholder(ctx.nextPlaceholder);
     ctx.nextPlaceholder = "";
 
     const raw = await ctx.screen.takeInput();
     if (raw === null) break; // exit requested (Ctrl+C while idle)
-    // A background completion landed while we were parked: `wake()` unblocked
-    // takeInput with this sentinel so we run a continuation instead of a prompt.
+    // A background completion or a `/loop` timer landed while we were parked:
+    // `wake()` unblocked takeInput with this sentinel. Both surface the same way,
+    // so disambiguate — a due loop iteration takes priority, else it's a
+    // background continuation.
     if (raw === CONTINUE_SENTINEL) {
+      if (shouldRunLoopIteration(ctx)) {
+        await runLoopIteration(ctx);
+        continue;
+      }
       const ok = await runContinuationTurn(ctx);
       if (ok) await refreshPrediction(ctx);
       void refreshMentionFiles(ctx);

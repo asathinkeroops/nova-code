@@ -35,69 +35,74 @@ describe("LoopController", () => {
   });
 
   function make(overrides: Partial<{ intervalMs: number; maxIterations: number }> = {}) {
-    const enqueued: string[] = [];
+    const wake = vi.fn();
     const loop = new LoopController({
       payload: "get status",
       intervalMs: overrides.intervalMs ?? 5000,
       maxIterations: overrides.maxIterations ?? 100,
-      enqueue: (line) => enqueued.push(line),
+      wake,
     });
-    return { loop, enqueued };
+    return { loop, wake };
   }
 
-  it("enqueues the first payload immediately on start", () => {
-    const { loop, enqueued } = make();
-    loop.start();
-    expect(enqueued).toEqual(["get status"]);
+  it("armFirst marks the first iteration due immediately, no timer", () => {
+    const { loop, wake } = make();
+    expect(loop.isDue()).toBe(false);
+    loop.armFirst();
+    expect(loop.isDue()).toBe(true);
+    expect(wake).not.toHaveBeenCalled();
+  });
+
+  it("noteIteration consumes the due flag and counts", () => {
+    const { loop } = make();
+    loop.armFirst();
+    expect(loop.noteIteration()).toBe(false);
+    expect(loop.isDue()).toBe(false);
     expect(loop.count()).toBe(1);
-    loop.stop();
   });
 
-  it("enqueues again on a steady interval", () => {
+  it("re-arms one interval after completion (completion-relative)", () => {
     vi.useFakeTimers();
-    const { loop, enqueued } = make({ intervalMs: 5000 });
-    loop.start();
-    expect(enqueued).toHaveLength(1);
+    const { loop, wake } = make({ intervalMs: 5000 });
+    loop.armFirst();
+    loop.noteIteration(); // iteration ran
+    loop.rearm(); // called by the REPL after the turn completes
+    expect(loop.isDue()).toBe(false);
     vi.advanceTimersByTime(4999);
-    expect(enqueued).toHaveLength(1);
+    expect(loop.isDue()).toBe(false);
     vi.advanceTimersByTime(1);
-    expect(enqueued).toHaveLength(2);
-    vi.advanceTimersByTime(5000);
-    expect(enqueued).toHaveLength(3);
-    expect(loop.count()).toBe(3);
-    loop.stop();
+    expect(loop.isDue()).toBe(true);
+    expect(wake).toHaveBeenCalledTimes(1);
   });
 
-  it("stops after maxIterations enqueues and fires onCap", () => {
-    vi.useFakeTimers();
-    const { loop, enqueued } = make({ intervalMs: 5000, maxIterations: 2 });
-    const onCap = vi.fn();
-    loop.onCap = onCap;
-    loop.start(); // #1
-    expect(enqueued).toHaveLength(1);
-    expect(onCap).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(5000); // #2 → hits cap
-    expect(enqueued).toHaveLength(2);
-    expect(onCap).toHaveBeenCalledTimes(1);
-    expect(loop.isActive()).toBe(false);
-    vi.advanceTimersByTime(60_000); // no further ticks
-    expect(enqueued).toHaveLength(2);
+  it("noteIteration reports the cap so the caller stops instead of re-arming", () => {
+    const { loop } = make({ maxIterations: 2 });
+    loop.armFirst();
+    expect(loop.noteIteration()).toBe(false); // 1/2
+    loop.armFirst();
+    expect(loop.noteIteration()).toBe(true); // 2/2 → capped
+    expect(loop.count()).toBe(2);
   });
 
-  it("stop cancels a pending tick", () => {
+  it("stop cancels a pending re-armed tick", () => {
     vi.useFakeTimers();
-    const { loop, enqueued } = make({ intervalMs: 5000 });
-    loop.start(); // #1
+    const { loop, wake } = make({ intervalMs: 5000 });
+    loop.rearm();
     loop.stop();
     vi.advanceTimersByTime(20_000);
-    expect(enqueued).toHaveLength(1);
+    expect(loop.isDue()).toBe(false);
     expect(loop.isActive()).toBe(false);
+    expect(wake).not.toHaveBeenCalled();
   });
 
-  it("start is a no-op after stop", () => {
-    const { loop, enqueued } = make();
+  it("armFirst and rearm are no-ops after stop", () => {
+    vi.useFakeTimers();
+    const { loop, wake } = make();
     loop.stop();
-    loop.start();
-    expect(enqueued).toHaveLength(0);
+    loop.armFirst();
+    expect(loop.isDue()).toBe(false);
+    loop.rearm();
+    vi.advanceTimersByTime(10_000);
+    expect(wake).not.toHaveBeenCalled();
   });
 });
