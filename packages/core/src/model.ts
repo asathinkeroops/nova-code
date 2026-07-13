@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { zodToJsonSchema } from "zod-to-json-schema";
-import { resolveProfile, type ProviderProfile } from "./providers/index.js";
+import { type ProviderProfile } from "./providers/index.js";
 import {
   RETRY_LIMITS,
   backoffMs,
@@ -34,26 +34,16 @@ export interface ModelRequest {
   thinkingBudgetTokens?: number;
 }
 
-/**
- * Wire format for the thinking knob.
- *
- * - `anthropic` — first-party Claude format: `thinking.budget_tokens`.
- * - `deepseek`  — DeepSeek's Anthropic-compatible endpoint: it accepts
- *   `thinking.type` but rejects `budget_tokens`, taking intensity via
- *   `output_config.effort` ("high" | "max") instead.
- */
-export type ThinkingFormat = "anthropic" | "deepseek";
-
 export interface AnthropicModelConfig {
   apiKey: string;
   model: string;
   baseURL?: string;
   /**
-   * Provider profile driving thinking-param and error/retry behavior. When
-   * omitted, it's resolved from the model name (see `resolveProfile`) so callers
-   * that don't wire providers keep the legacy name-based behavior.
+   * Provider profile driving thinking-param and error/retry behavior. Required:
+   * the caller resolves it once from `settings.provider` (see `resolveProfile`)
+   * and passes a concrete profile — the adapter never guesses from the model name.
    */
-  provider?: ProviderProfile;
+  provider: ProviderProfile;
   /**
    * Live progress callback for this request. High-frequency and best-effort —
    * callers should throttle their own UI updates. The exact final numbers are
@@ -120,15 +110,6 @@ export interface StreamProgress {
 }
 
 /**
- * Legacy name-based classifier for the thinking-knob wire format. Superseded by
- * explicit provider profiles (see `providers/`), but retained as the fallback
- * `resolveProfile` uses when a config predates the `provider` field.
- */
-export function detectThinkingFormat(model: string): ThinkingFormat {
-  return /deepseek/i.test(model) ? "deepseek" : "anthropic";
-}
-
-/**
  * Wait `ms`, but bail out early if `signal` aborts — rejecting with the abort
  * reason so an interrupt during a retry backoff propagates as a cancellation
  * rather than silently sleeping it out.
@@ -179,7 +160,7 @@ export function createAnthropicModel(config: AnthropicModelConfig): ModelClient 
     apiKey: config.apiKey,
     ...(config.baseURL ? { baseURL: config.baseURL } : {}),
   });
-  const provider = config.provider ?? resolveProfile(undefined, config.model);
+  const provider = config.provider;
 
   return {
     async call(req: ModelRequest): Promise<AssistantTurn> {

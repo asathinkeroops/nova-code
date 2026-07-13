@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { DeepSeekApiError } from "./deepseek-errors.js";
-import { createAnthropicModel, detectThinkingFormat, type RetryNotice } from "./model.js";
+import { DeepSeekApiError } from "./providers/deepseek.js";
+import { createAnthropicModel, type RetryNotice } from "./model.js";
+import { deepseekProfile } from "./providers/deepseek.js";
 import { otherProfile } from "./providers/other.js";
 
 // Stub the Anthropic SDK so we can inspect the params our adapter sends
@@ -57,18 +58,6 @@ const baseReq = {
   maxTokens: 8192,
 };
 
-describe("detectThinkingFormat", () => {
-  it("flags deepseek model ids", () => {
-    expect(detectThinkingFormat("deepseek-chat")).toBe("deepseek");
-    expect(detectThinkingFormat("deepseek-reasoner")).toBe("deepseek");
-    expect(detectThinkingFormat("DeepSeek-V3")).toBe("deepseek");
-  });
-  it("defaults to anthropic for other ids", () => {
-    expect(detectThinkingFormat("claude-sonnet-4-5")).toBe("anthropic");
-    expect(detectThinkingFormat("claude-opus-4-7")).toBe("anthropic");
-  });
-});
-
 describe("createAnthropicModel thinking params", () => {
   beforeEach(() => {
     mockCreate.mockReset();
@@ -77,7 +66,7 @@ describe("createAnthropicModel thinking params", () => {
 
   it("sends budget_tokens for anthropic models", async () => {
     mockCreate.mockResolvedValueOnce(okResponse());
-    const m = createAnthropicModel({ apiKey: "x", model: "claude-sonnet-4-5" });
+    const m = createAnthropicModel({ apiKey: "x", model: "claude-sonnet-4-5", provider: otherProfile });
     await m.call({ ...baseReq, thinkingBudgetTokens: 16_000 });
     const params = mockCreate.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(params.thinking).toEqual({ type: "enabled", budget_tokens: 16_000 });
@@ -88,7 +77,7 @@ describe("createAnthropicModel thinking params", () => {
 
   it("sends output_config.effort for deepseek models, no budget_tokens", async () => {
     mockCreate.mockResolvedValueOnce(okResponse());
-    const m = createAnthropicModel({ apiKey: "x", model: "deepseek-reasoner" });
+    const m = createAnthropicModel({ apiKey: "x", model: "deepseek-reasoner", provider: deepseekProfile });
     await m.call({ ...baseReq, thinkingBudgetTokens: 16_000 });
     const params = mockCreate.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(params.thinking).toEqual({ type: "enabled" });
@@ -99,7 +88,7 @@ describe("createAnthropicModel thinking params", () => {
 
   it("rounds max-level budget to effort:max on deepseek", async () => {
     mockCreate.mockResolvedValueOnce(okResponse());
-    const m = createAnthropicModel({ apiKey: "x", model: "deepseek-chat" });
+    const m = createAnthropicModel({ apiKey: "x", model: "deepseek-chat", provider: deepseekProfile });
     await m.call({ ...baseReq, thinkingBudgetTokens: 32_000 });
     const params = mockCreate.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(params.output_config).toEqual({ effort: "max" });
@@ -114,6 +103,7 @@ describe("createAnthropicModel thinking params", () => {
     const m = createAnthropicModel({
       apiKey: "x",
       model: "deepseek-chat",
+      provider: deepseekProfile,
       onStreamProgress: (p) => seen.push(p.outputTokens),
     });
     await m.call({ ...baseReq });
@@ -141,6 +131,7 @@ describe("createAnthropicModel thinking params", () => {
     const m = createAnthropicModel({
       apiKey: "x",
       model: "deepseek-chat",
+      provider: deepseekProfile,
       onStreamProgress: (p) => seen.push(p),
     });
     await m.call({ ...baseReq });
@@ -151,10 +142,10 @@ describe("createAnthropicModel thinking params", () => {
     expect(seen.at(-1)?.outputTokens).toBeGreaterThan(0);
   });
 
-  it("an explicit provider overrides the model-name guess", async () => {
-    // A deepseek-named model, but forced onto the `other` profile — it must send
-    // budget_tokens (anthropic shape), not effort. Proves behavior is driven by
-    // the provider, not the model string.
+  it("drives the thinking shape from the provider, not the model string", async () => {
+    // A deepseek-named model on the `other` profile — it must send budget_tokens
+    // (anthropic shape), not effort. Proves the wire shape follows the passed
+    // provider, and the model id is just an id.
     mockCreate.mockResolvedValueOnce(okResponse());
     const m = createAnthropicModel({ apiKey: "x", model: "deepseek-chat", provider: otherProfile });
     await m.call({ ...baseReq, thinkingBudgetTokens: 16_000 });
@@ -166,7 +157,7 @@ describe("createAnthropicModel thinking params", () => {
 
   it("sends explicit thinking: disabled and no output_config when budget is 0", async () => {
     mockCreate.mockResolvedValueOnce(okResponse());
-    const m = createAnthropicModel({ apiKey: "x", model: "deepseek-chat" });
+    const m = createAnthropicModel({ apiKey: "x", model: "deepseek-chat", provider: deepseekProfile });
     await m.call({ ...baseReq });
     const params = mockCreate.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(params.thinking).toEqual({ type: "disabled" });
@@ -194,6 +185,7 @@ describe("createAnthropicModel deepseek error handling", () => {
     const m = createAnthropicModel({
       apiKey: "x",
       model: "deepseek-chat",
+      provider: deepseekProfile,
       onRetry: (i) => retries.push(i),
     });
     const p = m.call({ ...baseReq });
@@ -215,6 +207,7 @@ describe("createAnthropicModel deepseek error handling", () => {
     const m = createAnthropicModel({
       apiKey: "x",
       model: "deepseek-chat",
+      provider: deepseekProfile,
       onRetry: (i) => retries.push(i),
     });
     const p = m.call({ ...baseReq });
@@ -231,7 +224,7 @@ describe("createAnthropicModel deepseek error handling", () => {
     vi.useFakeTimers();
     const jsonErr = new Error("Unexpected end of JSON input");
     mockCreate.mockRejectedValueOnce(jsonErr).mockResolvedValueOnce(okResponse());
-    const m = createAnthropicModel({ apiKey: "x", model: "claude-sonnet-4-5" });
+    const m = createAnthropicModel({ apiKey: "x", model: "claude-sonnet-4-5", provider: otherProfile });
     const p = m.call({ ...baseReq });
     await vi.advanceTimersByTimeAsync(1_000);
     const res = await p;
@@ -250,6 +243,7 @@ describe("createAnthropicModel deepseek error handling", () => {
     const m = createAnthropicModel({
       apiKey: "x",
       model: "deepseek-chat",
+      provider: deepseekProfile,
       onRetry: (i) => retries.push(i),
     });
     const p = m.call({ ...baseReq });
@@ -267,7 +261,7 @@ describe("createAnthropicModel deepseek error handling", () => {
     mockCreate
       .mockRejectedValueOnce(new Error("terminated", { cause: socket }))
       .mockResolvedValueOnce(okResponse());
-    const m = createAnthropicModel({ apiKey: "x", model: "claude-sonnet-4-5" });
+    const m = createAnthropicModel({ apiKey: "x", model: "claude-sonnet-4-5", provider: otherProfile });
     const p = m.call({ ...baseReq });
     await vi.advanceTimersByTimeAsync(1_000);
     const res = await p;
@@ -279,7 +273,7 @@ describe("createAnthropicModel deepseek error handling", () => {
     vi.useFakeTimers();
     const reset = Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" });
     mockCreate.mockRejectedValue(reset);
-    const m = createAnthropicModel({ apiKey: "x", model: "deepseek-chat" });
+    const m = createAnthropicModel({ apiKey: "x", model: "deepseek-chat", provider: deepseekProfile });
     const caught = m.call({ ...baseReq }).catch((e: unknown) => e);
     await vi.advanceTimersByTimeAsync(200_000); // 9 backoffs: 1+2+4+8+16+30+30+30+30 = 151s
     const err = await caught;
@@ -295,7 +289,7 @@ describe("createAnthropicModel deepseek error handling", () => {
       ac.abort(); // the socket died because the user cancelled
       return Promise.reject(reset);
     });
-    const m = createAnthropicModel({ apiKey: "x", model: "deepseek-chat" });
+    const m = createAnthropicModel({ apiKey: "x", model: "deepseek-chat", provider: deepseekProfile });
     const err = await m.call({ ...baseReq, signal: ac.signal }).catch((e: unknown) => e);
     expect(err).toBe(reset);
     expect(mockCreate).toHaveBeenCalledTimes(1); // no retry after abort
@@ -304,7 +298,7 @@ describe("createAnthropicModel deepseek error handling", () => {
   it("gives up after max attempts and throws a translated DeepSeekApiError", async () => {
     vi.useFakeTimers();
     mockCreate.mockRejectedValue(apiError(503));
-    const m = createAnthropicModel({ apiKey: "x", model: "deepseek-chat" });
+    const m = createAnthropicModel({ apiKey: "x", model: "deepseek-chat", provider: deepseekProfile });
     const caught = m.call({ ...baseReq }).catch((e: unknown) => e);
     // Exhaust all 9 backoffs: 1+2+4+8+16+30+30+30+30 = 151s.
     await vi.advanceTimersByTimeAsync(200_000);
@@ -316,7 +310,7 @@ describe("createAnthropicModel deepseek error handling", () => {
 
   it("throws a translated error for non-retryable (402) without retrying", async () => {
     mockCreate.mockRejectedValueOnce(apiError(402));
-    const m = createAnthropicModel({ apiKey: "x", model: "deepseek-chat" });
+    const m = createAnthropicModel({ apiKey: "x", model: "deepseek-chat", provider: deepseekProfile });
     const err = await m.call({ ...baseReq }).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(DeepSeekApiError);
     expect((err as DeepSeekApiError).status).toBe(402);
@@ -326,7 +320,7 @@ describe("createAnthropicModel deepseek error handling", () => {
   it("does not translate or retry errors for non-deepseek models", async () => {
     const orig = apiError(429);
     mockCreate.mockRejectedValue(orig);
-    const m = createAnthropicModel({ apiKey: "x", model: "claude-sonnet-4-5" });
+    const m = createAnthropicModel({ apiKey: "x", model: "claude-sonnet-4-5", provider: otherProfile });
     const err = await m.call({ ...baseReq }).catch((e: unknown) => e);
     expect(err).toBe(orig); // untouched
     expect(mockCreate).toHaveBeenCalledTimes(1);
@@ -350,6 +344,7 @@ describe("createAnthropicModel onStreamText", () => {
     const m = createAnthropicModel({
       apiKey: "x",
       model: "deepseek-chat",
+      provider: deepseekProfile,
       onStreamText: (d) => seen.push(d),
     });
     await m.call({ ...baseReq });
@@ -365,6 +360,7 @@ describe("createAnthropicModel onStreamText", () => {
     const m = createAnthropicModel({
       apiKey: "x",
       model: "deepseek-chat",
+      provider: deepseekProfile,
       onStreamText: (d) => seen.push(d),
     });
     await m.call({ ...baseReq });
@@ -394,7 +390,7 @@ describe("createAnthropicModel thinking backfill", () => {
       usage: { input_tokens: 1, output_tokens: 1 },
     });
     streamEvents = [thinkingDelta("let me "), thinkingDelta("reason")];
-    const m = createAnthropicModel({ apiKey: "x", model: "deepseek-reasoner" });
+    const m = createAnthropicModel({ apiKey: "x", model: "deepseek-reasoner", provider: deepseekProfile });
     const res = await m.call({ ...baseReq, thinkingBudgetTokens: 16_000 });
     expect(res.content[0]).toEqual({
       type: "thinking",
@@ -410,7 +406,7 @@ describe("createAnthropicModel thinking backfill", () => {
       usage: { input_tokens: 1, output_tokens: 1 },
     });
     streamEvents = [thinkingDelta("streamed but should be ignored")];
-    const m = createAnthropicModel({ apiKey: "x", model: "claude-sonnet-4-5" });
+    const m = createAnthropicModel({ apiKey: "x", model: "claude-sonnet-4-5", provider: otherProfile });
     const res = await m.call({ ...baseReq, thinkingBudgetTokens: 16_000 });
     expect(res.content[0]).toEqual({
       type: "thinking",
@@ -429,7 +425,7 @@ describe("createAnthropicModel thinking backfill", () => {
       usage: { input_tokens: 1, output_tokens: 1 },
     });
     streamEvents = [delta("answer")];
-    const m = createAnthropicModel({ apiKey: "x", model: "deepseek-chat" });
+    const m = createAnthropicModel({ apiKey: "x", model: "deepseek-chat", provider: deepseekProfile });
     const res = await m.call({ ...baseReq });
     expect(res.content[0]).toEqual({ type: "thinking", thinking: "", signature: "" });
   });

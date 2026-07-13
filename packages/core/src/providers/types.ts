@@ -32,6 +32,30 @@ export type ErrorDecision =
   | { retry: true; delayMs: number; status?: number; error: unknown }
   | { retry: false; error: unknown };
 
+/**
+ * A provider account's spendable balance, surfaced on the status line. Returned
+ * by {@link ProviderProfile.probeBalance} for providers that expose a balance
+ * endpoint. `currency` is the union the built-in providers bill in (kept local
+ * to `@nova/core` — this layer can't import `@nova/observability`'s `Currency`,
+ * but the two are structurally identical so it stays compatible with `formatMoney`).
+ */
+export interface AccountBalance {
+  /** Currency the figures are denominated in. */
+  currency: "USD" | "CNY";
+  /** Total spendable balance (granted + topped-up) in `currency`. */
+  total: number;
+  /** Whether the account can currently be charged. */
+  available: boolean;
+}
+
+/** Inputs for a balance probe — the live endpoint and credential from settings. */
+export interface BalanceProbe {
+  /** Configured base URL, if any; gates the provider's official-endpoint check. */
+  baseURL?: string;
+  /** API key used to authenticate the probe. */
+  apiKey?: string;
+}
+
 export interface ProviderProfile {
   /** Stable id; also the key in the {@link PROVIDERS} registry. */
   id: "deepseek" | "other";
@@ -49,4 +73,14 @@ export interface ProviderProfile {
    * only see genuine API/transport errors here.
    */
   onError(err: unknown, attempt: number): ErrorDecision;
+
+  /**
+   * Optionally fetch the account's spendable balance for a status display.
+   * Present only for providers that expose a balance endpoint (e.g. DeepSeek's
+   * `/user/balance`); absent on generic providers, where the status line simply
+   * omits the segment. Best-effort: implementations resolve to `null` when the
+   * configured base URL isn't this provider's official host, when no key is set,
+   * or on any network/parse error — they never throw.
+   */
+  probeBalance?(probe: BalanceProbe): Promise<AccountBalance | null>;
 }

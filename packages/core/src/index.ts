@@ -24,6 +24,8 @@ export {
   type ProviderId,
   type ThinkingParams,
   type ErrorDecision,
+  type AccountBalance,
+  type BalanceProbe,
 } from "./providers/index.js";
 export {
   RETRY_LIMITS,
@@ -33,7 +35,6 @@ export {
 } from "./retry.js";
 export {
   createAnthropicModel,
-  detectThinkingFormat,
   toWireTools,
   type WireTool,
   type ModelClient,
@@ -41,17 +42,7 @@ export {
   type AnthropicModelConfig,
   type RetryNotice,
   type StreamTextDelta,
-  type ThinkingFormat,
 } from "./model.js";
-export {
-  DEEPSEEK_DOCS_URL,
-  DEEPSEEK_RETRY,
-  DeepSeekApiError,
-  deepSeekRetryDelayMs,
-  describeDeepSeekStatus,
-  toDeepSeekApiError,
-  translateDeepSeekError,
-  type DeepSeekErrorInfo,
-} from "./deepseek-errors.js";
+export { DeepSeekApiError, type DeepSeekErrorInfo } from "./providers/deepseek.js";
 export { agentLoop, LoopTerminatedError, type AgentLoopOptions, type LoopResult } from "./loop.js";
 export { xmlEscape, xmlAttr } from "./xml.js";

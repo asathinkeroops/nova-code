@@ -3,7 +3,7 @@ import { render } from "ink";
 import type { AskUserRequest, AskUserResponse, MessageParam } from "@nova/core";
 import type { Task, Todo } from "@nova/tools";
 import type { ModelRates } from "@nova/observability";
-import type { AccountBalance } from "./deepseek-balance.js";
+import type { AccountBalance } from "@nova/core";
 import type { SubAgentDetail } from "@nova/subagent";
 import type { PermissionDecision, PermissionInput } from "@nova/safety";
 import { App } from "./ui/app.js";

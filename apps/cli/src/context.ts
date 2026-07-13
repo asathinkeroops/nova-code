@@ -519,7 +519,7 @@ export async function createContext(
     return createAnthropicModel({
       apiKey,
       model,
-      provider: resolveProfile(settings.provider, model),
+      provider: resolveProfile(settings.provider),
       ...(settings.baseURL ? { baseURL: settings.baseURL } : {}),
       ...(trackTokens
         ? { onStreamProgress: pushSpinnerTokens, onStreamText: pushLiveText, onRetry }

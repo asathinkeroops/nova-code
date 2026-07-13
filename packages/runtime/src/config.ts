@@ -369,10 +369,10 @@ export const settingsSchema = z.object({
   // "deepseek" — DeepSeek's Anthropic-compatible endpoint (effort knob,
   // translated error diagnostics, transient-status retry). "other" — any generic
   // Anthropic-compatible endpoint (budget_tokens, no error translation, no
-  // status-based retry). Optional and intentionally without a default: an older
-  // config that omits it falls back to guessing from the model name, so behavior
-  // is unchanged. Setup writes it explicitly for templated providers.
-  provider: z.enum(["deepseek", "other"]).optional(),
+  // status-based retry). Always present (defaults to "deepseek", this build's
+  // primary target), so downstream never has to guess a profile from the model
+  // name. Setup writes it explicitly for templated providers.
+  provider: z.enum(["deepseek", "other"]).default("deepseek"),
   sessionDir: z.string().min(1).optional(),
   // UI / response language. "auto" (the default) follows the current system
   // locale (resolved from $LANG / $LC_ALL / $LANGUAGE, see resolveLanguage());

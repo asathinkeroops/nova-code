@@ -2,7 +2,13 @@ import { deepseekProfile } from "./deepseek.js";
 import { otherProfile } from "./other.js";
 import type { ProviderProfile } from "./types.js";
 
-export type { ProviderProfile, ThinkingParams, ErrorDecision } from "./types.js";
+export type {
+  ProviderProfile,
+  ThinkingParams,
+  ErrorDecision,
+  AccountBalance,
+  BalanceProbe,
+} from "./types.js";
 
 /** Registry of built-in provider profiles, keyed by their stable id. */
 export const PROVIDERS = {
@@ -13,13 +19,10 @@ export const PROVIDERS = {
 export type ProviderId = keyof typeof PROVIDERS;
 
 /**
- * Resolve the profile to use. An explicit id (from `settings.provider`) wins;
- * when absent — e.g. an older config written before the field existed — fall
- * back to guessing from the model name so behavior is unchanged. The regex lives
- * only on this cold config-resolution path, never in the request hot loop.
+ * Resolve the profile for a provider id (`settings.provider`). A plain registry
+ * lookup — `provider` is always present (the config schema defaults it), so there
+ * is no model-name guessing: the id is the single source of truth.
  */
-export function resolveProfile(id: string | undefined, model: string): ProviderProfile {
-  if (id === "deepseek") return deepseekProfile;
-  if (id === "other") return otherProfile;
-  return /deepseek/i.test(model) ? deepseekProfile : otherProfile;
+export function resolveProfile(id: ProviderId): ProviderProfile {
+  return PROVIDERS[id];
 }

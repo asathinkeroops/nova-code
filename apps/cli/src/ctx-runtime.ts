@@ -1,11 +1,10 @@
 import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
-import { resolveBudget } from "@nova/core";
+import { resolveBudget, resolveProfile } from "@nova/core";
 import { resolveContextWindowSize, resolveModelId } from "@nova/runtime";
 import { ACCENT_RGB, accent } from "./colors.js";
 import { TOOL_SPINNER_DELAY_MS, WORKING_WORDS } from "./constants.js";
 import { resolveSessionRates } from "./commands/usage.js";
-import { fetchDeepSeekBalance } from "./deepseek-balance.js";
 import type { CliContext } from "./ctx-types.js";
 
 /** Current branch of the workspace repo, or null when not a repo / detached. */
@@ -45,14 +44,19 @@ export function refreshBanner(ctx: CliContext): void {
 }
 
 /**
- * Refresh the DeepSeek account balance shown on the StatusLine's second row.
- * No-op (clears nothing) unless the base URL points at DeepSeek's official API;
- * best-effort and self-contained — `fetchDeepSeekBalance` swallows its own
- * errors and returns null, which `setAccountBalance` treats as "hide". Always
- * call fire-and-forget so a slow request never delays a turn.
+ * Refresh the account balance shown on the StatusLine's second row via the
+ * active provider profile's `probeBalance` hook. A no-op for providers without
+ * the hook, or (for DeepSeek) unless the base URL points at its official API;
+ * best-effort and self-contained — `probeBalance` swallows its own errors and
+ * resolves to null, which `setAccountBalance` treats as "hide". Always call
+ * fire-and-forget so a slow request never delays a turn.
  */
 export async function refreshBalance(ctx: CliContext): Promise<void> {
-  const balance = await fetchDeepSeekBalance(ctx.settings);
+  const profile = resolveProfile(ctx.settings.provider);
+  const balance = await profile.probeBalance?.({
+    baseURL: ctx.settings.baseURL,
+    apiKey: ctx.settings.apiKey,
+  });
   // Leave a previously-fetched balance in place on a transient failure rather
   // than blanking the segment; only overwrite when we actually got a figure.
   if (balance) ctx.screen.setAccountBalance(balance);

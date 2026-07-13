@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DeepSeekApiError } from "../deepseek-errors.js";
+import { DeepSeekApiError } from "./deepseek.js";
 import { deepseekProfile } from "./deepseek.js";
 import { PROVIDERS, resolveProfile } from "./index.js";
 import { otherProfile } from "./other.js";
@@ -9,16 +9,9 @@ function apiError(status: number): Error & { status: number } {
 }
 
 describe("resolveProfile", () => {
-  it("honors an explicit provider id over the model name", () => {
-    // The whole point of decoupling: an explicit id wins, even when the model
-    // name would otherwise be guessed the other way.
-    expect(resolveProfile("other", "deepseek-chat")).toBe(otherProfile);
-    expect(resolveProfile("deepseek", "claude-sonnet-4-5")).toBe(deepseekProfile);
-  });
-
-  it("falls back to name-based detection when no id is given", () => {
-    expect(resolveProfile(undefined, "deepseek-reasoner")).toBe(deepseekProfile);
-    expect(resolveProfile(undefined, "claude-opus-4-7")).toBe(otherProfile);
+  it("maps a provider id to its profile", () => {
+    expect(resolveProfile("deepseek")).toBe(deepseekProfile);
+    expect(resolveProfile("other")).toBe(otherProfile);
   });
 
   it("registers both built-in profiles under their id", () => {
