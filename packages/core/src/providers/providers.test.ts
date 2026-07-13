@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { DeepSeekApiError } from "./deepseek.js";
 import { deepseekProfile } from "./deepseek.js";
+import { ProviderError } from "./error.js";
 import { PROVIDERS, resolveProfile } from "./index.js";
 import { otherProfile } from "./other.js";
 
@@ -41,14 +41,16 @@ describe("deepseekProfile.onError", () => {
   it("retries a transient status with backoff and carries the translated error", () => {
     const d = deepseekProfile.onError(apiError(503), 1);
     expect(d.retry).toBe(true);
-    expect(d).toMatchObject({ retry: true, delayMs: 1_000, status: 503 });
-    expect((d as { error: unknown }).error).toBeInstanceOf(DeepSeekApiError);
+    expect(d).toMatchObject({ retry: true, delayMs: 1_000 });
+    // The status now rides on the translated error, not a separate decision field.
+    expect((d as { error: unknown }).error).toBeInstanceOf(ProviderError);
+    expect(((d as { error: ProviderError }).error).status).toBe(503);
   });
   it("does not retry a non-retryable status, surfaces the translated error", () => {
     const d = deepseekProfile.onError(apiError(402), 1);
     expect(d.retry).toBe(false);
-    expect(d.error).toBeInstanceOf(DeepSeekApiError);
-    expect((d.error as DeepSeekApiError).status).toBe(402);
+    expect(d.error).toBeInstanceOf(ProviderError);
+    expect((d.error as ProviderError).status).toBe(402);
   });
   it("passes an undocumented/status-less error through untranslated", () => {
     const raw = new Error("socket hang up");

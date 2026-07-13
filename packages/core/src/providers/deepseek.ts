@@ -1,5 +1,6 @@
 import { backoffMs } from "../retry.js";
 import { THINKING_BUDGETS } from "../thinking.js";
+import { ProviderError, type ProviderErrorInfo } from "./error.js";
 import type { AccountBalance, BalanceProbe, ProviderProfile } from "./types.js";
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -10,8 +11,9 @@ import type { AccountBalance, BalanceProbe, ProviderProfile } from "./types.js";
 // SDK message for those (`"402 {…}"`) is terse and leaks the raw response body
 // — useless for telling a user their balance ran out vs. their key is wrong.
 // Since this agent is deeply tuned for DeepSeek, we translate the documented
-// status codes into actionable guidance instead. This lives in the DeepSeek
-// provider profile because the error table *is* `onError`'s implementation.
+// status codes into actionable guidance instead. This is just data + a lookup:
+// the shared `ProviderError` (see error.ts) owns the shape and formatting, and
+// this table *is* `onError`'s DeepSeek-specific content.
 //
 // Source: https://api-docs.deepseek.com/zh-cn/quick_start/error_codes
 // ────────────────────────────────────────────────────────────────────────────
@@ -19,31 +21,13 @@ import type { AccountBalance, BalanceProbe, ProviderProfile } from "./types.js";
 export const DEEPSEEK_DOCS_URL =
   "https://api-docs.deepseek.com/zh-cn/quick_start/error_codes";
 
-export interface DeepSeekErrorInfo {
-  /** HTTP status as documented by DeepSeek. */
-  status: number;
-  /** Short English label for the status, e.g. "Insufficient Balance". */
-  title: string;
-  /** Why it happened. */
-  cause: string;
-  /** What the operator should do about it. */
-  remedy: string;
-  /**
-   * Whether retrying the same request unchanged could plausibly succeed.
-   * Rate limits and server-side faults are transient; auth/balance/validation
-   * failures will repeat until the operator fixes something.
-   */
-  retryable: boolean;
-  /** Deep-link to the place the remedy is actually performed, when one exists. */
-  actionUrl?: string;
-}
-
 /**
- * The seven status codes DeepSeek documents. Keyed by HTTP status. Anything not
- * in here is treated as "unknown DeepSeek error" and passed through untranslated
- * (better to surface the raw SDK message than to invent guidance).
+ * The seven status codes DeepSeek documents, as provider-neutral
+ * {@link ProviderErrorInfo} entries keyed by HTTP status. Anything not in here is
+ * treated as "unknown DeepSeek error" and passed through untranslated (better to
+ * surface the raw SDK message than to invent guidance).
  */
-const DEEPSEEK_ERROR_TABLE: Record<number, DeepSeekErrorInfo> = {
+const DEEPSEEK_ERROR_TABLE: Record<number, ProviderErrorInfo> = {
   400: {
     status: 400,
     title: "Bad Request",
@@ -101,58 +85,9 @@ const DEEPSEEK_ERROR_TABLE: Record<number, DeepSeekErrorInfo> = {
 /** Look up the diagnostic for a DeepSeek HTTP status, if it's one we document. */
 export function describeDeepSeekStatus(
   status: number | undefined,
-): DeepSeekErrorInfo | undefined {
+): ProviderErrorInfo | undefined {
   if (status === undefined) return undefined;
   return DEEPSEEK_ERROR_TABLE[status];
-}
-
-/**
- * A DeepSeek API failure translated into actionable guidance. Carries the
- * diagnostic so hooks/UI can react to `retryable` etc., and keeps the original
- * SDK error as `cause` so nothing is lost for logs.
- */
-export class DeepSeekApiError extends Error {
-  readonly status: number;
-  readonly retryable: boolean;
-  readonly info: DeepSeekErrorInfo;
-  /** Seconds the server asked us to wait (429 `retry-after`), when provided. */
-  readonly retryAfterSeconds?: number;
-
-  constructor(
-    info: DeepSeekErrorInfo,
-    opts: { cause?: unknown; serverDetail?: string; retryAfterSeconds?: number } = {},
-  ) {
-    super(formatDeepSeekMessage(info, opts), { cause: opts.cause });
-    this.name = "DeepSeekApiError";
-    this.status = info.status;
-    this.retryable = info.retryable;
-    this.info = info;
-    if (opts.retryAfterSeconds !== undefined) {
-      this.retryAfterSeconds = opts.retryAfterSeconds;
-    }
-  }
-}
-
-function formatDeepSeekMessage(
-  info: DeepSeekErrorInfo,
-  opts: { serverDetail?: string; retryAfterSeconds?: number },
-): string {
-  const lines = [
-    `DeepSeek API ${info.status} — ${info.title}`,
-    `Cause: ${info.cause}`,
-    `Fix:   ${info.remedy}`,
-  ];
-  if (info.retryable) {
-    const wait =
-      opts.retryAfterSeconds !== undefined
-        ? ` (server asked to wait ~${opts.retryAfterSeconds}s)`
-        : "";
-    lines.push(`Retryable: yes${wait}`);
-  }
-  if (info.actionUrl) lines.push(`Link:  ${info.actionUrl}`);
-  if (opts.serverDetail) lines.push(`Detail: ${opts.serverDetail}`);
-  lines.push(`Docs:  ${DEEPSEEK_DOCS_URL}`);
-  return lines.join("\n");
 }
 
 /** Narrow an unknown thrown value to something with an HTTP status field. */
@@ -189,23 +124,28 @@ function readRetryAfter(err: unknown): number | undefined {
 }
 
 /**
- * Wrap a thrown model error into a {@link DeepSeekApiError} when it carries a
- * status code DeepSeek documents; return `null` for anything else (user aborts
- * and connection failures with status `undefined`, undocumented statuses). The
- * caller (`deepseekProfile.onError`) already knows the model is a DeepSeek model,
- * so there is no model-name gate here.
+ * Wrap a thrown model error into a {@link ProviderError} when it carries a status
+ * code DeepSeek documents; return `null` for anything else (user aborts and
+ * connection failures with status `undefined`, undocumented statuses). The caller
+ * (`deepseekProfile.onError`) already knows the model is a DeepSeek model, so
+ * there is no model-name gate here. The idempotency guard keys off DeepSeek's own
+ * `provider` id so re-wrapping a translated DeepSeek error is a no-op.
  */
-export function toDeepSeekApiError(err: unknown): DeepSeekApiError | null {
-  if (err instanceof DeepSeekApiError) return err;
+export function translateDeepSeekError(err: unknown): ProviderError | null {
+  if (err instanceof ProviderError && err.provider === "deepseek") return err;
   const info = describeDeepSeekStatus(readStatus(err));
   if (!info) return null;
-  const serverDetail = readServerDetail(err);
+  const detail = readServerDetail(err);
   const retryAfterSeconds = info.retryable ? readRetryAfter(err) : undefined;
-  return new DeepSeekApiError(info, {
-    cause: err,
-    ...(serverDetail ? { serverDetail } : {}),
-    ...(retryAfterSeconds !== undefined ? { retryAfterSeconds } : {}),
-  });
+  return new ProviderError(
+    "deepseek",
+    { ...info, docsUrl: DEEPSEEK_DOCS_URL },
+    {
+      cause: err,
+      ...(detail ? { detail } : {}),
+      ...(retryAfterSeconds !== undefined ? { retryAfterSeconds } : {}),
+    },
+  );
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -340,7 +280,7 @@ export const deepseekProfile: ProviderProfile = {
   },
 
   onError(err, attempt) {
-    const api = toDeepSeekApiError(err);
+    const api = translateDeepSeekError(err);
     // Undocumented status / abort / connection failure: pass the raw error
     // through untranslated rather than inventing guidance.
     if (!api) return { retry: false, error: err };
@@ -348,7 +288,6 @@ export const deepseekProfile: ProviderProfile = {
       return {
         retry: true,
         delayMs: backoffMs(attempt, api.retryAfterSeconds),
-        status: api.status,
         error: api,
       };
     }

@@ -10,6 +10,8 @@
  * top of that, not a whole alternate transport.
  */
 
+import type { ProviderError } from "./error.js";
+
 /** Wire params for the thinking knob, plus any `max_tokens` floor the format imposes. */
 export interface ThinkingParams {
   /** Fields merged verbatim into the request body (e.g. `thinking`, `output_config`). */
@@ -24,12 +26,15 @@ export interface ThinkingParams {
 
 /**
  * The verdict on a failed request: either retry after `delayMs`, or give up and
- * throw `error` (the provider's final, possibly-translated error). `error` is
- * present on both arms so the adapter can throw it once the retry budget is
- * exhausted, without the provider having to recompute it.
+ * throw `error`. A retry is only ever offered for a failure the profile *classified*,
+ * so its `error` is always a translated {@link ProviderError} (the adapter reads
+ * `error.status` for the retry notice — no separate `status` field to keep in sync).
+ * The give-up arm's `error` is `unknown`: it may be a translated `ProviderError`
+ * (e.g. a 402) or the raw error passed through untouched (aborts, undocumented
+ * statuses the profile declined to invent guidance for).
  */
 export type ErrorDecision =
-  | { retry: true; delayMs: number; status?: number; error: unknown }
+  | { retry: true; delayMs: number; error: ProviderError }
   | { retry: false; error: unknown };
 
 /**

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { DeepSeekApiError } from "./providers/deepseek.js";
+import { ProviderError } from "./providers/error.js";
 import { createAnthropicModel, type RetryNotice } from "./model.js";
 import { deepseekProfile } from "./providers/deepseek.js";
 import { otherProfile } from "./providers/other.js";
@@ -295,7 +295,7 @@ describe("createAnthropicModel deepseek error handling", () => {
     expect(mockCreate).toHaveBeenCalledTimes(1); // no retry after abort
   });
 
-  it("gives up after max attempts and throws a translated DeepSeekApiError", async () => {
+  it("gives up after max attempts and throws a translated ProviderError", async () => {
     vi.useFakeTimers();
     mockCreate.mockRejectedValue(apiError(503));
     const m = createAnthropicModel({ apiKey: "x", model: "deepseek-chat", provider: deepseekProfile });
@@ -303,8 +303,8 @@ describe("createAnthropicModel deepseek error handling", () => {
     // Exhaust all 9 backoffs: 1+2+4+8+16+30+30+30+30 = 151s.
     await vi.advanceTimersByTimeAsync(200_000);
     const err = await caught;
-    expect(err).toBeInstanceOf(DeepSeekApiError);
-    expect((err as DeepSeekApiError).status).toBe(503);
+    expect(err).toBeInstanceOf(ProviderError);
+    expect((err as ProviderError).status).toBe(503);
     expect(mockCreate).toHaveBeenCalledTimes(10); // 1 + 9 retries
   });
 
@@ -312,8 +312,8 @@ describe("createAnthropicModel deepseek error handling", () => {
     mockCreate.mockRejectedValueOnce(apiError(402));
     const m = createAnthropicModel({ apiKey: "x", model: "deepseek-chat", provider: deepseekProfile });
     const err = await m.call({ ...baseReq }).catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(DeepSeekApiError);
-    expect((err as DeepSeekApiError).status).toBe(402);
+    expect(err).toBeInstanceOf(ProviderError);
+    expect((err as ProviderError).status).toBe(402);
     expect(mockCreate).toHaveBeenCalledTimes(1);
   });
 

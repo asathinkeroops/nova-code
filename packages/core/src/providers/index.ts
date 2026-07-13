@@ -9,6 +9,8 @@ export type {
   AccountBalance,
   BalanceProbe,
 } from "./types.js";
+export { ProviderError } from "./error.js";
+export type { ProviderErrorInfo } from "./error.js";
 
 /** Registry of built-in provider profiles, keyed by their stable id. */
 export const PROVIDERS = {

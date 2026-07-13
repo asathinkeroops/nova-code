@@ -26,6 +26,8 @@ export {
   type ErrorDecision,
   type AccountBalance,
   type BalanceProbe,
+  ProviderError,
+  type ProviderErrorInfo,
 } from "./providers/index.js";
 export {
   RETRY_LIMITS,
@@ -43,6 +45,5 @@ export {
   type RetryNotice,
   type StreamTextDelta,
 } from "./model.js";
-export { DeepSeekApiError, type DeepSeekErrorInfo } from "./providers/deepseek.js";
 export { agentLoop, LoopTerminatedError, type AgentLoopOptions, type LoopResult } from "./loop.js";
 export { xmlEscape, xmlAttr } from "./xml.js";

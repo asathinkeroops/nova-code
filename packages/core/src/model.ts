@@ -312,7 +312,7 @@ export function createAnthropicModel(config: AnthropicModelConfig): ModelClient 
               attempt,
               maxAttempts,
               delayMs: decision.delayMs,
-              ...(decision.status !== undefined ? { status: decision.status } : {}),
+              ...(decision.error.status !== undefined ? { status: decision.error.status } : {}),
             });
             await sleep(decision.delayMs, req.signal);
             continue;

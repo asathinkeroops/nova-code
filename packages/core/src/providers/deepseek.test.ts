@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DEEPSEEK_DOCS_URL,
-  DeepSeekApiError,
   deepseekBalanceUrl,
   deepseekProfile,
   describeDeepSeekStatus,
-  toDeepSeekApiError,
+  translateDeepSeekError,
 } from "./deepseek.js";
+import { ProviderError } from "./error.js";
 
 /** Mimic the shape of an Anthropic SDK APIError for a DeepSeek response. */
 function apiError(
@@ -43,11 +43,12 @@ describe("describeDeepSeekStatus", () => {
   });
 });
 
-describe("toDeepSeekApiError", () => {
-  it("wraps a documented DeepSeek status into a DeepSeekApiError", () => {
-    const out = toDeepSeekApiError(apiError(402));
-    expect(out).toBeInstanceOf(DeepSeekApiError);
-    const e = out as DeepSeekApiError;
+describe("translateDeepSeekError", () => {
+  it("wraps a documented DeepSeek status into a ProviderError", () => {
+    const out = translateDeepSeekError(apiError(402));
+    expect(out).toBeInstanceOf(ProviderError);
+    const e = out as ProviderError;
+    expect(e.provider).toBe("deepseek");
     expect(e.status).toBe(402);
     expect(e.retryable).toBe(false);
     expect(e.message).toContain("402");
@@ -59,38 +60,38 @@ describe("toDeepSeekApiError", () => {
 
   it("keeps the original SDK error as cause", () => {
     const orig = apiError(401);
-    const e = toDeepSeekApiError(orig) as DeepSeekApiError;
+    const e = translateDeepSeekError(orig) as ProviderError;
     expect(e.cause).toBe(orig);
   });
 
   it("surfaces DeepSeek's own error.message as detail", () => {
-    const e = toDeepSeekApiError(apiError(422, { detail: "max_tokens too large" })) as DeepSeekApiError;
+    const e = translateDeepSeekError(apiError(422, { detail: "max_tokens too large" })) as ProviderError;
     expect(e.message).toContain("max_tokens too large");
   });
 
   it("captures retry-after on retryable errors", () => {
-    const e = toDeepSeekApiError(apiError(429, { retryAfter: "7" })) as DeepSeekApiError;
+    const e = translateDeepSeekError(apiError(429, { retryAfter: "7" })) as ProviderError;
     expect(e.retryAfterSeconds).toBe(7);
     expect(e.message).toContain("~7s");
   });
 
   it("ignores retry-after on non-retryable errors", () => {
-    const e = toDeepSeekApiError(apiError(400, { retryAfter: "7" })) as DeepSeekApiError;
+    const e = translateDeepSeekError(apiError(400, { retryAfter: "7" })) as ProviderError;
     expect(e.retryAfterSeconds).toBeUndefined();
   });
 
   it("returns null for status-less errors (abort/connection)", () => {
     const abort = Object.assign(new Error("aborted"), { status: undefined });
-    expect(toDeepSeekApiError(abort)).toBeNull();
+    expect(translateDeepSeekError(abort)).toBeNull();
   });
 
   it("returns null for undocumented statuses", () => {
-    expect(toDeepSeekApiError(apiError(404))).toBeNull();
+    expect(translateDeepSeekError(apiError(404))).toBeNull();
   });
 
   it("is idempotent — never double-wraps", () => {
-    const once = toDeepSeekApiError(apiError(503));
-    expect(toDeepSeekApiError(once)).toBe(once);
+    const once = translateDeepSeekError(apiError(503));
+    expect(translateDeepSeekError(once)).toBe(once);
   });
 });
 
