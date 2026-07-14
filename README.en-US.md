@@ -1,5 +1,9 @@
 <p align="center">
-  <img src="docs/logo.en.svg" alt="NOVA-CODE" width="600">
+  <img src="docs/app-icon.png" alt="NOVA-CODE" width="300">
+</p>
+
+<p align="center">
+  <b>The coding agent purpose-built for DeepSeek — 95%+ cache hits · OS-sandboxed · tool-complete · install-and-go</b>
 </p>
 
 [简体中文](README.md) · **English**

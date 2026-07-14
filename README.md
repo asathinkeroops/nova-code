@@ -1,5 +1,9 @@
 <p align="center">
-  <img src="docs/logo.svg" alt="NOVA-CODE" width="600">
+  <img src="docs/app-icon.png" alt="NOVA-CODE" width="300">
+</p>
+
+<p align="center">
+  <b>为 DeepSeek 量身打造的编程代理 — 95%+ 缓存命中 · OS 级沙箱 · 工具齐全 · 开箱即用</b>
 </p>
 
 **简体中文** · [English](README.en-US.md)
