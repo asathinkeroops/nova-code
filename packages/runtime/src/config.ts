@@ -1184,7 +1184,7 @@ export function mergeHooks(sources: HooksConfig[]): HooksConfig {
     const seen = new Set<string>();
     for (const src of sources) {
       for (const hook of src[event]) {
-        const key = `${hook.matcher ?? ""} ${hook.command}`;
+        const key = `${hook.matcher ?? ""}\u0000${hook.command}`;
         if (seen.has(key)) continue;
         seen.add(key);
         merged[event].push(hook);
