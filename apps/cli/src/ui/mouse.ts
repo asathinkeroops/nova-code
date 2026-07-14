@@ -93,6 +93,110 @@ export function createPasteResolver(): (raw: string) => string {
 
 const WHEEL_LINES = 3;
 
+// Momentum smoothing. macOS trackpads turn a single flick into a burst of dozens
+// of wheel events over ~200ms; the terminal forwards every one, and applying
+// each ×WHEEL_LINES instantly sends the viewport flying in one jarring jump.
+// Rather than DROP the burst (which kills the sense of inertia entirely), we
+// accumulate it and release it over several frames with deceleration: each frame
+// emits a *fraction* of what's left (capped and floored), so a fling scrolls fast
+// then eases out — real momentum, just controllable. A gentle per-frame decay
+// bleeds off a hard fling so it can't ride for a full second (bounds overshoot
+// without flattening the curve). The first notch after an idle gap is emitted
+// synchronously so ordinary single-notch scrolling still feels instant.
+const WHEEL_FLUSH_MS = 16; // ~1 frame; the release fraction (not this) sets the feel
+const WHEEL_RELEASE_FRACTION = 0.3; // portion of remaining burst released per frame
+const WHEEL_MIN_STEP = WHEEL_LINES; // never crawl slower than a single notch
+const WHEEL_MAX_STEP = 9; // cap peak speed so the first frame isn't a huge jump
+const WHEEL_DECAY = 0.85; // <1 sheds a little leftover each frame to curb overshoot
+// Hard ceiling on accumulated momentum: no matter how hard the fling, a single
+// gesture never has more than this many lines queued to scroll. This is the
+// primary "how far can one flick travel" knob — decay only shapes the ease-out.
+const WHEEL_MAX_PENDING = 24;
+
+export interface WheelThrottleOptions {
+  /** Delay between released frames, ms. */
+  intervalMs: number;
+  /** Fraction of the remaining accumulated delta released each frame (0–1). */
+  releaseFraction: number;
+  /** Floor on a frame's magnitude so the tail doesn't crawl. */
+  minStep: number;
+  /** Cap on a frame's magnitude so the first frame isn't a giant jump. */
+  maxStep: number;
+  /** Leftover retained after each frame (<1 sheds momentum to bound overshoot). */
+  decay: number;
+  /** Hard ceiling on |accumulated delta|; caps how far one fling can travel. */
+  maxPending: number;
+}
+
+export interface WheelThrottle {
+  /** Feed a raw wheel delta (already in lines). */
+  push: (delta: number) => void;
+  /** Cancel any scheduled flush and drop pending delta. */
+  dispose: () => void;
+}
+
+/**
+ * Decelerating release throttle for wheel deltas. The first delta after an idle
+ * gap is emitted synchronously (instant response for a lone notch); a sustained
+ * burst accumulates and drains over successive frames, each releasing a fraction
+ * of what remains (floored to `minStep`, capped to `maxStep`) with an optional
+ * `decay` on the leftover — so momentum eases out instead of either jumping all
+ * at once or vanishing. Pure w.r.t. `emit` + timers so it can be unit-tested with
+ * fake timers. `setTimeoutFn`/`clearTimeoutFn` are injectable for tests; they
+ * default to the globals.
+ */
+export function createWheelThrottle(
+  emit: (delta: number) => void,
+  opts: WheelThrottleOptions,
+  setTimeoutFn: (fn: () => void, ms: number) => ReturnType<typeof setTimeout> = setTimeout,
+  clearTimeoutFn: (t: ReturnType<typeof setTimeout>) => void = clearTimeout,
+): WheelThrottle {
+  const { intervalMs, releaseFraction, minStep, maxStep, decay, maxPending } = opts;
+  let pending = 0;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  const flush = (): void => {
+    if (pending === 0) {
+      timer = null; // idle: stop the timer so we don't ref the event loop
+      return;
+    }
+    const sign = pending < 0 ? -1 : 1;
+    const mag = Math.abs(pending);
+    // Decelerating step: a fraction of what's left, but never below one notch
+    // (so the tail doesn't crawl) nor above the peak cap (so no giant jump), and
+    // never more than actually remains.
+    const stepMag = Math.min(mag, maxStep, Math.max(minStep, Math.ceil(mag * releaseFraction)));
+    const step = sign * stepMag;
+    pending -= step;
+    // Shed a little of the leftover so a very hard fling can't ride forever.
+    if (decay < 1) pending = Math.trunc(pending * decay);
+    emit(step);
+    timer = setTimeoutFn(flush, intervalMs); // keep draining until pending hits 0
+  };
+
+  return {
+    push: (delta: number): void => {
+      if (delta === 0) return;
+      // Clamp accumulated momentum to the ceiling so a hard fling can't queue an
+      // unbounded scroll — this is what stops it flying off the deep end.
+      pending = Math.max(-maxPending, Math.min(pending + delta, maxPending));
+      if (timer === null) {
+        // Leading edge: respond to the first notch instantly, then start the
+        // drain loop. `flush` emits the just-accumulated delta and arms the
+        // timer, so a lone notch scrolls immediately with no perceptible lag.
+        flush();
+      }
+    },
+    dispose: (): void => {
+      if (timer !== null) {
+        clearTimeoutFn(timer);
+        timer = null;
+      }
+      pending = 0;
+    },
+  };
+}
+
 export interface WheelEvent {
   /** Negative = up (content moves down), positive = down (content moves up). */
   delta: number;
@@ -220,6 +324,17 @@ export function attachFilteredStdin(handlers: MouseHandlers): FilteredStdin {
   // (not per duplicate motion report) under any-event tracking.
   let hoverLast: MousePos | null = null;
 
+  // Smooth wheel bursts (trackpad momentum) into a decelerating scroll before
+  // they reach the store, instead of applying every raw event instantly.
+  const wheel = createWheelThrottle((delta) => handlers.onWheel({ delta }), {
+    intervalMs: WHEEL_FLUSH_MS,
+    releaseFraction: WHEEL_RELEASE_FRACTION,
+    minStep: WHEEL_MIN_STEP,
+    maxStep: WHEEL_MAX_STEP,
+    decay: WHEEL_DECAY,
+    maxPending: WHEEL_MAX_PENDING,
+  });
+
   const resolvePastes = createPasteResolver();
 
   let pending = "";
@@ -242,9 +357,9 @@ export function attachFilteredStdin(handlers: MouseHandlers): FilteredStdin {
       const code = btn & ~0b11100;
 
       if (code === 64 && press) {
-        handlers.onWheel({ delta: -WHEEL_LINES });
+        wheel.push(-WHEEL_LINES);
       } else if (code === 65 && press) {
-        handlers.onWheel({ delta: WHEEL_LINES });
+        wheel.push(WHEEL_LINES);
       } else if (code === 0 && press) {
         // Button-1 press → start selection.
         dragStart = { row, col };
@@ -319,6 +434,7 @@ export function attachFilteredStdin(handlers: MouseHandlers): FilteredStdin {
   const detach = (): void => {
     process.stdin.off("data", onData);
     process.off("exit", safetyDisable);
+    wheel.dispose();
     safetyDisable();
     proxy.end();
   };
