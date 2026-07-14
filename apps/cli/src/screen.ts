@@ -286,9 +286,9 @@ export class Screen {
         }).trim();
         if (text.length === 0) return;
         if (copyToClipboard(text)) {
-          const lineCount = text.split("\n").length;
+          const charCount = [...text].length;
           state.setCopyNotice(
-            `✓ copied ${lineCount} line${lineCount === 1 ? "" : "s"} to clipboard`,
+            `✓ copied ${charCount} char${charCount === 1 ? "" : "s"} to clipboard`,
           );
         }
       },
