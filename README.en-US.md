@@ -39,6 +39,7 @@ Requires **Node ≥ 20**.
 npm install @asathinkeroops/nova-code -g
 nova                               # launch the REPL
 nova -p "explain this code"        # headless: one turn, print & exit
+nova upgrade                       # update to the latest version (also auto-checked at startup)
 ```
 
 First launch walks through an interactive setup (API key, model, etc.) → `~/.nova/nova.config.json`. Models are configured as a `lite` / `pro` / `max` ladder, each tier with its own thinking level; `/model` and `--model` switch tiers, not raw provider ids.
@@ -60,6 +61,7 @@ Tools the model can call — covering read/write, search, execution, code intell
 | `createTodo` / `updateTodo` / `getTodoList` / `clearTodoList` | In-session multi-step checklist |
 | `createTask` / `updateTask` / `getTaskList` / `clearTaskList` | Cross-session task plan with dependencies |
 | `askUserQuestion` | Ask the user multiple-choice questions and wait for answers |
+| `cronCreate` / `cronList` / `cronDelete` | Schedule a prompt or `/command` on an interval or cron expression; live within a session and re-arm on `/resume` |
 | `loadSkill` | Load a skill on demand |
 
 ### Built-in commands

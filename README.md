@@ -39,6 +39,7 @@ Nova 读代码、跑命令、改文件——通过工具调用把任务推到完
 npm install @asathinkeroops/nova-code -g
 nova                               # 启动 REPL
 nova -p "解释这段代码"              # headless 模式：只跑一轮，输出后退出
+nova upgrade                       # 更新到最新版本（启动时也会自动检查并提示）
 ```
 
 首次启动进入交互式配置向导，写入 `~/.nova/nova.config.json`（API key、模型、session 目录等）。模型按 `lite` / `pro` / `max` 三档配置，各档可单独设置 thinking 等级；`/model`、`--model` 切换的是档位而非裸 provider id。
@@ -60,6 +61,7 @@ nova -p "解释这段代码"              # headless 模式：只跑一轮，输
 | `createTodo` / `updateTodo` / `getTodoList` / `clearTodoList` | 会话内多步清单 |
 | `createTask` / `updateTask` / `getTaskList` / `clearTaskList` | 跨会话任务计划，支持依赖 |
 | `askUserQuestion` | 向用户提多选问题并等待作答 |
+| `cronCreate` / `cronList` / `cronDelete` | 按间隔或 cron 表达式定时跑 prompt 或 `/命令`；会话内生效，`/resume` 后自动重挂 |
 | `loadSkill` | 按需加载 skill |
 
 ### 内置命令
