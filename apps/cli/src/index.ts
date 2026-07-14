@@ -18,6 +18,8 @@ import { runRepl } from "./repl.js";
 import { Screen, fatalExit } from "./screen.js";
 import { pruneOldSessions } from "./session.js";
 import { ensureSettings } from "./setup.js";
+import { buildUpgradeCommand } from "./upgrade-cli.js";
+import { readCliVersion } from "./version.js";
 
 interface CliOptions {
   prompt?: string;
@@ -262,6 +264,7 @@ async function run(positional: string[], opts: CliOptions): Promise<void> {
 const program = new Command();
 program
   .name("nova")
+  .version(await readCliVersion(), "-v, --version", "print the nova version")
   .description("A terminal coding agent, deeply tuned for DeepSeek.")
   .argument("[prompt...]", "optional initial prompt (REPL still starts after it runs)")
   .option("-p, --prompt <text>", "run a single turn headless (print the answer and exit)")
@@ -293,6 +296,7 @@ program
 program.addCommand(buildDoctorCommand());
 program.addCommand(buildMcpCommand());
 program.addCommand(buildPluginCommand());
+program.addCommand(buildUpgradeCommand());
 
 program.parseAsync(process.argv).catch((err) => {
   console.error(err);

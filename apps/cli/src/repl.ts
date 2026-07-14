@@ -13,6 +13,7 @@ import { listWorkspaceFiles } from "./file-index.js";
 import { formatDuration } from "./loop-controller.js";
 import { predictNextInput } from "./predict.js";
 import { toUiSlashCommands } from "./slash.js";
+import { checkForUpdate } from "./update.js";
 import { CONTINUE_SENTINEL } from "./ui/store.js";
 
 /**
@@ -439,6 +440,10 @@ export async function runRepl(ctx: CliContext, initialPrompt: string): Promise<v
   // official API). Fire-and-forget so a slow/blocked request never delays the
   // first prompt; it's refreshed after every turn below as tokens are spent.
   void refreshBalance(ctx);
+
+  // Notify (never install) if a newer CLI version is on npm. Fire-and-forget and
+  // throttled on disk, so a slow registry never delays the first prompt.
+  void checkForUpdate(ctx);
 
   if (initialPrompt) {
     const ok = await runTurnWithStopHooks(ctx, initialPrompt);
