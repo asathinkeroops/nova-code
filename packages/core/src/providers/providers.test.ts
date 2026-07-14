@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { deepseekProfile } from "./deepseek.js";
 import { ProviderError } from "./error.js";
-import { PROVIDERS, resolveProfile } from "./index.js";
+import { isProviderId, PROVIDER_IDS, PROVIDERS, resolveProfile } from "./index.js";
 import { otherProfile } from "./other.js";
 
 function apiError(status: number): Error & { status: number } {
@@ -17,6 +17,26 @@ describe("resolveProfile", () => {
   it("registers both built-in profiles under their id", () => {
     expect(PROVIDERS.deepseek).toBe(deepseekProfile);
     expect(PROVIDERS.other).toBe(otherProfile);
+  });
+
+  it("falls back to the `other` profile for an unknown id", () => {
+    // `settings.provider` is a free-form string, so a typo or a generic
+    // provider named directly resolves to the generic fallback, never throws.
+    expect(resolveProfile("deepsek")).toBe(otherProfile);
+    expect(resolveProfile("some-third-party")).toBe(otherProfile);
+  });
+});
+
+describe("provider id helpers", () => {
+  it("PROVIDER_IDS lists exactly the registry keys", () => {
+    expect([...PROVIDER_IDS].sort()).toEqual(Object.keys(PROVIDERS).sort());
+  });
+
+  it("isProviderId narrows built-in ids and rejects the rest", () => {
+    expect(isProviderId("deepseek")).toBe(true);
+    expect(isProviderId("other")).toBe(true);
+    expect(isProviderId("deepsek")).toBe(false);
+    expect(isProviderId("")).toBe(false);
   });
 });
 

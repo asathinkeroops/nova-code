@@ -369,10 +369,14 @@ export const settingsSchema = z.object({
   // "deepseek" — DeepSeek's Anthropic-compatible endpoint (effort knob,
   // translated error diagnostics, transient-status retry). "other" — any generic
   // Anthropic-compatible endpoint (budget_tokens, no error translation, no
-  // status-based retry). Always present (defaults to "deepseek", this build's
-  // primary target), so downstream never has to guess a profile from the model
-  // name. Setup writes it explicitly for templated providers.
-  provider: z.enum(["deepseek", "other"]).default("deepseek"),
+  // status-based retry). Free-form string, not an enum: the profile registry is
+  // the single source of truth for the id set, and it lives in `@nova/core` —
+  // which this leaf package can't import to enumerate. `@nova/core`'s
+  // `resolveProfile` maps an unknown id (a typo, or a generic provider named
+  // directly) to the `other` fallback; `nova doctor` flags ids that aren't a
+  // built-in. Always present (defaults to "deepseek", this build's primary
+  // target), so downstream never has to guess a profile from the model name.
+  provider: z.string().min(1).default("deepseek"),
   sessionDir: z.string().min(1).optional(),
   // UI / response language. "auto" (the default) follows the current system
   // locale (resolved from $LANG / $LC_ALL / $LANGUAGE, see resolveLanguage());

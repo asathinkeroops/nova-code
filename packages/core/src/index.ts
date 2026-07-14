@@ -19,6 +19,8 @@ export {
 export { decide, type StopDecision } from "./stop-reason.js";
 export {
   PROVIDERS,
+  PROVIDER_IDS,
+  isProviderId,
   resolveProfile,
   type ProviderProfile,
   type ProviderId,

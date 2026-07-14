@@ -89,6 +89,22 @@ describe("diagnoseConfig", () => {
     const warn = report.issues.find((i) => i.title.includes("no models are configured"));
     expect(warn?.level).toBe("warn");
   });
+
+  it("warns when provider is not a built-in profile (falls back to `other`)", async () => {
+    const path = await writeConfig(JSON.stringify({ ...VALID_CONFIG, provider: "deepsek" }));
+    const { report } = await diagnoseConfig({ configPath: path });
+    // A free-form provider id is schema-valid — it just resolves to `other`.
+    expect(report.valid).toBe(true);
+    const warn = report.issues.find((i) => i.title.includes('provider "deepsek"'));
+    expect(warn?.level).toBe("warn");
+  });
+
+  it("does not warn for a built-in provider id", async () => {
+    const path = await writeConfig(JSON.stringify({ ...VALID_CONFIG, provider: "other" }));
+    const { report } = await diagnoseConfig({ configPath: path });
+    expect(report.valid).toBe(true);
+    expect(report.issues.some((i) => i.title.includes("provider"))).toBe(false);
+  });
 });
 
 describe("report formatting", () => {

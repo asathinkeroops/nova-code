@@ -3,7 +3,9 @@
  * differs between LLM providers — the thinking-knob wire shape and how to react
  * to a failed request — behind one interface. The adapter (`model.ts`) depends
  * only on this shape and never on a concrete provider, so adding a provider is
- * adding a file that implements this interface, not editing the hot path.
+ * adding a file that implements this interface plus one line in the `PROVIDERS`
+ * registry (`index.ts`) — no hot-path edit, and no id union to widen (the `id`
+ * field is `string`, and `ProviderId` derives from the registry keys).
  *
  * All providers here speak the Anthropic-compatible wire format (they go through
  * the same `@anthropic-ai/sdk` client); a profile only captures the *quirks* on
@@ -62,8 +64,13 @@ export interface BalanceProbe {
 }
 
 export interface ProviderProfile {
-  /** Stable id; also the key in the {@link PROVIDERS} registry. */
-  id: "deepseek" | "other";
+  /**
+   * Stable id; also the key in the {@link PROVIDERS} registry, which is the
+   * single source of truth for the set of built-in ids ({@link ProviderId} is
+   * derived from it). Typed as `string` so a new profile is one new file plus
+   * one registry line — no hand-maintained union to widen here.
+   */
+  id: string;
 
   /**
    * Build the thinking-knob wire params for a given budget (in tokens).

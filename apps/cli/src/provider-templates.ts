@@ -1,3 +1,4 @@
+import type { ProviderId } from "@nova/core";
 import { DEFAULT_GOAL, DEFAULT_MODEL_TIER, type ModelProfile } from "@nova/runtime";
 
 /**
@@ -55,7 +56,9 @@ export interface ProviderTemplate {
    * out-of-the-box config.
    */
   settings: {
-    provider?: "deepseek" | "other";
+    // A built-in template targets a built-in profile, so this is the narrow
+    // `ProviderId` even though `settings.provider` itself is a free-form string.
+    provider?: ProviderId;
     baseURL?: string;
     model?: string;
     models?: Record<string, ModelProfile>;

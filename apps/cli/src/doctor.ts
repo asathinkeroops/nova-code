@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { Command } from "commander";
+import { isProviderId, PROVIDER_IDS } from "@nova/core";
 import {
   DEFAULT_CONFIG_PATH,
   loadProjectHooks,
@@ -187,6 +188,20 @@ export async function diagnoseConfig(
         level: "warn",
         title: "apiKey is set but no models are configured",
         hint: `add a "models" table with all tiers (${REQUIRED_MODEL_TIERS.join(", ")})`,
+      });
+    }
+    // `provider` is a free-form string (the schema can't enumerate core's
+    // profile registry across the package boundary), so an id that isn't a
+    // built-in silently resolves to the generic `other` profile. That's a valid
+    // choice for a plain Anthropic-compatible endpoint, but usually it's a typo
+    // — flag it so the user isn't surprised by the missing effort knob / error
+    // translation / balance readout.
+    if (!isProviderId(settings.provider)) {
+      issues.push({
+        level: "warn",
+        title: `provider "${settings.provider}" is not a built-in profile`,
+        detail: `using the generic "other" fallback (no effort knob, error translation, or balance)`,
+        hint: `set "provider" to one of: ${PROVIDER_IDS.join(", ")} — or keep it if this endpoint is a plain Anthropic-compatible one`,
       });
     }
   }
