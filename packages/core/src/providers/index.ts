@@ -8,6 +8,7 @@ export type {
   ErrorDecision,
   AccountBalance,
   BalanceProbe,
+  TokenEstimate,
 } from "./types.js";
 export { ProviderError } from "./error.js";
 export type { ProviderErrorInfo } from "./error.js";

@@ -1,3 +1,4 @@
+import { DEFAULT_TOKEN_ESTIMATE } from "../tokens.js";
 import type { ProviderProfile } from "./types.js";
 
 /**
@@ -10,6 +11,10 @@ import type { ProviderProfile } from "./types.js";
  */
 export const otherProfile: ProviderProfile = {
   id: "other",
+
+  // No provider-specific tokenizer known for a generic endpoint; the neutral
+  // default (~0.3/char Latin, ~0.6 CJK) is a reasonable approximation.
+  tokenEstimate: DEFAULT_TOKEN_ESTIMATE,
 
   thinking(budget) {
     if (budget <= 0) return { params: { thinking: { type: "disabled" } } };

@@ -1,6 +1,6 @@
 import { buildSystemPrompt } from "@nova/agent";
 import { estimateTokens, sliceFromLastCompacted } from "@nova/context";
-import { toWireTools } from "@nova/core";
+import { estimateTextTokens, resolveProfile, toWireTools } from "@nova/core";
 import type { SlashOutcome } from "@nova/external";
 import { resolveContextWindowSize } from "@nova/runtime";
 import { bold, dim, green, PURPLE_HEX } from "../colors.js";
@@ -10,11 +10,6 @@ import { formatPercent, formatTokenCount } from "../ui/status-format.js";
 
 const MCP_PREFIX = "mcp__";
 
-/** DeepSeek's documented ~0.3 tokens/char, matching `@nova/context`'s estimator. */
-function estimateChars(s: string): number {
-  return Math.ceil(s.length * 0.3);
-}
-
 /**
  * A live snapshot of what the NEXT request's prompt would occupy, against the
  * active tier's window — the same categories/estimate `/context` uses, collapsed
@@ -22,6 +17,10 @@ function estimateChars(s: string): number {
  */
 function contextUsageLines(ctx: CliContext): string[] {
   const window = resolveContextWindowSize(ctx.settings, ctx.settings.model);
+  // Weight the estimate by the active provider's tokenizer ratios, matching
+  // `/context` and what `shouldAutoCompact` triggers on.
+  const weights = resolveProfile(ctx.settings.provider).tokenEstimate;
+  const estimateChars = (s: string): number => estimateTextTokens(s, weights);
   const systemTokens = estimateChars(
     buildSystemPrompt(
       ctx.workspace,
@@ -34,7 +33,7 @@ function contextUsageLines(ctx: CliContext): string[] {
   const wire = toWireTools(ctx.tools.definitions());
   const toolsTokens = wire.length ? estimateChars(JSON.stringify(wire)) : 0;
   const mcpCount = wire.filter((t) => t.name.startsWith(MCP_PREFIX)).length;
-  const messagesTokens = estimateTokens(sliceFromLastCompacted(ctx.screen.getMessages()));
+  const messagesTokens = estimateTokens(sliceFromLastCompacted(ctx.screen.getMessages()), weights);
   const used = systemTokens + toolsTokens + messagesTokens;
   const pct = window > 0 ? used / window : 0;
   return [

@@ -109,7 +109,8 @@ describe("createAnthropicModel thinking params", () => {
     await m.call({ ...baseReq });
     expect(seen.length).toBe(2);
     expect(seen[0]).toBeGreaterThan(0);
-    expect(seen.at(-1)).toBe(Math.ceil(4 * 0.6 + 8 / 4));
+    // deepseekProfile.tokenEstimate: cjk 0.6, other 0.3 → ceil(4*0.6 + 8*0.3) = 5.
+    expect(seen.at(-1)).toBe(Math.ceil(4 * 0.6 + 8 * 0.3));
   });
 
   it("reports real uploaded prompt tokens from message_start", async () => {

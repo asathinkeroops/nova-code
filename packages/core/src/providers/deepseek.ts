@@ -269,6 +269,9 @@ function budgetToEffort(budget: number): "high" | "max" {
 export const deepseekProfile: ProviderProfile = {
   id: "deepseek",
 
+  // DeepSeek's documented ratios: ~0.3 tokens/char for English, ~0.6 for CJK.
+  tokenEstimate: { cjk: 0.6, other: 0.3 },
+
   thinking(budget) {
     if (budget <= 0) return { params: { thinking: { type: "disabled" } } };
     return {

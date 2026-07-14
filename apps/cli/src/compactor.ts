@@ -1,5 +1,5 @@
 import { autoCompact, shouldAutoCompact, sliceFromLastCompacted } from "@nova/context";
-import type { MessageParam, ModelClient } from "@nova/core";
+import { resolveProfile, type MessageParam, type ModelClient } from "@nova/core";
 import { resolveContextWindowSize, type Settings } from "@nova/runtime";
 
 export interface BuildCompactorOptions {
@@ -72,14 +72,18 @@ export function buildCompactor(
     // is actually sent), not the full retained history — otherwise the ever-
     // growing archive would re-trigger on every turn.
     const view = sliceFromLastCompacted(messages);
-    const trigger = shouldAutoCompact(view, {
-      // Read live: follows the active model tier's window after a /model switch.
-      contextWindowSize: resolveContextWindowSize(settings, settings.model),
-      ...(auto.thresholdTokens !== undefined ? { thresholdTokens: auto.thresholdTokens } : {}),
-      ...(auto.contextWindowPercent !== undefined
-        ? { contextWindowPercent: auto.contextWindowPercent }
-        : {}),
-    });
+    const trigger = shouldAutoCompact(
+      view,
+      {
+        // Read live: follows the active model tier's window after a /model switch.
+        contextWindowSize: resolveContextWindowSize(settings, settings.model),
+        ...(auto.thresholdTokens !== undefined ? { thresholdTokens: auto.thresholdTokens } : {}),
+        ...(auto.contextWindowPercent !== undefined
+          ? { contextWindowPercent: auto.contextWindowPercent }
+          : {}),
+      },
+      resolveProfile(settings.provider).tokenEstimate,
+    );
     if (!trigger) return messages;
 
     const before = view.length;

@@ -8,6 +8,7 @@ import {
   isTransientNetworkError,
 } from "./retry.js";
 import { toWireMessages } from "./messages.js";
+import { isCjkCodePoint } from "./tokens.js";
 import type {
   AssistantTurn,
   ContentBlock,
@@ -251,18 +252,11 @@ export function createAnthropicModel(config: AnthropicModelConfig): ModelClient 
           if (!onProgress) return;
           const chunk = delta.text ?? delta.partial_json ?? delta.thinking ?? "";
           for (const ch of chunk) {
-            const c = ch.codePointAt(0) ?? 0;
-            if (
-              (c >= 0x4e00 && c <= 0x9fff) || // CJK ideographs
-              (c >= 0x3040 && c <= 0x30ff) || // kana
-              (c >= 0xac00 && c <= 0xd7a3) // hangul
-            ) {
-              cjk++;
-            } else {
-              other++;
-            }
+            if (isCjkCodePoint(ch.codePointAt(0) ?? 0)) cjk++;
+            else other++;
           }
-          onProgress({ inputTokens, outputTokens: Math.ceil(cjk * 0.6 + other * 0.3) });
+          const { cjk: cjkRate, other: otherRate } = provider.tokenEstimate;
+          onProgress({ inputTokens, outputTokens: Math.ceil(cjk * cjkRate + other * otherRate) });
         });
         const message = await stream.finalMessage();
         return { message, thinkingText };

@@ -1,6 +1,6 @@
 import { buildSystemPrompt } from "@nova/agent";
 import { computeThreshold, estimateTokens, sliceFromLastCompacted } from "@nova/context";
-import { toWireTools } from "@nova/core";
+import { estimateTextTokens, resolveProfile, toWireTools } from "@nova/core";
 import { resolveContextWindowSize } from "@nova/runtime";
 import { accent, blue, bold, cyan, dim, green, magenta, PURPLE_HEX, yellow } from "../colors.js";
 import type { CliContext } from "../context.js";
@@ -8,16 +8,6 @@ import { contextBar, formatPercent, formatTokenCount } from "../ui/status-format
 
 const TITLE = "/context";
 const MCP_PREFIX = "mcp__";
-
-/**
- * Rough token estimate for a serialized string using DeepSeek's documented
- * ratio (English ≈ 0.3 tokens/char), matching `@nova/context`'s
- * `estimateTokens` methodology so the breakdown lines up with the auto-compact
- * threshold.
- */
-function estimateChars(s: string): number {
-  return Math.ceil(s.length * 0.3);
-}
 
 interface Row {
   label: string;
@@ -41,6 +31,11 @@ interface Row {
  */
 export async function handleContext(ctx: CliContext): Promise<void> {
   const windowTokens = resolveContextWindowSize(ctx.settings, ctx.settings.model);
+
+  // Weight the estimate by the active provider's tokenizer ratios (CJK vs. rest)
+  // so the breakdown matches what `shouldAutoCompact` triggers on.
+  const weights = resolveProfile(ctx.settings.provider).tokenEstimate;
+  const estimateChars = (s: string): number => estimateTextTokens(s, weights);
 
   // System prompt = core instructions + memory bundle + skills block. We size
   // the whole thing, then attribute memory/skills to their own rows and treat
@@ -68,7 +63,7 @@ export async function handleContext(ctx: CliContext): Promise<void> {
   // retained pre-boundary history stays on disk / in the TUI but costs no
   // context window. Measure the slice so the gauge and auto-compact buffer math
   // match what is actually sent (and what shouldAutoCompact triggers on).
-  const messagesTokens = estimateTokens(sliceFromLastCompacted(ctx.screen.getMessages()));
+  const messagesTokens = estimateTokens(sliceFromLastCompacted(ctx.screen.getMessages()), weights);
 
   const used =
     systemTokens + memoryTokens + skillsTokens + toolsTokens + mcpTokens + messagesTokens;

@@ -1,4 +1,11 @@
-import { markSynthetic, type MessageParam, type ModelClient } from "@nova/core";
+import {
+  DEFAULT_TOKEN_ESTIMATE,
+  estimateTextTokens,
+  markSynthetic,
+  type MessageParam,
+  type ModelClient,
+  type TokenEstimate,
+} from "@nova/core";
 
 export const COMPACT_MARKER = "[compacted]";
 
@@ -40,13 +47,18 @@ export function sliceFromLastCompacted(messages: MessageParam[]): MessageParam[]
 // ────────────────────────────────────────────────────────────────────────────
 
 /**
- * Rough token estimate using DeepSeek's documented ratios: English chars ≈ 0.3
- * tokens/char, CJK chars ≈ 0.6 tokens/char. We use 0.3 for the whole
- * JSON-serialized blob as a conservative single-pass approximation (the
- * structural JSON overhead is ASCII, and most message content is Latin).
+ * Rough token estimate over the JSON-serialized messages, weighting CJK vs.
+ * non-CJK characters per `weights` (the active provider's `tokenEstimate`; see
+ * `@nova/core`'s `estimateTextTokens`). `weights` defaults to
+ * {@link DEFAULT_TOKEN_ESTIMATE} for callers without a resolved profile, but
+ * real callers pass the provider's ratios so a CJK-heavy conversation isn't
+ * under-counted (which would trip auto-compaction too late).
  */
-export function estimateTokens(messages: MessageParam[]): number {
-  return Math.ceil(JSON.stringify(messages).length * 0.3);
+export function estimateTokens(
+  messages: MessageParam[],
+  weights: TokenEstimate = DEFAULT_TOKEN_ESTIMATE,
+): number {
+  return estimateTextTokens(JSON.stringify(messages), weights);
 }
 
 export interface ThresholdOptions {
@@ -67,8 +79,12 @@ export function computeThreshold(t: ThresholdOptions): number {
   throw new Error("computeThreshold requires either thresholdTokens or contextWindowSize");
 }
 
-export function shouldAutoCompact(messages: MessageParam[], t: ThresholdOptions): boolean {
-  return estimateTokens(messages) >= computeThreshold(t);
+export function shouldAutoCompact(
+  messages: MessageParam[],
+  t: ThresholdOptions,
+  weights: TokenEstimate = DEFAULT_TOKEN_ESTIMATE,
+): boolean {
+  return estimateTokens(messages, weights) >= computeThreshold(t);
 }
 
 // ────────────────────────────────────────────────────────────────────────────

@@ -18,12 +18,18 @@ export {
 } from "./thinking.js";
 export { decide, type StopDecision } from "./stop-reason.js";
 export {
+  DEFAULT_TOKEN_ESTIMATE,
+  estimateTextTokens,
+  isCjkCodePoint,
+} from "./tokens.js";
+export {
   PROVIDERS,
   PROVIDER_IDS,
   isProviderId,
   resolveProfile,
   type ProviderProfile,
   type ProviderId,
+  type TokenEstimate,
   type ThinkingParams,
   type ErrorDecision,
   type AccountBalance,

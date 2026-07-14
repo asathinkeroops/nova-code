@@ -38,6 +38,13 @@ describe("provider id helpers", () => {
     expect(isProviderId("deepsek")).toBe(false);
     expect(isProviderId("")).toBe(false);
   });
+
+  it("every built-in profile carries a positive tokenEstimate", () => {
+    for (const profile of Object.values(PROVIDERS)) {
+      expect(profile.tokenEstimate.cjk).toBeGreaterThan(0);
+      expect(profile.tokenEstimate.other).toBeGreaterThan(0);
+    }
+  });
 });
 
 describe("deepseekProfile.thinking", () => {

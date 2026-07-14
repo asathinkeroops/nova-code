@@ -55,6 +55,21 @@ export interface AccountBalance {
   available: boolean;
 }
 
+/**
+ * Char→token ratios for a tokenizer-free rough estimate, split by script:
+ * `cjk` weights CJK ideographs / kana / hangul (which pack fewer chars per
+ * token), `other` weights everything else (Latin, digits, JSON punctuation).
+ * A provider carries these because the ratio is a property of its tokenizer;
+ * the estimate feeds compaction thresholds and the `/context` breakdown, not
+ * billing, so approximate values are fine. See `estimateTextTokens`.
+ */
+export interface TokenEstimate {
+  /** Tokens per CJK/kana/hangul character. */
+  cjk: number;
+  /** Tokens per non-CJK character. */
+  other: number;
+}
+
 /** Inputs for a balance probe — the live endpoint and credential from settings. */
 export interface BalanceProbe {
   /** Configured base URL, if any; gates the provider's official-endpoint check. */
@@ -77,6 +92,14 @@ export interface ProviderProfile {
    * `budget <= 0` means thinking is disabled.
    */
   thinking(budget: number): ThinkingParams;
+
+  /**
+   * Char→token ratios for this provider's tokenizer, used by the rough
+   * {@link TokenEstimate}-based estimator (compaction thresholds, `/context`
+   * breakdown). A property of the tokenizer, so it lives on the profile rather
+   * than being a global constant.
+   */
+  tokenEstimate: TokenEstimate;
 
   /**
    * Classify a thrown request error. `attempt` is the 1-based number of the try
