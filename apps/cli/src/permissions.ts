@@ -99,6 +99,12 @@ export const DEFAULT_PERMISSION_RULES: readonly PermissionRule[] = [
   { tool: "updateTask", effect: "allow" },
   { tool: "getTaskList", effect: "allow" },
   { tool: "clearTaskList", effect: "allow" },
+  // Scheduling tools only manage entry metadata; the payload a schedule fires
+  // runs as a normal turn/command and hits this same engine at fire time, so
+  // auto-allowing the create/list/delete step bypasses nothing consequential.
+  { tool: "cronCreate", effect: "allow" },
+  { tool: "cronList", effect: "allow" },
+  { tool: "cronDelete", effect: "allow" },
   { tool: "loadSkill", effect: "allow" },
   // The lsp tool is read-only (queries language servers; never mutates files).
   { tool: "lsp", effect: "allow" },

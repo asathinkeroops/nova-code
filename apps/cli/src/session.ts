@@ -159,9 +159,13 @@ export async function switchToSession(
 
   await ctx.transcript.flush();
 
-  // The loop is scoped to the outgoing session — end it before switching in.
-  ctx.loop?.stop();
-  ctx.loop = null;
+  // Scheduled tasks are scoped to the outgoing session — tear down its timers,
+  // then re-point the store at the incoming session and re-arm its entries. The
+  // store instance is reused (the cron tools close over it), only its target dir
+  // changes.
+  ctx.cronScheduler.dispose();
+  ctx.cronStore.retarget(newSession.dir);
+  await ctx.cronScheduler.init();
 
   ctx.session = newSession;
   ctx.logPath = join(newSession.dir, "session.log");

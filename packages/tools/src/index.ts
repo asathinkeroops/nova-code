@@ -11,6 +11,8 @@ import { readTool } from "./builtin/read.js";
 import { getSkill, getSkillList, type SkillsOptions } from "./builtin/skills.js";
 import { type TaskStore } from "./builtin/task/store.js";
 import { createTaskTools } from "./builtin/task/index.js";
+import { type CronStore } from "./builtin/cron/store.js";
+import { createCronTools } from "./builtin/cron/index.js";
 import { TodoStore } from "./builtin/todo/store.js";
 import { createTodoTools } from "./builtin/todo/index.js";
 import { type BackgroundCommandManager } from "./builtin/background/manager.js";
@@ -69,6 +71,29 @@ export {
 } from "./builtin/task/store.js";
 export { makeTaskReminder, type TaskReminderOptions } from "./builtin/task/reminder.js";
 export {
+  createCronTool,
+  listCronTool,
+  deleteCronTool,
+  createCronTools,
+} from "./builtin/cron/index.js";
+export {
+  CronStore,
+  CronError,
+  DEFAULT_CRON_LIMITS,
+  type CronLimits,
+  type CronCreateInput,
+  type CronListFilter,
+} from "./builtin/cron/store.js";
+export { type CronEntry, type ScheduleSpec } from "./builtin/cron/schema.js";
+export {
+  parseDuration,
+  formatDuration,
+  parseSchedule,
+  parseCron,
+  nextCronFire,
+  type CronFields,
+} from "./builtin/cron/parse.js";
+export {
   runInBackgroundTool,
   createBackgroundCommandTools,
   makeBackgroundNotifier,
@@ -107,6 +132,7 @@ export function builtinTools(
   taskStore?: TaskStore,
   backgroundManager?: BackgroundCommandManager,
   lspManager?: LspManager,
+  cronStore?: CronStore,
 ): ToolHandler[] {
   const tools: ToolHandler[] = [
     bashTool,
@@ -128,6 +154,9 @@ export function builtinTools(
   }
   if (lspManager) {
     tools.push(createLspTool(lspManager));
+  }
+  if (cronStore) {
+    tools.push(...createCronTools(cronStore));
   }
   if (skills && getSkillList(skills).length > 0) {
     tools.push(

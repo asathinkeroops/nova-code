@@ -10,7 +10,7 @@ import { readClipboard } from "./image-paste.js";
 import { evaluateGoalWithAgent } from "./goal-eval.js";
 import { clearGoal, saveGoal } from "./goal.js";
 import { listWorkspaceFiles } from "./file-index.js";
-import { formatDuration } from "./loop-controller.js";
+import { formatDuration } from "@nova/tools";
 import { predictNextInput } from "./predict.js";
 import { toUiSlashCommands } from "./slash.js";
 import { checkForUpdate } from "./update.js";
@@ -215,57 +215,73 @@ function shouldAutoContinue(ctx: CliContext): boolean {
 }
 
 /**
- * True when an active `/loop` has a tick due and the agent is idle. Checked at
- * the top of the REPL loop (beside {@link shouldAutoContinue}) so a due tick
- * runs the moment the REPL is free — if the timer woke a busy REPL, the `due`
- * flag persists and this catches it once the current turn ends.
+ * True when a scheduled (cron/`/loop`) entry has a tick due and the agent is idle.
+ * Checked at the top of the REPL loop (beside {@link shouldAutoContinue}) so a due
+ * tick runs the moment the REPL is free — if the timer woke a busy REPL, the due
+ * flag persists on the scheduler and this catches it once the current turn ends.
  */
-function shouldRunLoopIteration(ctx: CliContext): boolean {
-  return !!ctx.loop?.isDue() && !ctx.agent.currentSignal();
+function shouldRunCron(ctx: CliContext): boolean {
+  return ctx.cronScheduler.dueEntries().length > 0 && !ctx.agent.currentSignal();
 }
 
 /**
- * Run one `/loop` iteration inline, then re-arm the schedule. Running inline
- * (not via the input queue) keeps loop ticks off the shared queue, so they never
- * fold into an unrelated running turn and can't pile up. The payload is
- * dispatched through the same path as a typed line ({@link dispatchLine}), so a
- * `/command` payload runs as a command and a plain payload runs as a turn. The
- * next tick is armed only *after* the turn completes (completion-relative), so
- * iterations never overlap. Esc aborts only the current turn (its `ok` is
- * ignored here); the loop keeps its schedule. On the safety cap it stops.
+ * Run one due scheduled entry inline, then reschedule it. Running inline (not via
+ * the input queue) keeps ticks off the shared queue, so they never fold into an
+ * unrelated running turn and can't pile up. The iteration is counted *before*
+ * dispatch (so the count is correct and a re-entrant delete in the payload wins);
+ * the payload is dispatched through the same path as a typed line
+ * ({@link dispatchLine}), so a `/command` payload runs as a command and a plain
+ * payload runs as a turn. The next tick is armed only *after* the run completes
+ * (completion-relative for intervals), so iterations never overlap. Only the first
+ * due entry is handled per call; the REPL re-polls and picks up the rest.
  */
-async function runLoopIteration(ctx: CliContext): Promise<void> {
-  const loop = ctx.loop;
-  if (!loop) return;
-  const capped = loop.noteIteration();
-  ctx.screen.card(
-    dim(`iteration ${loop.count()}/${loop.maxIterations} · next ${formatDuration(loop.intervalMs)} after this`),
-    { title: "/loop", persist: false },
-  );
+async function runDueCron(ctx: CliContext): Promise<void> {
+  const entry = ctx.cronScheduler.dueEntries()[0];
+  if (!entry) return;
+  const { id } = entry;
+  const title = entry.source === "loop" ? "/loop" : "cron";
+  ctx.cronScheduler.beginRun(id);
 
-  const action = await dispatchLine(ctx, loop.payload);
-  // "exit" from a looped payload (e.g. /exit) ends the loop, not the REPL.
+  const noted = await ctx.cronStore.noteRun(id, Date.now());
+  const capped = noted?.capped ?? false;
+  const count = noted?.entry.iterations ?? entry.iterations + 1;
+  const when =
+    entry.schedule.kind === "interval"
+      ? `next ${formatDuration(entry.schedule.intervalMs)} after this`
+      : `cron ${entry.schedule.expr}`;
+  ctx.screen.card(dim(`iteration ${count}/${entry.maxIterations} · ${when}`), {
+    title,
+    persist: false,
+  });
+
+  const action = await dispatchLine(ctx, entry.payload);
+  // "exit" from a payload (e.g. /exit) ends the schedule, not the REPL.
   if (action !== "exit" && action !== "continue") {
     await runTurnWithStopHooks(ctx, action.prompt);
     void refreshMentionFiles(ctx);
     void refreshBalance(ctx);
   }
 
-  // The payload may have run `/loop stop` / `/clear` / a new `/loop`, nulling or
-  // replacing ctx.loop; don't resurrect a loop that's no longer ours.
-  if (ctx.loop !== loop) return;
-  if (action === "exit" || capped) {
-    loop.stop();
-    ctx.loop = null;
+  // The payload may have deleted or stopped this entry (e.g. `/loop stop`,
+  // `cronDelete`); don't resurrect it.
+  const current = await ctx.cronStore.get(id);
+  if (action === "exit") {
+    if (current && current.status === "active") await ctx.cronStore.stop(id);
+    ctx.cronScheduler.endRun(id);
+    return;
+  }
+  if (capped || !current || current.status !== "active") {
+    ctx.cronScheduler.endRun(id);
     if (capped) {
-      ctx.screen.card(`loop reached its ${loop.maxIterations}-iteration cap; stopping.`, {
+      ctx.screen.card(`${title} reached its ${entry.maxIterations}-iteration cap; stopping.`, {
         kind: "warn",
-        title: "/loop",
+        title,
       });
     }
     return;
   }
-  loop.rearm();
+  await ctx.cronStore.reschedule(id, Date.now());
+  ctx.cronScheduler.endRun(id);
 }
 
 /** Hard cap on Stop-hook forced continuations, so a misbehaving hook can't loop forever. */
@@ -462,10 +478,10 @@ export async function runRepl(ctx: CliContext, initialPrompt: string): Promise<v
       continue;
     }
 
-    // A `/loop` tick is due (fired immediately on start, or its timer woke us);
+    // A scheduled tick is due (fired immediately on start, or its timer woke us);
     // run the iteration inline before parking for input.
-    if (shouldRunLoopIteration(ctx)) {
-      await runLoopIteration(ctx);
+    if (shouldRunCron(ctx)) {
+      await runDueCron(ctx);
       continue;
     }
 
@@ -474,13 +490,13 @@ export async function runRepl(ctx: CliContext, initialPrompt: string): Promise<v
 
     const raw = await ctx.screen.takeInput();
     if (raw === null) break; // exit requested (Ctrl+C while idle)
-    // A background completion or a `/loop` timer landed while we were parked:
+    // A background completion or a scheduled timer landed while we were parked:
     // `wake()` unblocked takeInput with this sentinel. Both surface the same way,
-    // so disambiguate — a due loop iteration takes priority, else it's a
+    // so disambiguate — a due scheduled iteration takes priority, else it's a
     // background continuation.
     if (raw === CONTINUE_SENTINEL) {
-      if (shouldRunLoopIteration(ctx)) {
-        await runLoopIteration(ctx);
+      if (shouldRunCron(ctx)) {
+        await runDueCron(ctx);
         continue;
       }
       const ok = await runContinuationTurn(ctx);
@@ -510,8 +526,7 @@ export async function runRepl(ctx: CliContext, initialPrompt: string): Promise<v
     fields: { reason: "exit" },
   });
 
-  ctx.loop?.stop();
-  ctx.loop = null;
+  ctx.cronScheduler.dispose();
   await ctx.transcript.flush();
   await ctx.backgroundManager.disposeAll();
   if (ctx.lspManager) await ctx.lspManager.disposeAll();

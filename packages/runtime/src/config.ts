@@ -856,6 +856,20 @@ export const settingsSchema = z.object({
       minIntervalMs: z.number().int().positive().default(1000),
     })
     .default({ maxIterations: 100, minIntervalMs: 1000 }),
+  // Scheduled tasks (the cronCreate/cronList/cronDelete tools, and the mechanism
+  // `/loop` rides on). Entries persist under the session dir and re-arm on
+  // /resume; they fire only while a session is live (no background daemon).
+  // `enabled` gates only the agent-facing tools — `/loop` keeps working when off.
+  // `maxSchedules` caps concurrent agent-created schedules; `minIntervalMs` and
+  // `maxIterations` bound each schedule the same way `loop` does its own.
+  cron: z
+    .object({
+      enabled: z.boolean().default(true),
+      maxSchedules: z.number().int().positive().default(20),
+      minIntervalMs: z.number().int().positive().default(1000),
+      maxIterations: z.number().int().positive().default(100),
+    })
+    .default({ enabled: true, maxSchedules: 20, minIntervalMs: 1000, maxIterations: 100 }),
   // LSP code intelligence. When enabled, the `lsp` tool talks to language
   // servers (over JSON-RPC/stdio) for definition, references, hover,
   // diagnostics, and symbol search. Servers are NOT installed by Nova — they

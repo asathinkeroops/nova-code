@@ -37,6 +37,7 @@ import { PermissionDeniedError, PermissionEngine } from "@nova/safety";
 import { createSandbox, type SandboxControl } from "@nova/sandbox";
 import { AgentRegistry, createSubAgentTool, type AgentDefinition } from "@nova/subagent";
 import {
+  CronStore,
   InMemoryFileAccessLedger,
   ToolRegistry,
   builtinTools,
@@ -45,6 +46,7 @@ import {
   getSkillList,
   type SkillsOptions,
 } from "@nova/tools";
+import { CronScheduler } from "./cron-scheduler.js";
 import { dim } from "./colors.js";
 import { buildCompactor } from "./compactor.js";
 import { loadGoal } from "./goal.js";
@@ -336,6 +338,14 @@ export async function createContext(
 
   const todoStore = new TodoStore();
   const taskStore = new TaskStore(workspace, session.id);
+  // Scheduled tasks live under the session dir; the cron tools are gated by
+  // settings.cron.enabled, but the store/scheduler always exist so `/loop` works
+  // regardless (it rides the same mechanism, not the tool registration).
+  const cronStore = new CronStore(session.dir, {
+    minIntervalMs: settings.cron.minIntervalMs,
+    maxIterations: settings.cron.maxIterations,
+    maxSchedules: settings.cron.maxSchedules,
+  });
   const backgroundManager = new BackgroundCommandManager();
   // LSP code intelligence: one manager per session, rooted at the workspace.
   // Servers are started lazily on first `lsp` tool call and disposed at exit.
@@ -357,7 +367,14 @@ export async function createContext(
     process.env.PATH = [...pluginBinDirs, process.env.PATH ?? ""].filter(Boolean).join(":");
   }
   const tools = new ToolRegistry().registerAll(
-    builtinTools(todoStore, skillsOpts, taskStore, backgroundManager, lspManager),
+    builtinTools(
+      todoStore,
+      skillsOpts,
+      taskStore,
+      backgroundManager,
+      lspManager,
+      settings.cron.enabled ? cronStore : undefined,
+    ),
   );
 
   // MCP: connect configured servers and bridge their tools into the registry
@@ -527,6 +544,11 @@ export async function createContext(
     });
   };
 
+  // Timing engine for scheduled entries. Only needs `wake` (running happens in the
+  // REPL poll), and `screen` is stable across session switches, so it's built here
+  // and re-created in switchToSession pointing at the new session's store.
+  const cronScheduler = new CronScheduler({ store: cronStore, wake: () => screen.wake() });
+
   const ctx: CliContext = {
     session,
     logger,
@@ -547,7 +569,8 @@ export async function createContext(
     thinkingBudgetOverride: cliOpts.thinkingBudgetOverride,
     goal: null,
     sessionName: null,
-    loop: null,
+    cronStore,
+    cronScheduler,
     spinner: null,
     toolSpinnerTimer: null,
     taskStartedAt: null,
@@ -1170,6 +1193,11 @@ export async function createContext(
       await fatalExit(ctx.screen, `failed to load messages: ${msg}`);
     }
   }
+
+  // Load + arm persisted schedules. On a fresh session this is a no-op; on resume
+  // it re-arms the session's cron entries (intervals one interval out, cron at the
+  // next matching minute).
+  await ctx.cronScheduler.init();
 
   return ctx;
 }

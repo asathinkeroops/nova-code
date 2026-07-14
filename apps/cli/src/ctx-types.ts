@@ -10,13 +10,13 @@ import type {
 import type { SlashRegistry, McpManager } from "@nova/external";
 import type { LspManager } from "@nova/lsp";
 import type { Transcript } from "@nova/observability";
-import type { BackgroundCommandManager, TaskStore, TodoStore, ToolRegistry } from "@nova/tools";
+import type { BackgroundCommandManager, CronStore, TaskStore, TodoStore, ToolRegistry } from "@nova/tools";
 import type { Logger, Session, Settings } from "@nova/runtime";
 import type { PermissionEngine } from "@nova/safety";
 import type { SandboxControl } from "@nova/sandbox";
 import type { AgentRegistry } from "@nova/subagent";
 import type { GoalState } from "./goal.js";
-import type { LoopController } from "./loop-controller.js";
+import type { CronScheduler } from "./cron-scheduler.js";
 import type { LoadedPlugin } from "./plugins/loader.js";
 import type { UserHooks } from "./user-hooks.js";
 import type { SnapshotStore } from "./snapshots.js";
@@ -85,12 +85,15 @@ export interface CliContext {
   sessionName: string | null;
 
   /**
-   * Active `/loop`, or null. While set, the REPL runs its payload (a prompt or
-   * slash command) on a fixed interval between turns (see `runLoopIteration` in
-   * repl.ts). Session-scoped and not persisted — cleared on `/loop stop`,
-   * `/clear`, `/resume`, and exit.
+   * Scheduled-task store + timing engine for this session. `/loop` and the
+   * cronCreate/cronList/cronDelete tools both ride on these: the store persists
+   * entries under `{session.dir}/cron/`, the scheduler arms timers and wakes the
+   * REPL to run due payloads between turns (see `runDueCron` in repl.ts). Both are
+   * rebuilt on session switch (`/resume`, `/clear`) so they point at the new
+   * session dir; disposed on exit.
    */
-  loop: LoopController | null;
+  cronStore: CronStore;
+  cronScheduler: CronScheduler;
 
   // ===== Mutable: UI / per-turn state =====
   spinner: Spinner | null;
