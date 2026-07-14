@@ -34,6 +34,7 @@ export function refreshBanner(ctx: CliContext): void {
     sessionId: ctx.session.id,
     contextWindowSize,
     thinkingLabel: thinkingLevelLabel(ctx),
+    provider: ctx.settings.provider,
   });
   ctx.screen.setStatusMeta({
     sessionStartedAt: ctx.session.createdAt.getTime(),

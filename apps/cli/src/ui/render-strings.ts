@@ -70,9 +70,9 @@ function displayCwd(cwd: string, home: string | undefined): string {
 }
 
 // Mirror the statusline's model segment (`status-line.tsx`): concrete id
-// (falling back to the tier alias), then thinking level, then context window —
-// each joined with ` · ` and dropped when unavailable, e.g.
-// "deepseek-v4-pro · high · 1M". Keeps the banner and status row identical.
+// (falling back to the tier alias), then thinking level, then context window,
+// then provider id — each joined with ` · ` and dropped when unavailable, e.g.
+// "deepseek-v4-pro · high · 1M · deepseek".
 function formatModel(b: BannerProps): string {
   const name = b.modelId ?? b.model;
   // Highlight the two highest thinking levels: "high" in orange, "max" in
@@ -85,7 +85,8 @@ function formatModel(b: BannerProps): string {
         : b.thinkingLabel;
   const think = label ? ` · ${label}` : "";
   const window = b.contextWindowSize ? ` · ${formatTokenCount(b.contextWindowSize)}` : "";
-  return `${name}${think}${window}`;
+  const provider = b.provider ? ` · ${b.provider}` : "";
+  return `${name}${think}${window}${provider}`;
 }
 
 function renderBanner(b: BannerProps, width: number): string {

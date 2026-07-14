@@ -21,6 +21,8 @@ export interface BannerProps {
   contextWindowSize?: number;
   /** Thinking level label (e.g. "high", "max"), shown on the model line. */
   thinkingLabel?: string;
+  /** Active provider id (e.g. "deepseek"), shown last on the model line. */
+  provider?: string;
 }
 
 /**
