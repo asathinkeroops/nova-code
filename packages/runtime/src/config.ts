@@ -135,23 +135,22 @@ export const DEFAULT_SANDBOX_ALLOW_WRITE = [
   "~/.yarn", // yarn global
 ] as const;
 
-// A single price-table entry: USD per 1,000,000 tokens for a model whose id
-// contains `match` (case-insensitive substring). `cacheRead` / `cacheWrite`
-// are optional — when omitted they fall back to `input` (i.e. no cache
-// discount/premium assumed), so a minimal `{ match, input, output }` works for
-// providers that don't price cache tokens separately.
-export const modelPriceSchema = z.object({
-  match: z
-    .string()
-    .min(1)
-    .describe("Case-insensitive substring tested against the active model id."),
-  input: z.number().nonnegative().describe("Price per 1M uncached input tokens."),
+// Per-1M-token prices for a single model tier, attached to its entry in the
+// `models` table (see `modelProfileSchema.pricing`). This is the sole home for
+// prices — there is no separate substring-matched price table. `cacheRead` /
+// `cacheWrite` are optional: omitted, they fall back to the uncached `input`
+// rate (no cache discount/premium assumed), so a minimal `{ input, output }`
+// works for providers that don't price cache tokens separately. Rates are plain
+// numbers per 1,000,000 tokens; `currency` only selects the display symbol
+// (no FX conversion — each tier is self-consistent in its own currency).
+export const modelPricingSchema = z.object({
+  input: z.number().nonnegative().describe("Price per 1M uncached (cache-miss) input tokens."),
   output: z.number().nonnegative().describe("Price per 1M output tokens."),
   cacheRead: z
     .number()
     .nonnegative()
     .optional()
-    .describe("Price per 1M cache-read tokens; defaults to `input`."),
+    .describe("Price per 1M cache-read (cache-hit) tokens; defaults to `input`."),
   cacheWrite: z
     .number()
     .nonnegative()
@@ -163,48 +162,7 @@ export const modelPriceSchema = z.object({
     .describe("Display currency for these rates; defaults to USD."),
 });
 
-export type ModelPriceConfig = z.infer<typeof modelPriceSchema>;
-
-/** A fully-specified price-table entry (all four rates present). */
-export interface ModelPriceDefault {
-  match: string;
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheWrite: number;
-  /** Display currency; omitted means USD. */
-  currency?: "USD" | "CNY";
-}
-
-// Built-in price table consulted by `/usage` AFTER the user's
-// `pricing.models`, so user entries override these. Rates are per 1,000,000
-// tokens; `currency` selects the display symbol (defaults to USD — there is no
-// FX conversion, each entry is self-consistent in its own currency). These are
-// public LIST prices at the time of writing and WILL drift as providers
-// re-price — they exist only so cost shows up out of the box; set
-// `pricing.models` in nova.config.json for anything authoritative. Entries are
-// ordered specific → generic because the first substring match wins. For
-// DeepSeek's context caching, `input` is the cache-miss price, `cacheRead` the
-// cache-hit price, and there is no separate write premium (cacheWrite = input);
-// the v4 models list-price in CNY.
-export const DEFAULT_MODEL_PRICING: ModelPriceDefault[] = [
-  {
-    match: "deepseek-v4-flash",
-    input: 1,
-    output: 2,
-    cacheRead: 0.02,
-    cacheWrite: 1,
-    currency: "CNY",
-  },
-  {
-    match: "deepseek-v4-pro",
-    input: 3,
-    output: 6,
-    cacheRead: 0.025,
-    cacheWrite: 3,
-    currency: "CNY",
-  },
-];
+export type ModelPricing = z.infer<typeof modelPricingSchema>;
 
 /** Default per-response output cap when neither the model profile nor the
  *  top-level override specifies one. 32768 suits Anthropic models; DeepSeek's
@@ -274,6 +232,12 @@ export const modelProfileSchema = z.object({
       "Per-tier extended-thinking level; falls back to the global thinking.level when unset.",
     ),
   modalities: modelModalitiesSchema.default({ input: ["text"] }),
+  // Per-tier token prices for the `/usage` cost estimate and the status-line
+  // cost segment. Attached to the tier (not a substring table) so the concrete
+  // model's rates are unambiguous. Omit to show tokens without a dollar figure.
+  pricing: modelPricingSchema
+    .optional()
+    .describe("Per-1M-token prices for /usage cost; omit to show tokens without a cost figure."),
 });
 
 export type ModelProfile = z.infer<typeof modelProfileSchema>;
@@ -455,18 +419,16 @@ export const settingsSchema = z.object({
       enabled: z.boolean().default(true),
     })
     .default({ enabled: true }),
-  // Cost estimation surfaced by `/usage`. Token counts are priced with the
-  // first matching entry from `models` (user-defined, takes precedence) falling
-  // back to the built-in DEFAULT_MODEL_PRICING table; a model that matches
-  // neither shows tokens without a dollar figure. `models` defaults to empty —
-  // the built-in table covers the common Claude / DeepSeek ids out of the box.
-  // Set `enabled: false` to suppress cost output entirely.
+  // Cost estimation surfaced by `/usage` and the status-line cost segment.
+  // Prices live per-tier on `models.<tier>.pricing` (see modelPricingSchema);
+  // the active tier's rates are used, and a tier without `pricing` shows tokens
+  // without a dollar figure. This is just the on/off toggle — set
+  // `enabled: false` to suppress cost output entirely.
   pricing: z
     .object({
       enabled: z.boolean().default(true),
-      models: z.array(modelPriceSchema).default([]),
     })
-    .default({ enabled: true, models: [] }),
+    .default({ enabled: true }),
   // Startup housekeeping: on every launch, delete session directories whose
   // last activity is older than maxAgeDays. Age is the newest mtime of a
   // session's history/transcript files (last *use*, not creation), so a

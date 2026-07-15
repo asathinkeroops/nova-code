@@ -141,6 +141,18 @@ async function readText(abs: string, input: { offset?: number; limit?: number },
     return { output: `read failed: ${msg}`, isError: true };
   }
 
+  // Binary guard: a file that decodes to text containing NUL bytes is not real
+  // source (images without a known extension, PDFs, compiled artifacts, archives).
+  // Reading it as UTF-8 yields line-numbered mojibake that pollutes context and
+  // burns tokens, so refuse with guidance instead. NUL never appears in genuine
+  // text; check a leading window so a huge binary is caught without scanning it all.
+  if (raw.slice(0, 65_536).includes("\u0000")) {
+    return {
+      output: `read failed: ${path} appears to be a binary file (contains NUL bytes). read handles text, spreadsheets, and images; use bash (e.g. \`file\`, \`xxd\`, \`hexdump -C\`) to inspect binary content.`,
+      isError: true,
+    };
+  }
+
   const lines = raw.match(/[^\n]*\n|[^\n]+$/g) ?? [];
   const total = lines.length;
 
@@ -403,13 +415,19 @@ export const readTool: ToolHandler = {
     const abs = resolve(ctx.cwd, input.path);
     const ext = extname(abs).toLowerCase();
 
-    // Image: when the model supports images AND the extension looks like one,
-    // read as image. Otherwise images fall through to text (current behaviour).
-    if (
-      IMAGE_EXTENSIONS.has(ext) &&
-      ctx.modelModalities?.input.includes("image")
-    ) {
-      return readImage(abs, ext, input.path);
+    // Image: when the model supports images, read as a base64 image block.
+    // When it does NOT, refuse with guidance rather than falling through to the
+    // text reader — decoding an image (or any binary) as UTF-8 yields tens of
+    // thousands of lines of line-numbered mojibake that pollute the context and
+    // burn tokens for nothing (a real regression seen on image-less tiers).
+    if (IMAGE_EXTENSIONS.has(ext)) {
+      if (ctx.modelModalities?.input.includes("image")) {
+        return readImage(abs, ext, input.path);
+      }
+      return {
+        output: `read failed: ${input.path} is an image (${ext}), but the active model tier does not accept image input. Switch to an image-capable tier (e.g. /model pro or max) to read it, or use bash (e.g. \`file\`, \`sips -g pixelWidth -g pixelHeight\`) to inspect it.`,
+        isError: true,
+      };
     }
 
     if (EXCEL_EXTENSIONS.has(ext)) {

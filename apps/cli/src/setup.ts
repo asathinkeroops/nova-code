@@ -1,8 +1,9 @@
 import { readFile } from "node:fs/promises";
 import { highlight } from "cli-highlight";
 import { DEFAULT_CONFIG_PATH, saveSettings, type Settings } from "@nova/runtime";
-import { accent } from "./colors.js";
+import { accent, dim, rgbFg, BLUE_RGB, PURPLE_HEX } from "./colors.js";
 import { PROVIDER_TEMPLATES, type ProviderTemplate } from "./provider-templates.js";
+import { pickerArrow } from "./ui/picker.js";
 import { fatalExit, type Screen } from "./screen.js";
 import { readCliVersion } from "./version.js";
 
@@ -13,6 +14,14 @@ import { readCliVersion } from "./version.js";
 type Choice =
   | { kind: "template"; template: ProviderTemplate }
   | { kind: "other" };
+
+/**
+ * Whether the first-run picker offers the "Other provider" manual-config escape
+ * hatch. Off while the bring-your-own-endpoint path is still unstable; the
+ * branch it drives (`exitForManualConfig`) stays in place so flipping this back
+ * to `true` re-opens it with no other change.
+ */
+const SHOW_OTHER_PROVIDER = false;
 
 /**
  * A skeleton nova.config.json printed to the terminal when the user picks a
@@ -88,17 +97,39 @@ export async function ensureSettings(
 
   try {
     const choices: Choice[] = [
-      ...PROVIDER_TEMPLATES.map((template) => ({ kind: "template" as const, template })),
-      { kind: "other" as const },
+      // `hidden` templates (e.g. providers still in internal testing) stay in the
+      // registry but are withheld from the picker until they're opened.
+      ...PROVIDER_TEMPLATES.filter((template) => !template.hidden).map((template) => ({
+        kind: "template" as const,
+        template,
+      })),
+      // The "Other provider" manual-config escape hatch is withheld too while
+      // the bring-your-own-endpoint path is still shaking out — flip
+      // SHOW_OTHER_PROVIDER back to true to re-open it; the code below stays wired.
+      ...(SHOW_OTHER_PROVIDER ? [{ kind: "other" as const }] : []),
     ];
-    const choice = await screen.pickHorizontal<Choice>({
-      items: choices,
-      label: (it) => (it.kind === "other" ? "Other provider" : it.template.label),
-      badge: (it) =>
-        it.kind === "template" && it.template.recommended ? "★ recommended" : null,
-      header: "Which provider are you connecting to?",
-      footer: "←/→ to choose · Enter to confirm · Ctrl+C to abort",
-    });
+    // With a single provider on offer there's nothing to choose — skip the
+    // overlay and go straight to its API-key prompt. The picker only earns its
+    // keep once a second option (another template, or "Other") is in play.
+    const choice =
+      choices.length === 1
+        ? (choices[0] as Choice)
+        : await screen.pickOne<Choice>({
+            items: choices,
+            header: "Which provider are you connecting to?",
+            footer: dim("↑/↓ to choose · Enter to confirm · Ctrl+C to abort"),
+            border: false,
+            topRuleColor: PURPLE_HEX,
+            render: (it, selected) => {
+              const name = it.kind === "other" ? "Other provider" : it.template.label;
+              let badge = "";
+              if (it.kind === "template") {
+                if (it.template.recommended) badge = `  ${accent("★ recommended")}`;
+                else if (it.template.beta) badge = `  ${rgbFg(BLUE_RGB, "Beta")}`;
+              }
+              return `${pickerArrow(selected)} ${name}${badge}`;
+            },
+          });
     if (choice === null) return fatalExit(screen, "setup aborted.");
 
     // No built-in template for third-party providers: point the user at the
@@ -110,7 +141,11 @@ export async function ensureSettings(
     const { template } = choice;
     let value: string | null = null;
     while (value === null) {
-      screen.setSetupPrompt({ label: "API key", hint: template.apiKeyHint });
+      screen.setSetupPrompt({
+        label: "API key",
+        hint: template.apiKeyHint,
+        ...(template.settings.provider ? { provider: template.settings.provider } : {}),
+      });
       const answer = await screen.promptInput({ mask: true });
       if (answer === null) await fatalExit(screen, "setup aborted.");
       const trimmed = (answer as string).trim();

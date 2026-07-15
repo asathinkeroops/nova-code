@@ -170,7 +170,7 @@ export function createAnthropicModel(config: AnthropicModelConfig): ModelClient 
       const budget = req.thinkingBudgetTokens ?? 0;
       // The provider owns the thinking-knob wire shape and any max_tokens floor
       // it imposes (Anthropic needs max_tokens > budget_tokens; DeepSeek doesn't).
-      const { params: thinkingParams, minMaxTokens } = provider.thinking(budget);
+      const { params: thinkingParams, minMaxTokens } = provider.thinking(budget, config.model);
       const maxTokens = minMaxTokens ? Math.max(req.maxTokens, minMaxTokens) : req.maxTokens;
 
       // Stream rather than buffer the full response. A long non-streaming

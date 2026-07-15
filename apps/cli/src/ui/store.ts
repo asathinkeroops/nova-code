@@ -401,7 +401,7 @@ export interface AppActions {
   clearLiveDraft: () => void;
   setEscHandler: (fn: (() => void) | null) => void;
   beginSetup: (state: SetupState) => void;
-  setSetupPrompt: (prompt: { label: string; hint: string } | null) => void;
+  setSetupPrompt: (prompt: { label: string; hint: string; provider?: string } | null) => void;
   pushSetupEntry: (entry: SetupEntry) => void;
   endSetup: () => void;
   resolveModal: (value: unknown) => void;

@@ -89,9 +89,13 @@ export interface ProviderProfile {
 
   /**
    * Build the thinking-knob wire params for a given budget (in tokens).
-   * `budget <= 0` means thinking is disabled.
+   * `budget <= 0` means thinking is disabled. `model` is the concrete model id
+   * the request targets, passed so a profile whose thinking wire shape depends
+   * on the model (e.g. Moonshot, where `kimi-k2.7-code` forbids `type:"disabled"`
+   * while `kimi-k2.5` forbids the `keep` field) can branch on it; profiles whose
+   * knob is model-independent (DeepSeek, generic) simply ignore it.
    */
-  thinking(budget: number): ThinkingParams;
+  thinking(budget: number, model?: string): ThinkingParams;
 
   /**
    * Char→token ratios for this provider's tokenizer, used by the rough

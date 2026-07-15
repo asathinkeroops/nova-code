@@ -6,7 +6,12 @@ import { SetupView } from "./setup-view.js";
 import { StatusLine } from "./status-line.js";
 import { permissionModeIndicator, PERMISSION_MODE_HINT } from "./status-format.js";
 import { setCursorTarget } from "./cursor-target.js";
-import { PickHorizontal, type HorizontalPickerOptions } from "./picker.js";
+import {
+  PickHorizontal,
+  PickList,
+  type HorizontalPickerOptions,
+  type PickerOptions,
+} from "./picker.js";
 import type { AppStoreApi } from "./store.js";
 import { Viewport } from "./viewport.js";
 import { visibleWidth } from "./width.js";
@@ -198,6 +203,12 @@ export function App({ store }: AppProps): React.ReactElement {
         {modal?.kind === "pickH" ? (
           <PickHorizontal
             opts={modal.opts as HorizontalPickerOptions<unknown>}
+            onResolve={(value) => resolveModal(value)}
+          />
+        ) : null}
+        {modal?.kind === "pick" ? (
+          <PickList
+            opts={modal.opts as PickerOptions<unknown>}
             onResolve={(value) => resolveModal(value)}
           />
         ) : null}

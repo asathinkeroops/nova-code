@@ -52,7 +52,7 @@ Tools the model can call — covering read/write, search, execution, code intell
 
 | Tool | Capability |
 | --- | --- |
-| `read` / `write` / `edit` | Read files (line-numbered + paginated, incl. `.xlsx` / `.ods` spreadsheets and images), whole-file write, exact-text replace |
+| `read` / `write` / `edit` | Read files (line-numbered + paginated, incl. `.xlsx` / `.ods` spreadsheets; images on image-capable model tiers), whole-file write, exact-text replace |
 | `glob` / `grep` | Filename matching, full-text regex search |
 | `bash` | Run shell commands |
 | `runInBackground` / `getBackgroundOutput` / `killBackground` | Run long tasks (dev servers, watchers) in the background |

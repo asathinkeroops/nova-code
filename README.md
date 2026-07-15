@@ -52,7 +52,7 @@ nova upgrade                       # 更新到最新版本（启动时也会自�
 
 | 工具 | 能力 |
 | --- | --- |
-| `read` / `write` / `edit` | 读文件（行号 + 分页，含 `.xlsx` / `.ods` 表格和图片）、整文件写、精确文本替换 |
+| `read` / `write` / `edit` | 读文件（行号 + 分页，支持 `.xlsx` / `.ods` 表格；图片需模型档位支持图像输入）、整文件写、精确文本替换 |
 | `glob` / `grep` | 按文件名匹配、全文正则搜索 |
 | `bash` | 运行 shell 命令 |
 | `runInBackground` / `getBackgroundOutput` / `killBackground` | 后台跑 dev server、watcher 等长任务 |

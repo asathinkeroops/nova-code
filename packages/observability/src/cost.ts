@@ -30,12 +30,6 @@ export interface ModelRates {
   currency?: Currency;
 }
 
-/** A price-table entry: rates plus the model-id substring they apply to. */
-export interface ModelPrice extends ModelRates {
-  /** Case-insensitive substring tested against the active model id. */
-  match: string;
-}
-
 /** Cumulative token counts to price, in the same buckets `/usage` tracks. */
 export interface TokenCounts {
   uncachedInputTokens: number;
@@ -72,29 +66,6 @@ export function computeCost(counts: TokenCounts, rates: ModelRates): CostBreakdo
     cacheWrite,
     output,
     total: input + cacheRead + cacheWrite + output,
-  };
-}
-
-/**
- * Find the rates for `model` in `table`: the first entry whose `match` is a
- * case-insensitive substring of the model id wins, so callers should list
- * specific ids before generic ones (and prepend user overrides ahead of any
- * built-in defaults). Returns undefined when nothing matches — the caller then
- * shows tokens without a dollar figure rather than inventing a price.
- */
-export function resolveModelRates(
-  model: string,
-  table: readonly ModelPrice[],
-): ModelRates | undefined {
-  const id = model.toLowerCase();
-  const hit = table.find((p) => id.includes(p.match.toLowerCase()));
-  if (!hit) return undefined;
-  return {
-    input: hit.input,
-    output: hit.output,
-    cacheRead: hit.cacheRead,
-    cacheWrite: hit.cacheWrite,
-    currency: hit.currency,
   };
 }
 

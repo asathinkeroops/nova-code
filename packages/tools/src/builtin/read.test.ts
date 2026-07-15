@@ -340,7 +340,7 @@ describe("read: image files", () => {
     }
   });
 
-  it("falls back to text when the model does NOT support images", async () => {
+  it("refuses (does NOT dump binary) when the model does NOT support images", async () => {
     const { cwd, path } = await writeBinaryFixture("test.png", minimalPngBytes());
 
     const res = await readTool.run(
@@ -348,20 +348,38 @@ describe("read: image files", () => {
       ctx(cwd, { modelModalities: { input: ["text"] } }),
     );
 
-    // Should NOT have image blocks — treated as plain text (garbled binary)
+    // Must NOT fall through to the text reader and dump line-numbered mojibake:
+    // an image on a text-only tier is an actionable error, not content.
     expect(res.blocks).toBeUndefined();
-    // The output will be gibberish UTF-8 from the binary PNG, but the tool
-    // shouldn't error out.
-    expect(res.isError).toBeUndefined();
+    expect(res.isError).toBe(true);
+    expect(res.output).toContain("image");
+    expect(res.output).not.toContain("PNG\r\n"); // no raw bytes in the output
   });
 
-  it("falls back to text when modelModalities is undefined (backward compat)", async () => {
+  it("refuses an image when modelModalities is undefined", async () => {
     const { cwd, path } = await writeBinaryFixture("test.png", minimalPngBytes());
 
     const res = await readTool.run({ path }, ctx(cwd));
 
     expect(res.blocks).toBeUndefined();
-    expect(res.isError).toBeUndefined();
+    expect(res.isError).toBe(true);
+    expect(res.output).toContain("image");
+  });
+
+  it("refuses a binary file with NUL bytes instead of dumping mojibake", async () => {
+    // A binary blob without an image extension still reaches the text reader;
+    // the NUL-byte guard must catch it rather than line-numbering the bytes.
+    const bytes = Buffer.from([0x00, 0x01, 0x02, 0x00, 0xff, 0xfe, 0x00, 0x42]);
+    const { cwd, path } = await writeBinaryFixture("blob.bin", bytes);
+
+    const res = await readTool.run(
+      { path },
+      ctx(cwd, { modelModalities: { input: ["text"] } }),
+    );
+
+    expect(res.blocks).toBeUndefined();
+    expect(res.isError).toBe(true);
+    expect(res.output).toContain("binary");
   });
 
   it("rejects an oversized image", async () => {

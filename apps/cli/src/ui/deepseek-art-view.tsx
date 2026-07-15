@@ -1,7 +1,11 @@
 import React from "react";
 import { Box, Text } from "ink";
 import { useTruecolor } from "../colors.js";
-import { DEEPSEEK_ART, type BlockSpan } from "./deepseek-art.js";
+import { DEEPSEEK_ART, DEEPSEEK_ART_WIDTH, type BlockSpan } from "./deepseek-art.js";
+
+/** White ring wrapped around the wordmark. `WIDTH` is its thickness in cells. */
+const BORDER_HEX = "#ffffff";
+const BORDER_WIDTH = 1;
 
 /**
  * The DeepSeek wordmark rendered as a colored block image, shown above the API
@@ -21,16 +25,36 @@ import { DEEPSEEK_ART, type BlockSpan } from "./deepseek-art.js";
  */
 export function DeepSeekArt(): React.ReactElement | null {
   if (!useTruecolor) return null;
+  // A full white cell is `█` in white; used both for the top/bottom bars (a
+  // full-width run) and the left/right posts (one BORDER_WIDTH run per art row).
+  const bar = (
+    <Text color={BORDER_HEX} backgroundColor={BORDER_HEX}>
+      {"█".repeat(DEEPSEEK_ART_WIDTH + BORDER_WIDTH * 2)}
+    </Text>
+  );
+  const post = (
+    <Text color={BORDER_HEX} backgroundColor={BORDER_HEX}>
+      {"█".repeat(BORDER_WIDTH)}
+    </Text>
+  );
   return (
     <Box flexDirection="column">
+      {Array.from({ length: BORDER_WIDTH }, (_, i) => (
+        <React.Fragment key={`top-${i}`}>{bar}</React.Fragment>
+      ))}
       {DEEPSEEK_ART.map((row, y) => (
         <Text key={y}>
+          {post}
           {row.map(([fg, bg, count]: BlockSpan, i) => (
             <Text key={i} color={fg} backgroundColor={bg}>
               {"▀".repeat(count)}
             </Text>
           ))}
+          {post}
         </Text>
+      ))}
+      {Array.from({ length: BORDER_WIDTH }, (_, i) => (
+        <React.Fragment key={`bot-${i}`}>{bar}</React.Fragment>
       ))}
     </Box>
   );

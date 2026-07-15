@@ -69,10 +69,12 @@ function displayCwd(cwd: string, home: string | undefined): string {
   return cwd;
 }
 
-// Mirror the statusline's model segment (`status-line.tsx`): concrete id
-// (falling back to the tier alias), then thinking level, then context window,
-// then provider id — each joined with ` · ` and dropped when unavailable, e.g.
-// "deepseek-v4-pro · high · 1M · deepseek".
+// The active tier alias, then a bracketed detail group (concrete id · thinking
+// level · context window), then the provider id — e.g.
+// "pro[deepseek-v4-pro · high · 1M] · deepseek". The provider stays outside the
+// brackets (it's not tier-specific). When there's no distinct concrete id to
+// show, the brackets are dropped and it degrades to
+// "pro · high · 1M · deepseek".
 function formatModel(b: BannerProps): string {
   const name = b.modelId ?? b.model;
   // Highlight the two highest thinking levels: "high" in orange, "max" in
@@ -86,7 +88,13 @@ function formatModel(b: BannerProps): string {
   const think = label ? ` · ${label}` : "";
   const window = b.contextWindowSize ? ` · ${formatTokenCount(b.contextWindowSize)}` : "";
   const provider = b.provider ? ` · ${b.provider}` : "";
-  return `${name}${think}${window}${provider}`;
+  // Bracket the details under the tier alias only when the concrete id differs
+  // from it; otherwise there's no alias→id mapping worth showing. The alias gets
+  // its own cyan tint so it reads as the picked tier, distinct from the orange/
+  // purple thinking labels.
+  const details = `${name}${think}${window}`;
+  const body = b.modelId && b.modelId !== b.model ? `${cyan(b.model)}[${details}]` : details;
+  return `${body}${provider}`;
 }
 
 function renderBanner(b: BannerProps, width: number): string {

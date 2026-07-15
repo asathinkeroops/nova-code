@@ -3,6 +3,7 @@ import { Box, Text } from "ink";
 import { ACCENT_HEX } from "../colors.js";
 import { LOGO, LOGO_ROW_HEX } from "./logo.js";
 import { DeepSeekArt } from "./deepseek-art-view.js";
+import { MoonshotArt } from "./moonshot-art-view.js";
 
 export interface SetupEntry {
   kind: "ok" | "err";
@@ -17,7 +18,12 @@ export interface SetupState {
     noteBaseURL: boolean;
   };
   entries: SetupEntry[];
-  currentPrompt: { label: string; hint: string } | null;
+  currentPrompt: { label: string; hint: string; provider?: string } | null;
+}
+
+/** Pick the branding art for the API-key prompt from the chosen provider. */
+function ProviderArt({ provider }: { provider?: string }): React.ReactElement | null {
+  return provider === "moonshot" ? <MoonshotArt /> : <DeepSeekArt />;
 }
 
 export function SetupView({ state }: { state: SetupState }): React.ReactElement {
@@ -71,7 +77,7 @@ export function SetupView({ state }: { state: SetupState }): React.ReactElement 
       {currentPrompt ? (
         <>
           <Box marginTop={1}>
-            <DeepSeekArt />
+            <ProviderArt provider={currentPrompt.provider} />
           </Box>
           <Box marginTop={1}>
             <Text>

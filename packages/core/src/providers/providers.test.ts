@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { deepseekProfile } from "./deepseek.js";
 import { ProviderError } from "./error.js";
 import { isProviderId, PROVIDER_IDS, PROVIDERS, resolveProfile } from "./index.js";
+import { moonshotProfile } from "./moonshot.js";
 import { otherProfile } from "./other.js";
 
 function apiError(status: number): Error & { status: number } {
@@ -11,11 +12,13 @@ function apiError(status: number): Error & { status: number } {
 describe("resolveProfile", () => {
   it("maps a provider id to its profile", () => {
     expect(resolveProfile("deepseek")).toBe(deepseekProfile);
+    expect(resolveProfile("moonshot")).toBe(moonshotProfile);
     expect(resolveProfile("other")).toBe(otherProfile);
   });
 
-  it("registers both built-in profiles under their id", () => {
+  it("registers the built-in profiles under their id", () => {
     expect(PROVIDERS.deepseek).toBe(deepseekProfile);
+    expect(PROVIDERS.moonshot).toBe(moonshotProfile);
     expect(PROVIDERS.other).toBe(otherProfile);
   });
 
@@ -82,6 +85,34 @@ describe("deepseekProfile.onError", () => {
   it("passes an undocumented/status-less error through untranslated", () => {
     const raw = new Error("socket hang up");
     expect(deepseekProfile.onError(raw, 1)).toEqual({ retry: false, error: raw });
+  });
+});
+
+describe("moonshotProfile.thinking", () => {
+  it("forces enabled + keep:all for the always-thinking code models, ignoring budget", () => {
+    // kimi-k2.7-code rejects type:"disabled" and treats keep as "all".
+    expect(moonshotProfile.thinking(0, "kimi-k2.7-code")).toEqual({
+      params: { thinking: { type: "enabled", keep: "all" } },
+    });
+    // The -highspeed variant shares the same thinking behavior.
+    expect(moonshotProfile.thinking(32_000, "kimi-k2.7-code-highspeed")).toEqual({
+      params: { thinking: { type: "enabled", keep: "all" } },
+    });
+  });
+
+  it("toggles type on budget for other Kimi models and never sends keep", () => {
+    // kimi-k2.5 does NOT support the `keep` field.
+    expect(moonshotProfile.thinking(0, "kimi-k2.5")).toEqual({
+      params: { thinking: { type: "disabled" } },
+    });
+    expect(moonshotProfile.thinking(16_000, "kimi-k2.5")).toEqual({
+      params: { thinking: { type: "enabled" } },
+    });
+  });
+
+  it("imposes no max_tokens floor (effort-style knob, not budget_tokens)", () => {
+    expect(moonshotProfile.thinking(16_000, "kimi-k2.5").minMaxTokens).toBeUndefined();
+    expect(moonshotProfile.thinking(32_000, "kimi-k2.7-code").minMaxTokens).toBeUndefined();
   });
 });
 

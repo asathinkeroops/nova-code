@@ -1,11 +1,4 @@
-import {
-  computeCost,
-  formatMoney,
-  resolveModelRates,
-  type ModelPrice,
-  type ModelRates,
-} from "@nova/observability";
-import { DEFAULT_MODEL_PRICING, resolveModelId } from "@nova/runtime";
+import { computeCost, formatMoney, type ModelRates } from "@nova/observability";
 import { accent, bold, cyan, dim, PURPLE_HEX } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { cacheHitRate, formatPercent, formatTokenCount } from "../ui/status-format.js";
@@ -13,30 +6,22 @@ import { cacheHitRate, formatPercent, formatTokenCount } from "../ui/status-form
 const TITLE = "/usage";
 
 /**
- * Build the effective price table: the user's `pricing.models` first (so they
- * override) then the built-in defaults. Entries omitting cache rates fall back
- * to the uncached `input` rate.
+ * Resolve the active model tier's per-token rates from its own `pricing` block,
+ * or undefined when pricing is disabled or the tier carries no `pricing`. Cache
+ * rates omitted on the tier fall back to the uncached `input` rate. Shared by
+ * `/usage` and the StatusLine cost segment so both price the same way.
  */
-function priceTable(ctx: CliContext): ModelPrice[] {
-  return [...ctx.settings.pricing.models, ...DEFAULT_MODEL_PRICING].map((p) => ({
-    match: p.match,
+export function resolveSessionRates(ctx: CliContext): ModelRates | undefined {
+  if (!ctx.settings.pricing.enabled) return undefined;
+  const p = ctx.settings.models[ctx.settings.model]?.pricing;
+  if (!p) return undefined;
+  return {
     input: p.input,
     output: p.output,
     cacheRead: p.cacheRead ?? p.input,
     cacheWrite: p.cacheWrite ?? p.input,
     currency: p.currency,
-  }));
-}
-
-/**
- * Resolve the active model's per-token rates from the effective price table, or
- * undefined when pricing is disabled or the model has no matching entry. Shared
- * by `/usage` and the StatusLine cost segment so both price the same way.
- */
-export function resolveSessionRates(ctx: CliContext): ModelRates | undefined {
-  if (!ctx.settings.pricing.enabled) return undefined;
-  const modelId = resolveModelId(ctx.settings, ctx.settings.model);
-  return resolveModelRates(modelId, priceTable(ctx));
+  };
 }
 
 /**
@@ -101,7 +86,7 @@ export async function handleUsage(ctx: CliContext): Promise<void> {
   } else if (pricing.enabled) {
     lines.push(
       "",
-      `${label("cost (est.)")}${dim(`no price for "${ctx.settings.model}" — add it to pricing.models in nova.config.json`)}`,
+      `${label("cost (est.)")}${dim(`no price for "${ctx.settings.model}" — add "pricing" to that model tier in nova.config.json`)}`,
     );
   }
 

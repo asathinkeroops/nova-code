@@ -631,7 +631,7 @@ export class Screen {
     this.store.getState().beginSetup(state);
   }
 
-  setSetupPrompt(prompt: { label: string; hint: string } | null): void {
+  setSetupPrompt(prompt: { label: string; hint: string; provider?: string } | null): void {
     this.store.getState().setSetupPrompt(prompt);
   }
 
