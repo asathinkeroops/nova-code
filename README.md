@@ -12,7 +12,7 @@
 
 > 为 DeepSeek 量身打造的编程代理 — 95%+ 缓存命中 · OS 级沙箱 · 工具齐全 · 开箱即用。
 
-Nova 读代码、跑命令、改文件——通过工具调用把任务推到完成。模型层围绕 **DeepSeek** 构建：thinking 映射到 effort（而非 `budget_tokens`）、wire format 按模型 id 自动判别、整个请求管线为 DeepSeek 的自动上下文缓存做了调优，让缓存持续命中。其他 Anthropic 兼容端点也能跑，DeepSeek 是第一优先级。
+Nova 读代码、跑命令、改文件——通过工具调用把任务推到完成。模型层围绕 **DeepSeek** 构建：thinking 映射到 effort（而非 `budget_tokens`）、错误码翻译成人话、余额与定价内建，整个请求管线为 DeepSeek 的自动上下文缓存做了调优，让缓存持续命中。各家 provider 都走 Anthropic 兼容协议，差异（thinking 形状、错误码、余额探针）由 provider profile（按 `settings.provider` 选择）吸收——DeepSeek 是第一优先级，Kimi（Moonshot）有专用适配（beta），其余端点走通用 `other` 档。
 
 ## 为什么选 Nova
 
@@ -42,7 +42,9 @@ nova -p "解释这段代码"              # headless 模式：只跑一轮，输
 nova upgrade                       # 更新到最新版本（启动时也会自动检查并提示）
 ```
 
-首次启动进入交互式配置向导，写入 `~/.nova/nova.config.json`（API key、模型、session 目录等）。模型按 `lite` / `pro` / `max` 三档配置，各档可单独设置 thinking 等级；`/model`、`--model` 切换的是档位而非裸 provider id。
+首次启动进入交互式配置向导，写入 `~/.nova/nova.config.json`（API key、模型、session 目录等）。模型按 `lite` / `pro` / `max` 三档配置，每档可单独设定 thinking 等级与定价（`models.<档>.pricing`，支持 USD / CNY）；`/model`、`--model` 切换的是档位而非裸 provider id。默认 provider 为 `deepseek`，`settings.provider` 可切到 `moonshot`（Kimi，beta）或通用 `other`。
+
+`nova` 还带子命令：`nova doctor`（体检全局配置）、`nova mcp`（管理 MCP 服务器）、`nova plugin`（安装 / 启停插件）、`nova upgrade`（升级 CLI）。
 
 ## 功能概览
 
@@ -75,7 +77,7 @@ nova upgrade                       # 更新到最新版本（启动时也会自�
 | `/rename` | 给当前会话起个名字（显示在输入框边框上） |
 | `/plan` | 只读调研出实现方案，不动手 |
 | `/goal` | 设定成功条件后自动推进直到达成 |
-| `/diff` · `/review` | 浏览、评审未提交改动 |
+| `/diff` · `/review` | 浏览、评审未提交改动；`/review <PR#\|#PR\|github-pr-url>` 经 `gh` 只读评审指定 GitHub PR |
 | `/init` | 分析代码库生成 `NOVA.md` |
 | `/agents` · `/agent` | 查看子 agent 类型、委派任务 |
 | `/nova-code-guide` · `/nova-code-guide-update` | 就 Nova 自身答疑的只读 Q&A agent；后者拉取最新源码 |
@@ -100,7 +102,7 @@ nova upgrade                       # 更新到最新版本（启动时也会自�
 | Markdown 扩展 | 自定义 slash 命令、子 agent、生命周期 hooks，丢 `.md` 进 `.nova/`、frontmatter 配置，免改代码 |
 | 插件 | `nova plugin` 从本地路径 / GitHub / git url / marketplace 安装、启停插件；一个插件可贡献命令、agent、skill、hooks、MCP / LSP server 与 `bin/` 可执行文件，兼容 Claude Code 插件格式 |
 | 三层记忆 | 全局 → 用户 → 项目，按 `NOVA.md` > `CLAUDE.md` > `AGENTS.md` 优先级加载 |
-| 交互体验 | 全屏 Ink/React REPL，流式输出 + 鼠标；`@path` / `/` 补全、`↑` `↓` 翻历史；实时状态行显示 token 用量、缓存命中、花费、DeepSeek 余额、git 分支、上下文占用 |
+| 交互体验 | 全屏 Ink/React REPL，流式输出 + 鼠标；`@path` / `/` 补全、`↑` `↓` 翻历史；实时状态行显示 token 用量、缓存命中、花费、provider 余额（DeepSeek / Kimi）、git 分支、上下文占用 |
 
 ## 架构
 

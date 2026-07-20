@@ -12,7 +12,7 @@
 
 > The coding agent purpose-built for DeepSeek — 95%+ cache hits · OS-sandboxed · tool-complete · install-and-go. 
 
-Nova reads code, runs commands, edits files — and drives your task to done through tool use. It's built around **DeepSeek**: thinking maps to effort (not `budget_tokens`), the wire format is auto-detected from the model id, and the entire request pipeline is tuned so DeepSeek's automatic context cache keeps hitting. Other Anthropic-compatible endpoints work too; DeepSeek gets first-class care.
+Nova reads code, runs commands, edits files — and drives your task to done through tool use. It's built around **DeepSeek**: thinking maps to effort (not `budget_tokens`), error codes are translated into plain language, and balance and pricing are built in — with the entire request pipeline tuned so DeepSeek's automatic context cache keeps hitting. Every provider speaks the Anthropic-compatible protocol; a provider profile (selected by `settings.provider`) absorbs the per-vendor quirks — thinking shape, error tables, balance probe. DeepSeek is the primary target, Kimi (Moonshot) has a dedicated profile (beta), and any other endpoint falls back to the generic `other` tier.
 
 ## Why Nova
 
@@ -42,7 +42,9 @@ nova -p "explain this code"        # headless: one turn, print & exit
 nova upgrade                       # update to the latest version (also auto-checked at startup)
 ```
 
-First launch walks through an interactive setup (API key, model, etc.) → `~/.nova/nova.config.json`. Models are configured as a `lite` / `pro` / `max` ladder, each tier with its own thinking level; `/model` and `--model` switch tiers, not raw provider ids.
+First launch walks through an interactive setup (API key, model, etc.) → `~/.nova/nova.config.json`. Models are configured as a `lite` / `pro` / `max` ladder, each tier with its own thinking level and pricing (`models.<tier>.pricing`, USD / CNY); `/model` and `--model` switch tiers, not raw provider ids. The default provider is `deepseek`; set `settings.provider` to `moonshot` (Kimi, beta) or the generic `other`.
+
+`nova` also has subcommands: `nova doctor` (health-check the global config), `nova mcp` (manage MCP servers), `nova plugin` (install / enable / disable plugins), and `nova upgrade` (update the CLI).
 
 ## Features
 
@@ -75,7 +77,7 @@ Tools the model can call — covering read/write, search, execution, code intell
 | `/rename` | Give the current session a custom name (shown on the input frame) |
 | `/plan` | Investigate read-only and produce an implementation plan |
 | `/goal` | Set a success condition and auto-work toward it until met |
-| `/diff` · `/review` | Browse and review uncommitted changes |
+| `/diff` · `/review` | Browse and review uncommitted changes; `/review <PR#\|#PR\|github-pr-url>` reviews a GitHub PR read-only via the `gh` CLI |
 | `/init` | Analyze the codebase to generate `NOVA.md` |
 | `/agents` · `/agent` | See sub-agent types, delegate a task |
 | `/nova-code-guide` · `/nova-code-guide-update` | Read-only Q&A agent about Nova itself; the latter pulls the newest source |
@@ -100,7 +102,7 @@ Tools the model can call — covering read/write, search, execution, code intell
 | Markdown extensions | Custom slash commands, sub-agents, and lifecycle hooks: drop a `.md` into `.nova/`, configure via frontmatter, no code changes |
 | Plugins | `nova plugin` installs / enables / disables plugins from a local path, GitHub, git url, or marketplace; one plugin can contribute commands, agents, skills, hooks, MCP / LSP servers, and `bin/` executables, in the Claude Code-compatible plugin format |
 | Three-layer memory | Global → user → project, loaded by `NOVA.md` > `CLAUDE.md` > `AGENTS.md` priority |
-| TUI | Full-screen Ink/React REPL, streaming output + mouse; `@path` / `/` completion, `↑` `↓` history; live status line with token usage, cache hits, cost, DeepSeek balance, git branch, context fill |
+| TUI | Full-screen Ink/React REPL, streaming output + mouse; `@path` / `/` completion, `↑` `↓` history; live status line with token usage, cache hits, cost, provider balance (DeepSeek / Kimi), git branch, context fill |
 
 ## Architecture
 
