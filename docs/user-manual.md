@@ -52,7 +52,7 @@
 
 - **Node ≥ 20**（仓库 `.nvmrc` 已固定）
 - **pnpm 10.28.2**（`packageManager` 已固定）
-- 一个**交互式终端（TTY）**。Nova 不支持管道/重定向/无 PTY 的 CI 环境——非 TTY 启动会直接报错退出。
+- **交互模式**需要一个真正的**终端（TTY）**：全屏 REPL 靠它渲染。**没有 TTY**（管道、重定向、CI、git hook）时 Nova **不会报错退出，而是自动进入 headless 模式**——跑一轮就结束（见 [§4](#4-启动与命令行参数)）。
 
 从源码运行：
 
@@ -60,6 +60,7 @@
 pnpm install
 pnpm dev                       # 启动 REPL（tsx 运行 apps/cli/src/index.ts）
 pnpm dev "帮我给这个函数加单测"   # 先跑一轮 prompt，再进入 REPL
+echo "总结这个 diff" | pnpm dev  # 无 TTY：headless 跑一轮后退出
 ```
 
 > `pnpm dev` 是开发态入口；发布后的二进制名为 `nova`，本手册中 `nova ...` 与 `pnpm dev ...` 等价。
@@ -68,16 +69,14 @@ pnpm dev "帮我给这个函数加单测"   # 先跑一轮 prompt，再进入 RE
 
 ## 3. 首次配置向导
 
-第一次启动时，如果 `~/.nova/nova.config.json` 里缺少 `apiKey`，Nova 会进入一个交互式向导，两步完成配置并写回文件：
+第一次启动时，如果 `~/.nova/nova.config.json` 里缺少 `apiKey`，Nova 会进入首次配置向导。它从内置 provider 模板里取一个（模板已填好 `baseURL`、默认档位、`lite`/`pro`/`max` 模型表），所以**唯一要交互问你的就是 API key**（输入时掩码）。
 
-| 步骤 | 说明 |
-|------|------|
-| **选择 provider** | 从内置模板里选（目前只有 **DeepSeek**，或「Other provider」）。选模板会自动填好 `baseURL`、默认档位和 `lite`/`pro`/`max` 模型表，所以只剩 API key 需要问 |
-| **API key** | 你的 provider API key（输入时被掩码） |
+**当前只有 DeepSeek 一个模板对外可选**（Moonshot/Kimi 已内置但在内部测试期，暂从选择器隐藏；「Other provider」手填入口也暂时关闭）。既然只有一个 provider，向导会**跳过选择器**，直接问 DeepSeek 的 API key。它写入：
 
-DeepSeek 模板写入 `baseURL: https://api.deepseek.com/anthropic`，并把 `lite`→`deepseek-v4-flash`、`pro`/`max`→`deepseek-v4-pro`（默认档位 `pro`）。选「Other provider」则不进交互流程，Nova 会打印配置文件路径让你手动照 `lite`/`pro`/`max` 的骨架填写（schema 不再为 `baseURL`/`models` 提供默认值）。
+- `baseURL: https://api.deepseek.com/anthropic`
+- `lite`→`deepseek-v4-flash`，`pro`/`max`→`deepseek-v4-pro`（默认档位 `pro`；三档靠 per-tier `thinking` 拉开梯度）
 
-按 `Ctrl+C` 可中止向导。`apiKey` 已存在则跳过向导。你也可以随时手动编辑 `~/.nova/nova.config.json`（完整字段见 [§20](#20-配置文件完整参考)）。
+按 `Ctrl+C` 可中止向导。`apiKey` 已存在则跳过向导。要接别的 Anthropic 兼容端点，直接**手动编辑** `~/.nova/nova.config.json`——schema 不再为 `baseURL`/`models` 提供默认值，需按 `lite`/`pro`/`max` 三档骨架填全（完整字段见 [§20](#20-配置文件完整参考)）。
 
 > 如果启动时 `apiKey` 仍为空，Nova 会报错退出并提示去配置文件里补上。
 
@@ -86,27 +85,37 @@ DeepSeek 模板写入 `baseURL: https://api.deepseek.com/anthropic`，并把 `li
 ## 4. 启动与命令行参数
 
 ```bash
-nova [prompt...]                   # 先跑一轮初始 prompt，再留在 REPL
-  -p, --prompt <text>              # 初始 prompt（位置参数的替代写法）
+nova [prompt...]                   # 先跑一轮初始 prompt，再留在 REPL（交互）
+  -p, --prompt <text>              # headless：跑一轮打印结果后退出（不进 REPL）
   -m, --model <tier>               # 临时切换模型档位（只认已配置档位名，如 lite/pro/max）
   -t, --think off|low|medium|high|max   # thinking 等级，或一个正整数 token 预算
       --max-turns <n>              # 单轮最大循环次数
       --cwd <dir>                  # 工具的工作目录（工作区根）
       --permission-mode default|acceptEdits|auto|plan   # 初始权限模式（默认 default）
       --dangerously-skip-permissions   # 全自动批准（适合 CI/无人值守）
+      --output-format text|json|jsonl  # headless 输出格式（默认 text）
       --resume <id>                # 恢复指定 id 的 session
   -c, --continue                   # 恢复最近一个 session
-      --list-sessions              # 列出历史 session 后退出（非交互）
       --no-transcript              # 本次不写 transcript
       --no-pretty                  # 关闭 pretty 日志
+  -v, --version                    # 打印版本后退出
+```
+
+子命令（各自独立，不进 REPL）：
+
+```bash
+nova doctor                        # 体检全局配置并打印报告（同 REPL 内 /doctor）
+nova mcp …                         # 管理 MCP 服务器（连接测试、认证等，见 §16）
+nova plugin …                      # 安装 / 启停 / 列出插件（见 §18）
+nova upgrade                       # 跑配置里的安装器把 nova 升到最新版（见 §19）
 ```
 
 要点：
 
-- **位置参数即初始 prompt**：`nova 把 README 翻译成英文` 会先跑这一轮，再停在 REPL 等你继续。`-p/--prompt` 是等价写法。
+- **位置参数即初始 prompt（交互）**：`nova 把 README 翻译成英文` 会先跑这一轮，再停在 REPL 等你继续。
+- **`-p/--prompt` 是 headless 触发器**：跑**一轮**、打印结果、直接退出，**不进 REPL**——和位置参数不同。**没有 TTY** 时（管道 / 重定向 / CI）也会自动走 headless；此时若没给 prompt，会从 **stdin** 读取。`--output-format json|jsonl` 让 headless 输出结构化结果（`json` = 结果 + 完整消息；`jsonl` = 流式事件）。
 - **`-m` / `-t` / `--max-turns` 都是本次会话的临时覆盖**，不写回配置文件。
 - **`--cwd`** 决定工具的「工作区根」——读写权限、沙箱写入范围都以它为基准（见 [§10](#10-权限与安全)）。
-- **`--list-sessions`** 是少数几个非交互子命令，打印列表后直接退出。
 
 ---
 
@@ -143,7 +152,7 @@ Nova 是一个全屏 Ink/React REPL：顶部是滚动的历史区，底部是固
 
 ### 输入预测
 
-每成功跑完一轮，Nova 会用主模型预测你**下一句可能想说什么**，作为输入框的灰色占位提示（默认开启，超时 8s，最多 50 字）。用 `/predict on|off` 开关，或在配置里调 `predict`。
+每成功跑完一轮，Nova 会用主模型预测你**下一句可能想说什么**，作为输入框的灰色占位提示（默认开启，超时 8s，最多 300 字）。用 `/predict on|off` 开关，或在配置里调 `predict`。
 
 ---
 
@@ -165,6 +174,7 @@ Nova 是一个全屏 Ink/React REPL：顶部是滚动的历史区，底部是固
 | `/goal [<condition>\|clear]` | 设定一个成功条件，Nova 自动推进直到达成；`clear` 取消 |
 | `/diff [pathspec]` | 交互式浏览未提交变更，选中后查看语法高亮差异（只读） |
 | `/review [focus…]` | 审查当前未提交的 diff，只读地报告问题（不改动任何文件） |
+| `/review <PR#\|#PR\|PR-URL> [focus…]` | 通过 `gh` CLI 只读审查某个 GitHub PR（`gh pr view` / `gh pr diff`）；`gh` 缺失或未登录会明说并停下 |
 | `/init [focus…]` | 探索代码库后生成 / 刷新项目记忆（`NOVA.md`） |
 | `/agents [reload]` · `/agent <name> <task>` | 列出子 agent 类型 / 委派一项任务 |
 | `/nova-code-guide <question>` · `/nova-code-guide-update` | 就 Nova 自身答疑的只读 Q&A 子 agent；`-update` 拉取 / 刷新它读取的 Nova 源码 |
@@ -174,7 +184,7 @@ Nova 是一个全屏 Ink/React REPL：顶部是滚动的历史区，底部是固
 | `/predict [on\|off]` | 查看或切换「下一条输入预测」 |
 | `/commands [reload]` | 列出已注册的 slash 命令；`reload` 重新扫盘加载自定义命令 |
 | `/skills` | 列出已发现的 `SKILL.md`（及各自来源） |
-| `/mcp [tools]` | 查看 MCP 服务器状态；`tools` 列出所有桥接的工具 |
+| `/mcp [tools]` | 打开 MCP 服务器菜单（认证 / 重连 / 登出，见 [§16](#16-mcp-外部工具)）；`tools` 列出所有桥接的工具 |
 | `/lsp` | 查看已配置的语言服务器（是否在 PATH、本 session 是否已启动） |
 | `/plugin` | 列出已加载的插件及其贡献（安装 / 启停用 `nova plugin` CLI，见 [§18](#18-插件plugins)） |
 | `/sandbox [on\|off]` | 本会话内开关 OS 命令沙箱（见 [§11](#11-命令沙箱)） |
@@ -189,14 +199,16 @@ Nova 是一个全屏 Ink/React REPL：顶部是滚动的历史区，底部是固
 
 Nova 把「extended thinking」暴露成五个等级，或一个显式的 token 预算。在 DeepSeek 上，等级映射到 `output_config.effort`（而不是 Anthropic 的 `budget_tokens`）。
 
-- 五档：`off` / `low` / `medium` / `high` / `max`（默认 `off`）
+- 五档：`off` / `low` / `medium` / `high` / `max`
 - 显式预算：传一个正整数（如 `-t 4096`），它会覆盖等级映射，直接当作 `budget_tokens`
+
+**思考等级是 per-tier（按档位）的属性，没有全局 `thinking` 配置项**——它写在 `models.<tier>.thinking` 里，切档（`/model`）会把当前思考等级换成该档的值。这也是 lite/pro/max 能在同一个模型 id 上拉出能力梯度的原因（DeepSeek 模板：lite→`low`、pro→`high`、max→`max`）。档位没写 `thinking` 时回退到 `max`。
 
 设置方式：
 
-- 启动时：`nova -t high "..."` 或 `nova -t 4096 "..."`
-- 运行时：`/effort high`（查看用 `/effort`）
-- 配置文件：`thinking.level` / `thinking.budgetTokens`
+- 启动时：`nova -t high "..."` 或 `nova -t 4096 "..."`（本次会话的临时覆盖）
+- 运行时：`/effort high`（查看用 `/effort`）——会写回当前档位，在本会话内生效
+- 持久：直接改配置里该档的 `models.<tier>.thinking`
 
 更深的思考通常带来更好的规划，但更慢、更贵——按任务难度调档即可。
 
@@ -235,7 +247,7 @@ Nova 把「extended thinking」暴露成五个等级，或一个显式的 token 
 
 | 工具 | 权限 | 说明 |
 |------|------|------|
-| `read` | 只读 | 读文本文件，输出带 `cat -n` 风格行号（1-based）；`offset` 起始行号、`limit` 最大行数，单页另有约 20 万字符上限（超长单行整行返回、不切断），超出时提示用 `offset` 续读。行号前缀仅用于显示，传给 `edit` 前需去掉 |
+| `read` | 只读 | 读**文本 / 表格 / 图片**：文本输出带 `cat -n` 风格行号（1-based），`offset` 起始行、`limit` 最大行数，单页约 20 万字符上限、单行超 1.6 万字符会截断并标注，超出时提示用 `offset` 续读；行号前缀仅用于显示，传给 `edit` 前需去掉。表格（`.xlsx/.xls/.xlsm/.xlsb/.ods`）每行渲成 TSV 带表头，`sheet` 选工作表。图片（`.png/.jpg/.jpeg/.gif/.webp`，≤20MB）以 base64 块返回——**仅当前档位支持图片输入时**（否则提示切到 image-capable 档位）。含 NUL 字节的二进制文件直接拒读并给出 `file`/`xxd` 建议 |
 | `write` | 需批准 | 写整个文件（覆盖），默认自动创建父目录 |
 | `edit` | 需批准 | 精确字符串替换；`old_string` 默认须唯一匹配，`replace_all` 可全替 |
 | `bash` | 需批准 | 执行短小、阻塞的 shell 命令；**硬超时 10s**，输出截到 200KB |
@@ -274,6 +286,15 @@ Nova 把「extended thinking」暴露成五个等级，或一个显式的 token 
 
 `createTask` / `updateTask` / `getTaskList` / `clearTaskList`——更大、值得跨会话保留的计划，落盘到工作区的 `.tasks/{id}.json`。支持 `blockedBy` 依赖关系，允许多个并行 `in_progress`。
 
+### 定时调度：Cron（会话内，落盘持久）
+
+| 工具 | 权限 | 说明 |
+|------|------|------|
+| `cronCreate` | 只读放行 | 把一条 prompt 或 `/command` 排进定时表——`schedule` 支持**重复间隔**（`30s`/`5m`/`1h`）或**标准 5 字段 cron 表达式**（`0 9 * * *` 每天 9 点、`*/15 * * * *` 每 15 分钟）；可选 `label`、`maxIterations` |
+| `cronList` / `cronDelete` | 只读放行 | 列出 / 删除定时表条目 |
+
+定时条目落盘在 `~/.nova/sessions/{id}/cron/`，`/resume` 时重新装载并重排，`/clear` 时清空。**只有会话活着时才会触发**（没有后台守护进程）——到点的 tick 若正好有回合在跑，会等 REPL 空闲后立刻补跑，不会重叠堆积。三个工具本身默认放行（只是登记元数据），但**排定的 payload 真正动手时仍在触发那一刻走完整权限门**。`/loop` 就是基于这套机制的薄封装（见 [§6](#6-slash-命令大全)）。配置见 [§20](#20-配置文件完整参考) `cron.*`。
+
 ### 后台长任务
 
 | 工具 | 权限 | 说明 |
@@ -310,8 +331,10 @@ Nova 把「extended thinking」暴露成五个等级，或一个显式的 token 
 
 ### 默认放行 vs 默认询问
 
-- **默认放行（只读类）**：`read`/`glob`/`grep`（限定在工作区内，见下）、`webfetch`、`websearch`、`askUserQuestion`、所有 `get*` 查询（含 `getBackgroundOutput`）、`lsp`、`loadSkill`、`createSubAgent`、todo 全套。
-- **默认询问（会改东西的）**：`write`、`edit`、`bash`、`runInBackground`、task 的写操作等——落到 `defaultEffect`（默认 `ask`）。
+- **默认放行（只读或仅登记元数据的）**：`read`/`glob`/`grep`（限定在工作区内，见下）、`webfetch`、`websearch`、`askUserQuestion`、`lsp`、`loadSkill`、`createSubAgent`、`getBackgroundOutput`/`killBackground`、**todo 全套**、**task 全套**（含写操作 create/update/clear）、**cron 全套**（`cronCreate`/`cronList`/`cronDelete`）。task/cron 的写只改自己的清单/排程，payload 真正动手时仍走权限门，所以放行它们不越权。
+- **默认询问（会改文件 / 跑命令的）**：`write`、`edit`、`bash`、`runInBackground`——落到 `defaultEffect`（默认 `ask`）。
+
+> `permissions.deny`（裸工具名数组）是更强的一档：列进去的工具会在启动时从注册表**摘除**，模型根本看不到、也调不了（区别于 `rules` 里 `effect: "deny"`——后者仍把工具报给模型、只在调用时拒）。
 
 ### 权限模式（Shift+Tab 切换）
 
@@ -379,9 +402,9 @@ Nova 把「extended thinking」暴露成五个等级，或一个显式的 token 
 
 要点：
 
-- **默认关闭（opt-in）。** 需显式设 `sandbox.enabled: true` 才开启（或会话内 `/sandbox on`）。开启后读放行、**网络不限制**（只管文件系统）。
+- **默认关闭（opt-in）。** 需显式设 `sandbox.enabled: true` 才开启（或会话内 `/sandbox on`）。开启后读放行；**网络默认不限制**（只管文件系统），但可选 `network.allowedDomains` / `deniedDomains` 收紧出站连接（见 [§20](#20-配置文件完整参考)）。
 - **自动降级安全。** 仅 macOS / Linux 支持；不支持的平台或缺依赖（macOS 需 `ripgrep`；Linux 还需 `bubblewrap`/`socat`）会**静默降级**为不沙箱，agent 照常运行。
-- **常见缓存默认放行。** npm/pnpm/yarn/cargo/rustup/go 等工具链缓存目录已预置进白名单，常用命令开箱即用。显式设置 `filesystem.allowWrite` 会**替换**这组默认值。
+- **常见缓存默认放行。** npm/pnpm/yarn/cargo/rustup/go 等工具链缓存目录、以及 `~/.config/gh`（gh/PR 工作流下 token 刷新）已预置进白名单，常用命令开箱即用。显式设置 `filesystem.allowWrite` 会**替换**这组默认值。
 - **SDK 强制保护的危险路径。** 即使在工作区里，这些也写不了：`.git/hooks`、`.git/config`、`.vscode/`、`.idea/`、`.claude/{commands,agents}`，以及 `.gitconfig`/`.zshrc`/`.mcp.json` 等 dotfile。其中只有 `.git/config` 能通过 `allowGitConfig`（默认 `true`）放行（`git config --local`、`git remote set-url` 需要它）；`.git/hooks` 始终拦。要写其它被保护路径，只能整个关掉沙箱。
 
 配置示例：
@@ -409,10 +432,7 @@ Nova 把「extended thinking」暴露成五个等级，或一个显式的 token 
 
 历史是 **append-only** 的：每轮只往后追加新消息，从不改写更早的内容——这既让持久化只做追加写，也让 DeepSeek 的**自动上下文缓存前缀**能持续存活。
 
-两种压缩：
-
-- **auto 压缩（默认开）** —— 只在上下文窗口吃紧时触发，把历史压成一条摘要消息，作为一次有意为之的「前缀重置」。可调 `compact.auto.thresholdTokens` / `contextWindowPercent` / `maxSummaryTokens`。
-- **micro 压缩（默认关）** —— 每轮改写更早的 `tool_result`。它会让从改写点到结尾的缓存全部失效，而它裁掉的 token 本来就按便宜的缓存读取价计费，所以在 DeepSeek 这类有前缀缓存的 provider 上净收益「微弱到负」。**只有在没有前缀缓存的 provider 上**才建议把 `compact.micro.enabled` 设为 `true`。
+**auto 压缩（默认开）**：只在上下文窗口吃紧时触发。它不截断历史，而是往 append-only 历史里**追加一条 `<compacted>` 摘要边界**——完整历史仍留在磁盘、TUI 里照旧全量渲染，只有喂给**模型**的视图缩短到「最后一条边界往后」。这是一次有意为之的「前缀重置」：边界之内前缀依旧稳定命中缓存，边界推进时才重置一次。可调 `compact.auto.enabled` / `thresholdTokens` / `contextWindowPercent` / `maxSummaryTokens`。
 
 手动压缩：随时 `/compact`，可附带关注点（如 `/compact 保留关于鉴权的部分`）让摘要更聚焦。
 
@@ -431,6 +451,16 @@ Nova 会像 CLAUDE.md 那样，把项目与用户级的记忆文件注入 system
 文件名可通过 `settings.memory.filenames` 自定义；用户层/全局路径可用 `memory.userPaths` / `memory.globalPath` 覆盖。
 
 > 实战建议：把项目的构建/测试命令、架构约定、风格偏好写进仓库根的 `CLAUDE.md`（或 `NOVA.md`），Nova 在该仓库工作时会自动带上。
+
+### 自动记忆（agent 自维护，跨会话）
+
+除了你手写的记忆文件，Nova 还维护一层 **auto 记忆**——agent 自己在工作中沉淀下来的事实，跨会话保留：
+
+- 落在工作区里的 `.nova/memory/`（可用 `memory.auto.dir` 改）：一个 `MEMORY.md` 索引，加上**每条事实一个文件**。
+- **索引**（`MEMORY.md`，每条一行）注入 system prompt，占很少 token；单条事实正文由 agent 按需 `read`。为控制每请求成本，注入的索引条数上限 `memory.auto.maxEntries`（默认 100）。
+- 这个目录归 agent 所有：其中的 `read`/`write`/`edit` **默认放行、不弹权限**（见 [§10](#10-权限与安全)）——沉淀一条学到的事实不该每次都问你。
+- 放在工作区内是刻意的：天然随项目走、可 git 跟踪，也绕开沙箱的写入限制（无需额外白名单）。
+- 用 `memory.auto.enabled: false` 关闭整层。
 
 ---
 
@@ -496,7 +526,15 @@ Nova 可在启动时连接外部 [MCP](https://modelcontextprotocol.io) 服务�
 }
 ```
 
-各服务器并行连接；某个连不上只会记日志并跳过——不阻塞启动、不影响其它服务器。用 `/mcp` 查看每个服务器状态和工具数，`/mcp tools` 列出所有桥接的工具名。
+各服务器并行连接；某个连不上只会记日志并跳过——不阻塞启动、不影响其它服务器。`/mcp` 打开一个**菜单**（认证 / 重连 / 登出，查看状态和工具数），`/mcp tools` 列出所有桥接的工具名；shell 里也有 `nova mcp` 子命令。
+
+### OAuth（远程服务器鉴权）
+
+对以 401/403 挑战的远程 http/sse 服务器，Nova 支持 **OAuth 2.0（authorization-code + PKCE）**：
+
+- 给该服务器加一个 `oauth: {}` 块（可选 `scope`）即启用；`mcp.oauth.autoDetect`（默认 `true`）还会把**任何** 401/403 的远程服务器自动标记为「需认证」，即便没写 `oauth` 块（用静态 `Authorization` 头的服务器豁免）。
+- 首次在 `/mcp` 菜单里选 **Authenticate** 会打开浏览器走授权；回调由固定的本地端口接收（`mcp.oauth.callbackHost`/`callbackPort`，默认 `127.0.0.1:7777`）。
+- token 持久化在 `~/.nova/mcp-auth/`，之后的会话静默刷新，无需再次登录。
 
 ---
 
@@ -562,8 +600,7 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 
 - `nova -c` / `nova --continue`：恢复最近一个 session。
 - `nova --resume <id>`：按 id 恢复。
-- `nova --list-sessions`：列出历史 session（打印后退出）。
-- REPL 内 `/resume [<id>]`：切到指定 session（不带参数则弹列表选）。
+- REPL 内 `/resume [<id>]`：切到指定 session（不带参数则弹列表选，这也是浏览历史 session 的入口）。
 
 ### 回退（Rewind）
 
@@ -572,6 +609,11 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 ### 自动清理
 
 启动时 Nova 会删掉**最近活动超过 `sessionCleanup.maxAgeDays`（默认 30 天）**的 session 目录（按文件最新 mtime 算「最后一次使用」，不是创建时间；当前活动 session 始终受保护）。设 `sessionCleanup.enabled: false` 可永久保留。
+
+### 版本更新
+
+- **启动检查（只提醒，不安装）**：交互启动时，Nova 会（限流地）比对 npm 上是否有新版，有则提示——从不自动安装。节流状态记在 `~/.nova/update-check.json`，间隔 `update.checkIntervalHours`（默认 24h）；设 `update.enabled: false` 静音。
+- **手动升级**：`nova upgrade` 跑 `update.command`（默认 `npm install -g @asathinkeroops/nova-code@latest`，可改成 pnpm/yarn/bun 全局安装）把自己升到最新版。`nova --version` 打印当前版本。
 
 ### 数据落在哪
 
@@ -583,7 +625,11 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 | 可重放 message 历史 | `~/.nova/sessions/{id}/messages.jsonl` |
 | 子 agent transcript/message | `~/.nova/sessions/{id}/subagents/` |
 | session 日志 | `~/.nova/sessions/{id}/session.log` |
+| 定时调度条目（cron/loop） | `~/.nova/sessions/{id}/cron/{id}.json` |
 | 持久化 Task | 工作区内 `.tasks/{id}.json` |
+| 自动记忆（agent 自维护） | 工作区内 `.nova/memory/`（`MEMORY.md` + 每条一文件） |
+| MCP OAuth token | `~/.nova/mcp-auth/` |
+| 更新检查节流状态 | `~/.nova/update-check.json` |
 
 > `--no-transcript` 让本次不写 transcript；`transcript.enabled: false` 全局关闭。
 
@@ -598,14 +644,17 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 | 字段 | 默认 | 说明 |
 |------|------|------|
 | `apiKey` | （无） | provider API key（首次向导会写入） |
+| `provider` | `"deepseek"` | 驱动 thinking 参数、错误翻译、重试策略的 **provider profile**：`deepseek`（effort 旋钮 + 错误翻译 + 状态码重试）/ `moonshot` / `other`（通用 Anthropic 兼容端点，用 `budget_tokens`、不翻译错误）。未知 id 回退到 `other` |
 | `model` | `"pro"` | 当前**档位**：`models` 表中的 key（`lite`/`pro`/`max`），**永远不是裸模型 id** |
-| `models` | `{}` | 命名的模型档位映射表（value 为裸 id 或含 `id`/`thinking` 等的对象）。非空时**必须至少含 `lite`/`pro`/`max` 三档**（schema 强制）；首次向导按 provider 模板写入，schema 不再提供默认值 |
-| `baseURL` | （无） | Anthropic 兼容端点 URL |
+| `models` | `{}` | 命名的模型档位表，value 为**档位对象**，每档带自己的 `id`、`maxTokens`、`contextWindowSize`、`thinking`、`modalities`、`pricing`、可选 `description`。非空时**必须含 `lite`/`pro`/`max` 三档**（schema 强制）；首次向导按 provider 模板写入，schema 不再提供默认值 |
+| `baseURL` | （无） | Anthropic 兼容端点 URL（provider 模板写入；缺省则用 SDK 默认端点） |
 | `sessionDir` | （无→ `~/.nova/sessions`） | session 存放目录 |
-| `maxTokens` | `32768` | 单次响应输出上限（DeepSeek 端点上限 8192，需手动调低） |
-| `contextWindowTokens` | `1000000` | 上下文窗口大小（用于压缩阈值估算） |
+| `language` | `"auto"` | UI / 回复语言；`auto` 跟随系统 locale（`$LC_ALL`/`$LANG`，macOS 还读 `AppleLocale`），否则填 BCP-47 标签如 `en`/`zh-CN` |
+| `maxTokensContinuations` | `3` | 单次响应被 `maxTokens` 截断时，允许自动「续写」的连续次数（`0` = 老式硬停）。DeepSeek 端点输出上限 8192，长回复常触发 |
 | `maxTurns` | `100` | 单轮最大循环次数 |
 | `toolConcurrency` | `3` | 单轮内工具并发上限（1 = 全串行） |
+
+> **每档输出上限 / 上下文窗口现在是 per-tier 的**：写在 `models.<tier>.maxTokens`（缺省 32768；DeepSeek 端点须调低到 8192）和 `models.<tier>.contextWindowSize`（缺省 1000000）里，不再是顶层字段。`models.<tier>.thinking` 让同一个模型 id 也能拉出 lite/pro/max 的能力梯度（见 [§7](#7-思考等级thinking)）；`models.<tier>.pricing` 提供 `/usage` 成本估算的每百万 token 单价（见 `pricing` 一节）。
 
 ### `permissions`
 
@@ -613,22 +662,29 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 |------|------|------|
 | `defaultEffect` | `"ask"` | 无规则命中时的兜底（`allow`/`deny`/`ask`） |
 | `rules` | `[]` | 规则数组（首个匹配生效），见 [§10](#10-权限与安全) |
+| `deny` | `[]` | 裸工具名黑名单：启动时从注册表摘除，模型看不到也调不了（比 `rules` 的 `deny` 更硬），见 [§10](#10-权限与安全) |
 | `additionalDirectories` | `[]` | 工作区之外、读工具可免询问触及的目录 |
+| `autoMode.llmClassifier` | `true` | `auto` 模式下把规则判不定的命令交给 LLM 风险分类器；关掉则一律弹确认 |
+| `autoMode.model` | （无→ 便宜档） | 分类器用的模型（裸 id 或档位名），独立于 `/model` |
+| `autoMode.classifierTimeoutMs` | `8000` | 分类器超时；超时按「有风险」处理（弹确认，不静默执行） |
 
-### `thinking`
+### 思考等级（thinking）
+
+**没有顶层 `thinking` 配置项**——思考等级是 per-tier 的，写在 `models.<tier>.thinking`（`off`/`low`/`medium`/`high`/`max`；缺省回退 `max`）。`-t/--think`、`/effort` 是会话内覆盖，见 [§7](#7-思考等级thinking)。
+
+### `pricing`（`/usage` 成本估算）
 
 | 字段 | 默认 | 说明 |
 |------|------|------|
-| `level` | `"off"` | `off`/`low`/`medium`/`high`/`max` |
-| `budgetTokens` | （无） | 显式 token 预算，设了就盖过 level |
+| `pricing.enabled` | `true` | 开关 `/usage` 与状态行的成本估算 |
+
+> 单价本身是 **per-tier** 的：写在 `models.<tier>.pricing`（`input`/`output`/`cacheRead`/`cacheWrite` 每百万 token，`currency` 选 `USD`→`$` 或 `CNY`→`¥`）。用当前档位自己的费率算钱；某档没写 `pricing` 就只显示 token、不显示金额。
 
 ### `compact`
 
 | 字段 | 默认 | 说明 |
 |------|------|------|
-| `micro.enabled` | `false` | 逐轮微压缩（DeepSeek 上不建议开） |
-| `micro.keepRecent` / `minContentChars` / `preserveTools` | （内置常量） | micro 调参 |
-| `auto.enabled` | `true` | 上下文吃紧时自动压缩 |
+| `auto.enabled` | `true` | 上下文吃紧时自动压缩（追加 `<compacted>` 边界，见 [§12](#12-上下文管理与压缩)） |
 | `auto.thresholdTokens` / `contextWindowPercent` / `maxSummaryTokens` | （内置常量） | auto 调参 |
 
 ### `invariants`（工具不变量，dispatcher 强制）
@@ -646,7 +702,7 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 | `stream.enabled` | `true` | TUI 里实时流式渲染文本/推理（仅配置项，无运行时命令） |
 | `predict.enabled` | `true` | 下一条输入预测（`/predict` 切换） |
 | `predict.timeoutMs` | `8000` | 预测超时 |
-| `predict.maxChars` | `50` | 预测占位最大字符数 |
+| `predict.maxChars` | `300` | 预测占位最大字符数 |
 | `logging.level` | `"info"` | `trace`…`fatal` |
 | `logging.pretty` | `true` | pretty 日志（`--no-pretty` 关） |
 
@@ -657,6 +713,9 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 | `transcript.enabled` | `true` | 写 transcript（`--no-transcript` 临时关） |
 | `sessionCleanup.enabled` | `true` | 启动时清理旧 session |
 | `sessionCleanup.maxAgeDays` | `30` | 旧 session 的天数阈值 |
+| `update.enabled` | `true` | 启动时检查 npm 新版并提醒（从不自动装），见 [§19](#19-会话检查点与数据落盘) |
+| `update.checkIntervalHours` | `24` | 更新检查节流间隔 |
+| `update.command` | `npm install -g @asathinkeroops/nova-code@latest` | `nova upgrade` 跑的安装器（可改 pnpm/yarn/bun） |
 
 ### 扩展子系统
 
@@ -664,13 +723,20 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 |------|------|------|
 | `memory.filenames` | `["NOVA.md","CLAUDE.md","AGENTS.md"]` | 记忆文件名优先级，见 [§13](#13-记忆memory) |
 | `memory.userPaths` / `globalPath` | （无） | 覆盖用户层/全局记忆路径 |
+| `memory.auto.*` | `enabled:true` | 自动记忆（agent 自维护）：`dir`=`.nova/memory`、`maxEntries`=100，见 [§13](#13-记忆memory) |
 | `slash.enabled` | `true` | 自定义 slash 命令开关；`projectDirs`/`userPaths`/`extraDirs` 额外目录 |
 | `skills.enabled` | `true` | Skills 开关；`maxIndexBytes`=8192、`maxResponseBytes`=16384，及额外目录 |
 | `subagent.enabled` | `true` | 子 agent 开关；`model`（按子 agent 名索引的档位表，见 [§8](#8-plan-模式与子-agent)）/`maxTurns`=100/`maxTokens`=32768 |
+| `guide.*` | `enabled:true` | nova-code-guide 来源：`source`=`remote`（默认，克隆 `repoUrl`@`ref`→`cacheDir`，`refreshIntervalHours`=24）或 `local`（读 `localPath`/工作区），见 [§8](#8-plan-模式与子-agent) |
+| `goal.*` | `enabled:true` | `/goal` 目标模式：`evalModel`（判定档位，模板设 `lite`）/`maxContinuations`=25/`maxEvalTurns`=15 |
 | `loop.*` | `maxIterations`=100 | `/loop` 重复任务：`maxIterations` 安全上限、`minIntervalMs`=1000 拒绝过密间隔，见 [§6](#6-slash-命令大全) |
+| `cron.*` | `enabled:true` | 定时调度工具：`maxSchedules`=20、`minIntervalMs`=1000、`maxIterations`=100（`enabled` 只管 agent 工具，`/loop` 不受影响），见 [§9](#9-内置工具一览) |
+| `background.autoContinueOnComplete` | `true` | 后台命令跑完且 agent 空闲时，自动唤起一轮让它处理结果 |
+| `queue.consumeInLoop` | `true` | 回合运行中新键入的普通 prompt 在 loop 边界即时折入（`/` 与 `!` 行仍排队） |
+| `terminal.syncOutput` / `cursorFollow` | `true` / `true` | 同步输出（防闪烁）/ 光标跟随输入框（IME 定位） |
 | `lsp.*` | `enabled:true` | LSP，见 [§17](#17-lsp-代码智能) |
-| `mcp.*` | `enabled:true` | MCP，见 [§16](#16-mcp-外部工具) |
-| `sandbox.*` | `enabled:false` | 命令沙箱（**默认关**），见 [§11](#11-命令沙箱) |
+| `mcp.*` | `enabled:true` | MCP；`servers`/`timeoutMs`=60000/`oauth.*`（回调 `127.0.0.1:7777`、`autoDetect:true`），见 [§16](#16-mcp-外部工具) |
+| `sandbox.*` | `enabled:false` | 命令沙箱（**默认关**）；`filesystem.*` + `network.*`（默认不限网，可设 `allowedDomains`/`deniedDomains`），见 [§11](#11-命令沙箱) |
 | `plugins.*` | `enabled:false` | 插件子系统（**默认关**）；`projectDirs`/`userDirs`/`disabled`/`installed`/`marketplaces`，见 [§18](#18-插件plugins) |
 | `hooks.*` | `enabled:true` | 用户事件 shell 钩子，见下方 [`hooks`](#hooks用户事件-shell-钩子) |
 
@@ -785,8 +851,8 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 
 ## 21. 常见问题与排查
 
-**Q：启动报 “Nova requires an interactive terminal (TTY)”。**
-A：Nova 必须在交互式终端里跑，不支持管道/重定向/无 PTY 的 CI。换一个真正的终端。
+**Q：在管道 / CI 里能用吗？没有 TTY 会怎样？**
+A：能。没有 TTY 时 Nova 不会报错，而是走 **headless** 模式：跑一轮（prompt 从参数、`-p` 或 stdin 取）、打印结果、退出。要机器可读输出用 `--output-format json|jsonl`；无人值守批准配 `--dangerously-skip-permissions`。全屏 REPL 才需要真正的终端。
 
 **Q：启动报 apiKey 未设置。**
 A：跑一次首启向导填上，或手动编辑 `~/.nova/nova.config.json` 的 `apiKey`/`baseURL`/`model`。
@@ -804,10 +870,13 @@ A：把目标路径加进 `sandbox.filesystem.allowWrite`；若要写 `.git/hook
 A：Nova 不装语言服务器。先把对应二进制装到 PATH（`typescript-language-server`/`pyright-langserver`/`gopls`/`rust-analyzer`），用 `/lsp` 确认状态。
 
 **Q：感觉缓存没命中、变慢变贵。**
-A：保持历史前缀稳定——别开 `compact.micro`（DeepSeek 上默认就关），让 append-only 历史和 auto 压缩各司其职。状态行可看每轮缓存命中量。
+A：保持历史前缀稳定——靠 append-only 历史和 auto 压缩（追加 `<compacted>` 边界，不改写更早内容）各司其职。状态行可看每轮缓存命中量。
 
 **Q：想回到几步之前、撤掉刚才的改动。**
 A：`/rewind [<n>]` 回退到更早的消息（其后的历史与文件改动会被丢弃）。
+
+**Q：怎么升级 Nova？**
+A：`nova upgrade` 跑配置里的安装器升到最新版；交互启动时若有新版也会（限流地）提示。`nova --version` 看当前版本。想静音提醒设 `update.enabled: false`。
 
 ---
 
