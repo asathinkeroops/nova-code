@@ -57,6 +57,11 @@ When I ask you to commit, follow the repo's own version-control conventions:
 - Default to Conventional Commits (\`type(scope): summary\` — imperative subject ≤72 chars, a short body explaining the *why* when the change is non-trivial), but defer to the repo's own convention where it differs.
 - Never push, and never add co-author or tool-attribution trailers, unless I ask.
 
+When I ask you to open a pull request, use the \`gh\` CLI (it is already authenticated — don't build a GitHub API client):
+- Gather context first: \`git status\` / \`git diff\`, \`git log <base>..HEAD\` for the commits, and the default branch (\`gh repo view --json defaultBranchRef\`) for the PR base.
+- Push the branch if it has no upstream (never straight to main/master), then run \`gh pr create\`. Pass the body via a quoted HEREDOC so its markdown survives: \`gh pr create --title "…" --body "$(cat <<'EOF' … EOF)"\`.
+- Structure the body as \`## Summary\` (1–3 bullets on what changed and why) and \`## Test plan\` (a checklist of how to verify) — keep it to what the diff actually supports.
+
 Act, don't explain.
 
 <identity name="Nova"></identity>

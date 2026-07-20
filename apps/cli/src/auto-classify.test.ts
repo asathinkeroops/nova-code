@@ -83,6 +83,31 @@ describe("classifyCommandStatic", () => {
     expect(classifyCommandStatic("npm run build")).toBe("unknown");
     expect(classifyCommandStatic("pytest -k auth")).toBe("unknown");
   });
+
+  it("fast-allows read-only gh (GitHub CLI) commands", () => {
+    for (const cmd of [
+      "gh pr view 12",
+      "gh pr diff 12",
+      "gh pr list",
+      "gh pr checks 12",
+      "gh issue view 5",
+      "gh repo view",
+    ]) {
+      expect(classifyCommandStatic(cmd)).toBe("allow");
+    }
+  });
+
+  it("denies irreversible gh operations", () => {
+    expect(classifyCommandStatic("gh pr merge 12")).toBe("deny");
+    expect(classifyCommandStatic("gh repo delete acme/repo")).toBe("deny");
+  });
+
+  it("defers mutating gh commands to the classifier", () => {
+    // Creating a PR or hitting the API (can POST) isn't fast-allowed — it falls
+    // to the LLM classifier rather than running unattended off a static rule.
+    expect(classifyCommandStatic("gh pr create --fill")).toBe("unknown");
+    expect(classifyCommandStatic("gh api repos/acme/repo/pulls")).toBe("unknown");
+  });
 });
 
 describe("classifyCommandRisk", () => {

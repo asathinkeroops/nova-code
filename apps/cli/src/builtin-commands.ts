@@ -157,8 +157,8 @@ export function registerBuiltinSlashCommands(ctx: CliContext): void {
   });
   ctx.registry.register({
     name: "review",
-    description: "review the current uncommitted diff (read-only)",
-    argHint: "[focus…]",
+    description: "review the uncommitted diff, or a GitHub PR by number (read-only)",
+    argHint: "[PR# | focus…]",
     source: { kind: "builtin" },
     run: (_c, args) => handleReview(args),
   });

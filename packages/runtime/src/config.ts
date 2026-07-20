@@ -133,6 +133,7 @@ export const DEFAULT_SANDBOX_ALLOW_WRITE = [
   "~/.local/share/pnpm", // pnpm store/bin (Linux)
   "~/Library/pnpm", // pnpm store/bin (macOS)
   "~/.yarn", // yarn global
+  "~/.config/gh", // gh CLI auth/token refresh (git/PR workflow)
 ] as const;
 
 // Per-1M-token prices for a single model tier, attached to its entry in the

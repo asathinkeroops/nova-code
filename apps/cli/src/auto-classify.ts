@@ -68,6 +68,9 @@ const DENY_RULES: ReadonlyArray<{ re: RegExp; reason: string }> = [
   { re: /\bgit\s+clean\s+-[a-z]*f/i, reason: "git clean -f (deletes untracked files)" },
   { re: /\bgit\s+stash\s+(?:drop|clear)\b/i, reason: "git stash drop/clear (loses stashed work)" },
   { re: /\bgit\s+commit\b[^|&;]*--amend\b/i, reason: "git commit --amend (rewrites history)" },
+  // Irreversible GitHub (gh) operations — merging or deleting.
+  { re: /\bgh\s+pr\s+merge\b/i, reason: "gh pr merge (merges a pull request)" },
+  { re: /\bgh\s+repo\s+delete\b/i, reason: "gh repo delete" },
   // Infrastructure-as-code teardown.
   { re: /\b(?:terraform|terragrunt|pulumi|cdk|cdktf)\s+destroy\b/i, reason: "infrastructure destroy" },
   // Mass cloud deletion.
@@ -100,6 +103,18 @@ const READ_ONLY_GIT_SUBCOMMANDS: ReadonlySet<string> = new Set([
   "rev-parse", "ls-files", "ls-remote", "shortlog", "tag", "config",
 ]);
 
+/**
+ * Read-only `gh` (GitHub CLI) command signatures — the "<sub> <action>" pair —
+ * fast-pathed for `auto` mode so PR/issue inspection runs unattended. Mutating
+ * gh verbs (create/edit/close/comment) and `gh api` (can POST) are deliberately
+ * absent: they fall to the LLM classifier. Irreversible ones (merge, repo
+ * delete) are hard-caught by DENY_RULES above.
+ */
+const READ_ONLY_GH_SIGNATURES: ReadonlySet<string> = new Set([
+  "pr view", "pr diff", "pr list", "pr checks", "pr status",
+  "issue view", "issue list", "repo view", "run view", "run list",
+]);
+
 /** Shell metacharacters that make a command "not simple" (so no allow fast-path). */
 const COMPOUND_RE = /[|&;<>`]|\$\(|\bxargs\b|\beval\b|\bexec\b/;
 
@@ -128,9 +143,10 @@ export function classifyCommandStatic(command: string): StaticVerdict {
     if (re.test(cmd)) return "deny";
   }
   if (!COMPOUND_RE.test(cmd)) {
-    const [verb, sub] = effectiveTokens(cmd);
+    const [verb, sub, action] = effectiveTokens(cmd);
     if (verb && READ_ONLY_COMMANDS.has(verb)) return "allow";
     if (verb === "git" && sub && READ_ONLY_GIT_SUBCOMMANDS.has(sub)) return "allow";
+    if (verb === "gh" && sub && action && READ_ONLY_GH_SIGNATURES.has(`${sub} ${action}`)) return "allow";
   }
   return "unknown";
 }
