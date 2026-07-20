@@ -1,6 +1,6 @@
 {
   "name": "@asathinkeroops/nova-code",
-  "version": "0.1.0-beta.5",
+  "version": "0.1.0-beta.6",
   "description": "A terminal coding agent, deeply tuned for DeepSeek.",
   "type": "module",
   "license": "MIT",
@@ -43,7 +43,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sandbox-runtime": "0.0.52",
-    "@anthropic-ai/sdk": "^0.27.0",
+    "@anthropic-ai/sdk": "^0.111.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@vscode/ripgrep": "^1.18.0",
     "cli-highlight": "^2.1.11",
