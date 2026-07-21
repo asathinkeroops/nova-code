@@ -122,7 +122,24 @@ async function writeStamp(dir: string): Promise<void> {
 async function git(cwd: string, args: readonly string[], logger?: Logger): Promise<void> {
   logger?.debug({ args }, "nova-code-guide: git");
   try {
-    await execFileP("git", [...args], { cwd });
+    // The guide checkout is warmed fire-and-forget on startup, so its git child
+    // must never keep the process alive: unref the child and its stdio pipes so
+    // an in-flight clone/fetch can't block `/exit` (the process leaves it to
+    // finish orphaned). Harmless for the interactive `/nova-code-guide` path —
+    // the REPL keeps the loop alive there, so the await still settles normally.
+    const p = execFileP("git", [...args], { cwd });
+    const child = (p as unknown as { child?: import("node:child_process").ChildProcess }).child;
+    if (child) {
+      // The stdio pipes are Sockets at runtime (they carry `.unref`) but typed
+      // as Readable/Writable, so reach for it through a cast.
+      const unref = (s: unknown): void =>
+        (s as { unref?: () => void } | null | undefined)?.unref?.();
+      child.unref();
+      unref(child.stdin);
+      unref(child.stdout);
+      unref(child.stderr);
+    }
+    await p;
   } catch (err) {
     if (isEnoent(err)) {
       throw new GuideProvisionError(
