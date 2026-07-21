@@ -73,10 +73,4 @@ cli (apps/cli)                     ──► every package above
 
 ## Git workflow
 
-- **Every commit must include the co-author trailer** from `.gitmessage` (blank line before it, at the end of the message body):
-
-  ```
-  Co-authored-by: Codex <81847+Codex@users.noreply.github.com>
-  ```
-
-  Add it explicitly in the commit command — don't rely on `commit.template` being wired up.
+- **Every commit must include the co-author trailer** from `.gitmessage` (blank line before it, at the end of the message body): Add it explicitly in the commit command — don't rely on `commit.template` being wired up.
