@@ -11,6 +11,7 @@ import { appendInputHistory } from "./input-history.js";
 import type { HorizontalPickerOptions, PickerOptions, ViewerOptions } from "./picker.js";
 import type { SliderPickerOptions } from "./slider.js";
 import type { SetupEntry, SetupState } from "./setup-view.js";
+import type { TrustState } from "./trust-view.js";
 import type { PermissionMode } from "../permissions.js";
 import type { ClipboardPaste } from "../image-paste.js";
 
@@ -152,6 +153,12 @@ export interface AppState {
    * until setup completes and this returns to null.
    */
   setup: SetupState | null;
+  /**
+   * When set, the workspace-trust gate commandeers the whole screen (rendered
+   * by `<TrustView>` plus the Yes/No `pick` modal), suppressing every other
+   * branch until the user answers. Independent of `setup` — a different concern.
+   */
+  trust: TrustState | null;
   /**
    * Current terminal size, kept in sync via a `stdout.on("resize")` listener
    * wired in `Screen`. Used by the viewport to decide ANSI wrap width and how
@@ -404,6 +411,8 @@ export interface AppActions {
   setSetupPrompt: (prompt: { label: string; hint: string; provider?: string } | null) => void;
   pushSetupEntry: (entry: SetupEntry) => void;
   endSetup: () => void;
+  beginTrust: (state: TrustState) => void;
+  endTrust: () => void;
   resolveModal: (value: unknown) => void;
   openInputModal: (opts: BoxedInputOptions) => Promise<string | null>;
   openApprovalModal: (
@@ -622,6 +631,7 @@ export function createAppStore(opts: AppStoreOptions = {}): AppStoreApi {
       escHandler: null,
       thinkingLabel: undefined,
       setup: null,
+      trust: null,
       termCols: process.stdout.columns ?? 80,
       termRows: process.stdout.rows ?? 24,
       scrollOffset: 0,
@@ -786,6 +796,14 @@ export function createAppStore(opts: AppStoreOptions = {}): AppStoreApi {
 
       beginSetup(state) {
         set({ setup: state });
+      },
+
+      beginTrust(state) {
+        set({ trust: state });
+      },
+
+      endTrust() {
+        set({ trust: null });
       },
 
       setSetupPrompt(prompt) {

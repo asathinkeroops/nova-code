@@ -1,9 +1,10 @@
 import { homedir } from "node:os";
 import { canonicalizePath, saveSettings, type Settings } from "@nova/runtime";
 import { isWithin } from "@nova/safety";
-import { accent, dim, PURPLE_HEX } from "./colors.js";
+import { dim, PURPLE_HEX } from "./colors.js";
 import { fatalExit, type Screen } from "./screen.js";
 import { pickerArrow } from "./ui/picker.js";
+import { readCliVersion } from "./version.js";
 
 /**
  * Workspace trust — the startup gate that asks the user to confirm nova may
@@ -64,10 +65,10 @@ export async function trustWorkspace(
 
 /**
  * Interactive startup gate. If the workspace is already trusted (or trust is
- * disabled) this returns immediately. Otherwise it explains the situation and
- * prompts: granting trust persists the folder and continues; declining exits
- * the process via {@link fatalExit}. `configPath` is forwarded to
- * {@link trustWorkspace} (tests point it at a temp file).
+ * disabled) this returns immediately. Otherwise it commandeers the screen with
+ * the {@link TrustView} banner + a Yes/No picker: granting trust persists the
+ * folder and continues; declining exits via {@link fatalExit}. `configPath` is
+ * forwarded to {@link trustWorkspace} (tests point it at a temp file).
  */
 export async function ensureWorkspaceTrust(
   settings: Settings,
@@ -78,40 +79,47 @@ export async function ensureWorkspaceTrust(
   if (await isWorkspaceTrusted(settings, workspace)) return;
 
   const wsCanon = await canonicalizePath(workspace, ".");
-  screen.card(
-    `nova was launched in a folder it has not been trusted to access:\n\n` +
-      `  ${accent(wsCanon)}\n\n` +
-      `Granting access lets nova read and edit files here (and in its\n` +
-      `subdirectories) without confirming each time. Only trust folders you\n` +
-      `recognize — declining exits without touching anything.`,
-    { kind: "warn", title: "workspace trust" },
-  );
-
-  const choice = await screen.pickOne<{ trust: boolean }>({
-    items: [{ trust: true }, { trust: false }],
-    header: "Do you trust the files in this folder?",
-    footer: dim("↑/↓ choose · Enter confirm · Ctrl+C to exit"),
-    border: false,
-    topRuleColor: PURPLE_HEX,
-    render: (it, selected) => {
-      const label = it.trust ? "Yes, trust this folder" : "No, exit";
-      return `${pickerArrow(selected)} ${label}`;
-    },
+  screen.beginTrust({
+    version: await readCliVersion(),
+    workspace: wsCanon,
+    lines: [
+      "nova has not been granted access to this folder yet. Granting access",
+      "lets it read and edit files here (and in subdirectories) without",
+      "confirming each time, and runs any project hooks the folder defines.",
+      "Only trust folders you recognize — declining exits without touching",
+      "anything.",
+    ],
   });
 
-  if (choice === null || !choice.trust) {
-    await fatalExit(screen, `workspace not trusted — exiting.\n  ${wsCanon}`, 1);
-  }
-
   try {
-    await trustWorkspace(settings, workspace, configPath);
-  } catch (err) {
-    // A failed write shouldn't crash the session — the user already consented,
-    // so trust holds for this run; it just won't be remembered next time.
-    const msg = err instanceof Error ? err.message : String(err);
-    screen.card(`could not persist workspace trust: ${msg}`, {
-      kind: "warn",
-      title: "workspace trust",
+    const choice = await screen.pickOne<{ trust: boolean }>({
+      items: [{ trust: true }, { trust: false }],
+      footer: dim("↑/↓ choose · Enter confirm · Ctrl+C to exit"),
+      border: false,
+      topRuleColor: PURPLE_HEX,
+      render: (it, selected) => {
+        const label = it.trust ? "Yes, trust this folder" : "No, exit";
+        return `${pickerArrow(selected)} ${label}`;
+      },
     });
+
+    if (choice === null || !choice.trust) {
+      // fatalExit unmounts + exits; the finally below won't run.
+      await fatalExit(screen, `workspace not trusted — exiting.\n  ${wsCanon}`, 1);
+    }
+
+    try {
+      await trustWorkspace(settings, workspace, configPath);
+    } catch (err) {
+      // A failed write shouldn't crash the session — the user already consented,
+      // so trust holds for this run; it just won't be remembered next time.
+      const msg = err instanceof Error ? err.message : String(err);
+      screen.card(`could not persist workspace trust: ${msg}`, {
+        kind: "warn",
+        title: "workspace trust",
+      });
+    }
+  } finally {
+    screen.endTrust();
   }
 }

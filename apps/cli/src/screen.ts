@@ -19,6 +19,7 @@ import { hitTestJumpButton } from "./ui/jump-button.js";
 import { extractSelection } from "./ui/selection.js";
 import { H_PAD } from "./ui/viewport.js";
 import { type SetupEntry, type SetupState } from "./ui/setup-view.js";
+import { type TrustState } from "./ui/trust-view.js";
 import { type PermissionMode } from "./permissions.js";
 import { type ClipboardPaste } from "./image-paste.js";
 import {
@@ -641,6 +642,14 @@ export class Screen {
 
   endSetup(): void {
     this.store.getState().endSetup();
+  }
+
+  beginTrust(state: TrustState): void {
+    this.store.getState().beginTrust(state);
+  }
+
+  endTrust(): void {
+    this.store.getState().endTrust();
   }
 
   async promptInput(opts: BoxedInputOptions): Promise<string | null> {

@@ -3,6 +3,7 @@ import { Box, Text } from "ink";
 import { useShallow } from "zustand/react/shallow";
 import { InputBox } from "./input-box.js";
 import { SetupView } from "./setup-view.js";
+import { TrustView } from "./trust-view.js";
 import { StatusLine } from "./status-line.js";
 import { permissionModeIndicator, PERMISSION_MODE_HINT } from "./status-format.js";
 import { setCursorTarget } from "./cursor-target.js";
@@ -108,6 +109,7 @@ interface AppProps {
 export function App({ store }: AppProps): React.ReactElement {
   const {
     setup,
+    trust,
     modal,
     slashCommands,
     mentionFiles,
@@ -122,6 +124,7 @@ export function App({ store }: AppProps): React.ReactElement {
   } = store(
     useShallow((s) => ({
       setup: s.setup,
+      trust: s.trust,
       modal: s.modal,
       slashCommands: s.slashCommands,
       mentionFiles: s.mentionFiles,
@@ -182,16 +185,23 @@ export function App({ store }: AppProps): React.ReactElement {
   // the screen — or a full-screen overlay hides the InputBox — it isn't mounted,
   // so clear the target ourselves so the cursor doesn't park at a stale caret.
   React.useEffect(() => {
-    if (setup || overlayModal) setCursorTarget(null);
-  }, [setup, overlayModal]);
+    if (setup || trust || overlayModal) setCursorTarget(null);
+  }, [setup, trust, overlayModal]);
 
-  // Setup mode commandeers the whole screen — everything else (banner,
-  // messages, cards, spinner, footer) is suppressed until the wizard finishes.
-  // It still drives input through the modal prompt rather than the queue.
-  if (setup) {
+  // Full-screen gates (provider setup, workspace trust) commandeer the whole
+  // screen — banner, messages, cards, spinner, footer all stay hidden until the
+  // gate returns. Setup and trust are independent concerns with their own views;
+  // they only share this generic host, which renders the active view plus any
+  // open modal (the setup wizard drives input; trust shows a Yes/No picker).
+  const fullscreenView = setup ? (
+    <SetupView state={setup} />
+  ) : trust ? (
+    <TrustView state={trust} />
+  ) : null;
+  if (fullscreenView) {
     return (
       <Box flexDirection="column">
-        <SetupView state={setup} />
+        {fullscreenView}
         {modal?.kind === "input" ? (
           <InputBox
             options={modal.opts}
