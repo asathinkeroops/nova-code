@@ -20,6 +20,7 @@ import { pruneOldSessions } from "./session.js";
 import { ensureSettings } from "./setup.js";
 import { buildUpgradeCommand } from "./upgrade-cli.js";
 import { readCliVersion } from "./version.js";
+import { ensureWorkspaceTrust, isWorkspaceTrusted } from "./workspace-trust.js";
 
 interface CliOptions {
   prompt?: string;
@@ -143,6 +144,20 @@ async function runHeadlessMode(
   }
   const approvalPolicy: HeadlessApprovalPolicy = opts.dangerouslySkipPermissions ? "allow" : "deny";
 
+  // Workspace trust. Headless has no way to show the confirmation prompt, so an
+  // untrusted workspace is a hard stop (deny by default). `--dangerously-skip-
+  // permissions` bypasses it; otherwise the user must trust the folder in an
+  // interactive session, or add it to `trust.trustedRoots` in the config.
+  const headlessCwd = opts.cwd ?? process.cwd();
+  if (!opts.dangerouslySkipPermissions && !(await isWorkspaceTrusted(settings, headlessCwd))) {
+    dieHeadless(
+      `workspace not trusted: ${headlessCwd}\n` +
+        `Trust it by running nova interactively here once, by adding it to ` +
+        `trust.trustedRoots in nova.config.json, or by passing --dangerously-skip-permissions.`,
+      1,
+    );
+  }
+
   let code: number;
   try {
     code = await runHeadless(settings, {
@@ -236,6 +251,15 @@ async function run(positional: string[], opts: CliOptions): Promise<void> {
         screen,
         "apiKey is not set in nova.config.json (or equivalent settings file).",
       );
+    }
+
+    // Workspace trust gate: nova is configured and ready — now confirm it may
+    // access the launch folder before createContext opens the session (which
+    // loads workspace memory/CLAUDE.md, runs project hooks, and starts tools).
+    // Declining exits (via fatalExit inside the helper);
+    // `--dangerously-skip-permissions` bypasses the check entirely.
+    if (!opts.dangerouslySkipPermissions) {
+      await ensureWorkspaceTrust(settings, screen, opts.cwd ?? process.cwd());
     }
 
     const ctx = await createContext(settings, screen, {

@@ -415,6 +415,22 @@ export const settingsSchema = z.object({
       additionalDirectories: [],
       autoMode: { llmClassifier: true, classifierTimeoutMs: 8000 },
     }),
+  // Workspace trust. On startup nova checks whether the workspace it was
+  // launched in has been granted file access; an untrusted workspace prompts
+  // the user to confirm, and declining exits. Trust is recorded HERE (in the
+  // user-global config, which a project cannot write) rather than in any
+  // project-checked-in file — mirroring Claude Code's `~/.claude.json` model,
+  // so a cloned repo can never mark itself trusted. `trustedRoots` are absolute
+  // canonical paths; a workspace equal to or nested under any of them is
+  // trusted (so trusting a repo root covers its subdirectories). Users may
+  // pre-seed roots by hand. Set `enabled: false` to restore the legacy
+  // "workspace is always trusted on launch" behavior.
+  trust: z
+    .object({
+      enabled: z.boolean().default(true),
+      trustedRoots: z.array(z.string().min(1)).default([]),
+    })
+    .default({ enabled: true, trustedRoots: [] }),
   transcript: z
     .object({
       enabled: z.boolean().default(true),

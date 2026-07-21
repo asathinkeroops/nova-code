@@ -1,0 +1,117 @@
+import { homedir } from "node:os";
+import { canonicalizePath, saveSettings, type Settings } from "@nova/runtime";
+import { isWithin } from "@nova/safety";
+import { accent, dim, PURPLE_HEX } from "./colors.js";
+import { fatalExit, type Screen } from "./screen.js";
+import { pickerArrow } from "./ui/picker.js";
+
+/**
+ * Workspace trust — the startup gate that asks the user to confirm nova may
+ * access the folder it was launched in.
+ *
+ * The trust decision is recorded in the USER-GLOBAL config (`trust.trustedRoots`
+ * in `~/.nova/nova.config.json`), never in a project-checked-in file, so a
+ * cloned repository can't mark itself trusted. This mirrors Claude Code's
+ * `~/.claude.json` trust model. A workspace is trusted when it equals — or is
+ * nested under — any recorded root, so trusting a repo root covers its
+ * subdirectories. Trust granted for the home directory is held for the session
+ * only and never written to disk.
+ */
+
+/**
+ * True when `workspace` is trusted: the feature is disabled, or the workspace
+ * equals / sits under a recorded trusted root. All paths are canonicalized
+ * (symlink-resolved) before the containment check so it compares real on-disk
+ * locations. Never throws.
+ */
+export async function isWorkspaceTrusted(
+  settings: Settings,
+  workspace: string,
+): Promise<boolean> {
+  if (!settings.trust.enabled) return true;
+  const wsCanon = await canonicalizePath(workspace, ".");
+  for (const root of settings.trust.trustedRoots) {
+    const rootCanon = await canonicalizePath(workspace, root);
+    if (isWithin(rootCanon, wsCanon)) return true;
+  }
+  return false;
+}
+
+/**
+ * Record `workspace` as trusted: append its canonical path to
+ * `settings.trust.trustedRoots` (in place) and persist to the user-global
+ * config — except for the home directory, which is trusted for this session
+ * only and never written to disk. A no-op when the workspace is already listed.
+ */
+export async function trustWorkspace(
+  settings: Settings,
+  workspace: string,
+  configPath?: string,
+): Promise<void> {
+  const wsCanon = await canonicalizePath(workspace, ".");
+  const roots = settings.trust.trustedRoots.includes(wsCanon)
+    ? settings.trust.trustedRoots
+    : [...settings.trust.trustedRoots, wsCanon];
+  settings.trust = { ...settings.trust, trustedRoots: roots };
+
+  // Home-directory trust is session-only (matches Claude Code): keep it in the
+  // in-memory settings above, but never write it to the config on disk.
+  const home = await canonicalizePath(homedir(), ".");
+  if (wsCanon === home) return;
+
+  await saveSettings({ trust: settings.trust }, configPath);
+}
+
+/**
+ * Interactive startup gate. If the workspace is already trusted (or trust is
+ * disabled) this returns immediately. Otherwise it explains the situation and
+ * prompts: granting trust persists the folder and continues; declining exits
+ * the process via {@link fatalExit}. `configPath` is forwarded to
+ * {@link trustWorkspace} (tests point it at a temp file).
+ */
+export async function ensureWorkspaceTrust(
+  settings: Settings,
+  screen: Screen,
+  workspace: string,
+  configPath?: string,
+): Promise<void> {
+  if (await isWorkspaceTrusted(settings, workspace)) return;
+
+  const wsCanon = await canonicalizePath(workspace, ".");
+  screen.card(
+    `nova was launched in a folder it has not been trusted to access:\n\n` +
+      `  ${accent(wsCanon)}\n\n` +
+      `Granting access lets nova read and edit files here (and in its\n` +
+      `subdirectories) without confirming each time. Only trust folders you\n` +
+      `recognize — declining exits without touching anything.`,
+    { kind: "warn", title: "workspace trust" },
+  );
+
+  const choice = await screen.pickOne<{ trust: boolean }>({
+    items: [{ trust: true }, { trust: false }],
+    header: "Do you trust the files in this folder?",
+    footer: dim("↑/↓ choose · Enter confirm · Ctrl+C to exit"),
+    border: false,
+    topRuleColor: PURPLE_HEX,
+    render: (it, selected) => {
+      const label = it.trust ? "Yes, trust this folder" : "No, exit";
+      return `${pickerArrow(selected)} ${label}`;
+    },
+  });
+
+  if (choice === null || !choice.trust) {
+    await fatalExit(screen, `workspace not trusted — exiting.\n  ${wsCanon}`, 1);
+  }
+
+  try {
+    await trustWorkspace(settings, workspace, configPath);
+  } catch (err) {
+    // A failed write shouldn't crash the session — the user already consented,
+    // so trust holds for this run; it just won't be remembered next time.
+    const msg = err instanceof Error ? err.message : String(err);
+    screen.card(`could not persist workspace trust: ${msg}`, {
+      kind: "warn",
+      title: "workspace trust",
+    });
+  }
+}
