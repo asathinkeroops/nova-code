@@ -3,25 +3,37 @@ import { accent, blue, magenta, rgbFg, useTruecolor, type Rgb } from "../colors.
 // The wordmark drawn at startup (and on the first-run setup panel). Shared so
 // the string-based banner and the Ink-based setup view stay byte-for-byte in
 // sync.
+//
+// "nova" is a star flaring bright, so the wordmark sits inside a supernova
+// burst: a scattered starfield above and below, and sparkle gutters flanking
+// each row that thicken toward the center (rows 3–4) like ejecta thrown off
+// the core. Each row is colored by its gradient stop (below), so the sparkles
+// share the cyan→magenta arc and read as one radiating whole.
 export const LOGO = [
-  "██   ██  ████  ██   ██  █████         █████  ████  █████  ██████",
-  "███  ██ ██  ██ ██   ██ ██   ██       ██     ██  ██ ██  ██ ██    ",
-  "██ █ ██ ██  ██ ██   ██ ███████ █████ ██     ██  ██ ██  ██ █████ ",
-  "██  ███ ██  ██  ██ ██  ██   ██       ██     ██  ██ ██  ██ ██    ",
-  "██   ██  ████    ███   ██   ██        █████  ████  █████  ██████",
+  "      ·           ⋆                ✦                ⋆           ·       ",
+  "  ⋆   ██   ██  ████  ██   ██  █████         █████  ████  █████  ██████  ⋆  ",
+  " ✧ ·  ███  ██ ██  ██ ██   ██ ██   ██       ██     ██  ██ ██  ██ ██     · ✧ ",
+  "✦ ⁺   ██ █ ██ ██  ██ ██   ██ ███████ █████ ██     ██  ██ ██  ██ █████   ⁺ ✦",
+  " · ✧  ██  ███ ██  ██  ██ ██  ██   ██       ██     ██  ██ ██  ██ ██     ✧ · ",
+  "  ⋆   ██   ██  ████    ███   ██   ██        █████  ████  █████  ██████  ⋆  ",
+  "       ⁺        ·             ⋆          ·          ✦             ⁺        ",
 ];
 
-// Cyberpunk vertical gradient (cyan → magenta), one stop per LOGO row.
+// Cyberpunk vertical gradient (cyan → magenta), one stop per LOGO row. The
+// outer starfield rows (first/last) take the bright extremes so the burst
+// glows hottest at its edges.
 export const LOGO_GRADIENT: Rgb[] = [
+  [140, 246, 255],
   [0, 238, 255],
   [90, 160, 255],
   [170, 110, 245],
   [230, 80, 210],
   [255, 60, 170],
+  [255, 140, 215],
 ];
 
 // 16-color fallback for terminals without truecolor, tracing the same arc.
-const LOGO_FALLBACK = [accent, blue, magenta, magenta, magenta];
+const LOGO_FALLBACK = [accent, accent, blue, magenta, magenta, magenta, magenta];
 
 /** Color one LOGO row by its vertical position, degrading like `orange`. */
 export function bannerLine(line: string, row: number): string {

@@ -347,7 +347,7 @@ function appendAssistantItems(
     if (block.type === "thinking") {
       // Skip empty thinking blocks (a pure tool-call turn where the model
       // produced no reasoning) — otherwise they render as a dangling
-      // "✻ thinking" header with nothing under it. Mirrors the live-draft
+      // "✦ thinking" header with nothing under it. Mirrors the live-draft
       // guard in buildLiveDraftItems. `redacted_thinking` still renders: it
       // stands in for encrypted reasoning that genuinely exists.
       if (block.thinking.trim().length === 0) continue;

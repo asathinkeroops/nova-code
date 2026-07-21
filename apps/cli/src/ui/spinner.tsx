@@ -5,7 +5,17 @@ import { UI_FRAME_MS } from "./frame.js";
 import { formatElapsed, formatTokenCount } from "./status-format.js";
 import type { SpinnerSpec } from "./store.js";
 
-const FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+// A twinkling nova instead of the stock braille spinner: the star flares open
+// from a dim point to a full burst and settles back, looping seamlessly (the
+// last frame ✦ folds straight into the leading ·). Paired with the color
+// shimmer below, the head reads as a pulsing star — the same supernova motif
+// as the wordmark (see ui/logo.ts). All glyphs are single terminal cells.
+const FRAMES = ["·", "✦", "✧", "✶", "✸", "✺", "✸", "✶", "✧", "✦"];
+
+// The animation runs at 1/ANIM_SLOWDOWN of the repaint cadence, so each star
+// frame holds for ANIM_SLOWDOWN ticks (2 × UI_FRAME_MS = 160ms) — a calm
+// twinkle rather than a fast flicker.
+const ANIM_SLOWDOWN = 2;
 
 function shimmer(text: string, frame: number, [r, g, b]: Rgb): string {
   let out = "\x1b[1m";
@@ -50,7 +60,12 @@ export function Spinner({ spec }: SpinnerProps): React.ReactElement {
   // instance, so the timer counts up across the whole task instead of resetting
   // when the working spinner is recreated per model-call / tool phase.
   const elapsed = formatElapsed(Date.now() - spec.startedAt);
-  const frameChar = FRAMES[frame % FRAMES.length] ?? "";
+  // Advance the star pulse and color shimmer at half the repaint cadence so the
+  // twinkle breathes instead of strobing. The tick itself stays at UI_FRAME_MS
+  // (see frame.ts) so the elapsed timer still repaints smoothly; only the
+  // animation phase is slowed.
+  const phase = Math.floor(frame / ANIM_SLOWDOWN);
+  const frameChar = FRAMES[phase % FRAMES.length] ?? "";
   const upStr = spec.inputTokens != null ? ` · ↑ ${formatTokenCount(spec.inputTokens)} tok` : "";
   const downStr = spec.tokens != null ? ` · ↓ ~${formatTokenCount(spec.tokens)} tok` : "";
   const tokenStr = `${upStr}${downStr}`;
@@ -58,8 +73,8 @@ export function Spinner({ spec }: SpinnerProps): React.ReactElement {
 
   let line: string;
   if (canShimmer && tint) {
-    const head = shimmer(frameChar, frame + 1, tint);
-    const word = shimmer(spec.activeWord, frame, tint);
+    const head = shimmer(frameChar, phase + 1, tint);
+    const word = shimmer(spec.activeWord, phase, tint);
     line = `${head} ${word} · ${elapsed}${tokenStr}${hintStr}`;
   } else {
     const renderedFrame = isStatic ? frameChar : bold(colorize(frameChar));

@@ -34,7 +34,8 @@ export function rgbFg([r, g, b]: Rgb, text: string): string {
 // The primary UI accent — the banner logo's bottom gradient stop, a hot
 // magenta-pink. Used for chrome: prompts, slash commands, spinner, status line,
 // modals. Markdown body text keeps real `cyan` instead (see `accent` vs `cyan`
-// below). Keep in sync with LOGO_GRADIENT's last stop in render-strings.ts.
+// below). Matches LOGO_GRADIENT's bottom wordmark stop (the row just above the
+// trailing starfield) in ui/logo.ts — keep the two in sync.
 export const ACCENT_RGB: Rgb = [255, 60, 170];
 /** The accent as a hex string, for Ink `<Text color>` props. */
 export const ACCENT_HEX = "#ff3caa";
