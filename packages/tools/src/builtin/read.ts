@@ -1,8 +1,9 @@
 import { readFile } from "node:fs/promises";
-import { extname, resolve } from "node:path";
+import { basename, extname, resolve } from "node:path";
 import { z } from "zod";
 import type { ImageBlock, ToolHandler } from "@nova/core";
 import * as XLSX from "xlsx";
+import { extractText } from "unpdf";
 import { PATH_ALIASES, withAliases } from "../schema.js";
 
 // Secondary safety budget on the size of a single response, measured in JS
@@ -32,6 +33,11 @@ const LINE_NO_WIDTH = 6;
 // file twice.  The list is a subset of what `xlsx` supports — the ones users
 // realistically encounter (xls, xlsx, xlsm, xlsb, ods).
 const EXCEL_EXTENSIONS = new Set([".xlsx", ".xls", ".xlsm", ".xlsb", ".ods"]);
+
+// Max file size for PDF reads (30 MB). unpdf loads and parses the whole document
+// into memory before any pagination applies, so a byte cap guards against a
+// pathological PDF exhausting memory; output is still bounded by MAX_CHARS/limit.
+const MAX_PDF_BYTES = 30_000_000;
 
 // ── image support ────────────────────────────────────────────────────────────
 
@@ -119,6 +125,36 @@ function renderLines(
   return body;
 }
 
+// Line-based pagination shared by the plain-text and PDF readers: split an
+// already-loaded string into lines, honour offset/limit, cap the total at
+// MAX_CHARS, and render `cat -n`-style with a continuation note. Used verbatim
+// for text files; the PDF reader prepends its own metadata header to the output.
+function paginateLines(raw: string, input: { offset?: number; limit?: number }, path: string) {
+  const lines = raw.match(/[^\n]*\n|[^\n]+$/g) ?? [];
+  const total = lines.length;
+
+  const startLine = input.offset ?? 1;
+  const startIdx = startLine - 1;
+  if (startIdx >= total && total > 0) {
+    return {
+      output: `read: offset ${startLine} is past end of file (it has ${total} lines)`,
+      isError: true,
+    };
+  }
+
+  let endIdx = startIdx;
+  let chars = 0;
+  while (endIdx < total) {
+    if (input.limit !== undefined && endIdx - startIdx >= input.limit) break;
+    const cost = Math.min(lines[endIdx]!.length, MAX_LINE_CHARS);
+    if (chars > 0 && chars + cost > MAX_CHARS) break;
+    chars += cost;
+    endIdx += 1;
+  }
+
+  return { output: renderLines(lines, total, startIdx, endIdx, path) };
+}
+
 async function readText(abs: string, input: { offset?: number; limit?: number }, path: string) {
   let raw: string;
   try {
@@ -153,29 +189,71 @@ async function readText(abs: string, input: { offset?: number; limit?: number },
     };
   }
 
-  const lines = raw.match(/[^\n]*\n|[^\n]+$/g) ?? [];
-  const total = lines.length;
+  return paginateLines(raw, input, path);
+}
 
-  const startLine = input.offset ?? 1;
-  const startIdx = startLine - 1;
-  if (startIdx >= total && total > 0) {
+// ── PDF path ─────────────────────────────────────────────────────────────────
+
+async function readPdf(abs: string, input: { offset?: number; limit?: number }, path: string) {
+  let buf: Buffer;
+  try {
+    buf = await readFile(abs);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") {
+      return {
+        output: `read failed: no such file: ${path}. It may not exist at this path (or anywhere) — use glob/grep to locate it rather than guessing another path.`,
+        isError: true,
+      };
+    }
+    if (code === "EISDIR") {
+      return {
+        output: `read failed: ${path} is a directory, not a file. Use glob to list its contents or grep to search inside it.`,
+        isError: true,
+      };
+    }
+    const msg = err instanceof Error ? err.message : String(err);
+    return { output: `read failed: ${msg}`, isError: true };
+  }
+
+  if (buf.length > MAX_PDF_BYTES) {
+    const mb = (buf.length / 1_000_000).toFixed(1);
+    const cap = (MAX_PDF_BYTES / 1_000_000).toFixed(0);
     return {
-      output: `read: offset ${startLine} is past end of file (it has ${total} lines)`,
+      output: `read failed: ${path} is ${mb} MB (PDF cap is ${cap} MB). Use bash with a command-line tool (e.g. \`pdftotext\`, \`qpdf\`) to split or extract it.`,
       isError: true,
     };
   }
 
-  let endIdx = startIdx;
-  let chars = 0;
-  while (endIdx < total) {
-    if (input.limit !== undefined && endIdx - startIdx >= input.limit) break;
-    const cost = Math.min(lines[endIdx]!.length, MAX_LINE_CHARS);
-    if (chars > 0 && chars + cost > MAX_CHARS) break;
-    chars += cost;
-    endIdx += 1;
+  let totalPages: number;
+  let pages: string[];
+  try {
+    // extractText internally builds a document proxy from the raw bytes; a fresh
+    // Uint8Array copy avoids handing pdf.js a Buffer view it may retain/detach.
+    const extracted = await extractText(new Uint8Array(buf), { mergePages: false });
+    totalPages = extracted.totalPages;
+    pages = extracted.text;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { output: `read failed: cannot parse ${path} as a PDF: ${msg}`, isError: true };
   }
 
-  return { output: renderLines(lines, total, startIdx, endIdx, path) };
+  const meta = `PDF "${basename(path)}" — ${totalPages} page${totalPages === 1 ? "" : "s"}`;
+
+  // A PDF with no extractable text is almost always scanned/image-only; the text
+  // reader would return an empty body with no hint, so say so explicitly.
+  if (pages.every((p) => p.trim() === "")) {
+    return {
+      output: `${meta}\nread: no extractable text — this PDF is likely scanned or image-only. Use bash with an OCR tool (e.g. \`ocrmypdf\`, \`tesseract\`) to extract its text.`,
+    };
+  }
+
+  // Join pages with a visible `[Page N]` marker so the model can cite locations;
+  // the markers count as body lines, which is fine — offset/limit page by line.
+  const combined = pages.map((p, i) => `[Page ${i + 1}]\n${p.trim()}`).join("\n\n");
+  const result = paginateLines(combined, input, path);
+  if (result.isError) return result;
+  return { output: `${meta}\n${result.output}` };
 }
 
 // ── Excel / spreadsheet path ────────────────────────────────────────────────
@@ -407,7 +485,7 @@ export const readTool: ToolHandler = {
   definition: {
     name: "read",
     description:
-      "Read a text file, spreadsheet, or image from disk. For text files, output is line-numbered (`<line>\\t<text>`, `cat -n` style, 1-based); returns up to `limit` lines (and at most ~200K characters) per call. If more remains, the result tells you the exact read(path, offset) call to continue from. The line-number prefix is display only — strip it before passing text to `edit`. For Excel files (.xlsx/.xls/.xlsm/.xlsb/.ods), each row is rendered as a TSV line with a metadata header; use the optional `sheet` parameter to select a sheet. For image files (.png/.jpg/.jpeg/.gif/.webp), returns the image as a base64 block alongside metadata — only when the active model supports image input; capped at 20 MB.",
+      "Read a text file, spreadsheet, PDF, or image from disk. For text files, output is line-numbered (`<line>\\t<text>`, `cat -n` style, 1-based); returns up to `limit` lines (and at most ~200K characters) per call. If more remains, the result tells you the exact read(path, offset) call to continue from. The line-number prefix is display only — strip it before passing text to `edit`. For Excel files (.xlsx/.xls/.xlsm/.xlsb/.ods), each row is rendered as a TSV line with a metadata header; use the optional `sheet` parameter to select a sheet. For PDF files (.pdf), extracted text is returned line-numbered with a `[Page N]` marker before each page and the same offset/limit paging; scanned/image-only PDFs have no extractable text (capped at 30 MB). For image files (.png/.jpg/.jpeg/.gif/.webp), returns the image as a base64 block alongside metadata — only when the active model supports image input; capped at 20 MB.",
     inputSchema,
   },
   async run(rawInput, ctx) {
@@ -432,6 +510,9 @@ export const readTool: ToolHandler = {
 
     if (EXCEL_EXTENSIONS.has(ext)) {
       return readExcel(abs, input, input.path);
+    }
+    if (ext === ".pdf") {
+      return readPdf(abs, input, input.path);
     }
     return readText(abs, input, input.path);
   },

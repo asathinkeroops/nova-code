@@ -474,3 +474,83 @@ describe("read: image files", () => {
     expect(res.output).toContain("no such file");
   });
 });
+
+// ── PDF tests ───────────────────────────────────────────────────────────────
+
+/**
+ * Build a minimal single-page PDF whose content stream draws `text`. The xref
+ * byte offsets are computed so pdf.js parses it without falling back to recovery
+ * mode. Pass "" for a page with no drawn text (mimics a scanned/image-only PDF).
+ */
+function minimalPdfBytes(text: string): Buffer {
+  const streamContent = `BT /F1 24 Tf 72 700 Td (${text}) Tj ET`;
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+    `<< /Length ${streamContent.length} >>\nstream\n${streamContent}\nendstream`,
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+  ];
+
+  let pdf = "%PDF-1.4\n";
+  const offsets: number[] = [];
+  for (let i = 0; i < objects.length; i++) {
+    offsets.push(Buffer.byteLength(pdf, "latin1"));
+    pdf += `${i + 1} 0 obj\n${objects[i]}\nendobj\n`;
+  }
+  const xrefOffset = Buffer.byteLength(pdf, "latin1");
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (const off of offsets) {
+    pdf += `${String(off).padStart(10, "0")} 00000 n \n`;
+  }
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+  return Buffer.from(pdf, "latin1");
+}
+
+describe("read: PDF files", () => {
+  it("extracts text with a metadata header and a page marker", async () => {
+    const { cwd, path } = await writeBinaryFixture("doc.pdf", minimalPdfBytes("Hello Nova"));
+
+    const res = await readTool.run({ path }, ctx(cwd));
+
+    expect(res.isError).toBeUndefined();
+    expect(res.blocks).toBeUndefined();
+    expect(res.output).toContain('PDF "doc.pdf" — 1 page');
+    expect(res.output).toContain("[Page 1]");
+    expect(res.output).toContain("Hello Nova");
+    // Line-numbered like the text reader (cat -n prefix on the marker line).
+    expect(res.output).toMatch(/\s+1\t\[Page 1\]/);
+  });
+
+  it("reports no extractable text for a scanned/image-only PDF", async () => {
+    const { cwd, path } = await writeBinaryFixture("scan.pdf", minimalPdfBytes(""));
+
+    const res = await readTool.run({ path }, ctx(cwd));
+
+    expect(res.isError).toBeUndefined();
+    expect(res.output).toContain('PDF "scan.pdf" — 1 page');
+    expect(res.output).toContain("no extractable text");
+    expect(res.output).toContain("OCR");
+  });
+
+  it("errors on a file that is not a valid PDF", async () => {
+    const { cwd, path } = await writeBinaryFixture(
+      "broken.pdf",
+      Buffer.from("this is definitely not a pdf"),
+    );
+
+    const res = await readTool.run({ path }, ctx(cwd));
+
+    expect(res.isError).toBe(true);
+    expect(res.output).toContain("cannot parse");
+  });
+
+  it("errors for a non-existent PDF file", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "nova-read-"));
+
+    const res = await readTool.run({ path: "nope.pdf" }, ctx(cwd));
+
+    expect(res.isError).toBe(true);
+    expect(res.output).toContain("no such file");
+  });
+});
