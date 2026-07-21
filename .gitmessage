@@ -2,7 +2,7 @@
 
 # --- 在上方第一行写提交标题 (<type>(<scope>): <subject>),空一行后写正文 ---
 # 每次提交 commit 信息上带上下面的 Co-authored-by 尾注
-# 如果使用的是 claude-code，带上如下 Co-authored-by
+# 如果你是 claude-code，带上如下 Co-authored-by
 Co-authored-by: Claude <81847+claude@users.noreply.github.com>
-# 如果使用的是 nova-code，带上如下 Co-authored-by
+# 如果你是 nova-code，带上如下 Co-authored-by
 Co-authored-by: nova-code <305308456+nova-code-next@users.noreply.github.com>
