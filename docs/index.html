@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Nova — 为 DeepSeek 从头设计的开源终端编程 Agent。省钱、安全、灵活刻进架构:前缀缓存自动命中、操作系统级沙箱、一个 Markdown 文件即一项能力。">
-<link rel="icon" href="./app-icon-v2.png" type="image/png">
+<link rel="icon" href="./app-icon-v2.webp" type="image/webp">
 <title>Nova — 为 DeepSeek 而生的终端编程 Agent</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; }
@@ -942,7 +942,7 @@
 <header class="nav" id="nav">
   <div class="wrap nav-inner">
     <a class="brand" href="#top" aria-label="Nova 首页">
-      <img class="mark" src="./app-icon-v2.png" alt="Nova logo" width="32" height="32">
+      <img class="mark" src="./app-icon-v2.webp" alt="Nova logo" width="32" height="32">
       <span class="word"><b>&gt;_</b> nova</span>
     </a>
     <nav class="nav-links">
@@ -950,6 +950,7 @@
       <a href="#platform">平台架构</a>
       <a href="#extend">扩展</a>
       <a href="#compare">对比</a>
+      <a href="https://nova-code.top/guide.html" target="_blank" rel="noopener">使用手册</a>
       <a class="nav-cta" href="https://github.com/asathinkeroops/nova-code" target="_blank" rel="noopener">
         <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5A11.5 11.5 0 0 0 .5 12a11.5 11.5 0 0 0 7.86 10.92c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.53-1.34-1.29-1.7-1.29-1.7-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.2 1.77 1.2 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.7 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.43-2.7 5.4-5.26 5.69.41.36.78 1.05.78 2.12v3.14c0 .31.2.67.8.56A11.5 11.5 0 0 0 23.5 12 11.5 11.5 0 0 0 12 .5Z"/></svg>
         GitHub
@@ -1000,7 +1001,7 @@
           <canvas data-stars="70"></canvas>
           <div class="term-bar">
             <span class="tl r"></span><span class="tl y"></span><span class="tl g"></span>
-            <span class="tt"><img src="./app-icon-v2.png" alt="">nova — DeepSeek-native session</span>
+            <span class="tt"><img src="./app-icon-v2.webp" alt="">nova — DeepSeek-native session</span>
           </div>
           <div class="term-body" id="termBody"></div>
           <div class="term-foot">
@@ -1172,7 +1173,7 @@
   <section class="cta-final">
     <div class="hero-orbs"><span class="o1" style="left:50%;top:-40px;transform:translateX(-50%)"></span></div>
     <div class="wrap" style="position:relative;z-index:1">
-      <img class="planet reveal" src="./app-icon-v2.png" alt="Nova logo" width="96" height="96">
+      <img class="planet reveal" src="./app-icon-v2.webp" alt="Nova logo" width="96" height="96">
       <h2 class="reveal">如果你在用 DeepSeek 写代码</h2>
       <p class="reveal">一个假设模型会出错、优雅恢复、绝不丢失你工作的开源 Agent 运行时。去试试,顺手点个 Star。</p>
       <div class="row-btns reveal">
@@ -1192,7 +1193,7 @@
 <footer class="foot">
   <div class="wrap foot-inner">
     <div class="foot-brand">
-      <img class="mark" src="./app-icon-v2.png" alt="Nova logo" width="28" height="28">
+      <img class="mark" src="./app-icon-v2.webp" alt="Nova logo" width="28" height="28">
       <span class="word">nova</span>
       <span style="color:var(--faint);font-size:.86rem;font-family:var(--font-mono)">· 终端编程 Agent</span>
     </div>
@@ -1319,7 +1320,7 @@
     var coreReady = false;
     var coreImg = new Image();
     coreImg.onload = function () { coreReady = true; if (reduce) draw(0); };
-    coreImg.src = "./app-icon-v2.png";
+    coreImg.src = "./app-icon-v2.webp";
 
     function starColor() {
       var r = Math.random();
@@ -1607,7 +1608,7 @@
         }
       }
 
-      // the nova planet (./app-icon-v2.png, transparent) — the galactic core, ring and all.
+      // the nova planet (./app-icon-v2.webp, transparent) — the galactic core, ring and all.
       // centre the sphere (measured at frac 0.509,0.481 · radius 0.353) on `focal`; no clip needed.
       ctx.globalCompositeOperation = "source-over";
       if (coreReady) {
