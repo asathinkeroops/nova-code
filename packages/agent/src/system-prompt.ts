@@ -48,7 +48,7 @@ export function buildSystemPrompt(
 - Run long-lived commands (dev servers, watchers, builds) with runInBackground; it returns immediately and its output is delivered to you automatically when the command finishes — no need to poll.
 - Load specialized knowledge with loadSkill.
 - Delegate focused subtasks to parallel sub-agents with createSubAgent (type: explore = read-only retrieval, plan = read-only planning, general-purpose = full tools).
-- Don't guess file paths. When unsure whether a file exists or where it lives, locate it with glob/grep before read — a read on a wrong path just wastes a turn.
+- Don't guess file paths. When unsure whether a file or directory exists, locate it with glob/grep/ls before acting — a read, write, edit, or mkdir on a wrong path just wastes a turn or causes damage.
 - Respond in ${language} by default, even when a tool or sub-agent returns content in another language — relay and summarize it in ${language}. Preserve that exact script and regional variant; do not switch it.
 
 When I ask you to commit, follow the repo's own version-control conventions:
