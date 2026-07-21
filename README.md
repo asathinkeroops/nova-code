@@ -17,19 +17,25 @@ Nova 读代码、跑命令、改文件——通过工具调用把任务推到完
 ## 为什么选 Nova
 
 **DeepSeek 原生适配，零配置。**
-不用调 `cache_control`、不用猜 wire format、不用翻错误码文档。装好，填 key，开干。thinking 等级、缓存命中、错误提示——全部围绕 DeepSeek 调过，开箱即用。
+不用调 `cache_control`、不用翻错误码文档。装好，填 key，开干。thinking 映射到 DeepSeek 的 `effort`（不是 `budget_tokens`）、HTTP 错误码翻成人话、状态行实时显示账户余额——全部围绕 DeepSeek 调过，开箱即用。
+
+**不止 DeepSeek：多 provider，三档模型阶梯。**
+内置 DeepSeek、Moonshot（Kimi）、通用 Anthropic 兼容三套 provider profile，各自带错误码表、限流重试与余额探测。模型按 `lite` / `pro` / `max` 三档配置，每档独立设 id、thinking 等级和定价——同一个模型 id 仅靠 thinking 等级差异就能撑起多档；`/model`、`--model` 切的是档位而非裸 provider id。
 
 **缓存友好刻在骨子里。**
-历史 append-only，前缀逐字节稳定，让 DeepSeek 的服务端缓存每轮都命中——响应更快、token 更省。micro 压缩默认关闭（它会破坏缓存前缀），auto 压缩只在窗口真正吃紧时才触发。
+历史 append-only，请求体逐字节稳定（内部 `meta` 字段发送前剥除，不污染前缀），记忆与 skills 只在会话边界重建、绝不中途变动——让 DeepSeek 的服务端前缀缓存每轮命中，响应更快、token 更省。auto 压缩默认在上下文用到窗口一半时触发，且只追加一条 `<compacted>` 边界：完整历史仍留在磁盘和界面里，只有模型看到的视图变短。
 
 **OS 级沙箱，一行开启。**
-开启后，子进程文件写入被 OS 级沙箱限制在工作区（macOS Seatbelt / Linux bubblewrap），叠在权限引擎之上。默认关闭，`sandbox.enabled: true`（或会话内 `/sandbox on`）即开；不支持的平台静默降级。
+开启后，子进程（`bash` / 后台任务）的文件写入被 OS 级沙箱限制在工作区（macOS Seatbelt / Linux bubblewrap），叠在权限引擎之上；只拦写入，读取与网络默认放行。默认关闭，`sandbox.enabled: true`（或会话内 `/sandbox on`）即开；不支持的平台静默降级为无沙箱运行。
 
 **用 Markdown 扩展一切，用插件打包分发。**
-自定义子 agent、slash 命令、skills、生命周期 hooks——一个 `.md` 文件、frontmatter 写配置、正文写指令，即刻生效。想整包分享就装进插件：`nova plugin install` 从本地路径、GitHub、git url 或 marketplace 安装，一个插件可同时贡献命令、agent、skill、hooks、MCP / LSP server 和 `bin/` 可执行文件。全部兼容 Claude Code 的插件格式。
+自定义子 agent、slash 命令、skills、生命周期 hooks——一个 `.md` 文件、frontmatter 写配置、正文写指令，即刻生效。想整包分享就装进插件：`nova plugin install` 从本地路径、GitHub、git url 或 marketplace 安装，一个插件可同时贡献命令、agent、skill、hooks、MCP / LSP server 和 `bin/` 可执行文件，并兼容 Claude Code 的插件格式（`.claude-plugin` 清单可直接加载）。
+
+**为自动化而生。**
+`nova -p` 无头模式单轮跑完即退，配 `--output-format json` 就能接进脚本与 CI；`/review <PR#>` 走 `gh` 只读评审 GitHub PR；`cronCreate` 按间隔或 cron 表达式定时触发 prompt（会话内生效，`/resume` 后自动重挂）；`/goal` 设定成功条件后自动推进直到达成。
 
 **使用习惯无缝迁移。**
-高度复刻 Claude Code 的交互方式——同样的 slash 命令、快捷键、审批弹窗、记忆文件、可重放会话。用过 Claude Code 就零学习成本：装好继续按原有习惯干活，只是底层换成了为 DeepSeek 量身调优的引擎。
+高度复刻 Claude Code 的交互方式——同样的 slash 命令、快捷键、审批弹窗、三层记忆文件、可重放会话。用过 Claude Code 就零学习成本：装好继续按原有习惯干活，只是底层换成了为 DeepSeek 量身调优的引擎。
 
 ## 快速开始
 

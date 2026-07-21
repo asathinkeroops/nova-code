@@ -17,19 +17,25 @@ Nova reads code, runs commands, edits files — and drives your task to done thr
 ## Why Nova
 
 **DeepSeek-native, zero config.**
-No `cache_control` to tweak, no wire format to guess, no error-code docs to dig through. Install, drop in your key, go. Thinking levels, cache hits, and error messages are all tuned for DeepSeek out of the box.
+No `cache_control` to tweak, no error-code docs to dig through. Install, drop in your key, go. Thinking maps to DeepSeek's `effort` (not `budget_tokens`), HTTP error codes are translated into plain language, and your account balance shows live on the status line — all tuned for DeepSeek out of the box.
+
+**More than DeepSeek: multi-provider, three-tier model ladder.**
+Three built-in provider profiles — DeepSeek, Moonshot (Kimi), and generic Anthropic-compatible — each with its own error-code table, rate-limit retries, and balance probe. Models are configured across `lite` / `pro` / `max` tiers, each with its own id, thinking level, and pricing — one model id can back several tiers differing only in thinking level. `/model` and `--model` switch the tier, not a raw provider id.
 
 **Cache-friendly by design.**
-History is append-only, keeping the byte-stable prefix DeepSeek's server-side cache depends on — faster responses, fewer tokens billed. Micro-compaction is off by default (it breaks the cache prefix); auto-compaction only fires under real window pressure.
+History is append-only and the request body stays byte-stable (internal `meta` fields are stripped before sending so they never pollute the prefix); memory and skills are rebuilt only at session boundaries, never mid-turn — keeping DeepSeek's server-side prefix cache hitting every turn, for faster responses and fewer tokens billed. Auto-compaction fires by default at half the context window and only appends a `<compacted>` boundary: the full history stays on disk and in the UI, and only the model's view shrinks.
 
 **OS-level sandbox, one line to enable.**
-Turn it on and subprocess writes are confined to the workspace by an OS-level sandbox (macOS Seatbelt / Linux bubblewrap), layered on top of the permission engine. Off by default — flip `sandbox.enabled: true` (or `/sandbox on` in-session) to opt in; unsupported platforms degrade silently.
+Turn it on and subprocess (`bash` / background tasks) writes are confined to the workspace by an OS-level sandbox (macOS Seatbelt / Linux bubblewrap), layered on top of the permission engine — writes only; reads and network stay open by default. Off by default — flip `sandbox.enabled: true` (or `/sandbox on` in-session) to opt in; unsupported platforms degrade silently to running unsandboxed.
 
 **Extend with markdown, package as plugins.**
-Define custom sub-agents, slash commands, skills, or lifecycle hooks — drop a `.md` file with frontmatter and you're done. No code changes, ships with the repo. To share a whole bundle, install it as a plugin: `nova plugin install` from a local path, GitHub repo, git url, or marketplace — a single plugin can contribute commands, agents, skills, hooks, MCP / LSP servers, and `bin/` executables, all in the Claude Code-compatible plugin format.
+Define custom sub-agents, slash commands, skills, or lifecycle hooks — drop a `.md` file with frontmatter and you're done. No code changes, ships with the repo. To share a whole bundle, install it as a plugin: `nova plugin install` from a local path, GitHub repo, git url, or marketplace — a single plugin can contribute commands, agents, skills, hooks, MCP / LSP servers, and `bin/` executables, and it's Claude Code plugin-format compatible (`.claude-plugin` manifests load as-is).
+
+**Built for automation.**
+`nova -p` runs a single non-interactive turn and exits; pair it with `--output-format json` to wire into scripts and CI. `/review <PR#>` reviews a GitHub PR read-only via `gh`; `cronCreate` fires a prompt on an interval or cron expression (session-scoped, re-armed on `/resume`); `/goal` sets a success condition and drives itself until it's met.
 
 **Bring your habits, not a manual.**
-Nova closely mirrors the Claude Code workflow — the same slash commands, keybindings, approval prompts, memory files, and replayable sessions. If you've used Claude Code there's nothing new to learn: install and keep working the way you already do, just on an engine tuned for DeepSeek underneath.
+Nova closely mirrors the Claude Code workflow — the same slash commands, keybindings, approval prompts, three-layer memory files, and replayable sessions. If you've used Claude Code there's nothing new to learn: install and keep working the way you already do, just on an engine tuned for DeepSeek underneath.
 
 ## Quick start
 
