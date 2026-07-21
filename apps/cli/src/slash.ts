@@ -93,6 +93,9 @@ export function loadSkillCommandsInto(
   const taken = new Set(registry.list().map((c) => c.name));
   let added = 0;
   for (const item of items) {
+    // `user-invocable: false` skills are model-only: skip registering the
+    // `/{name}` shortcut so they never appear in the slash menu.
+    if (!item.userInvocable) continue;
     const cmd: SlashCommand = {
       name: item.name,
       description: item.description,

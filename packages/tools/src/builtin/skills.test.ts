@@ -30,33 +30,72 @@ describe("getSkillList — parsing", () => {
     writeSkill(
       projectRoot,
       "code-reviewer",
-      `name: code-reviewer\ndescription: Review a diff\ntriggers:\n  - review\n  - diff`,
+      `name: code-reviewer\ndescription: Review a diff`,
     );
     const list = getSkillList({ cwd, home: cwd, userPaths: [] });
     expect(list).toEqual([
       {
         name: "code-reviewer",
         description: "Review a diff",
-        triggers: ["review", "diff"],
+        disableModelInvocation: false,
+        userInvocable: true,
         location: join(projectRoot, "code-reviewer"),
       },
     ]);
   });
 
-  it("supports flow-style triggers arrays", () => {
+  it("parses disable-model-invocation and user-invocable flags", () => {
     const cwd = fixture();
     const projectRoot = join(cwd, ".nova/skills");
     mkdirSync(projectRoot, { recursive: true });
-    writeSkill(projectRoot, "x", `name: x\ndescription: d\ntriggers: [a, b]`);
-    expect(getSkillList({ cwd, home: cwd, userPaths: [] })[0]?.triggers).toEqual(["a", "b"]);
+    writeSkill(
+      projectRoot,
+      "x",
+      `name: x\ndescription: d\ndisable-model-invocation: true\nuser-invocable: false`,
+    );
+    const item = getSkillList({ cwd, home: cwd, userPaths: [] })[0];
+    expect(item?.disableModelInvocation).toBe(true);
+    expect(item?.userInvocable).toBe(false);
   });
 
-  it("defaults triggers to [] when absent", () => {
+  it("defaults the invocation flags (model-visible, user-invocable) when absent", () => {
     const cwd = fixture();
     const projectRoot = join(cwd, ".nova/skills");
     mkdirSync(projectRoot, { recursive: true });
     writeSkill(projectRoot, "x", `name: x\ndescription: d`);
-    expect(getSkillList({ cwd, home: cwd, userPaths: [] })[0]?.triggers).toEqual([]);
+    const item = getSkillList({ cwd, home: cwd, userPaths: [] })[0];
+    expect(item?.disableModelInvocation).toBe(false);
+    expect(item?.userInvocable).toBe(true);
+  });
+
+  it("falls back to defaults on a non-boolean flag value", () => {
+    const cwd = fixture();
+    const projectRoot = join(cwd, ".nova/skills");
+    mkdirSync(projectRoot, { recursive: true });
+    writeSkill(projectRoot, "x", `name: x\ndescription: d\nuser-invocable: yes`);
+    expect(getSkillList({ cwd, home: cwd, userPaths: [] })[0]?.userInvocable).toBe(true);
+  });
+
+  it("appends when_to_use to the description", () => {
+    const cwd = fixture();
+    const projectRoot = join(cwd, ".nova/skills");
+    mkdirSync(projectRoot, { recursive: true });
+    writeSkill(
+      projectRoot,
+      "x",
+      `name: x\ndescription: Review a diff.\nwhen_to_use: Use when the user asks what changed.`,
+    );
+    expect(getSkillList({ cwd, home: cwd, userPaths: [] })[0]?.description).toBe(
+      "Review a diff. Use when the user asks what changed.",
+    );
+  });
+
+  it("leaves the description untouched when when_to_use is absent", () => {
+    const cwd = fixture();
+    const projectRoot = join(cwd, ".nova/skills");
+    mkdirSync(projectRoot, { recursive: true });
+    writeSkill(projectRoot, "x", `name: x\ndescription: d`);
+    expect(getSkillList({ cwd, home: cwd, userPaths: [] })[0]?.description).toBe("d");
   });
 
   it("drops skills with missing name and logs warn", () => {
@@ -98,6 +137,18 @@ describe("getSkillList — parsing", () => {
     writeSkill(projectRoot, "x", `name: x\ndescription: ${longDesc}`);
     const item = getSkillList({ cwd, home: cwd, userPaths: [] })[0];
     expect(item?.description.length).toBe(200);
+  });
+
+  it("caps the combined description + when_to_use at 200 chars", () => {
+    const cwd = fixture();
+    const projectRoot = join(cwd, ".nova/skills");
+    mkdirSync(projectRoot, { recursive: true });
+    const desc = "d".repeat(150);
+    const when = "w".repeat(150);
+    writeSkill(projectRoot, "x", `name: x\ndescription: ${desc}\nwhen_to_use: ${when}`);
+    const item = getSkillList({ cwd, home: cwd, userPaths: [] })[0];
+    expect(item?.description.length).toBe(200);
+    expect(item?.description.startsWith(desc)).toBe(true);
   });
 });
 

@@ -5,7 +5,8 @@ import { renderSkillsBlock } from "./skills-render.js";
 const item = (name: string, description: string): SkillListItem => ({
   name,
   description,
-  triggers: [],
+  disableModelInvocation: false,
+  userInvocable: true,
   location: `/tmp/skills/${name}`,
 });
 

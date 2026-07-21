@@ -80,6 +80,22 @@ describe("loadSkillCommandsInto", () => {
     });
   });
 
+  it("skips skills flagged user-invocable: false", () => {
+    const dir = mkdtempSync(join(tmpdir(), "nova-slash-skill-"));
+    const skillDir = join(dir, ".nova", "skills", "model-only");
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(
+      join(skillDir, "SKILL.md"),
+      `---\nname: model-only\ndescription: a skill\nuser-invocable: false\n---\nDo the thing.\n`,
+      "utf8",
+    );
+    const registry = new SlashRegistry();
+
+    const { added } = loadSkillCommandsInto(registry, { cwd: dir, settings: settings(), logger });
+    expect(added).toBe(0);
+    expect(registry.resolve("/model-only")).toBeNull();
+  });
+
   it("registers nothing when skills are disabled", () => {
     const cwd = workspaceWithSkill("say-hello");
     const registry = new SlashRegistry();

@@ -4,8 +4,24 @@ import { join, resolve } from "node:path";
 
 export interface SkillListItem {
   name: string;
+  /**
+   * Model-facing summary used to decide when to load the skill. If the
+   * SKILL.md front-matter carries a `when_to_use` field, it is appended here
+   * (Claude Code semantics) so the combined text is what the model matches on.
+   */
   description: string;
-  triggers: string[];
+  /**
+   * `disable-model-invocation: true` in front-matter. When set, the skill is
+   * kept out of the model-facing `<available-skills>` block so the model won't
+   * auto-invoke it; the user can still run it via `/{name}`. Default false.
+   */
+  disableModelInvocation: boolean;
+  /**
+   * `user-invocable: false` in front-matter. When set, the skill is not
+   * registered as a `/{name}` slash command, so only the model can invoke it.
+   * Default true.
+   */
+  userInvocable: boolean;
   /** Absolute path to the skill's directory (the parent of its SKILL.md). */
   location: string;
 }
@@ -99,7 +115,8 @@ function errMsg(err: unknown): string {
 interface ParsedSkill {
   name: string;
   description: string;
-  triggers: string[];
+  disableModelInvocation: boolean;
+  userInvocable: boolean;
   body: string;
 }
 
@@ -121,14 +138,21 @@ function parseSkillFile(text: string): { ok: ParsedSkill } | { error: string } {
   if (typeof descRaw !== "string" || descRaw.trim().length === 0) {
     return { error: "missing description" };
   }
+  // Claude Code semantics: `when_to_use` is optional extra trigger context that
+  // is appended to the description. We fold it in here so `description` is the
+  // single model-facing string, then cap the combined length.
+  const whenRaw = meta["when_to_use"];
+  const whenToUse = typeof whenRaw === "string" ? whenRaw.trim() : "";
+  const combined = whenToUse ? `${descRaw} ${whenToUse}` : descRaw;
   const description =
-    descRaw.length > DESCRIPTION_MAX ? descRaw.slice(0, DESCRIPTION_MAX) : descRaw;
-  const triggersRaw = meta["triggers"];
-  const triggers = Array.isArray(triggersRaw)
-    ? triggersRaw.filter((x): x is string => typeof x === "string")
-    : [];
+    combined.length > DESCRIPTION_MAX ? combined.slice(0, DESCRIPTION_MAX) : combined;
+  // Who is allowed to invoke this skill (Claude Code semantics). Front-matter
+  // scalars arrive as strings, so coerce leniently; unknown values fall back
+  // to the permissive default.
+  const disableModelInvocation = parseBool(meta["disable-model-invocation"], false);
+  const userInvocable = parseBool(meta["user-invocable"], true);
   const body = normalized.slice(fm[0].length).trimStart();
-  return { ok: { name, description, triggers, body } };
+  return { ok: { name, description, disableModelInvocation, userInvocable, body } };
 }
 
 /**
@@ -185,6 +209,19 @@ function parseScalar(v: string): string {
   return v;
 }
 
+/**
+ * Coerce a front-matter value to a boolean. The tiny YAML parser only yields
+ * strings, so accept case-insensitive "true"/"false"; anything else (missing,
+ * array, typo) falls back to `dflt`.
+ */
+function parseBool(v: unknown, dflt: boolean): boolean {
+  if (typeof v !== "string") return dflt;
+  const s = v.trim().toLowerCase();
+  if (s === "true") return true;
+  if (s === "false") return false;
+  return dflt;
+}
+
 interface Target {
   kind: "user" | "project";
   root: string;
@@ -231,7 +268,8 @@ function scan(r: ResolvedOpts, logger: SkillsLogger | undefined): CacheEntry {
       list.push({
         name: parsed.ok.name,
         description: parsed.ok.description,
-        triggers: parsed.ok.triggers,
+        disableModelInvocation: parsed.ok.disableModelInvocation,
+        userInvocable: parsed.ok.userInvocable,
         location: dir,
       });
       seen.add(parsed.ok.name);

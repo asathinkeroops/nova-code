@@ -43,9 +43,7 @@ export async function handleSkills(ctx: CliContext): Promise<void> {
     topRuleColor: PURPLE_HEX,
     render: (s, selected) => {
       const name = s.name.padEnd(nameWidth, " ");
-      const trig =
-        s.triggers.length > 0 ? `  ${dim(`triggers: ${s.triggers.join(", ")}`)}` : "";
-      return `${pickerArrow(selected)} ${name}  ${s.description}${trig}`;
+      return `${pickerArrow(selected)} ${name}  ${s.description}`;
     },
   });
 }

@@ -250,8 +250,12 @@ export async function createContext(
       }
     : undefined;
   const skillItems = skillsOpts ? getSkillList(skillsOpts) : [];
+  // Skills flagged `disable-model-invocation` are withheld from the model-facing
+  // block so the model won't auto-invoke them; they remain reachable via their
+  // `/{name}` slash command (which names the skill explicitly to loadSkill).
+  const modelSkillItems = skillItems.filter((s) => !s.disableModelInvocation);
   const skillsBlock = skillsOpts
-    ? renderSkillsBlock(skillItems, settings.skills.maxIndexBytes)
+    ? renderSkillsBlock(modelSkillItems, settings.skills.maxIndexBytes)
     : "";
   if (skillsOpts) {
     await transcript.append({
