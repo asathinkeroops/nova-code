@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Nova — 为 DeepSeek 从头设计的开源终端编程 Agent。省钱、安全、灵活刻进架构:前缀缓存自动命中、操作系统级沙箱、一个 Markdown 文件即一项能力。">
+<link rel="icon" href="./app-icon-v2.png" type="image/png">
 <title>Nova — 为 DeepSeek 而生的终端编程 Agent</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; }
@@ -97,6 +98,18 @@
 
   .wrap { width: 100%; max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
 
+  body::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 100;
+    opacity: .018;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.75'/%3E%3C/svg%3E");
+  }
+  .scroll-progress {
+    position: fixed; left: 0; top: 0; z-index: 120; width: 100%; height: 2px;
+    transform: scaleX(0); transform-origin: left center; pointer-events: none;
+    background: linear-gradient(90deg, var(--accent), var(--accent-bright), var(--star));
+    box-shadow: 0 0 14px color-mix(in srgb, var(--accent-bright) 76%, transparent);
+  }
+
   .eyebrow {
     font-family: var(--font-mono);
     font-size: .72rem;
@@ -132,13 +145,14 @@
   }
   .brand { display: flex; align-items: center; gap: 11px; margin-right: auto; }
   .brand .mark {
-    width: 32px; height: 32px; border-radius: 50%;
+    width: 32px; height: 32px;
     filter: drop-shadow(0 6px 14px rgba(120,60,220,.55));
   }
-  /* the linked app-icon has white padding around the sphere — crop to the planet */
-  .brand .mark, .foot-brand .mark, .cta-final .planet, .term-bar .tt img {
+  /* Keep circular cropping only where the icon is used as an embedded planet. */
+  .term-bar .tt img {
     clip-path: circle(42% at 50% 50%); object-fit: cover;
   }
+  .brand .mark, .foot-brand .mark, .cta-final .planet { clip-path: none; border-radius: 0; object-fit: cover; }
   .brand .word {
     font-family: var(--font-mono);
     font-weight: 600; font-size: 1.12rem; letter-spacing: -.01em;
@@ -171,8 +185,8 @@
 
   /* nav while floating over the supernova hero — fully transparent, melts into deep space */
   header.nav.at-top {
-    background: transparent;
-    backdrop-filter: none; -webkit-backdrop-filter: none;
+    background: linear-gradient(to bottom, rgba(13,8,29,.38), rgba(13,8,29,.12));
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
     border-bottom-color: transparent;
     box-shadow: none;
   }
@@ -191,14 +205,146 @@
   /* ---------- Hero — the supernova band ---------- */
   .hero {
     position: relative;
-    padding: 128px 0 300px;
+    display: flex;
+    align-items: center;
+    /* Always occupy the complete opening viewport; retain enough room for the composition on short screens. */
+    min-height: 100vh;
+    min-height: max(980px, 100svh);
+    padding: 110px 0;
     overflow: hidden;
-    /* uniform deep field (readable everywhere, no scrim boxes) + supernova bloom on the right */
+    /* Deep blue-violet technical space: the brand purple stays dominant, cyan only sharpens the edges. */
+    background-color: #080513;
     background:
-      radial-gradient(120% 80% at 82% 0%, rgba(233,80,205,.28), transparent 50%),
-      radial-gradient(82% 66% at 2% -8%, rgba(46,196,255,.13), transparent 54%),
-      linear-gradient(180deg, #150a30 0%, #170b33 60%, #190c37 84%, rgba(22,11,46,0) 100%);
+      radial-gradient(82% 58% at 76% 3%, rgba(191,77,232,.38), transparent 53%),
+      radial-gradient(62% 54% at 8% 18%, rgba(44,190,255,.18), transparent 58%),
+      radial-gradient(54% 48% at 88% 46%, rgba(103,63,221,.2), transparent 68%),
+      radial-gradient(68% 55% at 47% 68%, rgba(107,42,202,.18), transparent 72%),
+      conic-gradient(from 205deg at 72% 12%, rgba(104,218,255,.08), transparent 16%, rgba(204,96,240,.11) 28%, transparent 43%),
+      linear-gradient(145deg, #050916 0%, #090619 35%, #110724 62%, #190b36 100%);
   }
+  .hero::before {
+    content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+    background:
+      linear-gradient(90deg, rgba(6,10,28,.38) 0%, transparent 44%, rgba(24,8,45,.16) 100%),
+      linear-gradient(rgba(137,216,255,.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(198,161,255,.048) 1px, transparent 1px),
+      repeating-linear-gradient(135deg, transparent 0 138px, rgba(142,210,255,.025) 139px, transparent 140px 276px);
+    background-size: auto, 72px 72px, 72px 72px, 276px 276px;
+    mask-image: linear-gradient(to bottom, rgba(0,0,0,.72), rgba(0,0,0,.34) 58%, transparent 88%);
+    animation: tech-grid-drift 22s linear infinite;
+  }
+  @keyframes tech-grid-drift { to { background-position: 0 0, 0 72px, 72px 0, 276px 276px; } }
+  .hero-depth {
+    position: absolute; inset: -2%; z-index: 1; pointer-events: none; overflow: hidden;
+    transform: translate3d(var(--depth-x, 0), var(--depth-y, 0), 0) scale(1.02);
+    transition: transform .2s ease-out;
+  }
+  .hero-depth i { position: absolute; display: block; }
+  .hero-depth .aurora {
+    width: 86vw; height: 34vw; left: 25%; top: -18%; border-radius: 50%;
+    background: conic-gradient(from 195deg at 50% 60%, transparent 0 12%, rgba(126,75,255,.2) 18%, rgba(246,109,219,.2) 23%, transparent 31% 100%);
+    filter: blur(34px); mix-blend-mode: screen; opacity: .9;
+    animation: aurora-drift 15s ease-in-out infinite alternate;
+  }
+  .hero-depth .beam {
+    width: 72vw; height: 1px; right: -10%; top: 20%; transform: rotate(-8deg);
+    background: linear-gradient(90deg, transparent, rgba(211,183,255,.3), rgba(255,255,255,.75), transparent);
+    box-shadow: 0 0 16px rgba(168,85,247,.42);
+    animation: beam-breathe 5.5s ease-in-out infinite;
+  }
+  .hero-depth .lens {
+    width: 14px; height: 14px; right: 17%; top: 12%; border-radius: 50%;
+    background: #fff; box-shadow: 0 0 12px 4px #fff, 0 0 46px 16px rgba(231,166,255,.8), 0 0 110px 42px rgba(168,85,247,.34);
+    animation: lens-pulse 4.2s ease-in-out infinite;
+  }
+  .hero-depth .prism {
+    width: 760px; height: 760px; right: -220px; top: -270px; border-radius: 50%; opacity: .38;
+    background: repeating-conic-gradient(from 18deg, rgba(230,196,255,.14) 0 1deg, transparent 1deg 13deg);
+    mask-image: radial-gradient(circle, transparent 0 27%, #000 28% 58%, transparent 72%);
+    animation: prism-spin 52s linear infinite;
+  }
+  .hero-depth .orbit {
+    right: -7vw; top: 2.5%; width: 58vw; height: 25vw; min-width: 720px; min-height: 310px;
+    border: 1px solid rgba(215,190,255,.2); border-radius: 50%; transform: rotate(-10deg);
+    box-shadow: inset 0 0 46px rgba(168,85,247,.04), 0 0 42px rgba(168,85,247,.05);
+  }
+  .hero-depth .orbit::before {
+    content: ""; position: absolute; width: 7px; height: 7px; left: 18%; top: 10%; border-radius: 50%;
+    background: #fff; box-shadow: 0 0 10px 3px #fff, 0 0 30px 10px rgba(168,85,247,.8);
+    offset-path: ellipse(50% 50% at 50% 50%); animation: orbit-dot 11s linear infinite;
+  }
+  .hero-depth .orbit.o2 { transform: rotate(14deg) scale(.75); border-style: dashed; opacity: .75; }
+  .hero-depth .orbit.o2::before { animation-duration: 16s; animation-direction: reverse; background: #baf3ff; }
+  .hero-depth .comet {
+    width: 280px; height: 2px; left: 5%; top: 24%; transform: rotate(-18deg);
+    background: linear-gradient(90deg, transparent, rgba(175,221,255,.22), #fff);
+    filter: drop-shadow(0 0 8px rgba(183,155,255,.9)); opacity: 0;
+    animation: hero-comet 8.5s ease-in-out infinite 2.2s;
+  }
+  .hero-depth .comet.c2 {
+    width: 190px; left: auto; right: 12%; top: 42%;
+    background: linear-gradient(90deg, transparent, rgba(240,166,255,.28), #fff);
+    animation: hero-comet-b 11.5s ease-in-out infinite 5.8s;
+  }
+  .hero-depth .dust {
+    width: 72vw; height: 19vw; border-radius: 50%; opacity: .32;
+    border-top: 1px solid rgba(225,201,255,.28);
+    background: radial-gradient(ellipse at 50% 0%, rgba(169,102,255,.16), transparent 63%);
+    filter: blur(6px); mix-blend-mode: screen;
+  }
+  .hero-depth .dust.d1 { left: -18%; top: 32%; transform: rotate(9deg); animation: dust-wave-a 13s ease-in-out infinite alternate; }
+  .hero-depth .dust.d2 { right: -22%; top: 56%; transform: rotate(-12deg) scale(.82); animation: dust-wave-b 16s ease-in-out infinite alternate; }
+  .hero-depth .pulse-ring {
+    width: 190px; height: 190px; right: 10.5%; top: 5.5%; border-radius: 50%;
+    border: 1px solid rgba(232,205,255,.3);
+    box-shadow: 0 0 42px rgba(177,100,255,.18), inset 0 0 42px rgba(122,220,255,.08);
+    animation: cosmic-pulse 5.2s ease-out infinite;
+  }
+  .hero-depth .flare-line {
+    width: 58vw; height: 80px; right: -12%; top: 29%; opacity: 0;
+    background: linear-gradient(90deg, transparent, rgba(137,220,255,.08), rgba(255,255,255,.5), rgba(236,137,255,.12), transparent);
+    clip-path: polygon(0 49%, 100% 42%, 100% 58%, 0 51%);
+    filter: blur(1px) drop-shadow(0 0 12px rgba(203,153,255,.5));
+    animation: flare-scan 8s ease-in-out infinite 1.4s;
+  }
+  .hero-depth .spark {
+    width: 4px; height: 4px; border-radius: 50%; background: #fff;
+    box-shadow: 0 0 8px 2px #fff, 0 0 24px 7px rgba(196,139,255,.55);
+    animation: spark-pop 3.8s ease-in-out infinite;
+  }
+  .hero-depth .spark.s1 { left: 19%; top: 17%; animation-delay: -.8s; }
+  .hero-depth .spark.s2 { left: 34%; top: 49%; animation-delay: -2.1s; }
+  .hero-depth .spark.s3 { right: 28%; top: 39%; animation-delay: -3s; }
+  .decor-planet { position: absolute; display: block; height: auto; aspect-ratio: 1; pointer-events: none; user-select: none; }
+  .hero-depth .planet-ring {
+    width: clamp(110px, 12vw, 190px); left: 42%; top: 7%; opacity: .48;
+    filter: blur(.2px) drop-shadow(0 0 30px rgba(173,96,255,.5));
+    animation: planet-drift-a 12s ease-in-out infinite alternate;
+  }
+  .hero-depth .planet-ice {
+    width: clamp(42px, 5vw, 78px); left: 7%; top: 43%; opacity: .72;
+    filter: drop-shadow(0 0 22px rgba(137,214,255,.48));
+    animation: planet-drift-b 9s ease-in-out infinite alternate;
+  }
+  .hero-depth .planet-dark {
+    width: clamp(72px, 8vw, 122px); right: 1%; top: 52%; opacity: .48;
+    filter: drop-shadow(0 0 28px rgba(225,73,241,.34));
+    animation: planet-drift-a 13s ease-in-out infinite alternate;
+  }
+  @keyframes aurora-drift { to { transform: translate3d(-4%,6%,0) rotate(5deg) scale(1.08); opacity: .68; } }
+  @keyframes beam-breathe { 50% { opacity: .45; transform: rotate(-8deg) scaleX(.93); } }
+  @keyframes lens-pulse { 50% { transform: scale(.72); opacity: .7; } }
+  @keyframes prism-spin { to { transform: rotate(360deg); } }
+  @keyframes orbit-dot { to { offset-distance: 100%; } }
+  @keyframes hero-comet { 0%,72% { opacity: 0; transform: translate(-380px,160px) rotate(-18deg); } 76% { opacity: 1; } 90%,100% { opacity: 0; transform: translate(1280px,-300px) rotate(-18deg); } }
+  @keyframes hero-comet-b { 0%,66% { opacity: 0; transform: translate(420px,-110px) rotate(163deg); } 72% { opacity: .85; } 90%,100% { opacity: 0; transform: translate(-950px,270px) rotate(163deg); } }
+  @keyframes dust-wave-a { to { opacity: .52; transform: translate3d(7%,5%,0) rotate(5deg) scale(1.08); } }
+  @keyframes dust-wave-b { to { opacity: .48; transform: translate3d(-9%,-4%,0) rotate(-7deg) scale(.9); } }
+  @keyframes cosmic-pulse { 0% { opacity: 0; transform: scale(.42); } 28% { opacity: .7; } 100% { opacity: 0; transform: scale(1.85); } }
+  @keyframes flare-scan { 0%,62% { opacity: 0; transform: translateX(28%) rotate(-4deg); } 72% { opacity: .65; } 88%,100% { opacity: 0; transform: translateX(-42%) rotate(-4deg); } }
+  @keyframes spark-pop { 0%,100% { opacity: .18; transform: scale(.45) rotate(0); } 45% { opacity: 1; transform: scale(1.35) rotate(45deg); } 58% { opacity: .36; transform: scale(.75) rotate(90deg); } }
+  @keyframes planet-drift-a { to { transform: translate3d(18px,-15px,0) rotate(5deg); } }
+  @keyframes planet-drift-b { to { transform: translate3d(-10px,18px,0) rotate(-8deg); } }
   /* long, gentle melt into the light page below */
   .hero::after {
     content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 420px;
@@ -224,10 +370,23 @@
   .hero-orbs .o2 { width: 300px; height: 300px; top: 120px; right: -60px;
     background: radial-gradient(circle, rgba(109,40,217,.20), transparent 70%); }
 
+  .hero-shell { position: relative; z-index: 2; }
+  .hero-shell > .hero-title {
+    margin: 0 auto 58px;
+    text-align: center;
+    font-size: clamp(3.2rem, 6.4vw, 5.45rem);
+  }
+  .hero-shell > .hero-title .title-line { margin-inline: auto; }
   .hero-grid {
-    position: relative; z-index: 2;
+    position: relative;
     display: grid; grid-template-columns: 1.02fr 1.1fr; gap: 56px; align-items: center;
   }
+  .hero-grid::after {
+    content: ""; position: absolute; z-index: -1; width: 58%; height: 120px; right: -2%; bottom: -28px;
+    background: radial-gradient(ellipse, rgba(162,99,255,.29), transparent 68%); filter: blur(18px);
+    transform: perspective(500px) rotateX(62deg);
+  }
+  .hero-copy { position: relative; }
 
   /* hero text rides over deep space → light palette, scoped to the hero only */
   .hero .badge {
@@ -241,9 +400,13 @@
   .hero h1.hero-title { color: #FFFFFF; text-shadow: 0 2px 24px rgba(8,4,20,.4); }
   .hero h1.hero-title .hl {
     color: transparent;
+    -webkit-text-fill-color: transparent;
     background: linear-gradient(96deg, #8fefff 0%, #b3a3ff 36%, #f0a6ff 66%, #ff9fce 100%);
+    background-size: 220% 100%;
     -webkit-background-clip: text; background-clip: text;
+    animation: title-shimmer 7s ease-in-out infinite alternate;
   }
+  @keyframes title-shimmer { to { background-position: 100% 0; } }
   .hero .hero-sub { color: rgba(240,236,251,.96); text-shadow: 0 1px 14px rgba(8,4,20,.6); }
   .hero .hero-sub b { color: #ffffff; }
   .hero .hero-meta { color: rgba(219,208,255,.94); text-shadow: 0 1px 10px rgba(8,4,20,.55); }
@@ -275,13 +438,21 @@
   .badge b { color: var(--accent); font-weight: 600; }
 
   h1.hero-title {
-    font-size: clamp(2.5rem, 5.6vw, 4rem);
-    line-height: 1.06;
-    letter-spacing: -.025em;
+    font-size: clamp(2.7rem, 5.9vw, 4.45rem);
+    line-height: 1.16;
+    letter-spacing: -.035em;
     font-weight: 700;
     margin: 22px 0 0;
     text-wrap: balance;
     color: var(--ink);
+    overflow: visible;
+  }
+  h1.hero-title .title-line {
+    display: block;
+    width: 100%;
+    padding: .03em .16em .12em;
+    white-space: nowrap;
+    overflow: visible;
   }
   h1.hero-title .hl {
     color: var(--accent);
@@ -334,6 +505,7 @@
     font-family: var(--font-mono); font-size: .78rem; color: var(--faint);
   }
   .hero-meta span { display: inline-flex; align-items: center; gap: 7px; }
+  .hero .hero-meta span { padding: 5px 9px; border: 1px solid rgba(255,255,255,.09); border-radius: 7px; background: rgba(255,255,255,.035); backdrop-filter: blur(7px); }
   .hero-meta span::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--accent-bright); }
 
   /* ---------- Terminal (cosmic panel) ---------- */
@@ -345,7 +517,24 @@
     box-shadow: var(--shadow-panel);
     overflow: hidden;
     font-family: var(--font-mono);
+    transform: perspective(1200px) rotateY(-3deg) rotateX(1.2deg) translateY(8px);
+    transform-origin: center left;
+    transition: transform .5s cubic-bezier(.2,.75,.2,1), box-shadow .5s ease;
   }
+  .term { animation: terminal-float 7s ease-in-out infinite; }
+  .term::before {
+    content: ""; position: absolute; inset: -1px; z-index: 1; pointer-events: none;
+    border-radius: inherit;
+    background: linear-gradient(120deg, rgba(255,255,255,.11), transparent 24%, transparent 72%, rgba(168,85,247,.08));
+  }
+  .term:hover { animation-play-state: paused; transform: perspective(1200px) rotateY(0) rotateX(0) translateY(-4px); box-shadow: 0 34px 90px -30px rgba(112,55,220,.7); }
+  .term::after {
+    content: ""; position: absolute; z-index: 3; left: 0; right: 0; height: 70px; top: -90px;
+    background: linear-gradient(to bottom, transparent, rgba(207,181,255,.055), transparent);
+    animation: terminal-scan 7s linear infinite; pointer-events: none;
+  }
+  @keyframes terminal-scan { to { transform: translateY(560px); } }
+  @keyframes terminal-float { 50% { transform: perspective(1200px) rotateY(-1.4deg) rotateX(.3deg) translateY(-6px); } }
   .term canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; opacity: .8; }
   .term-bar {
     position: relative; z-index: 2;
@@ -401,6 +590,7 @@
   section { position: relative; }
   section[id] { scroll-margin-top: 82px; }
   .band { padding: 90px 0; }
+  .band { isolation: isolate; overflow: hidden; }
   .band-head { max-width: 620px; }
   .band-head h2 {
     font-size: clamp(1.85rem, 3.6vw, 2.55rem);
@@ -411,19 +601,32 @@
 
   /* ---------- Three pillars ---------- */
   .pillars { padding-top: 6px; }
+  .pillars::before {
+    content: ""; position: absolute; z-index: -1; width: 760px; height: 760px; left: 50%; top: -260px; transform: translateX(-50%);
+    background: radial-gradient(circle, color-mix(in srgb, var(--accent) 9%, transparent), transparent 67%);
+    pointer-events: none;
+  }
   .pillar-grid {
     display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 44px;
   }
   @media (max-width: 860px) { .pillar-grid { grid-template-columns: 1fr; } }
   .pillar {
     position: relative;
+    display: flex;
+    flex-direction: column;
     background: var(--surface);
     border: 1px solid var(--line);
-    border-radius: var(--radius);
-    padding: 26px 24px 24px;
+    border-radius: 18px;
+    padding: 0 26px 26px;
     box-shadow: var(--shadow-soft);
     transition: transform .25s ease, border-color .25s ease, box-shadow .25s ease;
     overflow: hidden;
+    --mx: 50%; --my: 20%; isolation: isolate;
+  }
+  .pillar::before {
+    content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+    background: radial-gradient(280px circle at var(--mx) var(--my), color-mix(in srgb, var(--accent-bright) 13%, transparent), transparent 62%);
+    opacity: 0; transition: opacity .3s ease;
   }
   .pillar::after {
     content: ""; position: absolute; left: 0; top: 0; height: 3px; width: 100%;
@@ -432,11 +635,41 @@
   }
   .pillar:hover { transform: translateY(-4px); border-color: var(--line-strong);
     box-shadow: 0 18px 44px -22px rgba(90,50,170,.5); }
+  .pillar:hover::before { opacity: 1; }
   .pillar:hover::after { transform: scaleX(1); }
   .pillar .k {
     font-family: var(--font-mono); font-size: .72rem; letter-spacing: .16em;
     text-transform: uppercase; color: var(--faint); font-weight: 600;
   }
+  .pillar-visual {
+    position: relative; height: 154px; margin: 0 -26px 24px; overflow: hidden;
+    border-bottom: 1px solid var(--line);
+    background: var(--cosmos);
+  }
+  .pillar-visual::after {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(to bottom, transparent 68%, color-mix(in srgb, var(--surface) 92%, transparent) 100%);
+  }
+  .pillar-visual img { width: 100%; height: 100%; object-fit: cover; opacity: .92; transition: transform .7s ease, filter .5s ease; }
+  .pillar:hover .pillar-visual img { transform: scale(1.06); filter: saturate(1.12) contrast(1.04); }
+  .pillar-visual.skill-visual {
+    background:
+      radial-gradient(circle at 50% 48%, rgba(214,173,255,.32), transparent 14%),
+      radial-gradient(circle at 50% 50%, rgba(109,40,217,.34), transparent 48%),
+      var(--cosmos);
+  }
+  .skill-visual span {
+    position: absolute; z-index: 1; width: 12px; height: 12px; left: 50%; top: 50%;
+    border: 1px solid rgba(225,203,255,.78); background: rgba(168,85,247,.28);
+    transform: translate(-50%,-50%) rotate(45deg); box-shadow: 0 0 18px rgba(168,85,247,.62);
+  }
+  .skill-visual span::before { content: ""; position: absolute; width: 88px; height: 1px; right: 6px; top: 5px; background: linear-gradient(90deg, rgba(201,183,255,.38), transparent); transform-origin: right; }
+  .skill-visual span:nth-child(1) { transform: translate(-50%,-50%) translate(-92px,-35px) rotate(45deg); }
+  .skill-visual span:nth-child(2) { transform: translate(-50%,-50%) translate(94px,-38px) rotate(45deg); }
+  .skill-visual span:nth-child(3) { transform: translate(-50%,-50%) translate(-118px,38px) rotate(45deg); }
+  .skill-visual span:nth-child(4) { transform: translate(-50%,-50%) translate(120px,40px) rotate(45deg); }
+  .skill-visual span:nth-child(5) { width: 24px; height: 24px; }
+  .skill-visual span:nth-child(6) { transform: translate(-50%,-50%) translate(0,-58px) rotate(45deg); }
   .pillar h3 {
     font-size: 1.28rem; margin: 12px 0 0; letter-spacing: -.01em; font-weight: 700;
     display: flex; align-items: baseline; gap: 10px; color: var(--ink);
@@ -445,8 +678,9 @@
     font-family: var(--font-mono); font-style: normal; font-size: .78rem;
     color: var(--accent); font-weight: 600; letter-spacing: .02em;
   }
-  .pillar p { margin: 12px 0 0; color: var(--muted); font-size: .97rem; line-height: 1.62; }
+  .pillar p { flex: 1; margin: 12px 0 0; color: var(--muted); font-size: .97rem; line-height: 1.62; }
   .pillar .metric {
+    flex: none;
     margin-top: 18px; padding-top: 16px; border-top: 1px dashed var(--line-strong);
     font-family: var(--font-mono); font-size: .82rem; color: var(--ink-soft);
     display: flex; align-items: center; gap: 8px;
@@ -454,12 +688,49 @@
   .pillar .metric b { color: var(--accent); font-size: 1.15rem; font-weight: 700; }
 
   /* ---------- Platform / five pillars index ---------- */
-  .platform { background: var(--ground-2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .platform {
+    background:
+      radial-gradient(100% 90% at 92% 8%, rgba(168,85,247,.17), transparent 46%),
+      radial-gradient(72% 80% at 0% 100%, rgba(72,130,255,.09), transparent 50%),
+      linear-gradient(145deg, #090514 0%, #110923 56%, #0a0616 100%);
+    border-top: 1px solid rgba(214,190,255,.12); border-bottom: 1px solid rgba(214,190,255,.12);
+    color: var(--cosmos-ink);
+  }
+  .platform::before {
+    content: ""; position: absolute; z-index: -1; inset: 0; pointer-events: none; opacity: .7;
+    background:
+      radial-gradient(circle at 78% 18%, rgba(201,166,255,.14), transparent 28%),
+      radial-gradient(circle at 12% 82%, rgba(109,40,217,.13), transparent 26%),
+      radial-gradient(circle, rgba(214,194,255,.13) 1px, transparent 1.5px);
+    background-size: auto, auto, 34px 34px;
+    mask-image: linear-gradient(to bottom, transparent, #000 16%, #000 84%, transparent);
+  }
+  .platform::after {
+    content: ""; position: absolute; z-index: -1; width: 760px; height: 760px; right: -260px; top: -300px;
+    border: 1px solid rgba(216,194,255,.1); border-radius: 50%;
+    box-shadow: 0 0 0 90px rgba(178,125,255,.025), 0 0 0 190px rgba(178,125,255,.018);
+    animation: platform-orbit 18s ease-in-out infinite alternate; pointer-events: none;
+  }
+  @keyframes platform-orbit { to { transform: rotate(9deg) scale(1.06); } }
+  .platform .band-head h2, .platform .row .rtitle h3, .platform .cap .ct { color: #f7f3ff; }
+  .platform .band-head p, .platform .rdesc, .platform .cap p { color: rgba(219,210,238,.68); }
+  .platform .eyebrow, .platform .row .num, .platform .row .rtitle .sub { color: #c6a2ff; }
+  .platform .row { border-color: rgba(219,201,255,.12); }
+  .platform .row:last-child { border-bottom-color: rgba(219,201,255,.12); }
+  .platform .row:hover { background: rgba(255,255,255,.035); box-shadow: inset 3px 0 0 #a855f7; }
+  .platform .row .rdesc code { background: rgba(168,85,247,.12); color: #d7b9ff; }
+  .platform .chip { background: rgba(255,255,255,.045); border-color: rgba(221,204,255,.14); color: rgba(235,228,248,.76); }
+  .platform .caps { background: rgba(220,202,255,.1); border-color: rgba(220,202,255,.1); box-shadow: 0 28px 90px -42px rgba(94,36,190,.72); }
+  .platform .cap { background: rgba(255,255,255,.025); }
+  .platform .cap:hover { background: rgba(168,85,247,.09); }
+  .platform .cap .ct .g { background: #b983ff; box-shadow: 0 0 16px rgba(185,131,255,.62); }
   .index { margin-top: 46px; display: flex; flex-direction: column; }
   .row {
     display: grid; grid-template-columns: 68px 1fr 1.15fr; gap: 28px; align-items: start;
     padding: 30px 0; border-top: 1px solid var(--line-strong);
   }
+  .row { transition: padding-left .25s ease, padding-right .25s ease, background .25s ease; }
+  .row:hover { padding-left: 14px; padding-right: 14px; background: color-mix(in srgb, var(--surface) 68%, transparent); box-shadow: inset 3px 0 0 var(--accent); }
   .row:last-child { border-bottom: 1px solid var(--line-strong); }
   @media (max-width: 780px) { .row { grid-template-columns: 48px 1fr; }
     .row .rdesc { grid-column: 1 / -1; padding-left: 0; } }
@@ -484,7 +755,19 @@
   }
 
   /* ---------- Extension / code card ---------- */
-  .ext-grid { display: grid; grid-template-columns: 1fr 1.05fr; gap: 52px; align-items: center; margin-top: 8px; }
+  .ext-grid {
+    display: grid; grid-template-columns: 1fr 1.05fr; gap: 52px; align-items: center; margin-top: 8px;
+    padding: 48px; border: 1px solid var(--line); border-radius: 30px;
+    background: color-mix(in srgb, var(--surface) 82%, transparent);
+    box-shadow: 0 32px 100px -58px rgba(84,34,170,.66); backdrop-filter: blur(18px);
+  }
+  #extend { background: radial-gradient(60% 75% at 90% 10%, color-mix(in srgb, var(--accent-bright) 11%, transparent), transparent 68%); }
+  #extend::before, #compare::before {
+    content: ""; position: absolute; z-index: -1; width: 620px; height: 620px; border-radius: 50%; pointer-events: none;
+    background: radial-gradient(circle, color-mix(in srgb, var(--accent-bright) 10%, transparent), transparent 68%);
+  }
+  #extend::before { right: -250px; top: -180px; }
+  #compare::before { left: -280px; bottom: -260px; }
   @media (max-width: 940px) { .ext-grid { grid-template-columns: 1fr; gap: 34px; } }
   .ext-copy h2 { font-size: clamp(1.85rem, 3.6vw, 2.55rem); line-height: 1.12; letter-spacing: -.02em;
     font-weight: 700; margin: 16px 0 0; text-wrap: balance; color: var(--ink); }
@@ -498,6 +781,12 @@
     background: var(--cosmos); border: 1px solid var(--cosmos-line);
     border-radius: var(--radius-lg); box-shadow: var(--shadow-panel);
     overflow: hidden; position: relative;
+    --mx: 50%; --my: 20%; transition: transform .35s ease, box-shadow .35s ease;
+  }
+  .code:hover { transform: translateY(-5px); box-shadow: 0 34px 90px -32px rgba(90,45,185,.72); }
+  .code::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 1;
+    background: radial-gradient(260px circle at var(--mx) var(--my), rgba(198,164,255,.12), transparent 64%);
   }
   .code canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; opacity: .55; }
   .code .code-bar {
@@ -527,24 +816,52 @@
   @media (max-width: 820px) { .caps { grid-template-columns: repeat(2, 1fr); } }
   @media (max-width: 520px) { .caps { grid-template-columns: 1fr; } }
   .cap { background: var(--surface); padding: 22px 22px; transition: background .2s ease; }
+  .cap { position: relative; overflow: hidden; --mx: 50%; --my: 50%; }
+  .cap::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .25s ease; background: radial-gradient(180px circle at var(--mx) var(--my), color-mix(in srgb, var(--accent-bright) 14%, transparent), transparent 68%); }
   .cap:hover { background: var(--accent-wash); }
+  .cap:hover::after { opacity: 1; }
   .cap .ct { font-family: var(--font-mono); font-size: .95rem; font-weight: 600; color: var(--ink);
     display: flex; align-items: center; gap: 9px; }
   .cap .ct .g { width: 7px; height: 7px; border-radius: 2px; background: var(--accent); transform: rotate(45deg); }
   .cap p { margin: 9px 0 0; font-size: .9rem; color: var(--muted); line-height: 1.55; }
 
   /* ---------- Comparison ---------- */
+  #compare {
+    background:
+      radial-gradient(80% 80% at 10% 90%, rgba(109,40,217,.18), transparent 56%),
+      linear-gradient(160deg, #0b0617, #130a26 62%, #090512);
+    color: var(--cosmos-ink);
+  }
+  #compare .band-head h2 { color: #f7f3ff; }
+  #compare .band-head p { color: rgba(219,210,238,.68); }
+  #compare .eyebrow { color: #c6a2ff; }
+  #compare::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .55;
+    background-image: linear-gradient(rgba(211,188,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(211,188,255,.035) 1px, transparent 1px);
+    background-size: 72px 72px; mask-image: radial-gradient(circle at 50% 45%, #000, transparent 76%);
+  }
   .cmp-wrap { margin-top: 42px; overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius);
     box-shadow: var(--shadow-soft); background: var(--surface); }
+  .cmp-wrap { position: relative; z-index: 1; --mx: 50%; --my: 10%; box-shadow: 0 30px 100px -40px rgba(114,54,225,.58); background: rgba(255,255,255,.035); border-color: rgba(220,201,255,.14); backdrop-filter: blur(14px); }
   table.cmp { width: 100%; border-collapse: collapse; min-width: 640px; font-size: .95rem; }
   table.cmp th, table.cmp td { padding: 15px 18px; text-align: left; border-bottom: 1px solid var(--line); }
   table.cmp thead th {
     font-family: var(--font-mono); font-size: .74rem; letter-spacing: .1em; text-transform: uppercase;
     color: var(--faint); font-weight: 600; background: var(--ground-2);
   }
+  #compare table.cmp th, #compare table.cmp td { border-bottom-color: rgba(220,201,255,.1); }
+  #compare table.cmp thead th { background: rgba(255,255,255,.035); color: rgba(208,198,225,.56); }
+  #compare table.cmp thead th.nova { color: #c69dff; }
+  #compare table.cmp tbody td:first-child { color: rgba(242,236,251,.86); }
+  #compare table.cmp tbody td { color: rgba(211,202,226,.55); }
+  #compare table.cmp .nova-col { background: rgba(168,85,247,.1); color: #f6f0ff; }
+  #compare table.cmp .yes { color: #c69dff; }
+  #compare table.cmp tbody tr:hover { background: rgba(168,85,247,.07); }
   table.cmp thead th.nova { color: var(--accent); }
   table.cmp tbody td:first-child { color: var(--ink-soft); font-weight: 500; }
   table.cmp tbody tr:last-child td { border-bottom: none; }
+  table.cmp tbody tr { transition: background .2s ease; }
+  table.cmp tbody tr:hover { background: color-mix(in srgb, var(--accent-wash) 38%, transparent); }
   table.cmp .nova-col { background: color-mix(in srgb, var(--accent-wash) 55%, transparent); font-weight: 600; color: var(--ink); }
   table.cmp .yes { color: var(--accent); font-weight: 600; }
   table.cmp .no { color: var(--faint); }
@@ -552,8 +869,21 @@
 
   /* ---------- CTA / footer ---------- */
   .cta-final { padding: 96px 0; text-align: center; position: relative; overflow: hidden; }
+  .cta-final::before {
+    content: ""; position: absolute; width: 680px; height: 680px; left: 50%; top: 36%; transform: translate(-50%,-50%);
+    border-radius: 50%; border: 1px solid color-mix(in srgb, var(--accent) 14%, transparent);
+    box-shadow: 0 0 0 80px color-mix(in srgb, var(--accent) 4%, transparent), 0 0 0 160px color-mix(in srgb, var(--accent) 3%, transparent);
+    pointer-events: none;
+    animation: cta-orbit 14s ease-in-out infinite alternate;
+  }
+  .cta-final::after {
+    content: ""; position: absolute; width: 360px; height: 120px; left: 50%; top: 38px; transform: translateX(-50%);
+    background: radial-gradient(ellipse, color-mix(in srgb, var(--accent-bright) 22%, transparent), transparent 70%);
+    filter: blur(14px); pointer-events: none;
+  }
+  @keyframes cta-orbit { to { transform: translate(-50%,-50%) rotate(8deg) scale(1.06); } }
   .cta-final .planet {
-    width: 96px; height: 96px; margin: 0 auto 26px; border-radius: 50%;
+    width: 96px; height: 96px; margin: 0 auto 26px;
     filter: drop-shadow(0 20px 50px rgba(120,60,220,.6));
   }
   .cta-final h2 { font-size: clamp(2rem, 4.4vw, 3rem); letter-spacing: -.025em; font-weight: 700;
@@ -561,30 +891,58 @@
   .cta-final p { margin: 18px auto 0; max-width: 44ch; color: var(--muted); font-size: 1.08rem; }
   .cta-final .row-btns { margin-top: 34px; display: flex; justify-content: center; flex-wrap: wrap; gap: 14px; }
 
-  footer.foot { border-top: 1px solid var(--line); padding: 40px 0 54px; }
+  footer.foot { border-top: 1px solid var(--line); padding: 40px 0 54px; background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--accent-wash) 36%, transparent)); }
   .foot-inner { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; justify-content: space-between; }
   .foot-brand { display: flex; align-items: center; gap: 11px; }
-  .foot-brand .mark { width: 28px; height: 28px; border-radius: 50%; }
+  .foot-brand .mark { width: 28px; height: 28px; }
   .foot-brand .word { font-family: var(--font-mono); font-weight: 600; color: var(--ink); }
   .foot-meta { font-family: var(--font-mono); font-size: .8rem; color: var(--faint); display: flex; gap: 18px; flex-wrap: wrap; }
   .foot-meta a:hover { color: var(--accent); }
 
   /* ---------- reveal ---------- */
-  .reveal { opacity: 0; transform: translateY(18px); transition: opacity .7s ease, transform .7s ease; }
+  .reveal { opacity: 0; transform: translateY(18px); transition: opacity .7s ease var(--reveal-delay, 0ms), transform .7s ease var(--reveal-delay, 0ms); }
   .reveal.in { opacity: 1; transform: none; }
   @media (prefers-reduced-motion: reduce) {
     * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
     .reveal { opacity: 1; transform: none; }
     .term-body .cursor { display: none; }
   }
+  @media (max-width: 620px) {
+    .wrap { padding-left: 18px; padding-right: 18px; }
+    .hero { min-height: 100vh; min-height: 100svh; padding: 116px 0; }
+    h1.hero-title { font-size: clamp(2rem, 9.3vw, 2.45rem); line-height: 1.16; }
+    .hero-shell > .hero-title { margin-bottom: 38px; }
+    .hero-sub { max-width: none; }
+    .hero-grid > *, .hero-actions > * { min-width: 0; }
+    .hero-actions { align-items: stretch; }
+    .btn-primary, .hero .cmd { width: 100%; justify-content: center; }
+    .hero .cmd { font-size: .76rem; overflow: hidden; }
+    .hero .cmd #cmdText { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .hero .cmd .copy { flex: none; }
+    .term { min-width: 0; transform: none; }
+    .term-bar .tt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .term-body { min-height: 330px; padding: 18px 16px 22px; font-size: .75rem; }
+    .pillar-visual { height: 140px; }
+    .band { padding: 72px 0; }
+    .hero-depth .aurora { width: 160vw; height: 90vw; left: 5%; top: -8%; }
+    .hero-depth .beam { width: 120vw; right: -45%; top: 14%; }
+    .hero-depth .prism { width: 460px; height: 460px; right: -280px; top: -120px; opacity: .24; }
+    .hero-depth .orbit { min-width: 460px; min-height: 210px; right: -260px; top: 3%; opacity: .58; }
+    .hero-depth .planet-ring { width: 72px; left: auto; right: -12px; top: 16%; opacity: .42; }
+    .hero-depth .planet-ice { width: 38px; left: 3%; top: 43%; opacity: .56; }
+    .hero-depth .planet-dark { width: 52px; right: 2%; top: 55%; opacity: .38; }
+    .ext-grid { padding: 28px 20px; border-radius: 22px; }
+  }
 </style>
 </head>
 <body>
 
+<div class="scroll-progress" id="scrollProgress" aria-hidden="true"></div>
+
 <header class="nav" id="nav">
   <div class="wrap nav-inner">
     <a class="brand" href="#top" aria-label="Nova 首页">
-      <img class="mark" src="https://raw.githubusercontent.com/asathinkeroops/nova-code/main/docs/app-icon.png" alt="Nova logo" width="32" height="32">
+      <img class="mark" src="./app-icon-v2.png" alt="Nova logo" width="32" height="32">
       <span class="word"><b>&gt;_</b> nova</span>
     </a>
     <nav class="nav-links">
@@ -604,10 +962,19 @@
   <!-- HERO -->
   <section class="hero" id="hero">
     <canvas class="galaxy" id="galaxy" aria-hidden="true"></canvas>
-    <div class="wrap hero-grid">
-      <div class="hero-copy">
+    <div class="hero-depth" aria-hidden="true">
+      <i class="aurora"></i><i class="beam"></i><i class="lens"></i><i class="prism"></i><i class="orbit o1"></i><i class="orbit o2"></i>
+      <i class="dust d1"></i><i class="dust d2"></i><i class="pulse-ring"></i><i class="flare-line"></i>
+      <i class="comet"></i><i class="comet c2"></i><i class="spark s1"></i><i class="spark s2"></i><i class="spark s3"></i>
+      <img class="decor-planet planet-ring" src="./planet-ring-violet.webp" alt="" width="640" height="640">
+      <img class="decor-planet planet-ice" src="./planet-ice-moon.webp" alt="" width="640" height="640">
+      <img class="decor-planet planet-dark" src="./planet-dark-rock.webp" alt="" width="640" height="640">
+    </div>
+    <div class="wrap hero-shell">
+      <h1 class="hero-title"><span class="title-line">为 DeepSeek 而生的</span><span class="hl title-line">终端编程 Agent</span></h1>
+      <div class="hero-grid">
+        <div class="hero-copy">
         <span class="badge"><span class="dot"></span>为 <b>DeepSeek</b> 从头设计 · Apache 2.0 开源</span>
-        <h1 class="hero-title">为 DeepSeek 而生的<br><span class="hl">终端编程 Agent</span></h1>
         <p class="hero-sub">大多数工具优先适配 Claude，DeepSeek 只是"能用"。Nova 反过来——把<b>省钱、安全、灵活</b>刻进架构，假设模型会出错，让每一层都为恢复而设计。</p>
         <div class="hero-actions">
           <a class="btn-primary" href="https://github.com/asathinkeroops/nova-code" target="_blank" rel="noopener">
@@ -626,20 +993,21 @@
           <span>pnpm 单仓 · 约 20 个包</span>
           <span>CLI 二进制 <code style="font-family:var(--font-mono);color:#E7A6FF">nova</code></span>
         </div>
-      </div>
-
-      <!-- Live terminal -->
-      <div class="term" id="term" aria-label="Nova 会话演示">
-        <canvas data-stars="70"></canvas>
-        <div class="term-bar">
-          <span class="tl r"></span><span class="tl y"></span><span class="tl g"></span>
-          <span class="tt"><img src="https://raw.githubusercontent.com/asathinkeroops/nova-code/main/docs/app-icon.png" alt="">nova — DeepSeek-native session</span>
         </div>
-        <div class="term-body" id="termBody"></div>
-        <div class="term-foot">
-          <span>缓存命中 <b>96%</b></span><span class="sep">·</span>
-          <span>本轮花费 <b>¥0.02</b></span><span class="sep">·</span>
-          <span><code style="font-family:var(--font-mono);color:var(--accent-bright)">/usage</code> 查看明细</span>
+
+        <!-- Live terminal -->
+        <div class="term" id="term" aria-label="Nova 会话演示">
+          <canvas data-stars="70"></canvas>
+          <div class="term-bar">
+            <span class="tl r"></span><span class="tl y"></span><span class="tl g"></span>
+            <span class="tt"><img src="./app-icon-v2.png" alt="">nova — DeepSeek-native session</span>
+          </div>
+          <div class="term-body" id="termBody"></div>
+          <div class="term-foot">
+            <span>缓存命中 <b>96%</b></span><span class="sep">·</span>
+            <span>本轮花费 <b>¥0.02</b></span><span class="sep">·</span>
+            <span><code style="font-family:var(--font-mono);color:var(--accent-bright)">/usage</code> 查看明细</span>
+          </div>
         </div>
       </div>
     </div>
@@ -655,18 +1023,21 @@
       </div>
       <div class="pillar-grid">
         <article class="pillar reveal">
+          <div class="pillar-visual"><img src="./nova-prefix-cache.webp" alt="" width="1440" height="919" loading="lazy" decoding="async"></div>
           <div class="k">01 · 省钱</div>
           <h3>缓存自动命中 <em>prefix cache</em></h3>
           <p>为 DeepSeek 协议级适配。消息历史只追加、绝不原地改，连写盘都做成前缀感知——服务端缓存稳稳命中，默认关掉激进压缩。</p>
           <div class="metric"><b>96%+</b> 前缀缓存命中率</div>
         </article>
         <article class="pillar reveal">
+          <div class="pillar-visual"><img src="./nova-sandbox.webp" alt="" width="1440" height="901" loading="lazy" decoding="async"></div>
           <div class="k">02 · 安全</div>
           <h3>操作系统级沙箱 <em>seatbelt / bwrap</em></h3>
           <p>所有 bash 与子进程跑在内核沙箱里，文件写入被锁死在工作区内。零配置、零摩擦，不支持的平台静默降级绝不打断你。</p>
           <div class="metric"><b>内核级</b> 不可绕过的兜底</div>
         </article>
         <article class="pillar reveal">
+          <div class="pillar-visual skill-visual" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span></div>
           <div class="k">03 · 灵活</div>
           <h3>一个 .md 文件就是一项能力 <em>declarative</em></h3>
           <p>放一个带 frontmatter 的 Markdown，它立刻变成运行时能力:子代理、斜杠命令、技能。不改源码、不重编译,提交到 Git 即团队共享。</p>
@@ -801,7 +1172,7 @@
   <section class="cta-final">
     <div class="hero-orbs"><span class="o1" style="left:50%;top:-40px;transform:translateX(-50%)"></span></div>
     <div class="wrap" style="position:relative;z-index:1">
-      <img class="planet reveal" src="https://raw.githubusercontent.com/asathinkeroops/nova-code/main/docs/app-icon.png" alt="Nova logo" width="96" height="96">
+      <img class="planet reveal" src="./app-icon-v2.png" alt="Nova logo" width="96" height="96">
       <h2 class="reveal">如果你在用 DeepSeek 写代码</h2>
       <p class="reveal">一个假设模型会出错、优雅恢复、绝不丢失你工作的开源 Agent 运行时。去试试,顺手点个 Star。</p>
       <div class="row-btns reveal">
@@ -821,7 +1192,7 @@
 <footer class="foot">
   <div class="wrap foot-inner">
     <div class="foot-brand">
-      <img class="mark" src="https://raw.githubusercontent.com/asathinkeroops/nova-code/main/docs/app-icon.png" alt="Nova logo" width="28" height="28">
+      <img class="mark" src="./app-icon-v2.png" alt="Nova logo" width="28" height="28">
       <span class="word">nova</span>
       <span style="color:var(--faint);font-size:.86rem;font-family:var(--font-mono)">· 终端编程 Agent</span>
     </div>
@@ -938,10 +1309,11 @@
   // ---- the supernova galaxy behind the hero ----
   function initGalaxy(canvas) {
     if (!canvas) return;
-    var W = 0, H = 0, ctx = null, stars = [], shooters = [];
+    var W = 0, H = 0, ctx = null, stars = [], links = [], shooters = [];
     var focal = { x: 0, y: 0 }, bloom = null, bloomHalf = 0, nebula = null, glow = null;
     var bottomGlow = null, bottomGlowR = 0;
     var t0 = null, lastSpawn = 0, scrollY = window.scrollY || 0;
+    var pointer = { x: 0, y: 0 }, pointerTarget = { x: 0, y: 0 };
 
     // the nova planet (v2) becomes the glowing galactic core
     var coreReady = false;
@@ -968,23 +1340,20 @@
       o.fillStyle = g; o.fillRect(0, 0, s, s);
       glow = oc;
     }
-    // the galactic band: a glowing river of gas trailing from the core (top-right) across the hero.
-    // baked ONCE into an offscreen layer, blitted once per frame. band endpoints A(core)->B drive star clustering too.
-    var bandA = { x: 0, y: 0 }, bandB = { x: 0, y: 0 };
+    // A calm two-arm galaxy, baked once into an offscreen layer. Keeping the dust static
+    // lets the live layer spend its frame budget on twinkle, parallax and shooting stars.
     function renderNebula() {
-      bandA = { x: 0.76 * W, y: 0.17 * H };
-      bandB = { x: -0.10 * W, y: 1.04 * H };
       var oc = document.createElement("canvas");
       oc.width = Math.max(1, Math.round(W)); oc.height = Math.max(1, Math.round(H));
       var o = oc.getContext("2d");
       o.globalCompositeOperation = "lighter";
-      var M = Math.max(W, H);
+      var M = W < 620 ? W * 1.55 : Math.max(W, H);
 
-      // ambient colour field (kept subtle — the band carries the drama)
+      // Ambient colour fields anchor the galaxy without changing the brand palette.
       var clouds = [
-        [0.90, 0.04, 0.30, "233,90,190", 0.14],
-        [0.06, 0.14, 0.36, "70,150,240", 0.11],
-        [0.40, 0.40, 0.42, "120,70,210", 0.07]
+        [0.82, 0.10, 0.32, "233,90,190", 0.12],
+        [0.08, 0.22, 0.38, "70,150,240", 0.09],
+        [0.48, 0.38, 0.46, "120,70,210", 0.065]
       ];
       for (var c = 0; c < clouds.length; c++) {
         var cl = clouds[c], g0 = o.createRadialGradient(cl[0] * W, cl[1] * H, 0, cl[0] * W, cl[1] * H, cl[2] * M);
@@ -992,24 +1361,36 @@
         o.fillStyle = g0; o.fillRect(0, 0, W, H);
       }
 
-      // the glowing river — overlapping blobs along A->B, brighter/warmer at the core, cooling + widening outward
-      var steps = 22;
-      for (var i = 0; i <= steps; i++) {
-        var p = i / steps;
-        var x = bandA.x + (bandB.x - bandA.x) * p;
-        var y = bandA.y + (bandB.y - bandA.y) * p;
-        var near = 1 - p;
-        var rad = (0.07 + 0.17 * p) * M;
-        // clumpy dust: vary brightness along the river so it isn't a flat smear
-        var clump = 0.6 + 0.4 * Math.sin(p * 11 + 1.3) * Math.sin(p * 4.5);
-        var alpha = (0.04 + 0.20 * near) * clump;
-        var col = p < 0.38 ? "222,160,255" : (p < 0.72 ? "150,175,255" : "255,150,215");
-        var g = o.createRadialGradient(x, y, 0, x, y, rad);
-        g.addColorStop(0, "rgba(" + col + "," + alpha + ")");
-        g.addColorStop(0.6, "rgba(" + col + "," + (alpha * 0.4) + ")");
-        g.addColorStop(1, "rgba(" + col + ",0)");
-        o.fillStyle = g; o.fillRect(0, 0, W, H);
+      // Soft spiral dust. Its vertical scale is compressed to create a tilted galactic disc.
+      for (var arm = 0; arm < 2; arm++) {
+        for (var i = 0; i < 96; i++) {
+          var p = i / 95;
+          var rr = (0.035 + p * 0.88) * M;
+          var theta = arm * Math.PI + 1.06 + p * 5.25;
+          var x = focal.x + Math.cos(theta) * rr * 1.08;
+          var y = focal.y + Math.sin(theta) * rr * 0.31;
+          var rad = (0.032 + p * 0.082) * M;
+          var pulse = .58 + .42 * Math.sin(i * 1.77 + arm * 2.3);
+          var alpha = (0.22 * (1 - p) + 0.034) * pulse;
+          var col = p < .42 ? "218,160,255" : (arm ? "255,142,210" : "125,203,255");
+          var g = o.createRadialGradient(x, y, 0, x, y, rad);
+          g.addColorStop(0, "rgba(" + col + "," + alpha + ")");
+          g.addColorStop(.56, "rgba(" + col + "," + (alpha * .34) + ")");
+          g.addColorStop(1, "rgba(" + col + ",0)");
+          o.fillStyle = g; o.fillRect(0, 0, W, H);
+        }
       }
+
+      // Fine orbital traces keep the focal point legible and make the hero feel engineered.
+      o.save();
+      o.translate(focal.x, focal.y); o.rotate(-0.12); o.scale(1, .31);
+      for (var ring = 0; ring < 5; ring++) {
+        o.strokeStyle = "rgba(220,194,255," + (0.13 - ring * .018) + ")";
+        o.lineWidth = 1;
+        o.setLineDash([2 + ring, 12 + ring * 4]);
+        o.beginPath(); o.arc(0, 0, M * (.12 + ring * .095), 0, Math.PI * 2); o.stroke();
+      }
+      o.restore(); o.setLineDash([]);
       nebula = oc;
     }
     // pre-render the supernova bloom + spikes + core ONCE into an offscreen canvas
@@ -1062,39 +1443,49 @@
     }
     function build() {
       var f = fitCanvas(canvas, 1.5, 3200000); W = f.W; H = f.H; ctx = f.ctx;
-      focal.x = W * 0.75; focal.y = H * 0.17;
+      focal.x = W < 620 ? W * 0.9 : W * 0.75;
+      focal.y = W < 620 ? H * 0.135 : H * 0.17;
       renderGlow(); renderNebula(); renderBottomGlow();
-      renderBloom(Math.max(W, H) * 0.34);
-      var M = Math.max(W, H);
-      var bandAng = Math.atan2(bandB.y - bandA.y, bandB.x - bandA.x);
-      var perp = bandAng + Math.PI / 2;
-      var n = Math.min(460, Math.round(W * H / 3200));
+      var M = W < 620 ? W * 1.55 : Math.max(W, H);
+      renderBloom(M * 0.34);
+      var n = Math.min(W < 620 ? 360 : 780, Math.round(W * H / (W < 620 ? 1700 : 1900)));
       stars = [];
       for (var i = 0; i < n; i++) {
-        var x, y, alongBand = Math.random() < 0.62;
-        if (alongBand) {
-          // sit near the galactic river: interpolate along A->B + gaussian-ish perpendicular spread that widens outward
-          var p = Math.random();
-          var cx = bandA.x + (bandB.x - bandA.x) * p;
-          var cy = bandA.y + (bandB.y - bandA.y) * p;
-          var spread = (0.02 + 0.11 * p) * M;
-          var off = ((Math.random() + Math.random() + Math.random()) / 3 - 0.5) * 2 * spread;
-          x = cx + Math.cos(perp) * off;
-          y = cy + Math.sin(perp) * off;
+        var x, y, inGalaxy = Math.random() < 0.7;
+        if (inGalaxy) {
+          var p = Math.pow(Math.random(), .78);
+          var arm = Math.random() < .5 ? 0 : 1;
+          var theta = arm * Math.PI + 1.06 + p * 5.25;
+          var rr = (.035 + p * .88) * M;
+          var scatter = ((Math.random() + Math.random() + Math.random()) / 3 - .5) * (.025 + p * .07) * M;
+          x = focal.x + Math.cos(theta) * rr * 1.08 + Math.cos(theta + Math.PI / 2) * scatter;
+          y = focal.y + Math.sin(theta) * rr * .31 + Math.sin(theta + Math.PI / 2) * scatter * .42;
         } else {
           x = Math.random() * W;
           y = Math.pow(Math.random(), 1.35) * H;
         }
         stars.push({
           x: x, y: y,
-          r: (alongBand ? Math.random() * 1.3 + 0.3 : Math.random() * 1.6 + 0.4),
-          base: Math.random() * 0.5 + (alongBand ? 0.3 : 0.22),
+          r: (inGalaxy ? Math.random() * 1.25 + 0.28 : Math.random() * 1.55 + 0.38),
+          base: Math.random() * 0.5 + (inGalaxy ? 0.31 : 0.2),
           amp: Math.random() * 0.55,
           sp: Math.random() * 1.8 + 0.3,
           ph: Math.random() * Math.PI * 2,
-          bright: Math.random() > (alongBand ? 0.82 : 0.9),
-          col: starColor()
+          bright: Math.random() > (inGalaxy ? 0.84 : 0.92),
+          col: starColor(),
+          orbit: inGalaxy,
+          depth: Math.random() * .72 + .28
         });
+      }
+      links = [];
+      if (W >= 620) {
+        for (var tries = 0; tries < 180 && links.length < 22; tries++) {
+          var ai = Math.floor(Math.random() * stars.length), bi = Math.floor(Math.random() * stars.length);
+          var aa = stars[ai], bb = stars[bi];
+          if (!aa || !bb || ai === bi || aa.orbit || bb.orbit) continue;
+          var dx = aa.x - bb.x, dy = aa.y - bb.y, dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist > 46 && dist < 154) links.push([ai, bi]);
+        }
       }
     }
     function vfade(y) {
@@ -1126,9 +1517,13 @@
       ctx.globalCompositeOperation = "lighter";
 
       var shift = scrollY * 0.12;
+      pointer.x += (pointerTarget.x - pointer.x) * .045;
+      pointer.y += (pointerTarget.y - pointer.y) * .045;
 
       // nebula clouds — one cached blit, gentle parallax
-      ctx.drawImage(nebula, 0, -shift * 0.4, W, H);
+      ctx.globalAlpha = reduce ? 1 : .91 + .09 * Math.sin(t * .00032);
+      ctx.drawImage(nebula, pointer.x * -5, -shift * 0.4 + pointer.y * -3, W, H);
+      ctx.globalAlpha = 1;
 
       // bottom gradient glow (twinkling) + concentric rings
       ctx.globalAlpha = reduce ? 0.9 : (0.62 + 0.38 * (0.5 + 0.5 * Math.sin(t * 0.001)));
@@ -1141,10 +1536,28 @@
       ctx.drawImage(bloom, focal.x - bloomHalf, focal.y - bloomHalf);
       ctx.globalAlpha = 1;
 
-      // stars — flat dots + cached glow sprite on bright ones (no shadowBlur)
+      // Sparse constellation links in the deep field.
+      for (var li = 0; li < links.length; li++) {
+        var pair = links[li], la = stars[pair[0]], lb = stars[pair[1]];
+        if (!la || !lb) continue;
+        ctx.strokeStyle = "rgba(205,184,255," + (.045 + .025 * Math.sin(t * .0006 + li)) + ")";
+        ctx.lineWidth = .55; ctx.beginPath();
+        ctx.moveTo(la.x + pointer.x * 4 * la.depth, la.y - shift + pointer.y * 3 * la.depth);
+        ctx.lineTo(lb.x + pointer.x * 4 * lb.depth, lb.y - shift + pointer.y * 3 * lb.depth); ctx.stroke();
+      }
+
+      // Stars: gentle orbit inside the galactic disc + depth-aware pointer parallax.
       for (var i = 0; i < stars.length; i++) {
         var s = stars[i];
-        var yv = s.y - shift;
+        var sx = s.x, sy = s.y;
+        if (s.orbit && !reduce) {
+          var odx = s.x - focal.x, ody = (s.y - focal.y) / .31;
+          var oa = t * .0000045 * s.depth, oc = Math.cos(oa), os = Math.sin(oa);
+          sx = focal.x + (odx * oc - ody * os);
+          sy = focal.y + (odx * os + ody * oc) * .31;
+        }
+        sx += pointer.x * 8 * s.depth;
+        var yv = sy - shift + pointer.y * 5 * s.depth;
         var df = vfade(yv);
         if (df <= 0 || yv < -4) continue;
         var a = (reduce ? s.base + s.amp * 0.5
@@ -1152,24 +1565,24 @@
         if (s.bright) {
           var gs = s.r * 9;
           ctx.globalAlpha = a * 0.8;
-          ctx.drawImage(glow, s.x - gs / 2, yv - gs / 2, gs, gs);
+          ctx.drawImage(glow, sx - gs / 2, yv - gs / 2, gs, gs);
           ctx.globalAlpha = 1;
         }
         ctx.fillStyle = "rgba(" + s.col + "," + a + ")";
-        ctx.beginPath(); ctx.arc(s.x, yv, s.bright ? s.r * 1.15 : s.r, 0, 6.2832); ctx.fill();
+        ctx.beginPath(); ctx.arc(sx, yv, s.bright ? s.r * 1.15 : s.r, 0, 6.2832); ctx.fill();
         if (s.bright) {
           ctx.strokeStyle = "rgba(" + s.col + "," + (a * 0.5) + ")";
           ctx.lineWidth = 0.7;
           ctx.beginPath();
-          ctx.moveTo(s.x - s.r * 3.4, yv); ctx.lineTo(s.x + s.r * 3.4, yv);
-          ctx.moveTo(s.x, yv - s.r * 3.4); ctx.lineTo(s.x, yv + s.r * 3.4);
+          ctx.moveTo(sx - s.r * 3.4, yv); ctx.lineTo(sx + s.r * 3.4, yv);
+          ctx.moveTo(sx, yv - s.r * 3.4); ctx.lineTo(sx, yv + s.r * 3.4);
           ctx.stroke();
         }
       }
 
       // shooting stars (≤2 at a time)
       if (!reduce) {
-        if (ts - lastSpawn > 3400 + Math.random() * 2800 && shooters.length < 2) {
+        if (ts - lastSpawn > 2500 + Math.random() * 2400 && shooters.length < 3) {
           var dir = Math.random() > 0.5 ? 1 : -1, sp = 5 + Math.random() * 3;
           shooters.push({
             x: dir > 0 ? W * (0.05 + Math.random() * 0.2) : W * (0.75 + Math.random() * 0.2),
@@ -1199,7 +1612,7 @@
       ctx.globalCompositeOperation = "source-over";
       if (coreReady) {
         var SCX = 0.509, SCY = 0.481, SR = 0.353;
-        var vr = Math.max(W, H) * 0.052;            // desired sphere radius
+        var vr = (W < 620 ? W * 1.55 : Math.max(W, H)) * 0.052; // desired sphere radius
         var ar = coreImg.naturalHeight / coreImg.naturalWidth || 1;
         var Dw = vr / SR;                           // scale the whole image so the sphere = vr
         var Dh = Dw * ar;
@@ -1209,8 +1622,35 @@
 
     build(); onResize(build); addAnimator(canvas, draw);
     window.addEventListener("scroll", function () { scrollY = window.scrollY || 0; }, { passive: true });
+    window.addEventListener("pointermove", function (e) {
+      if (W < 620) return;
+      pointerTarget.x = (e.clientX / Math.max(1, W) - .5) * 2;
+      pointerTarget.y = (e.clientY / Math.max(1, window.innerHeight) - .5) * 2;
+    }, { passive: true });
   }
   initGalaxy(document.getElementById("galaxy"));
+
+  // ---- subtle page-wide depth: progress, stagger and pointer spotlights ----
+  var progress = document.getElementById("scrollProgress");
+  function updateProgress() {
+    var max = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+    if (progress) progress.style.transform = "scaleX(" + Math.min(1, window.scrollY / max) + ")";
+  }
+  updateProgress(); window.addEventListener("scroll", updateProgress, { passive: true });
+  document.querySelectorAll(".pillar-grid, .index, .caps").forEach(function (group) {
+    Array.prototype.forEach.call(group.children, function (el, i) {
+      el.style.setProperty("--reveal-delay", Math.min(i * 55, 220) + "ms");
+    });
+  });
+  if (!reduce) {
+    document.querySelectorAll(".pillar, .cap, .code, .cmp-wrap").forEach(function (el) {
+      el.addEventListener("pointermove", function (e) {
+        var r = el.getBoundingClientRect();
+        el.style.setProperty("--mx", (e.clientX - r.left) + "px");
+        el.style.setProperty("--my", (e.clientY - r.top) + "px");
+      }, { passive: true });
+    });
+  }
 
   // ---- typing terminal ----
   var body = document.getElementById("termBody");
