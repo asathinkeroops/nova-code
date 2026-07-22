@@ -641,6 +641,37 @@
   }
   .band-head p { margin: 16px 0 0; color: var(--muted); font-size: 1.08rem; }
 
+  /* ---------- Showcase video ---------- */
+  .showcase { padding-top: 6px; }
+  .showcase::before {
+    content: ""; position: absolute; z-index: -1; width: 820px; height: 820px; left: 50%; top: -220px; transform: translateX(-50%);
+    background: radial-gradient(circle, color-mix(in srgb, var(--accent) 10%, transparent), transparent 68%);
+    pointer-events: none;
+  }
+  .showcase-frame {
+    position: relative; margin-top: 48px;
+    border: 1px solid var(--line-strong); border-radius: var(--radius-lg);
+    background: var(--surface); box-shadow: var(--shadow-panel);
+    overflow: hidden; isolation: isolate;
+  }
+  .showcase-frame::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 2;
+    border-radius: inherit; border: 1px solid color-mix(in srgb, var(--accent-bright) 18%, transparent);
+  }
+  .showcase-bar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 11px 16px; border-bottom: 1px solid var(--line);
+    background: color-mix(in srgb, var(--surface) 82%, var(--ground-2));
+  }
+  .showcase-bar .tl { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+  .showcase-bar .tl.r { background: #ff5f57; } .showcase-bar .tl.y { background: #febc2e; } .showcase-bar .tl.g { background: #28c840; }
+  .showcase-bar .tt {
+    margin-left: 8px; font: 500 .82rem/1 var(--font-mono); color: var(--muted);
+    display: inline-flex; align-items: center; gap: 7px;
+  }
+  .showcase-bar .tt img { width: 15px; height: 15px; border-radius: 4px; }
+  .showcase-frame video { display: block; width: 100%; height: auto; background: #000; }
+
   /* ---------- Three pillars ---------- */
   .pillars { padding-top: 6px; }
   .pillars::before {
@@ -996,6 +1027,7 @@
       </span>
     </a>
     <nav class="nav-links">
+      <a href="#demo">演示</a>
       <a href="#pillars">核心能力</a>
       <a href="#platform">平台架构</a>
       <a href="#extend">扩展</a>
@@ -1063,6 +1095,26 @@
             <span><code style="font-family:var(--font-mono);color:var(--accent-bright)">/usage</code> 查看明细</span>
           </div>
         </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SHOWCASE VIDEO -->
+  <section class="band showcase" id="demo">
+    <div class="wrap">
+      <div class="band-head reveal">
+        <span class="eyebrow">一分钟看懂</span>
+        <h2>真实会话，一镜到底</h2>
+        <p>从一句自然语言到跑通改动——看 Nova-Code 在终端里如何规划、调用工具、命中缓存、守住沙箱。</p>
+      </div>
+      <div class="showcase-frame reveal">
+        <div class="showcase-bar">
+          <span class="tl r"></span><span class="tl y"></span><span class="tl g"></span>
+          <span class="tt"><img src="./app-icon-v2.webp" alt="">nova-code — 演示录屏</span>
+        </div>
+        <video src="https://static-1453154645.cos.ap-guangzhou.myqcloud.com/app.mov" poster="./app.webp"
+               controls playsinline muted loop preload="none"
+               aria-label="Nova-Code 会话演示录屏"></video>
       </div>
     </div>
   </section>
