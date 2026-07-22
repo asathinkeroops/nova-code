@@ -676,10 +676,10 @@
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">自动记忆（agent 自维护，跨会话）</h3>
         <p>除了你手写的记忆文件，Nova 还维护一层 <strong>auto 记忆</strong> —— agent 自己在工作中沉淀下来的事实，跨会话保留：</p>
         <ul class="space-y-2">
-          <li>落在工作区里的 <code>.nova/memory/</code>（可用 <code>memory.auto.dir</code> 改）：一个 <code>MEMORY.md</code> 索引，加上<strong>每条事实一个文件</strong>。</li>
+          <li>落在全局用户目录、按项目分目录：<code>~/.nova/projects/&lt;项目路径编码&gt;/memory/</code>（与 Claude Code 一致；可用 <code>memory.auto.dir</code> 改成工作区内路径）。里面是一个 <code>MEMORY.md</code> 索引，加上<strong>每条事实一个文件</strong>。</li>
           <li><strong>索引</strong>（<code>MEMORY.md</code>，每条一行）注入 system prompt，占很少 token；单条事实正文由 agent 按需 <code>read</code>。注入的索引条数上限 <code>memory.auto.maxEntries</code>（默认 100）。</li>
           <li>这个目录归 agent 所有：其中的 <code>read</code>/<code>write</code>/<code>edit</code> <strong>默认放行、不弹权限</strong>（见 <a class="inline-link" href="#sec-10">§10</a>）—— 沉淀一条学到的事实不该每次都问你。</li>
-          <li>放在工作区内是刻意的：天然随项目走、可 git 跟踪，也绕开沙箱的写入限制（无需额外白名单）。用 <code>memory.auto.enabled: false</code> 关闭整层。</li>
+          <li>默认放在全局用户目录、按项目标识分目录：记忆随项目走但不污染仓库；若想改为随项目 git 跟踪，把 <code>memory.auto.dir</code> 设为工作区内相对路径（如 <code>.nova/memory</code>）即可。用 <code>memory.auto.enabled: false</code> 关闭整层。</li>
         </ul>
       </section>
 
@@ -837,7 +837,7 @@
           <tr><td>session 日志</td><td><code>~/.nova/sessions/{id}/session.log</code></td></tr>
           <tr><td>定时调度条目（cron/loop）</td><td><code>~/.nova/sessions/{id}/cron/{id}.json</code></td></tr>
           <tr><td>持久化 Task</td><td>工作区内 <code>.tasks/{id}.json</code></td></tr>
-          <tr><td>自动记忆（agent 自维护）</td><td>工作区内 <code>.nova/memory/</code>（<code>MEMORY.md</code> + 每条一文件）</td></tr>
+          <tr><td>自动记忆（agent 自维护）</td><td><code>~/.nova/projects/&lt;项目路径编码&gt;/memory/</code>（<code>MEMORY.md</code> + 每条一文件；<code>memory.auto.dir</code> 可改回工作区内）</td></tr>
           <tr><td>MCP OAuth token</td><td><code>~/.nova/mcp-auth/</code></td></tr>
           <tr><td>更新检查节流状态</td><td><code>~/.nova/update-check.json</code></td></tr>
         </tbody></table></div>
@@ -950,7 +950,7 @@
         <div class="tbl-wrap"><table class="doc"><thead><tr><th>字段</th><th>默认</th><th>说明</th></tr></thead><tbody>
           <tr><td><code>memory.filenames</code></td><td><code>["NOVA.md","CLAUDE.md","AGENTS.md"]</code></td><td>记忆文件名优先级，见 <a class="inline-link" href="#sec-13">§13</a></td></tr>
           <tr><td><code>memory.userPaths</code> / <code>globalPath</code></td><td>（无）</td><td>覆盖用户层 / 全局记忆路径</td></tr>
-          <tr><td><code>memory.auto.*</code></td><td><code>enabled:true</code></td><td>自动记忆（agent 自维护）：<code>dir</code>=<code>.nova/memory</code>、<code>maxEntries</code>=100，见 <a class="inline-link" href="#sec-13">§13</a></td></tr>
+          <tr><td><code>memory.auto.*</code></td><td><code>enabled:true</code></td><td>自动记忆（agent 自维护）：默认 <code>~/.nova/projects/&lt;项目编码&gt;/memory/</code>（<code>dir</code> 未设，可设为工作区内路径覆盖）、<code>maxEntries</code>=100，见 <a class="inline-link" href="#sec-13">§13</a></td></tr>
           <tr><td><code>slash.enabled</code></td><td><code>true</code></td><td>自定义 slash 命令开关；可覆写的发现目录：<code>projectDirs</code>、<code>userPaths</code>、<code>extraDirs</code></td></tr>
           <tr><td><code>skills.enabled</code></td><td><code>true</code></td><td>Skills 开关；<code>maxIndexBytes</code>=8192、<code>maxResponseBytes</code>=16384；可覆写的发现目录：<code>projectDirs</code>、<code>userPaths</code>、<code>extraDirs</code></td></tr>
           <tr><td><code>subagent.enabled</code></td><td><code>true</code></td><td>子 agent 开关；<code>model</code>（按子 agent 名索引的档位表，见 <a class="inline-link" href="#sec-8">§8</a>）/<code>maxTurns</code>=100/<code>maxTokens</code>=32768；子 agent 的 <code>maxTokensContinuations</code> 继承顶层设置；自定义类型目录：<code>projectDirs</code>/<code>userPaths</code>/<code>extraDirs</code></td></tr>

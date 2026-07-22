@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
 
 export const DEFAULT_CONFIG_PATH = join(homedir(), ".nova", "nova.config.json");
@@ -105,10 +105,45 @@ export type McpServerConfig = z.infer<typeof mcpServerSchema>;
 
 export const DEFAULT_MEMORY_FILENAMES = ["NOVA.md", "CLAUDE.md", "AGENTS.md"] as const;
 
-// Project-relative directory for the agent-maintained auto-memory store. Inside
-// the workspace root on purpose: it sidesteps the sandbox write-confinement (no
-// allowlist needed) and is naturally project-scoped + git-trackable.
-export const DEFAULT_AUTO_MEMORY_DIR = ".nova/memory";
+// Global root under the user's home for the agent-maintained auto-memory store,
+// organized by project (mirrors ~/.nova/sessions and Claude Code's scheme): each
+// project gets its own subdirectory keyed by an encoded absolute path.
+//
+// It lives in the user's HOME rather than the repo on purpose. Auto-memory is
+// *personalized* memory — facts the agent accumulated during one person's use,
+// carrying their preferences and context — NOT the *standardized/shared* memory
+// that the static NOVA.md/CLAUDE.md/AGENTS.md bundle provides (that layer is
+// git-tracked, team-wide, and belongs in the repo). Committing personal memory
+// into a shared repo would mis-frame it as unified team knowledge, so it stays
+// per-user (never shared) yet per-project (kept isolated) — the same rationale
+// as sessions living under ~/.nova/sessions. Do NOT "fix" this back into the
+// workspace. `settings.memory.auto.dir` is the deliberate opt-out: an explicit,
+// workspace-relative path for a project that genuinely wants a git-tracked store.
+export const AUTO_MEMORY_ROOT_SEGMENTS = [".nova", "projects"] as const;
+
+// Encode an absolute workspace path into a single filesystem-safe directory
+// segment, matching Claude Code (every non-alphanumeric char becomes "-"): e.g.
+// /Users/me/dev/app -> -Users-me-dev-app. Two real sibling projects can only
+// collide if their paths differ solely in punctuation, which doesn't happen.
+export function encodeProjectPath(workspace: string): string {
+  return resolve(workspace).replace(/[^a-zA-Z0-9]/g, "-");
+}
+
+// Default per-project auto-memory directory: ~/.nova/projects/<encoded>/memory.
+export function defaultAutoMemoryDir(workspace: string, home: string = homedir()): string {
+  return join(home, ...AUTO_MEMORY_ROOT_SEGMENTS, encodeProjectPath(workspace), "memory");
+}
+
+// Resolve the effective auto-memory directory: an explicit `dir` override wins
+// (resolved relative to the workspace, so absolute values pass through), else the
+// default global per-project location under the user's home.
+export function resolveAutoMemoryDir(
+  workspace: string,
+  dir?: string,
+  home: string = homedir(),
+): string {
+  return dir ? resolve(workspace, dir) : defaultAutoMemoryDir(workspace, home);
+}
 
 // The MEMORY.md index is injected into the system prompt on EVERY request, so an
 // unbounded index would silently grow per-request token cost as memories pile
@@ -491,18 +526,21 @@ export const settingsSchema = z.object({
       userPaths: z.array(z.string().min(1)).optional(),
       globalPath: z.string().min(1).optional(),
       // Cross-session memory the agent maintains itself: an index (MEMORY.md)
-      // plus one file per fact, loaded as the `auto` memory layer. `dir` is
-      // resolved relative to the workspace root.
+      // plus one file per fact, loaded as the `auto` memory layer. It lives in
+      // the global per-project store (~/.nova/projects/<encoded>/memory) unless
+      // `dir` overrides it — see resolveAutoMemoryDir.
       auto: z
         .object({
           enabled: z.boolean().default(true),
-          dir: z.string().min(1).default(DEFAULT_AUTO_MEMORY_DIR),
+          // Optional explicit override for the store location, resolved relative
+          // to the workspace root (absolute values pass through). Unset — the
+          // default — uses the global per-project directory under ~/.nova.
+          dir: z.string().min(1).optional(),
           // Max memory entries (lines) from MEMORY.md injected into the prompt.
           maxEntries: z.number().int().positive().default(DEFAULT_AUTO_MEMORY_MAX_ENTRIES),
         })
         .default({
           enabled: true,
-          dir: DEFAULT_AUTO_MEMORY_DIR,
           maxEntries: DEFAULT_AUTO_MEMORY_MAX_ENTRIES,
         }),
     })
@@ -510,7 +548,6 @@ export const settingsSchema = z.object({
       filenames: [...DEFAULT_MEMORY_FILENAMES],
       auto: {
         enabled: true,
-        dir: DEFAULT_AUTO_MEMORY_DIR,
         maxEntries: DEFAULT_AUTO_MEMORY_MAX_ENTRIES,
       },
     }),

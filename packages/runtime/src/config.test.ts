@@ -6,12 +6,15 @@ import {
   DEFAULT_MAX_TOKENS,
   DEFAULT_CONTEXT_WINDOW_SIZE,
   DEFAULT_SANDBOX_ALLOW_WRITE,
+  defaultAutoMemoryDir,
+  encodeProjectPath,
   hooksConfigSchema,
   isDangerousBash,
   loadProjectHooks,
   loadSettings,
   mergeHooks,
   parseSettings,
+  resolveAutoMemoryDir,
   resolveContextWindowSize,
   resolveLanguage,
   resolveMaxTokens,
@@ -52,6 +55,10 @@ describe("settingsSchema", () => {
 
   it("defaults language to auto", () => {
     expect(parseSettings({}).language).toBe("auto");
+  });
+
+  it("leaves memory.auto.dir unset by default (global per-project store)", () => {
+    expect(parseSettings({}).memory.auto.dir).toBeUndefined();
   });
 
   it("accepts slash overrides", () => {
@@ -404,5 +411,38 @@ describe("resolveLanguage", () => {
     if (process.platform !== "darwin") {
       expect(resolveLanguage(auto, empty, "zh-CN")).toBe("zh-CN");
     }
+  });
+});
+
+describe("auto-memory path resolution", () => {
+  it("encodes an absolute path Claude-Code-style (non-alnum -> '-')", () => {
+    expect(encodeProjectPath("/Users/me/dev/nova-code")).toBe("-Users-me-dev-nova-code");
+    expect(encodeProjectPath("/Users/me/.config/app")).toBe("-Users-me--config-app");
+  });
+
+  it("resolves relative workspaces before encoding, so the segment is absolute", () => {
+    const abs = encodeProjectPath(process.cwd());
+    expect(encodeProjectPath(".")).toBe(abs);
+    expect(abs.startsWith("-")).toBe(true);
+  });
+
+  it("defaults to ~/.nova/projects/<encoded>/memory under the given home", () => {
+    expect(defaultAutoMemoryDir("/Users/me/dev/app", "/home/me")).toBe(
+      "/home/me/.nova/projects/-Users-me-dev-app/memory",
+    );
+  });
+
+  it("uses the global per-project store when no dir override is given", () => {
+    expect(resolveAutoMemoryDir("/ws", undefined, "/home/me")).toBe(
+      "/home/me/.nova/projects/-ws/memory",
+    );
+  });
+
+  it("resolves a relative dir override against the workspace root", () => {
+    expect(resolveAutoMemoryDir("/ws", ".nova/memory", "/home/me")).toBe("/ws/.nova/memory");
+  });
+
+  it("passes an absolute dir override through unchanged", () => {
+    expect(resolveAutoMemoryDir("/ws", "/elsewhere/mem", "/home/me")).toBe("/elsewhere/mem");
   });
 });

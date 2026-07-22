@@ -26,6 +26,7 @@ import {
   DEFAULT_CHEAP_TIER,
   loadProjectHooks,
   mergeHooks,
+  resolveAutoMemoryDir,
   resolveMaxTokens,
   resolveModelId,
   resolveModelModalities,
@@ -174,7 +175,7 @@ export async function createContext(
     ...(settings.memory.globalPath ? { globalPath: settings.memory.globalPath } : {}),
     ...(settings.memory.auto.enabled
       ? {
-          autoDir: resolve(workspace, settings.memory.auto.dir),
+          autoDir: resolveAutoMemoryDir(workspace, settings.memory.auto.dir),
           autoMaxEntries: settings.memory.auto.maxEntries,
         }
       : {}),
@@ -677,14 +678,18 @@ export async function createContext(
   (ctx as { permission: PermissionEngine }).permission = permission;
 
   // OS command sandbox (opt-in). Confines subprocess writes to the same
-  // allowedRoots the permission engine uses; network is unrestricted by default
-  // unless the user sets `sandbox.network.allowedDomains`. createSandbox never
-  // throws — on an unsupported platform / missing deps / disabled it returns an
-  // inactive control and tools run unsandboxed. The bridge is read by the
-  // dispatch closure above via the `sandboxBridge` variable.
+  // allowedRoots the permission engine uses, plus the auto-memory store: that
+  // store now lives OUTSIDE the workspace (under ~/.nova), so — unlike the old
+  // in-repo `.nova/memory` — it must be added to the sandbox write allowlist for
+  // a shelled-out memory write to succeed when the sandbox is on. Network is
+  // unrestricted by default unless the user sets `sandbox.network.allowedDomains`.
+  // createSandbox never throws — on an unsupported platform / missing deps /
+  // disabled it returns an inactive control and tools run unsandboxed. The bridge
+  // is read by the dispatch closure above via the `sandboxBridge` variable.
+  const sandboxWriteRoots = autoMemoryDir ? [...allowedRoots, autoMemoryDir] : allowedRoots;
   const sandboxControl = await createSandbox({
     enabled: settings.sandbox.enabled,
-    writeRoots: allowedRoots,
+    writeRoots: sandboxWriteRoots,
     extraAllowWrite: settings.sandbox.filesystem.allowWrite,
     denyWrite: settings.sandbox.filesystem.denyWrite,
     denyRead: settings.sandbox.filesystem.denyRead,
@@ -705,8 +710,8 @@ export async function createContext(
     logger.warn({ reason: sandboxControl.reason }, "sandbox requested but inactive");
   }
 
-  // Runtime toggle for the `/sandbox` command. Captures allowedRoots/logger so
-  // the rebuilt control confines writes to the same roots as the initial one.
+  // Runtime toggle for the `/sandbox` command. Captures sandboxWriteRoots/logger
+  // so the rebuilt control confines writes to the same roots as the initial one.
   // The dispatch closure reads ctx.sandbox.bridge lazily, so reassigning here
   // flips sandboxing on the next subprocess tool. This toggle only mutates the
   // live control/settings; the `/sandbox` command persists the choice to
@@ -716,7 +721,7 @@ export async function createContext(
     ctx.settings.sandbox.enabled = enabled;
     const next = await createSandbox({
       enabled,
-      writeRoots: allowedRoots,
+      writeRoots: sandboxWriteRoots,
       extraAllowWrite: settings.sandbox.filesystem.allowWrite,
       denyWrite: settings.sandbox.filesystem.denyWrite,
       denyRead: settings.sandbox.filesystem.denyRead,

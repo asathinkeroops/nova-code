@@ -456,10 +456,10 @@ Nova 会像 CLAUDE.md 那样，把项目与用户级的记忆文件注入 system
 
 除了你手写的记忆文件，Nova 还维护一层 **auto 记忆**——agent 自己在工作中沉淀下来的事实，跨会话保留：
 
-- 落在工作区里的 `.nova/memory/`（可用 `memory.auto.dir` 改）：一个 `MEMORY.md` 索引，加上**每条事实一个文件**。
+- 落在全局用户目录、按项目分目录：`~/.nova/projects/<项目路径编码>/memory/`（与 Claude Code 一致；可用 `memory.auto.dir` 改成工作区内路径）。里面是一个 `MEMORY.md` 索引，加上**每条事实一个文件**。
 - **索引**（`MEMORY.md`，每条一行）注入 system prompt，占很少 token；单条事实正文由 agent 按需 `read`。为控制每请求成本，注入的索引条数上限 `memory.auto.maxEntries`（默认 100）。
 - 这个目录归 agent 所有：其中的 `read`/`write`/`edit` **默认放行、不弹权限**（见 [§10](#10-权限与安全)）——沉淀一条学到的事实不该每次都问你。
-- 放在工作区内是刻意的：天然随项目走、可 git 跟踪，也绕开沙箱的写入限制（无需额外白名单）。
+- 默认放在全局用户目录、按项目标识分目录：记忆随项目走但不污染仓库；若想改为随项目 git 跟踪，把 `memory.auto.dir` 设为工作区内相对路径（如 `.nova/memory`）即可。
 - 用 `memory.auto.enabled: false` 关闭整层。
 
 ---
@@ -627,7 +627,7 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 | session 日志 | `~/.nova/sessions/{id}/session.log` |
 | 定时调度条目（cron/loop） | `~/.nova/sessions/{id}/cron/{id}.json` |
 | 持久化 Task | 工作区内 `.tasks/{id}.json` |
-| 自动记忆（agent 自维护） | 工作区内 `.nova/memory/`（`MEMORY.md` + 每条一文件） |
+| 自动记忆（agent 自维护） | `~/.nova/projects/<项目路径编码>/memory/`（`MEMORY.md` + 每条一文件；`memory.auto.dir` 可改回工作区内） |
 | MCP OAuth token | `~/.nova/mcp-auth/` |
 | 更新检查节流状态 | `~/.nova/update-check.json` |
 
@@ -723,7 +723,7 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 |------|------|------|
 | `memory.filenames` | `["NOVA.md","CLAUDE.md","AGENTS.md"]` | 记忆文件名优先级，见 [§13](#13-记忆memory) |
 | `memory.userPaths` / `globalPath` | （无） | 覆盖用户层/全局记忆路径 |
-| `memory.auto.*` | `enabled:true` | 自动记忆（agent 自维护）：`dir`=`.nova/memory`、`maxEntries`=100，见 [§13](#13-记忆memory) |
+| `memory.auto.*` | `enabled:true` | 自动记忆（agent 自维护）：默认 `~/.nova/projects/<项目编码>/memory/`（`dir` 未设，可设为工作区内路径覆盖）、`maxEntries`=100，见 [§13](#13-记忆memory) |
 | `slash.enabled` | `true` | 自定义 slash 命令开关；`projectDirs`/`userPaths`/`extraDirs` 额外目录 |
 | `skills.enabled` | `true` | Skills 开关；`maxIndexBytes`=8192、`maxResponseBytes`=16384，及额外目录 |
 | `subagent.enabled` | `true` | 子 agent 开关；`model`（按子 agent 名索引的档位表，见 [§8](#8-plan-模式与子-agent)）/`maxTurns`=100/`maxTokens`=32768 |
