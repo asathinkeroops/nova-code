@@ -35,7 +35,7 @@
 
 <br>
 
-<img src="snapshots/screen.png" alt="Nova 截图" width="90%">
+<img src="snapshots/screen.png" alt="Nova 截图" width="100%">
 
 <br><sub>💬 读代码、跑命令、改文件 —— 一个终端里把任务推到完成</sub>
 

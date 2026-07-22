@@ -35,7 +35,7 @@
 
 <br>
 
-<img src="snapshots/screen.png" alt="Nova screenshot" width="90%">
+<img src="snapshots/screen.png" alt="Nova screenshot" width="100%">
 
 <br><sub>💬 Reads code, runs commands, edits files — drives your task to done in one terminal</sub>
 

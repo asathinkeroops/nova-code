@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Nova-Code — 为 DeepSeek 从头设计的开源终端编程 Agent。省钱、安全、灵活刻进架构：操作系统级沙箱、一个 Markdown 文件即一项能力。">
 <link rel="icon" href="./app-icon-v2.webp" type="image/webp">
+<link rel="preload" href="./nova-galaxy-hero.webp" as="image" type="image/webp">
 <title>Nova-Code — 为 DeepSeek 而生的终端编程 Agent</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; }
@@ -153,12 +154,19 @@
     clip-path: circle(42% at 50% 50%); object-fit: cover;
   }
   .brand .mark, .foot-brand .mark, .cta-final .planet { clip-path: none; border-radius: 0; object-fit: cover; }
+  .brand-text { display: flex; flex-direction: column; justify-content: center; gap: 2px; }
   .brand .word {
     font-family: var(--font-mono);
-    font-weight: 600; font-size: 1.12rem; letter-spacing: -.01em;
+    font-weight: 600; font-size: 1.12rem; letter-spacing: -.01em; line-height: 1.1;
     color: var(--ink);
   }
   .brand .word b { color: var(--accent); font-weight: 600; }
+  .brand .tagline {
+    font-size: .7rem; font-weight: 500; letter-spacing: .01em; line-height: 1.1;
+    color: var(--muted); white-space: nowrap;
+  }
+  /* keep the bar uncluttered on narrower screens where the nav gets tight */
+  @media (max-width: 900px) { .brand .tagline { display: none; } }
   .nav-links { display: flex; align-items: center; gap: 26px; }
   /* :not(.nav-cta) so these never override the CTA button's own colours (cascade collision) */
   .nav-links a:not(.nav-cta) {
@@ -191,6 +199,7 @@
     box-shadow: none;
   }
   header.nav.at-top .brand .word { color: #fff; text-shadow: 0 1px 12px rgba(8,4,20,.6); }
+  header.nav.at-top .brand .tagline { color: rgba(233,228,247,.86); text-shadow: 0 1px 10px rgba(8,4,20,.5); }
   header.nav.at-top .brand .word b { color: #F0C4FF; }
   header.nav.at-top .brand .mark { filter: drop-shadow(0 4px 16px rgba(200,120,255,.7)); }
   header.nav.at-top .nav-links a { color: rgba(240,242,255,.92); text-shadow: 0 1px 10px rgba(8,4,20,.55); }
@@ -231,9 +240,9 @@
       repeating-linear-gradient(135deg, transparent 0 138px, rgba(142,210,255,.025) 139px, transparent 140px 276px);
     background-size: auto, 72px 72px, 72px 72px, 276px 276px;
     mask-image: linear-gradient(to bottom, rgba(0,0,0,.72), rgba(0,0,0,.34) 58%, transparent 88%);
-    animation: tech-grid-drift 22s linear infinite;
+    /* grid kept static: a 72px drift over 22s is imperceptible but repaints the whole
+       hero every frame (background-position can't be composited). Other layers carry the motion. */
   }
-  @keyframes tech-grid-drift { to { background-position: 0 0, 0 72px, 72px 0, 276px 276px; } }
   .hero-depth {
     position: absolute; inset: -2%; z-index: 1; pointer-events: none; overflow: hidden;
     transform: translate3d(var(--depth-x, 0), var(--depth-y, 0), 0) scale(1.02);
@@ -327,9 +336,19 @@
     animation: planet-drift-b 9s ease-in-out infinite alternate;
   }
   .hero-depth .planet-dark {
-    width: clamp(72px, 8vw, 122px); right: 1%; top: 52%; opacity: .48;
+    width: clamp(72px, 8vw, 122px); right: clamp(54px, 5vw, 86px); top: 52%; opacity: .48;
     filter: drop-shadow(0 0 28px rgba(225,73,241,.34));
     animation: planet-drift-a 13s ease-in-out infinite alternate;
+  }
+  .hero-depth .planet-gas {
+    width: clamp(90px, 10vw, 150px); left: 24%; top: 48%; opacity: .24;
+    filter: blur(.45px) drop-shadow(0 0 34px rgba(93,211,255,.28));
+    animation: planet-drift-b 14s ease-in-out infinite alternate-reverse;
+  }
+  .hero-depth .planet-crystal {
+    width: clamp(36px, 4vw, 64px); left: 54%; right: auto; top: 38%; opacity: .58;
+    filter: drop-shadow(0 0 24px rgba(221,92,255,.4));
+    animation: planet-drift-a 10.5s ease-in-out infinite alternate-reverse;
   }
   @keyframes aurora-drift { to { transform: translate3d(-4%,6%,0) rotate(5deg) scale(1.08); opacity: .68; } }
   @keyframes beam-breathe { 50% { opacity: .45; transform: rotate(-8deg) scaleX(.93); } }
@@ -345,6 +364,12 @@
   @keyframes spark-pop { 0%,100% { opacity: .18; transform: scale(.45) rotate(0); } 45% { opacity: 1; transform: scale(1.35) rotate(45deg); } 58% { opacity: .36; transform: scale(.75) rotate(90deg); } }
   @keyframes planet-drift-a { to { transform: translate3d(18px,-15px,0) rotate(5deg); } }
   @keyframes planet-drift-b { to { transform: translate3d(-10px,18px,0) rotate(-8deg); } }
+  /* Freeze every hero animation (blurred/blended decor layers, title shimmer, terminal
+     float/scan, cursor) once the hero scrolls out of view — toggled by JS. The galaxy
+     canvas pauses itself via IntersectionObserver; this covers the CSS side. */
+  .hero.anim-paused, .hero.anim-paused *,
+  .hero.anim-paused::before, .hero.anim-paused::after,
+  .hero.anim-paused *::before, .hero.anim-paused *::after { animation-play-state: paused !important; }
   /* long, gentle melt into the light page below */
   .hero::after {
     content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 420px;
@@ -355,6 +380,20 @@
       color-mix(in srgb, var(--ground) 85%, transparent) 84%,
       var(--ground) 100%);
     z-index: 1; pointer-events: none;
+  }
+  .galaxy-static {
+    position: absolute; inset: -3%; z-index: 0; pointer-events: none;
+    background: url("./nova-galaxy-hero.webp") 50% 8% / cover no-repeat;
+    filter: saturate(1.08) contrast(1.04);
+    transform: translate3d(var(--static-x, 0), var(--static-y, 0), 0) scale(1.055);
+    transition: transform .45s cubic-bezier(.2,.75,.2,1);
+    will-change: transform;
+  }
+  .galaxy-static::after {
+    content: ""; position: absolute; inset: 0;
+    background:
+      linear-gradient(90deg, rgba(5,7,20,.25), transparent 48%, rgba(13,6,31,.06)),
+      linear-gradient(to bottom, rgba(5,5,18,.04), transparent 58%, rgba(18,8,38,.36));
   }
   .galaxy {
     position: absolute; inset: 0; width: 100%; height: 100%;
@@ -590,7 +629,10 @@
   section { position: relative; }
   section[id] { scroll-margin-top: 82px; }
   .band { padding: 90px 0; }
-  .band { isolation: isolate; overflow: hidden; }
+  /* Skip rendering (layout/paint) AND freeze in-section animations while a band is
+     off-screen. contain-intrinsic-size keeps the scrollbar stable; `auto` remembers
+     the real size after first paint. Ignored by browsers without support → no-op. */
+  .band { isolation: isolate; overflow: hidden; content-visibility: auto; contain-intrinsic-size: auto 720px; }
   .band-head { max-width: 620px; }
   .band-head h2 {
     font-size: clamp(1.85rem, 3.6vw, 2.55rem);
@@ -868,7 +910,8 @@
   table.cmp td .mono { font-family: var(--font-mono); font-size: .84rem; }
 
   /* ---------- CTA / footer ---------- */
-  .cta-final { padding: 96px 0; text-align: center; position: relative; overflow: hidden; }
+  .cta-final { padding: 96px 0; text-align: center; position: relative; overflow: hidden;
+    content-visibility: auto; contain-intrinsic-size: auto 560px; }
   .cta-final::before {
     content: ""; position: absolute; width: 680px; height: 680px; left: 50%; top: 36%; transform: translate(-50%,-50%);
     border-radius: 50%; border: 1px solid color-mix(in srgb, var(--accent) 14%, transparent);
@@ -891,7 +934,8 @@
   .cta-final p { margin: 18px auto 0; max-width: 44ch; color: var(--muted); font-size: 1.08rem; }
   .cta-final .row-btns { margin-top: 34px; display: flex; justify-content: center; flex-wrap: wrap; gap: 14px; }
 
-  footer.foot { border-top: 1px solid var(--line); padding: 40px 0 54px; background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--accent-wash) 36%, transparent)); }
+  footer.foot { border-top: 1px solid var(--line); padding: 40px 0 54px; background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--accent-wash) 36%, transparent));
+    content-visibility: auto; contain-intrinsic-size: auto 180px; }
   .foot-inner { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; justify-content: space-between; }
   .foot-brand { display: flex; align-items: center; gap: 11px; }
   .foot-brand .mark { width: 28px; height: 28px; }
@@ -928,9 +972,12 @@
     .hero-depth .beam { width: 120vw; right: -45%; top: 14%; }
     .hero-depth .prism { width: 460px; height: 460px; right: -280px; top: -120px; opacity: .24; }
     .hero-depth .orbit { min-width: 460px; min-height: 210px; right: -260px; top: 3%; opacity: .58; }
-    .hero-depth .planet-ring { width: 72px; left: auto; right: -12px; top: 16%; opacity: .42; }
+    .hero-depth .planet-ring { width: 72px; left: auto; right: 16px; top: 16%; opacity: .42; }
     .hero-depth .planet-ice { width: 38px; left: 3%; top: 43%; opacity: .56; }
-    .hero-depth .planet-dark { width: 52px; right: 2%; top: 55%; opacity: .38; }
+    .hero-depth .planet-dark { width: 52px; right: 28px; top: 55%; opacity: .38; }
+    .hero-depth .planet-gas { width: 66px; left: 22%; top: 60%; opacity: .25; }
+    .hero-depth .planet-crystal { width: 38px; left: 56%; right: auto; top: 42%; opacity: .5; }
+    .galaxy-static { background-position: 68% 8%; }
     .ext-grid { padding: 28px 20px; border-radius: 22px; }
   }
 </style>
@@ -943,7 +990,10 @@
   <div class="wrap nav-inner">
     <a class="brand" href="#top" aria-label="Nova-Code 首页">
       <img class="mark" src="./app-icon-v2.webp" alt="Nova-Code logo" width="48" height="48">
-      <span class="word">Nova-Code</span>
+      <span class="brand-text">
+        <span class="word">Nova-Code</span>
+        <span class="tagline">一个专为 DeepSeek 打造的编码智能体</span>
+      </span>
     </a>
     <nav class="nav-links">
       <a href="#pillars">核心能力</a>
@@ -962,6 +1012,7 @@
 <main id="top">
   <!-- HERO -->
   <section class="hero" id="hero">
+    <div class="galaxy-static" aria-hidden="true"></div>
     <canvas class="galaxy" id="galaxy" aria-hidden="true"></canvas>
     <div class="hero-depth" aria-hidden="true">
       <i class="aurora"></i><i class="beam"></i><i class="lens"></i><i class="prism"></i><i class="orbit o1"></i><i class="orbit o2"></i>
@@ -970,13 +1021,15 @@
       <img class="decor-planet planet-ring" src="./planet-ring-violet.webp" alt="" width="640" height="640">
       <img class="decor-planet planet-ice" src="./planet-ice-moon.webp" alt="" width="640" height="640">
       <img class="decor-planet planet-dark" src="./planet-dark-rock.webp" alt="" width="640" height="640">
+      <img class="decor-planet planet-gas" src="./planet-gas-cyan.webp" alt="" width="1024" height="1024" decoding="async">
+      <img class="decor-planet planet-crystal" src="./planet-crystal-violet.webp" alt="" width="1024" height="1024" decoding="async">
     </div>
     <div class="wrap hero-shell">
       <h1 class="hero-title"><span class="title-line">为 DeepSeek 而生的</span><span class="hl title-line">终端编程 Agent</span></h1>
       <div class="hero-grid">
         <div class="hero-copy">
         <span class="badge"><span class="dot"></span>为 DeepSeek 原生设计 · Apache 2.0 开源</span>
-        <p class="hero-sub">架构级适配 DeepSeek，同等预算跑出数倍吞吐，效果丝毫不减。MCP、Skill、子代理、Goal、Hooks 一应俱全，命令行兼容 Claude Code，几乎零学习成本。</p>
+        <p class="hero-sub">架构级适配 DeepSeek，同等预算跑出数倍吞吐，效果丝毫不减。MCP、Skill、子代理、Goal、Hooks、Loop 一应俱全，命令行兼容 Claude Code，几乎零学习成本。</p>
         <div class="hero-actions">
           <a class="btn-primary" href="https://github.com/asathinkeroops/nova-code" target="_blank" rel="noopener">
             <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5A11.5 11.5 0 0 0 .5 12a11.5 11.5 0 0 0 7.86 10.92c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.53-1.34-1.29-1.7-1.29-1.7-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.2 1.77 1.2 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.7 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.43-2.7 5.4-5.26 5.69.41.36.78 1.05.78 2.12v3.14c0 .31.2.67.8.56A11.5 11.5 0 0 0 23.5 12 11.5 11.5 0 0 0 12 .5Z"/></svg>
@@ -1213,15 +1266,25 @@
   // ---- nav: glassy over the supernova hero, solid light bar once past it ----
   var nav = document.getElementById("nav");
   var hero = document.getElementById("hero");
+  // Cache the hero's bottom edge instead of reading offsetHeight on every scroll tick.
+  var heroBottom = 0;
+  function measureHero() { heroBottom = hero ? hero.offsetTop + hero.offsetHeight : 0; }
   var onScroll = function () {
-    var heroBottom = hero ? hero.offsetTop + hero.offsetHeight : 0;
     var overHero = window.scrollY < heroBottom - 130;
     nav.classList.toggle("at-top", overHero);
     nav.classList.toggle("scrolled", !overHero && window.scrollY > 8);
   };
-  onScroll();
+  measureHero(); onScroll();
   window.addEventListener("scroll", onScroll, { passive: true });
-  window.addEventListener("resize", onScroll);
+  window.addEventListener("resize", function () { measureHero(); onScroll(); });
+  window.addEventListener("load", function () { measureHero(); onScroll(); });
+
+  // Pause the hero's CSS animations while it's fully scrolled past (GPU/main-thread idle).
+  if (!reduce && "IntersectionObserver" in window && hero) {
+    new IntersectionObserver(function (es) {
+      hero.classList.toggle("anim-paused", !es[0].isIntersecting);
+    }, { threshold: 0 }).observe(hero);
+  }
 
   // ---- copy command buttons ----
   function wireCopy(id) {
@@ -1237,7 +1300,7 @@
   }
   wireCopy("copyCmd"); wireCopy("copyCmd2");
 
-  // ---- shared animation driver: one rAF, ~30fps cap, pauses when hidden/offscreen ----
+  // ---- shared animation driver: one rAF, smooth 60fps cap, pauses when hidden/offscreen ----
   var animators = [];
   function addAnimator(el, draw) {
     var a = { draw: draw, visible: true };
@@ -1249,11 +1312,12 @@
     if (reduce) draw(0);
     return a;
   }
-  var _last = 0, _minDt = 1000 / 30;
+  var _last = 0, _minDt = 1000 / 60 - .5;
   function _tick(t) {
     requestAnimationFrame(_tick);
-    if (document.hidden || t - _last < _minDt) return;
-    _last = t;
+    var elapsed = t - _last;
+    if (document.hidden || elapsed < _minDt) return;
+    _last = t - (elapsed % _minDt);
     for (var i = 0; i < animators.length; i++) if (animators[i].visible) animators[i].draw(t);
   }
   if (!reduce) requestAnimationFrame(_tick);
@@ -1263,7 +1327,7 @@
     var r = canvas.getBoundingClientRect();
     var W = Math.max(1, r.width), H = Math.max(1, r.height);
     var dpr = Math.min(window.devicePixelRatio || 1, maxDpr);
-    if (W * H * dpr * dpr > maxPx) dpr = Math.max(1, Math.sqrt(maxPx / (W * H)));
+    if (W * H * dpr * dpr > maxPx) dpr = Math.max(.6, Math.sqrt(maxPx / (W * H)));
     canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
     var ctx = canvas.getContext("2d");
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -1310,17 +1374,12 @@
   // ---- the supernova galaxy behind the hero ----
   function initGalaxy(canvas) {
     if (!canvas) return;
+    var staticGalaxy = document.querySelector(".galaxy-static");
     var W = 0, H = 0, ctx = null, stars = [], links = [], shooters = [];
     var focal = { x: 0, y: 0 }, bloom = null, bloomHalf = 0, nebula = null, glow = null;
     var bottomGlow = null, bottomGlowR = 0;
     var t0 = null, lastSpawn = 0, scrollY = window.scrollY || 0;
     var pointer = { x: 0, y: 0 }, pointerTarget = { x: 0, y: 0 };
-
-    // the nova planet (v2) becomes the glowing galactic core
-    var coreReady = false;
-    var coreImg = new Image();
-    coreImg.onload = function () { coreReady = true; if (reduce) draw(0); };
-    coreImg.src = "./app-icon-v2.webp";
 
     function starColor() {
       var r = Math.random();
@@ -1443,13 +1502,14 @@
       bottomGlow = oc; bottomGlowR = rad;
     }
     function build() {
-      var f = fitCanvas(canvas, 1.5, 3200000); W = f.W; H = f.H; ctx = f.ctx;
+      // The static WebP carries the full galaxy; this canvas is now only a light effects layer.
+      var f = fitCanvas(canvas, 1.1, 1800000); W = f.W; H = f.H; ctx = f.ctx;
       focal.x = W < 620 ? W * 0.9 : W * 0.75;
       focal.y = W < 620 ? H * 0.135 : H * 0.17;
-      renderGlow(); renderNebula(); renderBottomGlow();
+      renderGlow();
       var M = W < 620 ? W * 1.55 : Math.max(W, H);
-      renderBloom(M * 0.34);
-      var n = Math.min(W < 620 ? 360 : 780, Math.round(W * H / (W < 620 ? 1700 : 1900)));
+      // A small foreground population supplies twinkle and pointer depth above the static field.
+      var n = Math.min(W < 620 ? 180 : 420, Math.round(W * H / (W < 620 ? 3600 : 4300)));
       stars = [];
       for (var i = 0; i < n; i++) {
         var x, y, inGalaxy = Math.random() < 0.7;
@@ -1495,22 +1555,6 @@
       if (y >= bot) return 0;
       return 1 - (y - top) / (bot - top);
     }
-    // twinkling concentric rings rising from the bottom-centre
-    function drawRings(t) {
-      var cx = W * 0.5, cy = H, M = Math.max(W, H), rings = 9;
-      for (var k = 0; k < rings; k++) {
-        var rr = (0.15 + k * 0.088) * M;
-        var grad = 1 - k / (rings + 1);                                   // inner rings brighter (gradient)
-        var tw = reduce ? 0.85 : 0.32 + 0.68 * Math.abs(Math.sin(t * 0.0011 + k * 0.62)); // flicker
-        var a = 0.28 * grad * tw;
-        var col = k % 3 === 0 ? "150,205,255" : (k % 3 === 1 ? "205,150,255" : "255,150,210");
-        ctx.strokeStyle = "rgba(" + col + "," + a + ")";
-        ctx.lineWidth = 1.7;
-        ctx.beginPath();
-        ctx.arc(cx, cy, rr, Math.PI, Math.PI * 2);
-        ctx.stroke();
-      }
-    }
     function draw(ts) {
       if (t0 === null) t0 = ts;
       var t = ts - t0;
@@ -1520,22 +1564,6 @@
       var shift = scrollY * 0.12;
       pointer.x += (pointerTarget.x - pointer.x) * .045;
       pointer.y += (pointerTarget.y - pointer.y) * .045;
-
-      // nebula clouds — one cached blit, gentle parallax
-      ctx.globalAlpha = reduce ? 1 : .91 + .09 * Math.sin(t * .00032);
-      ctx.drawImage(nebula, pointer.x * -5, -shift * 0.4 + pointer.y * -3, W, H);
-      ctx.globalAlpha = 1;
-
-      // bottom gradient glow (twinkling) + concentric rings
-      ctx.globalAlpha = reduce ? 0.9 : (0.62 + 0.38 * (0.5 + 0.5 * Math.sin(t * 0.001)));
-      ctx.drawImage(bottomGlow, W * 0.5 - bottomGlowR, H - bottomGlowR);
-      ctx.globalAlpha = 1;
-      drawRings(t);
-
-      // glowing halo behind the core — cached sprite, cheap alpha pulse
-      ctx.globalAlpha = reduce ? 0.94 : (0.84 + 0.16 * (0.5 + 0.5 * Math.sin(t * 0.0016)));
-      ctx.drawImage(bloom, focal.x - bloomHalf, focal.y - bloomHalf);
-      ctx.globalAlpha = 1;
 
       // Sparse constellation links in the deep field.
       for (var li = 0; li < links.length; li++) {
@@ -1608,17 +1636,6 @@
         }
       }
 
-      // the nova planet (./app-icon-v2.webp, transparent) — the galactic core, ring and all.
-      // centre the sphere (measured at frac 0.509,0.481 · radius 0.353) on `focal`; no clip needed.
-      ctx.globalCompositeOperation = "source-over";
-      if (coreReady) {
-        var SCX = 0.509, SCY = 0.481, SR = 0.353;
-        var vr = (W < 620 ? W * 1.55 : Math.max(W, H)) * 0.052; // desired sphere radius
-        var ar = coreImg.naturalHeight / coreImg.naturalWidth || 1;
-        var Dw = vr / SR;                           // scale the whole image so the sphere = vr
-        var Dh = Dw * ar;
-        ctx.drawImage(coreImg, focal.x - SCX * Dw, focal.y - SCY * Dh, Dw, Dh);
-      }
     }
 
     build(); onResize(build); addAnimator(canvas, draw);
@@ -1627,6 +1644,14 @@
       if (W < 620) return;
       pointerTarget.x = (e.clientX / Math.max(1, W) - .5) * 2;
       pointerTarget.y = (e.clientY / Math.max(1, window.innerHeight) - .5) * 2;
+      if (staticGalaxy) {
+        staticGalaxy.style.setProperty("--static-x", (-pointerTarget.x * 9).toFixed(2) + "px");
+        staticGalaxy.style.setProperty("--static-y", (-pointerTarget.y * 6).toFixed(2) + "px");
+      }
+    }, { passive: true });
+    if (hero && staticGalaxy) hero.addEventListener("pointerleave", function () {
+      staticGalaxy.style.setProperty("--static-x", "0px");
+      staticGalaxy.style.setProperty("--static-y", "0px");
     }, { passive: true });
   }
   initGalaxy(document.getElementById("galaxy"));
