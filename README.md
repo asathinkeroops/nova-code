@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/app-icon.png" alt="NOVA-CODE" width="200">
+<img src="docs/app-icon-v2.webp" alt="NOVA-CODE" width="200">
 
 <h1>NOVA&nbsp;CODE</h1>
 
