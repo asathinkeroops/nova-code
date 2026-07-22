@@ -201,7 +201,7 @@ nova upgrade                       # 更新到最新版本（启动时也会自�
 Nova 的核心是一个模型循环（`agentLoop`），只有**一个扩展点** —— 类型化的 `HookRegistry`。权限闸门、上下文压缩、transcript 写入、UI 刷新都以 hook 的形式挂在具名生命周期点上；`@nova/core` 本身不导入任何模型 SDK、工具实现或 UI。阻塞型 hook（◆）可改写 / 否决某一步，通知型 hook（○）只观察。
 
 <div align="center">
-  <img src="docs/agent-loop.svg" alt="Nova agent loop 与 hook 机制" width="85%">
+  <img src="docs/agent-loop.svg" alt="Nova agent loop 与 hook 机制" width="100%">
 </div>
 
 ### 📁 仓库结构

@@ -201,7 +201,7 @@ Tools the model can call — covering read/write, search, execution, code intell
 At Nova's core is a single model loop (`agentLoop`) with **one extension point** — a typed `HookRegistry`. Permission gating, compaction, transcript writing, and UI updates all attach as hooks at named lifecycle points; `@nova/core` itself imports no model SDK, tool implementation, or UI. Blocking hooks (◆) can rewrite or veto a step; advisory hooks (○) only observe.
 
 <div align="center">
-  <img src="docs/agent-loop.svg" alt="Nova agent loop & hook mechanism" width="85%">
+  <img src="docs/agent-loop.svg" alt="Nova agent loop & hook mechanism" width="100%">
 </div>
 
 ### 📁 Repository layout
