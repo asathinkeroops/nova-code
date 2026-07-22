@@ -1,9 +1,13 @@
 import { BASH_HEX } from "../colors.js";
+import { t } from "../i18n/index.js";
 import { visibleWidth } from "./width.js";
 import type { PermissionMode } from "../permissions.js";
 
-/** Dim hint appended after the mode label below the StatusLine. */
-export const PERMISSION_MODE_HINT = "(shift+tab to cycle)";
+/** Dim hint appended after the mode label below the StatusLine.
+ * A function (not a const) so it reads the active locale at call time. */
+export function permissionModeHint(): string {
+  return t.status.modeHint;
+}
 
 /** A colored mode label plus the Ink color used to render it. */
 export interface PermissionModeIndicator {
@@ -18,11 +22,12 @@ export interface PermissionModeIndicator {
  * slot ahead of the permission-mode label (a shell escape bypasses the model's
  * permission system, so that label — including the bypass-permissions warning —
  * would be misleading while it's active, and is suppressed).
+ *
+ * A function (not a const) so the label reads the active locale at call time.
  */
-export const SHELL_MODE_INDICATOR: PermissionModeIndicator = {
-  label: "! for shell mode",
-  color: BASH_HEX,
-};
+export function shellModeIndicator(): PermissionModeIndicator {
+  return { label: t.status.shellMode, color: BASH_HEX };
+}
 
 /**
  * Colored label shown below the StatusLine for a non-default permission mode,
@@ -35,13 +40,13 @@ export const SHELL_MODE_INDICATOR: PermissionModeIndicator = {
 export function permissionModeIndicator(mode: PermissionMode): PermissionModeIndicator | null {
   switch (mode) {
     case "acceptEdits":
-      return { label: "⏵⏵ accept edits on", color: "green" };
+      return { label: t.status.acceptEdits, color: "green" };
     case "auto":
-      return { label: "⏵⏵ auto mode on", color: "yellow" };
+      return { label: t.status.autoMode, color: "yellow" };
     case "plan":
-      return { label: "⏸ plan mode on", color: "cyan" };
+      return { label: t.status.planMode, color: "cyan" };
     case "bypassPermissions":
-      return { label: "⚠ bypass permissions on", color: "red" };
+      return { label: t.status.bypass, color: "red" };
     default:
       return null;
   }

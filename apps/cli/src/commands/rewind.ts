@@ -3,6 +3,7 @@ import { blocksOf, extractText, type MessageParam } from "@nova/core";
 import { dim, green, PURPLE_HEX, red, yellow } from "../colors.js";
 import { persist, type CliContext } from "../context.js";
 import { pickerArrow } from "../ui/picker.js";
+import { t } from "../i18n/index.js";
 import { overlayNotice } from "./overlay-notice.js";
 
 const TITLE = "/rewind";
@@ -60,7 +61,7 @@ export async function handleRewind(ctx: CliContext, arg: string): Promise<void> 
   const messages = ctx.screen.getMessages();
   const turns = collectUserTurns(messages);
   if (turns.length === 0) {
-    await overlayNotice(ctx, TITLE, [dim("nothing to rewind to.")]);
+    await overlayNotice(ctx, TITLE, [dim(t.rewind.nothingToRewind)]);
     return;
   }
 
@@ -68,7 +69,7 @@ export async function handleRewind(ctx: CliContext, arg: string): Promise<void> 
   if (arg) {
     const n = Number.parseInt(arg, 10);
     if (!Number.isInteger(n) || n < 1 || String(n) !== arg) {
-      ctx.screen.card(`expected a turn count (1-${turns.length}).`, {
+      ctx.screen.card(t.rewind.expectedTurnCount(turns.length), {
         kind: "error",
         title: TITLE,
       });
@@ -76,7 +77,7 @@ export async function handleRewind(ctx: CliContext, arg: string): Promise<void> 
     }
     target = turns[turns.length - n] ?? null;
     if (!target) {
-      ctx.screen.card(`only ${turns.length} user turn(s) to rewind through.`, {
+      ctx.screen.card(t.rewind.onlyNTurns(turns.length), {
         kind: "error",
         title: TITLE,
       });
@@ -87,8 +88,8 @@ export async function handleRewind(ctx: CliContext, arg: string): Promise<void> 
     const ordered = [...turns].reverse();
     target = await ctx.screen.pickOne<UserTurn>({
       items: ordered,
-      header: dim("rewind to which message? everything after it is discarded:"),
-      footer: dim("↑↓ navigate · enter confirm · esc cancel"),
+      header: dim(t.rewind.pickerHeader),
+      footer: dim(t.common.footerNavConfirm),
       pageSize: 10,
       border: false,
       topRuleColor: PURPLE_HEX,
@@ -108,16 +109,13 @@ export async function handleRewind(ctx: CliContext, arg: string): Promise<void> 
     const rel = (p: string): string => relative(ctx.workspace, p) || p;
     const header =
       fileCount > 0
-        ? `will restore ${plan.toModify.length} file(s), delete ${plan.toRemove.length} newly-created file(s):`
-        : "no files can be auto-reverted (all changed outside nova):";
+        ? t.rewind.restoreHeader(plan.toModify.length, plan.toRemove.length)
+        : t.rewind.noneRevertable;
     const conflictNote =
       plan.conflicts.length > 0
         ? [
             "",
-            dim(
-              `${plan.conflicts.length} file(s) changed outside nova since that turn ` +
-                `— left untouched to avoid clobbering newer work:`,
-            ),
+            dim(t.rewind.conflictNote(plan.conflicts.length)),
             ...plan.conflicts.map((c) => `  ${yellow("!")} ${rel(c.path)}`),
           ]
         : [];
@@ -130,22 +128,23 @@ export async function handleRewind(ctx: CliContext, arg: string): Promise<void> 
     const confirm = await ctx.screen.pickHorizontal<boolean>({
       items: [true, false],
       header: preview,
-      footer: dim("←→ navigate · enter confirm · esc cancel"),
-      label: (ok) => (ok ? (fileCount > 0 ? "restore & rewind" : "rewind history only") : "cancel"),
+      footer: dim(t.rewind.confirmFooter),
+      label: (ok) =>
+        ok ? (fileCount > 0 ? t.rewind.restoreAndRewind : t.rewind.rewindHistoryOnly) : t.rewind.cancel,
       border: false,
       topRuleColor: PURPLE_HEX,
     });
     if (confirm === null) return; // esc — leave the feed quiet
     if (!confirm) {
       // Deliberate "cancel" selection (not esc) still gets a note.
-      ctx.screen.card(dim("cancelled; nothing changed."), { title: TITLE });
+      ctx.screen.card(dim(t.rewind.cancelledNothingChanged), { title: TITLE });
       return;
     }
     try {
       await ctx.snapshots.restore(plan);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      ctx.screen.card(`file restore failed: ${msg}`, { kind: "error", title: TITLE });
+      ctx.screen.card(t.rewind.restoreFailed(msg), { kind: "error", title: TITLE });
       ctx.logger.error({ err: msg }, "rewind file restore failed");
       return;
     }
@@ -163,14 +162,10 @@ export async function handleRewind(ctx: CliContext, arg: string): Promise<void> 
   // (same problem compaction has) — drop the persisted cards so stale-anchored
   // ones don't resurface on resume. reset() only clears the in-memory copy.
   ctx.screen.clearCards();
-  const fileNote = fileCount > 0 ? ` restored ${fileCount} file(s).` : "";
-  const skipNote =
-    plan.conflicts.length > 0 ? ` skipped ${plan.conflicts.length} file(s) changed outside nova.` : "";
+  const fileNote = fileCount > 0 ? t.rewind.fileNote(fileCount) : "";
+  const skipNote = plan.conflicts.length > 0 ? t.rewind.skipNote(plan.conflicts.length) : "";
   ctx.screen.card(
-    dim(
-      `rewound to turn #${target.turn}; dropped ${dropped} message(s).${fileNote}${skipNote} ` +
-        `your message is back in the prompt (→ to edit).`,
-    ),
+    dim(t.rewind.rewoundSummary({ turn: target.turn, dropped, fileNote, skipNote })),
     { title: TITLE },
   );
   ctx.screen.setMessages(truncated);

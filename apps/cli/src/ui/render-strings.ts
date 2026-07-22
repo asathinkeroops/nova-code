@@ -16,6 +16,7 @@ import {
   purple,
   red,
 } from "../colors.js";
+import { t } from "../i18n/index.js";
 import { LOGO, bannerLine } from "./logo.js";
 import {
   COMPACT_MAX_LINES,
@@ -104,7 +105,7 @@ function renderBanner(b: BannerProps, width: number): string {
   lines.push("");
   LOGO.forEach((l, i) => lines.push(bannerLine(l, i)));
   lines.push("");
-  lines.push(dim("The coding agent purpose-built for DeepSeek — 95%+ cache hits · OS-sandboxed · tool-complete · install-and-go. "));
+  lines.push(dim(t.render.tagline));
   lines.push("");
   lines.push(`${dim("model:")}     ${formatModel(b)}`);
   lines.push(`${dim("workspace:")} ${displayCwd(b.cwd, b.home)}`);
@@ -152,7 +153,7 @@ function renderThinking(
   collapsed = false,
   expanded = false,
 ): string {
-  const head = `${magenta("✦")} ${dim(`thinking${label ? ` · ${label}` : ""}`)}`;
+  const head = `${magenta("✦")} ${dim(`${t.render.thinking}${label ? ` · ${label}` : ""}`)}`;
   const lines = wrapThinkingBody(text, width);
   if (lines.length === 0) return head;
   // Once thinking is done we collapse it to a short preview: the first few
@@ -166,7 +167,7 @@ function renderThinking(
     .map((line, i) => `${dim(i === 0 ? "  ⎿  " : THINKING_INDENT)}${dim(italic(line))}`)
     .join("\n");
   if (overflow > 0) {
-    const hint = expanded ? "… show less" : `… +${overflow} lines`;
+    const hint = expanded ? t.render.showLess : t.render.moreLines(overflow);
     return `${head}\n${body}\n${dim(`${THINKING_INDENT}${hint}`)}`;
   }
   return `${head}\n${body}`;
@@ -191,7 +192,7 @@ export function thinkingToggleLineIndex(
 }
 
 function renderRedactedThinking(label: string | undefined): string {
-  return `${magenta("✦")} ${dim(`thinking${label ? ` · ${label}` : ""} (redacted)`)}`;
+  return `${magenta("✦")} ${dim(`${t.render.thinking}${label ? ` · ${label}` : ""} ${t.render.redacted}`)}`;
 }
 
 // ─── card ──────────────────────────────────────────────────────────────────
@@ -334,7 +335,7 @@ const tools: Record<string, ToolStr> = {
     result: (result) => {
       if (result.is_error) return errLine(result);
       const text = contentToString(result.content);
-      if (text.length === 0) return okLine("(no output)");
+      if (text.length === 0) return okLine(t.render.noOutput);
       const firstLine = text.split("\n", 1)[0] ?? "";
       return okLine(trim(firstLine, 60));
     },
@@ -577,7 +578,7 @@ function renderSubAgentDetails(details: SubAgentDetail[] | undefined): string {
  */
 function toolBodyView(body: string, done: boolean, expanded: boolean): string {
   if (!done || body.split("\n").length <= COMPACT_MAX_LINES) return body;
-  return expanded ? `${body}\n${dim("… show less")}` : compactBody(body);
+  return expanded ? `${body}\n${dim(t.render.showLess)}` : compactBody(body);
 }
 
 /**
@@ -668,11 +669,10 @@ export function toolBatchSummary(members: BatchMember[]): string {
     else if (name === "read") read++;
     else if (name === "bash") run++;
   }
-  const plural = (n: number, one: string): string => `${n} ${one}${n === 1 ? "" : "s"}`;
   const segs: string[] = [];
-  if (search > 0) segs.push(`Searched for ${plural(search, "pattern")}`);
-  if (read > 0) segs.push(`Read ${plural(read, "file")}`);
-  if (run > 0) segs.push(`Ran ${plural(run, "shell command")}`);
+  if (search > 0) segs.push(t.render.batchSearched(search));
+  if (read > 0) segs.push(t.render.batchRead(read));
+  if (run > 0) segs.push(t.render.batchRan(run));
   return segs
     .map((s, i) => (i === 0 ? s : `${s.charAt(0).toLowerCase()}${s.slice(1)}`))
     .join(", ");

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Box, Text } from "ink";
 import type { Task, TaskStatus } from "@nova/tools";
 import { ACCENT_HEX, ACCENT_RGB, accent } from "../colors.js";
+import { t } from "../i18n/index.js";
 import { Spinner } from "./spinner.js";
 import type { SpinnerSpec } from "./store.js";
 
@@ -87,10 +88,7 @@ function SummaryRow({
   return (
     <Text>
       {"     "}
-      <Text dimColor>
-        ... {hidden} More, {counts.completed} completed, {counts.pending} pending,{" "}
-        {counts.in_progress} in_progress
-      </Text>
+      <Text dimColor>{t.footer.summary(hidden, counts.completed, counts.pending, counts.in_progress)}</Text>
     </Text>
   );
 }
@@ -141,12 +139,12 @@ export function TaskFooter({ tasks }: TaskFooterProps): React.ReactElement | nul
     ? {
         id: -2,
         label: {
-          words: [`TASK: ${spinnerTask.description}`],
+          words: [`${t.footer.taskLabel} ${spinnerTask.description}`],
           tint: ACCENT_RGB,
           colorize: accent,
         },
         startedAt,
-        activeWord: `TASK: ${spinnerTask.description}...`,
+        activeWord: `${t.footer.taskLabel} ${spinnerTask.description}...`,
       }
     : null;
 

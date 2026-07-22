@@ -1,6 +1,7 @@
 import type { McpManager, McpServerState, McpServerStatus } from "@nova/external";
 import { bold, cyan, dim, green, magenta, PURPLE_HEX, red, yellow } from "../colors.js";
 import type { CliContext } from "../context.js";
+import { t } from "../i18n/index.js";
 import {
   FileOAuthStore,
   openBrowser,
@@ -27,14 +28,12 @@ const AUTH_TIMEOUT_MS = 5 * 60_000;
  */
 export async function handleMcp(ctx: CliContext, args: string): Promise<void> {
   if (!ctx.settings.mcp.enabled) {
-    await overlayNotice(ctx, TITLE, [dim("MCP is disabled (settings.mcp.enabled = false).")]);
+    await overlayNotice(ctx, TITLE, [dim(t.mcp.disabled)]);
     return;
   }
   const mcp = ctx.mcp;
   if (!mcp || mcp.serverCount === 0) {
-    await overlayNotice(ctx, TITLE, [
-      dim("no MCP servers configured. Add them under `mcp.servers` in nova.config.json."),
-    ]);
+    await overlayNotice(ctx, TITLE, [dim(t.mcp.noServers)]);
     return;
   }
 
@@ -64,12 +63,9 @@ async function runMenu(ctx: CliContext, mcp: McpManager): Promise<void> {
     const pending = mcp.serversNeedingAuth().length;
     const pick = await ctx.screen.pickOne<McpServerStatus>({
       header:
-        bold("MCP servers") +
-        dim(
-          `  ${mcp.connectedCount}/${mcp.serverCount} connected` +
-            (pending > 0 ? ` · ${pending} need auth` : ""),
-        ),
-      footer: dim("↑↓ select · enter open · esc close"),
+        bold(t.mcp.serversHeader) +
+        dim(t.mcp.connectedSummary(mcp.connectedCount, mcp.serverCount, pending)),
+      footer: dim(t.mcp.footerSelectOpen),
       items: servers,
       render: (s, sel) => `${pickerArrow(sel)} ${rowLabel(s)}`,
       pageSize: 12,
@@ -89,21 +85,21 @@ async function serverActions(ctx: CliContext, mcp: McpManager, name: string): Pr
 
   const actions: Action[] = [];
   if (s.state === "connected") {
-    actions.push({ key: "tools", label: "View tools" });
-    if (oauth) actions.push({ key: "logout", label: "Log out" });
-    actions.push({ key: "reconnect", label: "Reconnect" });
+    actions.push({ key: "tools", label: t.mcp.viewToolsLabel });
+    if (oauth) actions.push({ key: "logout", label: t.mcp.logOut });
+    actions.push({ key: "reconnect", label: t.mcp.reconnect });
   } else if (s.state === "needs-auth") {
-    actions.push({ key: "auth", label: "Authenticate" });
-    actions.push({ key: "reconnect", label: "Reconnect" });
+    actions.push({ key: "auth", label: t.mcp.authenticate });
+    actions.push({ key: "reconnect", label: t.mcp.reconnect });
   } else {
-    if (oauth) actions.push({ key: "auth", label: "Authenticate" });
-    actions.push({ key: "reconnect", label: "Reconnect" });
+    if (oauth) actions.push({ key: "auth", label: t.mcp.authenticate });
+    actions.push({ key: "reconnect", label: t.mcp.reconnect });
   }
-  actions.push({ key: "back", label: "Back" });
+  actions.push({ key: "back", label: t.mcp.back });
 
   const pick = await ctx.screen.pickOne<Action>({
     header: `${cyan(name)}  ${stateBadge(s.state)}` + (s.error ? `  ${dim(s.error)}` : ""),
-    footer: dim("↑↓ select · enter run · esc back"),
+    footer: dim(t.mcp.footerSelectRun),
     items: actions,
     render: (a, sel) => `${pickerArrow(sel)} ${a.label}`,
     border: false,
@@ -134,7 +130,7 @@ async function authenticateServer(ctx: CliContext, name: string): Promise<void> 
   const mcp = ctx.mcp!;
   if (!mcp.isOAuthCapable(name)) {
     ctx.screen.card(
-      `${red("cannot authorize:")} ${dim(`"${name}" is not a remote server that supports OAuth — add "oauth": {} to its server config.`)}`,
+      `${red(t.mcp.cannotAuthorize)} ${dim(t.mcp.notRemoteOAuth(name))}`,
       { title: TITLE },
     );
     return;
@@ -147,8 +143,8 @@ async function authenticateServer(ctx: CliContext, name: string): Promise<void> 
     const msg = err instanceof Error ? err.message : String(err);
     const { callbackHost, callbackPort } = ctx.settings.mcp.oauth;
     ctx.screen.card(
-      `${red("could not start the OAuth callback server")} on ${callbackHost}:${callbackPort}.\n` +
-        dim(`${msg}\nFree the port or change settings.mcp.oauth.callbackPort.`),
+      `${red(t.mcp.callbackServerFailed)}${t.mcp.callbackServerOn(callbackHost, callbackPort)}` +
+        dim(`${msg}\n${t.mcp.freePort}`),
       { title: TITLE },
     );
     return;
@@ -164,13 +160,13 @@ async function authenticateServer(ctx: CliContext, name: string): Promise<void> 
       const waited = await waitForBrowserAuth(ctx, server, name, url);
       if (waited.kind === "cancelled") return; // esc — leave the feed quiet
       if (waited.kind === "error") {
-        ctx.screen.card(`${red("authorization did not complete:")} ${dim(waited.message)}`, {
+        ctx.screen.card(`${red(t.mcp.authDidNotComplete)} ${dim(waited.message)}`, {
           title: TITLE,
         });
         return;
       }
       if (result.expectedState && waited.state !== result.expectedState) {
-        ctx.screen.card(red("authorization rejected: state mismatch (possible CSRF). Try again."), {
+        ctx.screen.card(red(t.mcp.authRejectedCsrf), {
           title: TITLE,
         });
         return;
@@ -180,11 +176,11 @@ async function authenticateServer(ctx: CliContext, name: string): Promise<void> 
 
     if (result.status === "connected") {
       const n = syncRegistries(ctx);
-      ctx.screen.card(`${green("✓ authorized")} ${cyan(name)} — ${n} tool(s) now available.`, {
+      ctx.screen.card(`${green(t.mcp.authorized)} ${cyan(name)}${t.mcp.toolsNowAvailable(n)}`, {
         title: TITLE,
       });
     } else if (result.status === "error" || result.status === "unsupported") {
-      ctx.screen.card(`${red("authorization failed:")} ${dim(result.error)}`, { title: TITLE });
+      ctx.screen.card(`${red(t.mcp.authFailed)} ${dim(result.error)}`, { title: TITLE });
     }
   } finally {
     server.close();
@@ -196,19 +192,21 @@ async function reconnectServer(ctx: CliContext, mcp: McpManager, name: string): 
   const state = await mcp.reconnect(name);
   if (state === "connected") {
     const n = syncRegistries(ctx);
-    ctx.screen.card(`${green("✓ reconnected")} ${cyan(name)} — ${n} tool(s) available.`, {
+    ctx.screen.card(`${green(t.mcp.reconnected)} ${cyan(name)}${t.mcp.toolsAvailable(n)}`, {
       title: TITLE,
     });
   } else if (state === "needs-auth") {
     ctx.screen.card(
-      `${magenta("needs auth")} — choose ${bold("Authenticate")} for ${cyan(name)}.`,
+      `${magenta(t.mcp.needsAuthWord)}${t.mcp.reconnectChoose}${bold(t.mcp.authenticate)}${t.mcp.reconnectFor}${cyan(name)}${t.mcp.reconnectDot}`,
       {
         title: TITLE,
       },
     );
   } else {
     const err = mcp.status().find((s) => s.name === name)?.error;
-    ctx.screen.card(`${red("still failed:")} ${dim(err ?? "could not connect")}`, { title: TITLE });
+    ctx.screen.card(`${red(t.mcp.stillFailed)} ${dim(err ?? t.mcp.couldNotConnect)}`, {
+      title: TITLE,
+    });
   }
 }
 
@@ -223,7 +221,7 @@ async function logoutServer(ctx: CliContext, mcp: McpManager, name: string): Pro
     // token file may not exist; clearing is best-effort
   }
   ctx.screen.card(
-    `${green("✓ logged out")} ${cyan(name)} — cleared tokens; ${toolNames.length} tool(s) removed.`,
+    `${green(t.mcp.loggedOut)} ${cyan(name)}${t.mcp.clearedTokens(toolNames.length)}`,
     { title: TITLE },
   );
 }
@@ -237,9 +235,9 @@ async function viewTools(ctx: CliContext, mcp: McpManager, name: string): Promis
     for (const p of s.promptNames) lines.push(dim(`/${p}`));
   }
   await ctx.screen.viewer({
-    header: `${cyan(name)} — ${s?.toolNames.length ?? 0} tool(s)`,
-    lines: lines.length > 0 ? lines : [dim("(no tools bridged)")],
-    footer: dim("esc / q to close"),
+    header: `${cyan(name)}${t.mcp.toolCountSuffix(s?.toolNames.length ?? 0)}`,
+    lines: lines.length > 0 ? lines : [dim(t.mcp.noToolsBridged)],
+    footer: dim(t.mcp.footerEscClose),
     border: false,
     topRuleColor: PURPLE_HEX,
   });
@@ -267,22 +265,18 @@ function syncRegistries(ctx: CliContext): number {
 
 function stateBadge(state: McpServerState): string {
   return state === "connected"
-    ? green("● connected")
+    ? green(t.mcp.badgeConnected)
     : state === "needs-auth"
-      ? magenta("● needs auth")
+      ? magenta(t.mcp.badgeNeedsAuth)
       : state === "failed"
-        ? red("● failed")
-        : yellow("● disabled");
+        ? red(t.mcp.badgeFailed)
+        : yellow(t.mcp.badgeDisabled);
 }
 
 function rowLabel(s: McpServerStatus): string {
   const counts =
     s.state === "connected"
-      ? dim(
-          ` ${s.transport} · ${s.toolCount} tool(s)` +
-            (s.promptCount > 0 ? ` · ${s.promptCount} prompt(s)` : "") +
-            (s.resourceCount > 0 ? ` · ${s.resourceCount} resource(s)` : ""),
-        )
+      ? dim(t.mcp.rowCountsConnected(s.transport, s.toolCount, s.promptCount, s.resourceCount))
       : dim(` ${s.transport}`);
   return `${s.name.padEnd(14)} ${stateBadge(s.state)}${counts}`;
 }
@@ -295,11 +289,10 @@ function renderStatusCard(ctx: CliContext, mcp: McpManager, showTools: boolean):
   const lines: string[] = [];
   for (const s of status) {
     const name = s.name.padEnd(nameWidth, " ");
-    const counts =
-      `${s.toolCount} tool(s)` +
-      (s.promptCount > 0 ? ` · ${s.promptCount} prompt(s)` : "") +
-      (s.resourceCount > 0 ? ` · ${s.resourceCount} resource(s)` : "");
-    const meta = s.state === "connected" ? dim(`${s.transport} · ${counts}`) : dim(s.transport);
+    const meta =
+      s.state === "connected"
+        ? dim(t.mcp.cardMetaConnected(s.transport, s.toolCount, s.promptCount, s.resourceCount))
+        : dim(s.transport);
     lines.push(`  ${name}  ${stateBadge(s.state)}  ${meta}`);
     if (s.error) lines.push(`  ${" ".repeat(nameWidth)}  ${dim(s.error)}`);
     if (showTools) {
@@ -312,16 +305,20 @@ function renderStatusCard(ctx: CliContext, mcp: McpManager, showTools: boolean):
   const resourceServers = status.filter((s) => s.resourceCount > 0).length;
   lines.push(
     dim(
-      `${mcp.connectedCount}/${mcp.serverCount} connected · ${mcp.handlers().length} tool(s) bridged` +
-        (promptTotal > 0 ? ` · ${promptTotal} prompt(s)` : "") +
-        (resourceServers > 0 ? ` · resources on ${resourceServers} server(s)` : ""),
+      t.mcp.summaryLine(
+        mcp.connectedCount,
+        mcp.serverCount,
+        mcp.handlers().length,
+        promptTotal,
+        resourceServers,
+      ),
     ),
   );
   const pending = mcp.serversNeedingAuth();
   if (pending.length > 0) {
-    lines.push(dim(`run \`/mcp\` and choose Authenticate — pending: ${pending.join(", ")}`));
+    lines.push(dim(t.mcp.pendingHint(pending.join(", "))));
   }
-  if (!showTools) lines.push(dim("run `/mcp tools` to list bridged tool & prompt names"));
+  if (!showTools) lines.push(dim(t.mcp.toolsHint));
 
   ctx.screen.card(lines.join("\n"), { title: TITLE });
 }
@@ -376,14 +373,14 @@ async function waitForBrowserAuth(
 
   await ctx.screen.viewer(
     {
-      header: `${bold("Waiting for browser authorization")} — ${cyan(name)}`,
+      header: `${bold(t.mcp.waitingForAuth)} — ${cyan(name)}`,
       lines: [
-        dim("Approve the request in your browser, then return here."),
+        dim(t.mcp.approveInBrowser),
         "",
-        dim("If it didn't open, visit:"),
+        dim(t.mcp.ifNotOpened),
         url,
         "",
-        dim("press esc to cancel"),
+        dim(t.mcp.pressEscCancel),
       ],
       border: false,
       topRuleColor: PURPLE_HEX,
@@ -397,7 +394,7 @@ async function waitForBrowserAuth(
   const done = box.settled;
   if (done === null) {
     return timedOut
-      ? { kind: "error", message: `timed out after ${Math.round(AUTH_TIMEOUT_MS / 1000)}s` }
+      ? { kind: "error", message: t.mcp.timedOut(Math.round(AUTH_TIMEOUT_MS / 1000)) }
       : { kind: "cancelled" };
   }
   if ("error" in done) return { kind: "error", message: done.error };

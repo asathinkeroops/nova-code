@@ -9,7 +9,7 @@ import {
   formatPercent,
   formatTokenCount,
   permissionModeIndicator,
-  SHELL_MODE_INDICATOR,
+  shellModeIndicator,
   type StatusSegment,
 } from "./status-format.js";
 import { BASH_HEX } from "../colors.js";
@@ -165,8 +165,8 @@ describe("permissionModeIndicator", () => {
   });
 });
 
-describe("SHELL_MODE_INDICATOR", () => {
+describe("shellModeIndicator", () => {
   it("labels shell mode in bash green for the status row", () => {
-    expect(SHELL_MODE_INDICATOR).toEqual({ label: "! for shell mode", color: BASH_HEX });
+    expect(shellModeIndicator()).toEqual({ label: "! for shell mode", color: BASH_HEX });
   });
 });

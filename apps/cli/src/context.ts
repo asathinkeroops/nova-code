@@ -83,7 +83,6 @@ import {
   armToolSpinner,
   clearToolSpinner,
   currentThinkingBudget,
-  INTERRUPT_HINT,
   persist,
   refreshBalance,
   refreshBanner,
@@ -93,6 +92,7 @@ import {
   thinkingLevelLabel,
 } from "./ctx-runtime.js";
 import { registerBuiltinSlashCommands } from "./builtin-commands.js";
+import { t } from "./i18n/index.js";
 
 // Re-export the split-out types and ctx helpers so existing
 // `import … from "./context.js"` call sites keep working unchanged after the
@@ -102,7 +102,6 @@ export {
   armToolSpinner,
   clearToolSpinner,
   currentThinkingBudget,
-  INTERRUPT_HINT,
   persist,
   refreshBalance,
   refreshBanner,
@@ -477,7 +476,7 @@ export async function createContext(
     // (now succeeding) request.
     if (retryHintShown && progress.outputTokens > 0) {
       retryHintShown = false;
-      screen.setSpinnerHint(INTERRUPT_HINT);
+      screen.setSpinnerHint(t.spinner.interruptHint);
     }
     const now = Date.now();
     if (now - lastTokenPush < 80) return;

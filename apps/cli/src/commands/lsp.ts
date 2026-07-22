@@ -1,5 +1,6 @@
 import { accent, dim, green, PURPLE_HEX, red, yellow } from "../colors.js";
 import type { CliContext } from "../context.js";
+import { t } from "../i18n/index.js";
 
 const TITLE = "/lsp";
 
@@ -15,14 +16,14 @@ export async function handleLsp(ctx: CliContext): Promise<void> {
     ctx.screen.viewer({
       lines,
       header: accent(TITLE),
-      footer: dim("↑↓ scroll · enter/esc/q close"),
+      footer: dim(t.common.footerScrollClose),
       pageSize: 24,
       border: false,
       topRuleColor: PURPLE_HEX,
     });
 
   if (!ctx.settings.lsp.enabled || !ctx.lspManager) {
-    await show([dim("LSP is disabled (settings.lsp.enabled = false).")]);
+    await show([dim(t.lsp.disabled)]);
     return;
   }
 
@@ -30,7 +31,7 @@ export async function handleLsp(ctx: CliContext): Promise<void> {
     a.languageId.localeCompare(b.languageId),
   );
   if (status.length === 0) {
-    await show([dim("no language servers configured.")]);
+    await show([dim(t.lsp.noneConfigured)]);
     return;
   }
 
@@ -39,10 +40,10 @@ export async function handleLsp(ctx: CliContext): Promise<void> {
   const lines: string[] = [];
   for (const s of status) {
     const badge = s.running
-      ? green("● running")
+      ? green(t.lsp.running)
       : s.available
-        ? yellow("○ installed")
-        : red("● not installed");
+        ? yellow(t.lsp.installed)
+        : red(t.lsp.notInstalled);
     const id = s.languageId.padEnd(idWidth, " ");
     const meta = dim(`${s.command} · ${s.extensions.join(", ")}`);
     lines.push(`  ${id}  ${badge}  ${meta}`);
@@ -52,10 +53,10 @@ export async function handleLsp(ctx: CliContext): Promise<void> {
   const installed = status.filter((s) => s.available).length;
   lines.push("");
   lines.push(
-    dim(`${installed}/${status.length} installed · ${running} running`),
+    dim(t.lsp.summary(installed, status.length, running)),
   );
   if (installed < status.length) {
-    lines.push(dim("missing servers must be installed on PATH (Nova does not install them)"));
+    lines.push(dim(t.lsp.missingNote));
   }
 
   await show(lines);

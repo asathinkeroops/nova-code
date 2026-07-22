@@ -1,5 +1,6 @@
 import type { SlashOutcome } from "@nova/external";
 import type { CliContext } from "../context.js";
+import { t } from "../i18n/index.js";
 
 /**
  * `/agent <name> <task>` — delegate a task to a named sub-agent. Resolves the
@@ -10,7 +11,7 @@ import type { CliContext } from "../context.js";
  */
 export function handleAgent(ctx: CliContext, args: string): SlashOutcome {
   if (!ctx.settings.subagent.enabled) {
-    return { kind: "error", message: "sub-agents are disabled in settings." };
+    return { kind: "error", message: t.agentCmd.disabled };
   }
   const trimmed = args.trim();
   const sep = trimmed.search(/\s/);
@@ -18,16 +19,16 @@ export function handleAgent(ctx: CliContext, args: string): SlashOutcome {
   const task = sep === -1 ? "" : trimmed.slice(sep + 1).trim();
 
   if (!name) {
-    return { kind: "error", message: "usage: /agent <name> <task>" };
+    return { kind: "error", message: t.agentCmd.usage };
   }
   if (!ctx.agents.get(name)) {
     return {
       kind: "error",
-      message: `unknown sub-agent "${name}". available: ${ctx.agents.names().join(", ")}.`,
+      message: `${t.agentCmd.unknownAgent(name)}${ctx.agents.names().join(", ")}.`,
     };
   }
   if (!task) {
-    return { kind: "error", message: `usage: /agent ${name} <task>` };
+    return { kind: "error", message: t.agentCmd.usageWithName(name) };
   }
 
   const text =

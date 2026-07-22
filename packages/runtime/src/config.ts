@@ -382,7 +382,17 @@ export const settingsSchema = z.object({
   // locale (resolved from $LANG / $LC_ALL / $LANGUAGE, see resolveLanguage());
   // any other value is a BCP-47-ish language tag (e.g. "en", "zh-CN") used
   // verbatim. Stored as a free string so new locales need no schema change.
+  // This drives the MODEL's response language (it is injected into the system
+  // prompt) and, by default, the TUI's static text — unless `locale` overrides.
   language: z.string().min(1).default("auto"),
+  // TUI-only locale override for the interface's static text (menus, prompts,
+  // status line, …). "auto" (the default) means "follow `language`"; any other
+  // value is a BCP-47-ish tag (e.g. "en", "zh-CN") applied to the UI *only* —
+  // it never enters the system prompt, so it can differ from the model's
+  // response language (e.g. English replies with a Chinese interface). An
+  // unsupported tag falls back to English, same rule as `language`. The
+  // precedence (locale → language) lives in the CLI's setLocale().
+  locale: z.string().min(1).default("auto"),
   // When a single response is truncated by the `maxTokens` output cap
   // (stop_reason: "max_tokens"), the loop can re-prompt the model to continue
   // from where it left off instead of hard-stopping the whole turn. This caps

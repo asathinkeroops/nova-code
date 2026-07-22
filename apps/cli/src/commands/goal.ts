@@ -2,6 +2,7 @@ import type { SlashOutcome } from "@nova/external";
 import { dim, green } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { clearGoal, saveGoal, type GoalState } from "../goal.js";
+import { t } from "../i18n/index.js";
 
 const TITLE = "/goal";
 
@@ -12,15 +13,15 @@ function statusCard(ctx: CliContext): void {
   const goal = ctx.goal;
   if (!goal) {
     ctx.screen.card(
-      `${dim("no active goal.")}\n${dim("set one with")} /goal <condition>`,
+      `${dim(t.goal.noActiveGoal)}\n${dim(t.goal.setOneWith)} /goal <condition>`,
       { title: TITLE },
     );
     return;
   }
   const max = ctx.settings.goal.maxContinuations;
   ctx.screen.card(
-    `${green("active goal:")} ${goal.condition}\n` +
-      `${dim(`auto-continuations: ${goal.continuations}/${max}`)}`,
+    `${green(t.goal.activeGoal)} ${goal.condition}\n` +
+      `${dim(t.goal.autoContinuations(goal.continuations, max))}`,
     { title: TITLE },
   );
 }
@@ -42,19 +43,19 @@ export async function handleGoal(ctx: CliContext, arg: string): Promise<SlashOut
 
   if (CLEAR_WORDS.has(a.toLowerCase())) {
     if (!ctx.goal) {
-      ctx.screen.card(dim("no active goal to clear."), { title: TITLE });
+      ctx.screen.card(dim(t.goal.noGoalToClear), { title: TITLE });
       return { kind: "handled" };
     }
     const was = ctx.goal.condition;
     ctx.goal = null;
     await clearGoal(ctx.session.dir);
-    ctx.screen.card(`${dim("cleared goal:")} ${was}`, { title: TITLE });
+    ctx.screen.card(`${dim(t.goal.cleared)} ${was}`, { title: TITLE });
     return { kind: "handled" };
   }
 
   if (!ctx.settings.goal.enabled) {
     ctx.screen.card(
-      dim("goal mode is disabled (settings.goal.enabled = false)."),
+      dim(t.goal.disabled),
       { kind: "warn", title: TITLE },
     );
     return { kind: "handled" };
@@ -69,9 +70,7 @@ export async function handleGoal(ctx: CliContext, arg: string): Promise<SlashOut
     ctx.logger.warn({ err: msg }, "failed to persist goal");
   }
   ctx.screen.card(
-    `${green("goal set:")} ${a}\n` +
-      dim("Nova will work toward this now and re-check after each turn until it's met. ") +
-      dim("Run /goal clear to stop."),
+    `${green(t.goal.set)} ${a}\n${dim(t.goal.setHelp)}`,
     { title: TITLE },
   );
 

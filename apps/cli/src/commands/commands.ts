@@ -1,6 +1,7 @@
 import type { SlashCommandKind } from "@nova/external";
 import { accent, cyan, dim, PURPLE_HEX } from "../colors.js";
 import type { CliContext } from "../context.js";
+import { t } from "../i18n/index.js";
 import { pickerArrow } from "../ui/picker.js";
 import { reloadFileCommands, reloadSkillCommands } from "../slash.js";
 
@@ -29,15 +30,12 @@ export async function handleCommands(ctx: CliContext, arg: string): Promise<void
       logger: ctx.logger,
     });
     const ms = Date.now() - t0;
-    const tail = errors > 0 ? ` · ${errors} error(s) — see log` : "";
-    ctx.screen.card(
-      `reloaded ${added} file command(s), ${skills.added} skill(s) in ${ms}ms${tail}`,
-      { title: TITLE },
-    );
+    const tail = errors > 0 ? t.cmdList.reloadErrors(errors) : "";
+    ctx.screen.card(t.cmdList.reloaded(added, skills.added, ms, tail), { title: TITLE });
     return;
   }
   if (arg) {
-    ctx.screen.card(`unknown subcommand "${arg}". try /commands or /commands reload.`, {
+    ctx.screen.card(t.cmdList.unknownSubcommand(arg), {
       kind: "error",
       title: TITLE,
     });
@@ -46,7 +44,7 @@ export async function handleCommands(ctx: CliContext, arg: string): Promise<void
 
   const cmds = ctx.registry.list();
   if (cmds.length === 0) {
-    ctx.screen.card(dim("no commands registered."), { title: TITLE });
+    ctx.screen.card(dim(t.cmdList.noneRegistered), { title: TITLE });
     return;
   }
   const nameWidth = Math.min(20, Math.max(...cmds.map((c) => c.name.length + 1)));
@@ -55,8 +53,8 @@ export async function handleCommands(ctx: CliContext, arg: string): Promise<void
   // the list is read-only, so enter and esc both simply close it.
   await ctx.screen.pickOne({
     items: cmds,
-    header: `${accent(TITLE)}  ${dim(`${cmds.length} command${cmds.length === 1 ? "" : "s"}`)}`,
-    footer: dim("↑↓ navigate · ⌃a/⌃e top/bottom · enter/esc close"),
+    header: `${accent(TITLE)}  ${dim(t.cmdList.count(cmds.length))}`,
+    footer: dim(t.common.footerNavTopBottomClose),
     pageSize: 24,
     border: false,
     topRuleColor: PURPLE_HEX,

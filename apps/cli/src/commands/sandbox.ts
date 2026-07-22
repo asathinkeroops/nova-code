@@ -1,6 +1,7 @@
 import { saveSettings } from "@nova/runtime";
 import { dim, green, red } from "../colors.js";
 import { stopSpinner, type CliContext } from "../context.js";
+import { t } from "../i18n/index.js";
 
 const TITLE = "/sandbox";
 
@@ -26,14 +27,14 @@ export async function handleSandbox(ctx: CliContext, arg: string): Promise<void>
   if (ON_WORDS.has(a)) enable = true;
   else if (OFF_WORDS.has(a)) enable = false;
   else {
-    ctx.screen.card(`unknown argument "${arg.trim()}" — use ${TITLE} on|off`, {
+    ctx.screen.card(t.sandbox.unknownArg(arg.trim(), TITLE), {
       kind: "error",
       title: TITLE,
     });
     return;
   }
 
-  const spinner = ctx.screen.startSpinner(enable ? "Enabling sandbox" : "Disabling sandbox");
+  const spinner = ctx.screen.startSpinner(enable ? t.sandbox.enabling : t.sandbox.disabling);
   ctx.spinner = spinner;
   try {
     const control = await ctx.setSandbox(enable);
@@ -44,7 +45,7 @@ export async function handleSandbox(ctx: CliContext, arg: string): Promise<void>
     // live toggle still holds for this session.
     await persistEnabled(ctx);
     if (!enable) {
-      ctx.screen.card(`${dim("sandbox")} ${red("off")}`, {
+      ctx.screen.card(`${dim(t.sandbox.label)} ${red(t.sandbox.off)}`, {
         kind: "info",
         title: TITLE,
       });
@@ -52,24 +53,22 @@ export async function handleSandbox(ctx: CliContext, arg: string): Promise<void>
     }
     if (control.active) {
       ctx.screen.card(
-        `${dim("sandbox")} ${green("on")} ${dim(
-          "— subprocess writes confined to the workspace",
-        )}`,
+        `${dim(t.sandbox.label)} ${green(t.sandbox.on)} ${dim(t.sandbox.confined)}`,
         { kind: "info", title: TITLE },
       );
     } else {
       // createSandbox never throws — it degrades to an inactive control on an
       // unsupported platform / missing host deps. Surface why so the user isn't
       // left thinking it's enforcing when it isn't.
-      ctx.screen.card(
-        `sandbox requested but inactive: ${control.reason ?? "unknown reason"}`,
-        { kind: "warn", title: TITLE },
-      );
+      ctx.screen.card(t.sandbox.requestedInactive(control.reason ?? t.sandbox.unknownReason), {
+        kind: "warn",
+        title: TITLE,
+      });
     }
   } catch (err) {
     stopSpinner(ctx);
     const msg = err instanceof Error ? err.message : String(err);
-    ctx.screen.card(msg, { kind: "error", title: `${TITLE} failed` });
+    ctx.screen.card(msg, { kind: "error", title: t.sandbox.failedTitle(TITLE) });
   }
 }
 
@@ -78,7 +77,7 @@ async function persistEnabled(ctx: CliContext): Promise<void> {
     await saveSettings({ sandbox: ctx.settings.sandbox });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    ctx.screen.card(`sandbox toggled for this session, but saving to config failed: ${msg}`, {
+    ctx.screen.card(t.sandbox.saveFailed(msg), {
       kind: "warn",
       title: TITLE,
     });
@@ -89,9 +88,9 @@ function reportStatus(ctx: CliContext): void {
   const active = ctx.sandbox?.active ?? false;
   if (active) {
     ctx.screen.card(
-      `${dim("sandbox:")} ${green("active")} ${dim(
-        "— subprocess writes confined to the workspace",
-      )}\n${dim("disable with")} ${TITLE} off`,
+      `${dim(t.sandbox.labelColon)} ${green(t.sandbox.active)} ${dim(
+        t.sandbox.confined,
+      )}\n${dim(t.sandbox.disableWith)} ${TITLE} off`,
       { title: TITLE },
     );
     return;
@@ -99,7 +98,7 @@ function reportStatus(ctx: CliContext): void {
   const reason = ctx.sandbox?.reason;
   const why = reason ? dim(` (${reason})`) : "";
   ctx.screen.card(
-    `${dim("sandbox:")} ${red("inactive")}${why}\n${dim("enable with")} ${TITLE} on`,
+    `${dim(t.sandbox.labelColon)} ${red(t.sandbox.inactive)}${why}\n${dim(t.sandbox.enableWith)} ${TITLE} on`,
     { title: TITLE },
   );
 }

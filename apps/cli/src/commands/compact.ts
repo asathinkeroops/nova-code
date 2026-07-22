@@ -1,14 +1,15 @@
 import { dim } from "../colors.js";
 import { manualCompact } from "../compactor.js";
 import { persist, stopSpinner, type CliContext } from "../context.js";
+import { t } from "../i18n/index.js";
 
 export async function handleCompact(ctx: CliContext, focus: string): Promise<void> {
   const current = ctx.screen.getMessages();
   if (current.length === 0) {
-    ctx.screen.card(dim("nothing to compact (empty history)."), { title: "/compact" });
+    ctx.screen.card(dim(t.compact.nothingToCompact), { title: "/compact" });
     return;
   }
-  const spinner = ctx.screen.startSpinner("Compacting");
+  const spinner = ctx.screen.startSpinner(t.compact.compacting);
   ctx.spinner = spinner;
   try {
     const pre = await ctx.userHooks.firePreCompact({
@@ -18,7 +19,7 @@ export async function handleCompact(ctx: CliContext, focus: string): Promise<voi
     if (pre.blocked) {
       stopSpinner(ctx);
       ctx.screen.card(
-        `compaction blocked by PreCompact hook${pre.reason ? `: ${pre.reason}` : ""}`,
+        t.compact.blocked(pre.reason),
         {
           kind: "warn",
           title: "/compact",
@@ -51,7 +52,7 @@ export async function handleCompact(ctx: CliContext, focus: string): Promise<voi
     await persist(ctx);
     const seconds = (spinner.elapsedMs() / 1000).toFixed(1);
     stopSpinner(ctx);
-    ctx.screen.card(`${seconds}s · context ${result.before} → ${result.after} msgs`, {
+    ctx.screen.card(t.compact.completed(seconds, result.before, result.after), {
       kind: "info",
       title: "/compact",
     });
@@ -66,7 +67,7 @@ export async function handleCompact(ctx: CliContext, focus: string): Promise<voi
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     stopSpinner(ctx);
-    ctx.screen.card(msg, { kind: "error", title: "/compact failed" });
+    ctx.screen.card(msg, { kind: "error", title: t.compact.failedTitle });
     ctx.logger.error({ err: msg }, "manual /compact failed");
   }
 }

@@ -2,21 +2,30 @@ import { isThinkingLevel, THINKING_LEVELS, type ThinkingLevel } from "@nova/core
 import { saveSettings } from "@nova/runtime";
 import { dim, PURPLE_HEX, type Rgb } from "../colors.js";
 import { thinkingLevelLabel, refreshBanner, type CliContext } from "../context.js";
+import { t } from "../i18n/index.js";
 
 const TITLE = "/effort";
 
 /**
  * One-line blurb per reasoning depth, shown live under the slider so the tradeoff
- * (speed ↔ depth, and the token cost) is visible while choosing. Keyed by every
+ * (speed ↔ depth, and the token cost) is visible while choosing. Read from the
+ * i18n catalog at call time (see the i18n invariant), keyed by every
  * {@link THINKING_LEVELS} entry.
  */
-const LEVEL_BLURB: Record<ThinkingLevel, string> = {
-  off: "Extended thinking off — the fastest replies. Best for simple edits and quick questions.",
-  low: "Light reasoning (~2k tokens). A small budget for straightforward, single-step tasks.",
-  medium: "Balanced reasoning (~8k tokens). A solid default for everyday work.",
-  high: "Deep reasoning (~16k tokens). For harder, multi-step problems worth the extra latency.",
-  max: "Maximum reasoning (~32k tokens). May use excessive tokens and overthink — use sparingly for the hardest tasks.",
-};
+function levelBlurb(level: ThinkingLevel): string {
+  switch (level) {
+    case "off":
+      return t.effort.blurbOff;
+    case "low":
+      return t.effort.blurbLow;
+    case "medium":
+      return t.effort.blurbMedium;
+    case "high":
+      return t.effort.blurbHigh;
+    case "max":
+      return t.effort.blurbMax;
+  }
+}
 
 /**
  * Highlight colour per depth — a cool→warm gradient tracking the Faster→Smarter
@@ -55,7 +64,7 @@ async function persistTierThinking(ctx: CliContext): Promise<void> {
     await saveSettings({ models: ctx.settings.models });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    ctx.screen.card(`failed to save settings: ${msg}`, { kind: "error", title: TITLE });
+    ctx.screen.card(t.effort.saveFailed(msg), { kind: "error", title: TITLE });
   }
 }
 
@@ -64,13 +73,13 @@ export async function handleEffort(ctx: CliContext, arg: string): Promise<void> 
     const currentIdx = THINKING_LEVELS.indexOf(ctx.thinkingLevel);
     const pick = await ctx.screen.pickSlider<ThinkingLevel>({
       items: [...THINKING_LEVELS],
-      leftLabel: "Faster",
-      rightLabel: "Smarter",
-      footer: dim("← → navigate · enter confirm · esc cancel"),
+      leftLabel: t.effort.faster,
+      rightLabel: t.effort.smarter,
+      footer: dim(t.effort.footer),
       initialIndex: currentIdx >= 0 ? currentIdx : 0,
       topRuleColor: PURPLE_HEX,
       label: (level) => level,
-      description: (level) => LEVEL_BLURB[level],
+      description: (level) => levelBlurb(level),
       tint: (level) => LEVEL_TINT[level],
       shimmer: (level) => level === "max",
     });
@@ -78,7 +87,7 @@ export async function handleEffort(ctx: CliContext, arg: string): Promise<void> 
     ctx.thinkingLevel = pick;
     ctx.thinkingBudgetOverride = undefined;
     await persistTierThinking(ctx);
-    ctx.screen.card(`${dim("thinking set to")} ${pick}`, { title: TITLE });
+    ctx.screen.card(`${dim(t.effort.setTo)} ${pick}`, { title: TITLE });
     return;
   }
 
@@ -88,7 +97,7 @@ export async function handleEffort(ctx: CliContext, arg: string): Promise<void> 
     ctx.thinkingBudgetOverride = asNumber;
     refreshThinkingUi(ctx);
     ctx.screen.card(
-      `${dim("thinking budget set to")} ${asNumber} ${dim(`tokens (level: ${ctx.thinkingLevel}, this session)`)}`,
+      `${dim(t.effort.budgetSetTo)} ${asNumber} ${dim(t.effort.budgetSuffix(ctx.thinkingLevel))}`,
       { title: TITLE },
     );
     return;
@@ -97,10 +106,10 @@ export async function handleEffort(ctx: CliContext, arg: string): Promise<void> 
     ctx.thinkingLevel = arg;
     ctx.thinkingBudgetOverride = undefined;
     await persistTierThinking(ctx);
-    ctx.screen.card(`${dim("thinking set to")} ${arg}`, { title: TITLE });
+    ctx.screen.card(`${dim(t.effort.setTo)} ${arg}`, { title: TITLE });
     return;
   }
-  ctx.screen.card("expected off|low|medium|high|max or a positive integer", {
+  ctx.screen.card(t.effort.expected, {
     kind: "error",
     title: TITLE,
   });

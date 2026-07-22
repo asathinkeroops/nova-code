@@ -6,6 +6,7 @@ import { resolveContextWindowSize } from "@nova/runtime";
 import { bold, dim, green, PURPLE_HEX } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { buildFixPrompt, diagnoseConfig, formatIssues, summarizeReport } from "../doctor.js";
+import { t } from "../i18n/index.js";
 import { formatPercent, formatTokenCount } from "../ui/status-format.js";
 
 const MCP_PREFIX = "mcp__";
@@ -37,9 +38,15 @@ function contextUsageLines(ctx: CliContext): string[] {
   const used = systemTokens + toolsTokens + messagesTokens;
   const pct = window > 0 ? used / window : 0;
   return [
-    `context: ${formatTokenCount(used)} / ${formatTokenCount(window)} (${formatPercent(pct)}) — ` +
-      `system ${formatTokenCount(systemTokens)}, tools ${formatTokenCount(toolsTokens)}` +
-      `${mcpCount > 0 ? ` (${mcpCount} mcp)` : ""}, messages ${formatTokenCount(messagesTokens)}`,
+    t.doctor.contextUsage({
+      used: formatTokenCount(used),
+      window: formatTokenCount(window),
+      pct: formatPercent(pct),
+      system: formatTokenCount(systemTokens),
+      tools: formatTokenCount(toolsTokens),
+      mcp: mcpCount,
+      messages: formatTokenCount(messagesTokens),
+    }),
   ];
 }
 
@@ -48,11 +55,11 @@ function modalBody(
   report: Awaited<ReturnType<typeof diagnoseConfig>>["report"],
   ctx: CliContext,
 ): string {
-  const lines = [bold("nova config check"), dim(report.configPath), ""];
+  const lines = [bold(t.doctor.configCheckTitle), dim(report.configPath), ""];
   if (!report.exists) {
-    lines.push(dim("no config file yet — first-time setup runs on launch."));
+    lines.push(dim(t.doctor.noConfigFileModal));
   } else if (report.issues.length === 0) {
-    lines.push(green("✓ config looks good"));
+    lines.push(green(t.doctor.looksGood));
   } else {
     lines.push(formatIssues(report), "", dim(summarizeReport(report)));
   }
@@ -80,11 +87,9 @@ export async function handleDoctor(ctx: CliContext): Promise<SlashOutcome> {
   const items: Action[] = canFix ? ["fix", "close"] : ["close"];
   const choice = await ctx.screen.pickHorizontal<Action>({
     items,
-    label: (a) => (a === "fix" ? "Fix issues" : "Close"),
+    label: (a) => (a === "fix" ? t.doctor.labelFix : t.doctor.labelClose),
     header: modalBody(report, ctx),
-    footer: canFix
-      ? "f fix · ←/→ choose · Enter confirm · Esc close"
-      : "Enter / Esc to close",
+    footer: canFix ? t.doctor.footerFix : t.doctor.footerClose,
     border: false,
     topRuleColor: PURPLE_HEX,
     ...(canFix ? { hotkeys: { f: "fix" as Action } } : {}),

@@ -1,6 +1,7 @@
 import { computeCost, formatMoney, type ModelRates } from "@nova/observability";
 import { accent, bold, cyan, dim, PURPLE_HEX } from "../colors.js";
 import type { CliContext } from "../context.js";
+import { t } from "../i18n/index.js";
 import { cacheHitRate, formatPercent, formatTokenCount } from "../ui/status-format.js";
 
 const TITLE = "/usage";
@@ -39,9 +40,9 @@ export async function handleUsage(ctx: CliContext): Promise<void> {
   const rate = cacheHitRate(u.cacheReadTokens, u.cacheCreationTokens, u.uncachedInputTokens);
   if (rate === null) {
     await ctx.screen.viewer({
-      lines: [dim("no model requests yet this session.")],
+      lines: [dim(t.usage.noRequests)],
       header: `${accent(TITLE)}  ${dim(ctx.settings.model)}`,
-      footer: dim("enter/esc/q close"),
+      footer: dim(t.common.footerClose),
       border: false,
       topRuleColor: PURPLE_HEX,
     });
@@ -69,31 +70,31 @@ export async function handleUsage(ctx: CliContext): Promise<void> {
     v === undefined ? "" : dim(formatMoney(v, rates?.currency));
 
   const lines = [
-    `${label("cache hit rate")}${bold(cyan(formatPercent(rate)))}  ${dim("(cache read / all prompt tokens)")}`,
+    `${label(t.usage.cacheHitRate)}${bold(cyan(formatPercent(rate)))}  ${dim(t.usage.cacheHitRateHint)}`,
     "",
-    `${label("prompt tokens")}${formatTokenCount(promptTotal)}`,
-    `${label("  cache read")}${tok(u.cacheReadTokens)}${money(cost?.cacheRead)}`,
-    `${label("  cache write")}${tok(u.cacheCreationTokens)}${money(cost?.cacheWrite)}`,
-    `${label("  uncached")}${tok(u.uncachedInputTokens)}${money(cost?.input)}`,
-    `${label("output tokens")}${tok(u.outputTokens)}${money(cost?.output)}`,
+    `${label(t.usage.promptTokens)}${formatTokenCount(promptTotal)}`,
+    `${label(t.usage.cacheRead)}${tok(u.cacheReadTokens)}${money(cost?.cacheRead)}`,
+    `${label(t.usage.cacheWrite)}${tok(u.cacheCreationTokens)}${money(cost?.cacheWrite)}`,
+    `${label(t.usage.uncached)}${tok(u.uncachedInputTokens)}${money(cost?.input)}`,
+    `${label(t.usage.outputTokens)}${tok(u.outputTokens)}${money(cost?.output)}`,
   ];
 
   if (cost) {
     lines.push(
       "",
-      `${label("cost (est.)")}${bold(cyan(formatMoney(cost.total, rates?.currency)))}  ${dim(ctx.settings.model)}`,
+      `${label(t.usage.costEst)}${bold(cyan(formatMoney(cost.total, rates?.currency)))}  ${dim(ctx.settings.model)}`,
     );
   } else if (pricing.enabled) {
     lines.push(
       "",
-      `${label("cost (est.)")}${dim(`no price for "${ctx.settings.model}" — add "pricing" to that model tier in nova.config.json`)}`,
+      `${label(t.usage.costEst)}${dim(t.usage.noPrice(ctx.settings.model))}`,
     );
   }
 
   await ctx.screen.viewer({
     lines,
     header: `${accent(TITLE)}  ${dim(ctx.settings.model)}`,
-    footer: dim("↑↓ scroll · enter/esc/q close"),
+    footer: dim(t.common.footerScrollClose),
     pageSize: 24,
     border: false,
     topRuleColor: PURPLE_HEX,

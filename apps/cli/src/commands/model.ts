@@ -6,6 +6,7 @@ import {
 } from "@nova/runtime";
 import { accent, dim, green, PURPLE_HEX } from "../colors.js";
 import { refreshBanner, thinkingLevelLabel, type CliContext } from "../context.js";
+import { t } from "../i18n/index.js";
 import { pickerArrow } from "../ui/picker.js";
 
 const TITLE = "/model";
@@ -15,7 +16,7 @@ function notice(ctx: CliContext, lines: string[]): Promise<void> {
   return ctx.screen.viewer({
     lines,
     header: accent(TITLE),
-    footer: dim("enter/esc/q close"),
+    footer: dim(t.model.footerClose),
     border: false,
     topRuleColor: PURPLE_HEX,
   });
@@ -52,9 +53,9 @@ async function applyModel(ctx: CliContext, name: string): Promise<void> {
   // modal is showing) — it's async and fire-and-forget, so don't await it.
   saveSettings({ model: name }).catch((err) => {
     const msg = err instanceof Error ? err.message : String(err);
-    void notice(ctx, [`failed to save settings: ${msg}`]);
+    void notice(ctx, [t.model.saveFailed(msg)]);
   });
-  await notice(ctx, [`${dim("model set to")} ${name}${suffix}`]);
+  await notice(ctx, [`${dim(t.model.setTo)} ${name}${suffix}`]);
 }
 
 export async function handleModel(ctx: CliContext, arg: string): Promise<void> {
@@ -66,8 +67,8 @@ export async function handleModel(ctx: CliContext, arg: string): Promise<void> {
   if (arg) {
     if (!Object.prototype.hasOwnProperty.call(ctx.settings.models, arg)) {
       await notice(ctx, [
-        `${dim("unknown tier")} ${arg}`,
-        ...(names.length ? [`${dim("configured tiers:")} ${names.join(", ")}`] : []),
+        `${dim(t.model.unknownTier)} ${arg}`,
+        ...(names.length ? [`${dim(t.model.configuredTiers)} ${names.join(", ")}`] : []),
       ]);
       return;
     }
@@ -77,8 +78,8 @@ export async function handleModel(ctx: CliContext, arg: string): Promise<void> {
 
   if (names.length === 0) {
     await notice(ctx, [
-      `${dim("current model:")} ${ctx.settings.model}`,
-      dim('no tiers configured — add a "models" map to nova.config.json'),
+      `${dim(t.model.currentModel)} ${ctx.settings.model}`,
+      dim(t.model.noTiers),
     ]);
     return;
   }
@@ -90,8 +91,8 @@ export async function handleModel(ctx: CliContext, arg: string): Promise<void> {
   const currentIdx = names.findIndex((n) => n === ctx.settings.model);
   const pick = await ctx.screen.pickOne<string>({
     items: names,
-    header: `${accent(TITLE)}  ${dim("select model")}`,
-    footer: dim("↑↓ navigate · enter confirm · esc cancel"),
+    header: `${accent(TITLE)}  ${dim(t.model.selectModel)}`,
+    footer: dim(t.model.navFooter),
     pageSize: 10,
     initialIndex: currentIdx >= 0 ? currentIdx : 0,
     border: false,

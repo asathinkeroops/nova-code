@@ -1,5 +1,6 @@
 import { createSession } from "@nova/runtime";
 import { refreshBanner, type CliContext } from "../context.js";
+import { t } from "../i18n/index.js";
 import { switchToSession } from "../session.js";
 
 /**
@@ -14,7 +15,7 @@ export async function handleClear(ctx: CliContext): Promise<void> {
   if (ctx.screen.getMessages().length === 0) {
     await ctx.screen.reset();
     refreshBanner(ctx);
-    ctx.screen.card(`already on a fresh session ${ctx.session.id}`, {
+    ctx.screen.card(t.clear.alreadyFresh(ctx.session.id), {
       kind: "info",
       title: "/clear",
     });
@@ -25,6 +26,6 @@ export async function handleClear(ctx: CliContext): Promise<void> {
   await switchToSession(ctx, fresh, {
     title: "/clear",
     resumed: false,
-    emptyCard: `started fresh session ${fresh.id}`,
+    emptyCard: t.clear.startedFresh(fresh.id),
   });
 }

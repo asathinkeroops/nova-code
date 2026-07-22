@@ -2,26 +2,28 @@ import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
 import type { PermissionDecision, PermissionInput } from "@nova/safety";
 import { ACCENT_HEX, cyan } from "../colors.js";
+import { t } from "../i18n/index.js";
 import { countWrappedLines } from "./measure.js";
 import { PENDING_DOT, renderCommandBody } from "./render-strings.js";
 
 export type ApprovalAnswer = "yes" | "no" | "always-allow";
 
-const TOOL_PROMPTS: Record<string, string> = {
-  read: "Allow reading this file?",
-  write: "Allow writing this file?",
-  edit: "Allow editing this file?",
-  bash: "Allow running this command?",
-  glob: "Allow searching for files?",
-  grep: "Allow searching file contents?",
-  webfetch: "Allow fetching this URL?",
-  websearch: "Allow searching the web?",
-  createSubAgent: "Allow spawning a subagent?",
-  runInBackground: "Allow running this command in the background?",
-};
-
+// Read `t` at call time (never at module top-level — see i18n invariant): the
+// catalog is chosen by `setLocale` after this module is first evaluated.
 function promptFor(tool: string): string {
-  return TOOL_PROMPTS[tool] ?? "Allow this operation?";
+  const prompts: Record<string, string> = {
+    read: t.approval.read,
+    write: t.approval.write,
+    edit: t.approval.edit,
+    bash: t.approval.bash,
+    glob: t.approval.glob,
+    grep: t.approval.grep,
+    webfetch: t.approval.webfetch,
+    websearch: t.approval.websearch,
+    createSubAgent: t.approval.createSubAgent,
+    runInBackground: t.approval.runInBackground,
+  };
+  return prompts[tool] ?? t.approval.fallback;
 }
 
 // bash is rendered to mirror its message-stream display (render-strings.ts): a
@@ -75,24 +77,29 @@ export function clampDetail(s: string): { text: string; truncated: boolean } {
 
 interface Option {
   value: ApprovalAnswer;
-  label: string;
   hint: string;
   shortcut: string;
   /** Ink color for the option (keyword or hex). */
   color: string;
 }
 
+// Labels are looked up at render time (see i18n invariant), keyed by `value`.
 const OPTIONS: Option[] = [
-  { value: "yes", label: "Allow once", hint: "y", shortcut: "y", color: "green" },
-  { value: "no", label: "Deny", hint: "n", shortcut: "n", color: "red" },
-  {
-    value: "always-allow",
-    label: "Always allow this tool",
-    hint: "a",
-    shortcut: "a",
-    color: ACCENT_HEX,
-  },
+  { value: "yes", hint: "y", shortcut: "y", color: "green" },
+  { value: "no", hint: "n", shortcut: "n", color: "red" },
+  { value: "always-allow", hint: "a", shortcut: "a", color: ACCENT_HEX },
 ];
+
+function optionLabel(value: ApprovalAnswer): string {
+  switch (value) {
+    case "yes":
+      return t.approval.allowOnce;
+    case "no":
+      return t.approval.deny;
+    case "always-allow":
+      return t.approval.alwaysAllow;
+  }
+}
 
 /**
  * Exact rendered row count of {@link ApprovalPrompt} at a given terminal width,
@@ -153,7 +160,7 @@ export function approvalRows(input: PermissionInput, cols: number): number {
       (truncated ? 1 : 0)
     );
   }
-  const detailLine = `${input.tool} ${detail}${truncated ? " … (truncated)" : ""}`;
+  const detailLine = `${input.tool} ${detail}${truncated ? ` ${t.tool.truncatedNotice}` : ""}`;
   return base + countWrappedLines(detailLine, inner);
 }
 
@@ -245,14 +252,14 @@ export function ApprovalPrompt({
           <Text>{BASH_HEADER}</Text>
           <Text>{renderCommandBody(detail, inner)}</Text>
           {truncated ? (
-            <Text dimColor>{`${BASH_BODY_INDENT}… (truncated)`}</Text>
+            <Text dimColor>{`${BASH_BODY_INDENT}${t.tool.truncatedNotice}`}</Text>
           ) : null}
         </>
       ) : (
         <Text>
           <Text dimColor>{input.tool} </Text>
           <Text color={ACCENT_HEX}>{detail}</Text>
-          {truncated ? <Text dimColor> … (truncated)</Text> : null}
+          {truncated ? <Text dimColor> {t.tool.truncatedNotice}</Text> : null}
         </Text>
       )}
 
@@ -262,7 +269,7 @@ export function ApprovalPrompt({
           return (
             <Text key={opt.value} color={active ? opt.color : undefined}>
               {active ? "❯ " : "  "}
-              <Text>{opt.label}</Text>
+              <Text>{optionLabel(opt.value)}</Text>
               <Text dimColor> ({opt.hint})</Text>
             </Text>
           );

@@ -57,6 +57,10 @@ describe("settingsSchema", () => {
     expect(parseSettings({}).language).toBe("auto");
   });
 
+  it("defaults locale to auto", () => {
+    expect(parseSettings({}).locale).toBe("auto");
+  });
+
   it("leaves memory.auto.dir unset by default (global per-project store)", () => {
     expect(parseSettings({}).memory.auto.dir).toBeUndefined();
   });

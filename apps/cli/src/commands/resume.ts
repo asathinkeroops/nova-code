@@ -2,6 +2,7 @@ import { listSessions, type Session } from "@nova/runtime";
 import { dim, green, PURPLE_HEX } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { pickerArrow } from "../ui/picker.js";
+import { t } from "../i18n/index.js";
 import { overlayNotice } from "./overlay-notice.js";
 import {
   buildSessionRows,
@@ -15,7 +16,7 @@ const TITLE = "/resume";
 export async function handleResume(ctx: CliContext, arg: string): Promise<void> {
   const list = await listSessions(ctx.settings.sessionDir);
   if (list.length === 0) {
-    await overlayNotice(ctx, TITLE, [dim("no sessions to resume.")]);
+    await overlayNotice(ctx, TITLE, [dim(t.resume.noSessions)]);
     return;
   }
 
@@ -24,20 +25,20 @@ export async function handleResume(ctx: CliContext, arg: string): Promise<void> 
   if (arg) {
     target = list.find((s) => s.id === arg) ?? null;
     if (!target) {
-      ctx.screen.card(`session ${arg} not found.`, { kind: "error", title: TITLE });
+      ctx.screen.card(t.resume.notFound(arg), { kind: "error", title: TITLE });
       return;
     }
   } else {
     const items: SessionRow[] = await buildSessionRows(ctx.settings.sessionDir);
     if (items.length === 0) {
-      await overlayNotice(ctx, TITLE, [dim("no sessions to resume.")]);
+      await overlayNotice(ctx, TITLE, [dim(t.resume.noSessions)]);
       return;
     }
     const currentIdx = items.findIndex((it) => it.session.id === ctx.session.id);
     const pick = await ctx.screen.pickOne<SessionRow>({
       items,
-      header: dim("select session to resume:"),
-      footer: dim("↑↓ navigate · enter confirm · esc cancel"),
+      header: dim(t.resume.header),
+      footer: dim(t.common.footerNavConfirm),
       pageSize: 10,
       initialIndex: currentIdx >= 0 ? currentIdx : 0,
       border: false,
@@ -52,7 +53,7 @@ export async function handleResume(ctx: CliContext, arg: string): Promise<void> 
   }
 
   if (target.id === ctx.session.id) {
-    ctx.screen.card(dim("already on that session."), { title: TITLE });
+    ctx.screen.card(dim(t.resume.alreadyOn), { title: TITLE });
     return;
   }
   ctx.nextPlaceholder = "";

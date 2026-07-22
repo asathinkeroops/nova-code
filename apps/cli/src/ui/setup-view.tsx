@@ -1,6 +1,7 @@
 import React from "react";
 import { Box, Text } from "ink";
 import { ACCENT_HEX } from "../colors.js";
+import { t } from "../i18n/index.js";
 import { LOGO, LOGO_ROW_HEX } from "./logo.js";
 import { DeepSeekArt } from "./deepseek-art-view.js";
 import { MoonshotArt } from "./moonshot-art-view.js";
@@ -28,7 +29,6 @@ function ProviderArt({ provider }: { provider?: string }): React.ReactElement | 
 
 export function SetupView({ state }: { state: SetupState }): React.ReactElement {
   const { header, entries, currentPrompt } = state;
-  const plural = header.missingCount === 1 ? "" : "s";
 
   return (
     <Box flexDirection="column" paddingLeft={1} paddingRight={1}>
@@ -46,23 +46,16 @@ export function SetupView({ state }: { state: SetupState }): React.ReactElement 
         ))}
       </Box>
       <Box marginTop={1}>
-        <Text dimColor>
-          The coding agent purpose-built for DeepSeek — 95%+ cache hits · OS-sandboxed ·
-          tool-complete
-        </Text>
+        <Text dimColor>{t.setup.tagline}</Text>
       </Box>
       <Box marginTop={1}>
         <Text bold color={ACCENT_HEX}>
-          Welcome to Nova!
+          {t.setup.welcome}
         </Text>
       </Box>
-      <Text dimColor>
-        {`Missing ${header.missingCount} setting${plural} — let's configure them. (Ctrl+C to abort)`}
-      </Text>
-      <Text dimColor>{`Config will be saved to: ${header.configPath}`}</Text>
-      {header.noteBaseURL ? (
-        <Text dimColor>Note: baseURL must point to an Anthropic-compatible API endpoint.</Text>
-      ) : null}
+      <Text dimColor>{t.setup.missing(header.missingCount)}</Text>
+      <Text dimColor>{t.setup.configSavedTo(header.configPath)}</Text>
+      {header.noteBaseURL ? <Text dimColor>{t.setup.noteBaseURL}</Text> : null}
 
       {entries.length > 0 ? (
         <Box flexDirection="column" marginTop={1}>

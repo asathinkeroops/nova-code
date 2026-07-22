@@ -4,6 +4,7 @@ import { sliceFromLastCompacted } from "@nova/context";
 import { bashTool } from "@nova/tools";
 import { resolveModelModalities } from "@nova/runtime";
 import { ACCENT_RGB, accent, dim, green } from "./colors.js";
+import { t } from "./i18n/index.js";
 import { refreshBalance, stopSpinner, type CliContext } from "./context.js";
 import { appendUserOverride } from "./display-sidecar.js";
 import { readClipboard } from "./image-paste.js";
@@ -38,7 +39,7 @@ async function refreshPrediction(ctx: CliContext): Promise<void> {
   const messages = sliceFromLastCompacted(ctx.screen.getMessages());
   if (messages.length === 0) return;
   ctx.spinner = ctx.screen.startSpinner({
-    words: ["Thinking ahead..."],
+    words: [t.spinner.thinkingAhead],
     tint: ACCENT_RGB,
     colorize: accent,
   });
@@ -80,14 +81,14 @@ type DispatchAction = "exit" | "continue" | { kind: "turn"; prompt: string };
  */
 async function runBang(ctx: CliContext, command: string): Promise<void> {
   if (!command) {
-    ctx.screen.card(dim("usage: !<shell command>"), { title: "!" });
+    ctx.screen.card(dim(t.repl.bangUsage), { title: "!" });
     return;
   }
   const controller = new AbortController();
   const bridge = ctx.sandbox?.bridge;
   ctx.spinner = ctx.screen.startSpinner(
-    { words: ["Running shell..."], tint: ACCENT_RGB, colorize: accent },
-    "esc to interrupt",
+    { words: [t.spinner.runningShell], tint: ACCENT_RGB, colorize: accent },
+    t.spinner.interruptHint,
   );
   ctx.screen.setEscHandler(() => controller.abort());
   try {
@@ -100,7 +101,7 @@ async function runBang(ctx: CliContext, command: string): Promise<void> {
     // Keep the card title to a single line so a multi-line command doesn't blow
     // up the header.
     const title = `! ${command.split("\n", 1)[0]}`;
-    ctx.screen.card(result.output.trim() || dim("(no output)"), {
+    ctx.screen.card(result.output.trim() || dim(t.repl.noOutput), {
       title,
       kind: result.isError ? "error" : "info",
     });
@@ -249,7 +250,7 @@ async function runDueCron(ctx: CliContext): Promise<void> {
     entry.schedule.kind === "interval"
       ? `next ${formatDuration(entry.schedule.intervalMs)} after this`
       : `cron ${entry.schedule.expr}`;
-  ctx.screen.card(dim(`iteration ${count}/${entry.maxIterations} · ${when}`), {
+  ctx.screen.card(dim(t.repl.cronIteration(count, entry.maxIterations, when)), {
     title,
     persist: false,
   });
@@ -305,8 +306,8 @@ async function maybeContinueForGoal(ctx: CliContext): Promise<string | null> {
 
   const controller = new AbortController();
   ctx.spinner = ctx.screen.startSpinner(
-    { words: ["Verifying goal..."], tint: ACCENT_RGB, colorize: accent },
-    "esc to skip",
+    { words: [t.spinner.verifyingGoal], tint: ACCENT_RGB, colorize: accent },
+    t.spinner.skipHint,
   );
   ctx.screen.setEscHandler(() => controller.abort());
   let verdict;
@@ -341,7 +342,7 @@ async function maybeContinueForGoal(ctx: CliContext): Promise<string | null> {
     ctx.goal = null;
     await clearGoal(ctx.session.dir);
     ctx.screen.card(
-      `goal not reached after ${goal.continuations} continuation(s); stopping.\n${dim(verdict.reason)}`,
+      `${t.repl.goalNotReached(goal.continuations)}\n${dim(verdict.reason)}`,
       { kind: "warn", title: GOAL_TITLE },
     );
     return null;
@@ -355,7 +356,7 @@ async function maybeContinueForGoal(ctx: CliContext): Promise<string | null> {
     ctx.logger.warn({ err: msg }, "failed to persist goal");
   }
   ctx.screen.card(
-    dim(`goal not yet met — continuing (${goal.continuations}/${max})\n${verdict.reason}`),
+    dim(t.repl.goalContinuing(goal.continuations, max) + `\n${verdict.reason}`),
     { title: GOAL_TITLE },
   );
   // Return the <goal-eval>-tagged continuation. The model reads the tag's
@@ -388,8 +389,8 @@ async function runTurnWithStopHooks(ctx: CliContext, prompt: string): Promise<bo
     if (decision.continue) {
       if (stopContinuations >= MAX_STOP_CONTINUATIONS) {
         ctx.screen.card(
-          `Stop hook kept blocking; stopping after ${MAX_STOP_CONTINUATIONS} continuations`,
-          { kind: "warn", title: "Stop hook" },
+          t.repl.stopHookCapped(MAX_STOP_CONTINUATIONS),
+          { kind: "warn", title: t.repl.stopHookTitle },
         );
         break;
       }
@@ -422,7 +423,7 @@ function wireImagePaste(ctx: CliContext): void {
   ctx.screen.setImagePaste({
     capture: async () => {
       const res = await readClipboard(join(ctx.session.dir, "images"));
-      if (!res) ctx.screen.notice("clipboard is empty", 1000, "warn");
+      if (!res) ctx.screen.notice(t.repl.clipboardEmpty, 1000, "warn");
       return res;
     },
     attached: () => {

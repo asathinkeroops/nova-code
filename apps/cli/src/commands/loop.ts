@@ -1,9 +1,9 @@
 import { formatDuration, parseDuration, type CronEntry } from "@nova/tools";
 import { dim } from "../colors.js";
 import type { CliContext } from "../context.js";
+import { t } from "../i18n/index.js";
 
 const TITLE = "/loop";
-const USAGE = "usage: /loop <interval> <prompt|/command>  ·  /loop stop  ·  interval like 30s, 5m, 1h";
 
 /** The single `/loop`-created schedule for this session, or undefined. */
 async function currentLoop(ctx: CliContext): Promise<CronEntry | undefined> {
@@ -14,7 +14,7 @@ async function currentLoop(ctx: CliContext): Promise<CronEntry | undefined> {
 function statusLine(loop: CronEntry): string {
   const every =
     loop.schedule.kind === "interval" ? formatDuration(loop.schedule.intervalMs) : loop.schedule.expr;
-  return `looping every ${every} (${loop.iterations}/${loop.maxIterations})\n${dim(loop.payload)}`;
+  return `${t.loop.loopingEvery(every, loop.iterations, loop.maxIterations)}\n${dim(loop.payload)}`;
 }
 
 /**
@@ -33,7 +33,7 @@ export async function handleLoop(ctx: CliContext, args: string): Promise<void> {
     if (loop) {
       ctx.screen.card(statusLine(loop), { title: TITLE });
     } else {
-      ctx.screen.card(dim(USAGE), { title: TITLE });
+      ctx.screen.card(dim(t.loop.usage), { title: TITLE });
     }
     return;
   }
@@ -42,9 +42,9 @@ export async function handleLoop(ctx: CliContext, args: string): Promise<void> {
     const loop = await currentLoop(ctx);
     if (loop) {
       await ctx.cronStore.delete(loop.id);
-      ctx.screen.notice("loop stopped");
+      ctx.screen.notice(t.loop.stopped);
     } else {
-      ctx.screen.notice("no active loop", 2000, "warn");
+      ctx.screen.notice(t.loop.noActive, 2000, "warn");
     }
     return;
   }
@@ -56,14 +56,14 @@ export async function handleLoop(ctx: CliContext, args: string): Promise<void> {
 
   const intervalMs = parseDuration(intervalTok);
   if (intervalMs === null) {
-    ctx.screen.card(`invalid interval "${intervalTok}" — expected e.g. 30s, 5m, 1h.\n${dim(USAGE)}`, {
+    ctx.screen.card(`${t.loop.invalidInterval(intervalTok)}\n${dim(t.loop.usage)}`, {
       kind: "error",
       title: TITLE,
     });
     return;
   }
   if (!payload) {
-    ctx.screen.card(`missing prompt or command to loop.\n${dim(USAGE)}`, {
+    ctx.screen.card(`${t.loop.missingPayload}\n${dim(t.loop.usage)}`, {
       kind: "error",
       title: TITLE,
     });
@@ -71,15 +71,15 @@ export async function handleLoop(ctx: CliContext, args: string): Promise<void> {
   }
   const minMs = ctx.settings.loop.minIntervalMs;
   if (intervalMs < minMs) {
-    ctx.screen.card(
-      `interval too short — minimum is ${formatDuration(minMs)} (settings.loop.minIntervalMs).`,
-      { kind: "error", title: TITLE },
-    );
+    ctx.screen.card(t.loop.intervalTooShort(formatDuration(minMs)), {
+      kind: "error",
+      title: TITLE,
+    });
     return;
   }
   // No self-nesting: a `/loop` payload would replace the loop on every tick.
   if (/^\/loop(\s|$)/i.test(payload)) {
-    ctx.screen.card("a loop can't run /loop as its payload.", { kind: "error", title: TITLE });
+    ctx.screen.card(t.loop.noSelfNesting, { kind: "error", title: TITLE });
     return;
   }
 
@@ -96,8 +96,7 @@ export async function handleLoop(ctx: CliContext, args: string): Promise<void> {
     maxIterations: ctx.settings.loop.maxIterations,
   });
   ctx.screen.card(
-    `${existing ? "replaced loop — " : ""}running now, then every ${formatDuration(intervalMs)}` +
-      ` after each run completes (max ${ctx.settings.loop.maxIterations}). /loop stop to end.\n${dim(payload)}`,
+    `${t.loop.startedCard(!!existing, formatDuration(intervalMs), ctx.settings.loop.maxIterations)}\n${dim(payload)}`,
     { title: TITLE },
   );
 }

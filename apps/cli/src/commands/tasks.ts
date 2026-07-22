@@ -2,6 +2,7 @@ import type { CommandRecord } from "@nova/tools";
 
 import { bold, dim, green, PURPLE_HEX, red, yellow } from "../colors.js";
 import type { CliContext } from "../context.js";
+import { t } from "../i18n/index.js";
 import { pickerArrow } from "../ui/picker.js";
 import { overlayNotice } from "./overlay-notice.js";
 
@@ -18,9 +19,9 @@ function statusDot(status: CommandRecord["status"]): string {
 }
 
 function statusWord(status: CommandRecord["status"]): string {
-  if (status === "running") return yellow("running");
-  if (status === "completed") return green("done");
-  return red("failed");
+  if (status === "running") return yellow(t.tasks.running);
+  if (status === "completed") return green(t.tasks.done);
+  return red(t.tasks.failed);
 }
 
 /** Collapse a (possibly multi-line) command to a single, length-capped line. */
@@ -44,9 +45,9 @@ function summary(records: CommandRecord[]): string {
   const running = records.filter((r) => r.status === "running").length;
   const done = records.length - running;
   const parts: string[] = [];
-  if (running > 0) parts.push(yellow(`${running} running`));
-  if (done > 0) parts.push(dim(`${done} finished`));
-  return parts.join(dim(" · ")) || dim("no background tasks");
+  if (running > 0) parts.push(yellow(t.tasks.countRunning(running)));
+  if (done > 0) parts.push(dim(t.tasks.countFinished(done)));
+  return parts.join(dim(" · ")) || dim(t.tasks.none);
 }
 
 /** Kill one record by id, surfacing the outcome as a transient notice. */
@@ -55,8 +56,8 @@ function stopOne(ctx: CliContext, id: string): void {
     const res = ctx.backgroundManager.kill(id);
     ctx.screen.notice(
       res.alreadyExited
-        ? `task ${id} had already finished`
-        : `stopping ${id} (${oneLine(res.command, 40)})…`,
+        ? t.tasks.alreadyFinished(id)
+        : t.tasks.stopping(id, oneLine(res.command, 40)),
     );
   } catch (err) {
     ctx.screen.notice(err instanceof Error ? err.message : String(err), undefined, "warn");
@@ -94,7 +95,7 @@ export async function handleTasks(ctx: CliContext, args: string): Promise<void> 
     if (verb === "list") {
       const records = ctx.backgroundManager.list();
       if (records.length === 0) {
-        ctx.screen.card(dim("no background tasks."), { title: TITLE });
+        ctx.screen.card(dim(t.tasks.noneDot), { title: TITLE });
         return;
       }
       listCard(ctx, records);
@@ -104,23 +105,23 @@ export async function handleTasks(ctx: CliContext, args: string): Promise<void> 
       const running = ctx.backgroundManager.list().filter((r) => r.status === "running");
       if (target === "all") {
         if (running.length === 0) {
-          ctx.screen.card(dim("no running tasks to stop."), { title: TITLE });
+          ctx.screen.card(dim(t.tasks.noRunning), { title: TITLE });
           return;
         }
         for (const r of running) stopOne(ctx, r.id);
-        ctx.screen.card(`stopping ${running.length} task${running.length === 1 ? "" : "s"}…`, {
+        ctx.screen.card(t.tasks.stoppingN(running.length), {
           title: TITLE,
         });
         return;
       }
       if (!target) {
-        ctx.screen.card(dim("usage: /tasks stop <id|all>"), { title: TITLE, kind: "warn" });
+        ctx.screen.card(dim(t.tasks.usage), { title: TITLE, kind: "warn" });
         return;
       }
       stopOne(ctx, target);
       return;
     }
-    ctx.screen.card(dim(`unknown action "${verb}" — try: list, stop <id|all>`), {
+    ctx.screen.card(dim(t.tasks.unknownAction(verb ?? "")), {
       title: TITLE,
       kind: "warn",
     });
@@ -132,9 +133,7 @@ export async function handleTasks(ctx: CliContext, args: string): Promise<void> 
   for (;;) {
     const records = ctx.backgroundManager.list();
     if (records.length === 0) {
-      await overlayNotice(ctx, TITLE, [
-        dim("no background tasks — start one with the runInBackground tool."),
-      ]);
+      await overlayNotice(ctx, TITLE, [dim(t.tasks.noneHint)]);
       return;
     }
 
@@ -142,8 +141,8 @@ export async function handleTasks(ctx: CliContext, args: string): Promise<void> 
     const pidWidth = Math.max(0, ...records.map((r) => String(r.pid).length));
     const pick = await ctx.screen.pickOne<CommandRecord>({
       items: records,
-      header: `${bold("Background tasks")}    ${summary(records)}\n`,
-      footer: `\n${dim("↑↓ navigate · enter open · esc close")}`,
+      header: `${bold(t.tasks.header)}    ${summary(records)}\n`,
+      footer: `\n${dim(t.tasks.listFooter)}`,
       pageSize: 12,
       initialIndex: Math.min(cursor, records.length - 1),
       render: (r, selected) =>
@@ -172,9 +171,9 @@ async function openTaskActions(ctx: CliContext, id: string): Promise<void> {
   const actions: Action[] = rec.status === "running" ? ["view", "stop"] : ["view"];
   const action = await ctx.screen.pickHorizontal<Action>({
     items: actions,
-    label: (a) => (a === "view" ? "View output" : "Stop"),
+    label: (a) => (a === "view" ? t.tasks.viewOutput : t.tasks.stop),
     header: `${statusDot(rec.status)} ${bold(oneLine(rec.command))}  ${dim(`${statusWord(rec.status)} · pid ${rec.pid}`)}`,
-    footer: dim("←→ choose · enter select · esc back"),
+    footer: dim(t.tasks.actionFooter),
     border: false,
     topRuleColor: PURPLE_HEX,
   });
@@ -187,11 +186,11 @@ async function openTaskActions(ctx: CliContext, id: string): Promise<void> {
 
   // view: non-consuming snapshot so the completion notifier keeps its bytes.
   const snap = ctx.backgroundManager.peek(id);
-  const lines = snap.output ? snap.output.replace(/\n$/, "").split("\n") : [dim("(no output yet)")];
+  const lines = snap.output ? snap.output.replace(/\n$/, "").split("\n") : [dim(t.tasks.noOutputYet)];
   await ctx.screen.viewer({
     lines,
     header: `${bold(oneLine(snap.command))}  ${dim(statusWord(snap.status))}\n`,
-    footer: `\n${dim("↑↓/PgUp/PgDn scroll · g/G top/bottom · enter/esc/q back")}`,
+    footer: `\n${dim(t.tasks.viewerFooter)}`,
     pageSize: 24,
     border: false,
     topRuleColor: PURPLE_HEX,

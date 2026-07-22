@@ -5,7 +5,7 @@ import { InputBox } from "./input-box.js";
 import { SetupView } from "./setup-view.js";
 import { TrustView } from "./trust-view.js";
 import { StatusLine } from "./status-line.js";
-import { permissionModeIndicator, PERMISSION_MODE_HINT } from "./status-format.js";
+import { permissionModeIndicator, permissionModeHint } from "./status-format.js";
 import { setCursorTarget } from "./cursor-target.js";
 import {
   PickHorizontal,
@@ -17,6 +17,7 @@ import type { AppStoreApi } from "./store.js";
 import { Viewport } from "./viewport.js";
 import { visibleWidth } from "./width.js";
 import { setJumpButtonBounds } from "./jump-button.js";
+import { t } from "../i18n/index.js";
 
 /**
  * Pinned bottom chrome row count: a blank spacer row above the InputBox, the
@@ -37,10 +38,6 @@ const STATUS_LINE_ROWS = 2;
 
 /** Blank rows held between the viewport and the InputBox so they aren't cramped. */
 const INPUT_TOP_SPACER_ROWS = 1;
-
-/** Padded so it reads as a button; leading/trailing space is part of the click target. */
-const JUMP_TO_BOTTOM_LABEL = " Jump to bottom (ctrl+End) ↓ ";
-const JUMP_TO_BOTTOM_WIDTH = visibleWidth(JUMP_TO_BOTTOM_LABEL);
 
 /**
  * Right-aligned button occupying the spacer row above the InputBox while the
@@ -72,12 +69,16 @@ function JumpToBottomHint({
   const hovered = store((s) => s.jumpButtonHovered);
   const show = enabled && !stickToBottom;
 
+  // Read at render time — never at module top-level (see i18n invariant).
+  const label = t.render.jumpToBottom;
+  const labelWidth = visibleWidth(label);
+
   // Absolute 1-indexed screen position, derived from the pinned-bottom layout:
   // the button is the single spacer row directly above the InputBox, centered.
   const frameRows = Math.max(MIN_FRAME_ROWS, termRows - 1);
   const row = Math.max(1, frameRows - inputRows - STATUS_LINE_ROWS - indicatorRows);
-  const colStart = Math.max(1, Math.floor((termCols - JUMP_TO_BOTTOM_WIDTH) / 2) + 1);
-  const colEnd = colStart + JUMP_TO_BOTTOM_WIDTH - 1;
+  const colStart = Math.max(1, Math.floor((termCols - labelWidth) / 2) + 1);
+  const colEnd = colStart + labelWidth - 1;
 
   React.useEffect(() => {
     if (!show) return;
@@ -92,7 +93,7 @@ function JumpToBottomHint({
     <Box flexShrink={0} height={INPUT_TOP_SPACER_ROWS} justifyContent="center">
       {show ? (
         <Text color="black" backgroundColor={hovered ? "cyan" : "gray"}>
-          {JUMP_TO_BOTTOM_LABEL}
+          {label}
         </Text>
       ) : null}
     </Box>
@@ -295,7 +296,7 @@ export function App({ store }: AppProps): React.ReactElement {
             {modeIndicator ? (
               <Box>
                 <Text color={modeIndicator.color}>{` ${modeIndicator.label}`}</Text>
-                <Text dimColor>{` ${PERMISSION_MODE_HINT}`}</Text>
+                <Text dimColor>{` ${permissionModeHint()}`}</Text>
               </Box>
             ) : null}
           </Box>

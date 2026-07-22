@@ -1,4 +1,5 @@
 import type { CliContext } from "./ctx-types.js";
+import { t } from "./i18n/index.js";
 import {
   handleAgent,
   handleAgents,
@@ -35,7 +36,7 @@ export function registerBuiltinSlashCommands(ctx: CliContext): void {
   const handled = { kind: "handled" as const };
   ctx.registry.register({
     name: "help",
-    description: "show this help",
+    description: t.commands.help,
     source: { kind: "builtin" },
     run: async () => {
       await handleHelp(ctx);
@@ -44,7 +45,7 @@ export function registerBuiltinSlashCommands(ctx: CliContext): void {
   });
   ctx.registry.register({
     name: "effort",
-    description: "show or change the extended-thinking level",
+    description: t.commands.effort,
     argHint: "[<level>]",
     source: { kind: "builtin" },
     run: async (_c, args) => {
@@ -54,7 +55,7 @@ export function registerBuiltinSlashCommands(ctx: CliContext): void {
   });
   ctx.registry.register({
     name: "loop",
-    description: "re-run a prompt or slash command on a fixed interval",
+    description: t.commands.loop,
     argHint: "<interval> <prompt|/cmd> | stop",
     source: { kind: "builtin" },
     run: async (_c, args) => {
@@ -64,7 +65,7 @@ export function registerBuiltinSlashCommands(ctx: CliContext): void {
   });
   ctx.registry.register({
     name: "model",
-    description: "show or switch the active model tier",
+    description: t.commands.model,
     argHint: "[<name>|<id>]",
     source: { kind: "builtin" },
     run: async (_c, args) => {
@@ -74,7 +75,7 @@ export function registerBuiltinSlashCommands(ctx: CliContext): void {
   });
   ctx.registry.register({
     name: "clear",
-    description: "start a fresh session (the current one stays resumable)",
+    description: t.commands.clear,
     source: { kind: "builtin" },
     run: async () => {
       await handleClear(ctx);
@@ -83,7 +84,7 @@ export function registerBuiltinSlashCommands(ctx: CliContext): void {
   });
   ctx.registry.register({
     name: "compact",
-    description: "summarize history into a single message",
+    description: t.commands.compact,
     argHint: "[focus…]",
     source: { kind: "builtin" },
     run: async (_c, args) => {
@@ -93,7 +94,7 @@ export function registerBuiltinSlashCommands(ctx: CliContext): void {
   });
   ctx.registry.register({
     name: "rename",
-    description: "give this session a custom name (shown on the input frame)",
+    description: t.commands.rename,
     argHint: "[<name>|clear]",
     source: { kind: "builtin" },
     run: async (_c, args) => {
@@ -103,7 +104,7 @@ export function registerBuiltinSlashCommands(ctx: CliContext): void {
   });
   ctx.registry.register({
     name: "resume",
-    description: "switch to a saved session",
+    description: t.commands.resume,
     argHint: "[<id>]",
     source: { kind: "builtin" },
     run: async (_c, args) => {
@@ -113,7 +114,7 @@ export function registerBuiltinSlashCommands(ctx: CliContext): void {
   });
   ctx.registry.register({
     name: "rewind",
-    description: "rewind history to a previous message (history after it is discarded)",
+    description: t.commands.rewind,
     argHint: "[<n>]",
     source: { kind: "builtin" },
     run: async (_c, args) => {
@@ -123,7 +124,7 @@ export function registerBuiltinSlashCommands(ctx: CliContext): void {
   });
   ctx.registry.register({
     name: "sandbox",
-    description: "enable/disable the OS command sandbox for this session",
+    description: t.commands.sandbox,
     argHint: "[on|off]",
     source: { kind: "builtin" },
     run: async (_c, args) => {
@@ -133,21 +134,21 @@ export function registerBuiltinSlashCommands(ctx: CliContext): void {
   });
   ctx.registry.register({
     name: "init",
-    description: "generate or refresh NOVA.md by analyzing the codebase",
+    description: t.commands.init,
     argHint: "[focus…]",
     source: { kind: "builtin" },
     run: (_c, args) => handleInit(args),
   });
   ctx.registry.register({
     name: "plan",
-    description: "plan a task via a read-only plan sub-agent (no implementation)",
+    description: t.commands.plan,
     argHint: "<task goal>",
     source: { kind: "builtin" },
     run: (_c, args) => handlePlan(args),
   });
   ctx.registry.register({
     name: "diff",
-    description: "browse uncommitted changes in a modal: file list → per-file diff",
+    description: t.commands.diff,
     argHint: "[pathspec]",
     source: { kind: "builtin" },
     run: async (_c, args) => {
@@ -157,21 +158,21 @@ export function registerBuiltinSlashCommands(ctx: CliContext): void {
   });
   ctx.registry.register({
     name: "review",
-    description: "review the uncommitted diff, or a GitHub PR by number (read-only)",
+    description: t.commands.review,
     argHint: "[PR# | focus…]",
     source: { kind: "builtin" },
     run: (_c, args) => handleReview(args),
   });
   ctx.registry.register({
     name: "goal",
-    description: "set, show, or clear a success condition Nova auto-works toward",
+    description: t.commands.goal,
     argHint: "[<condition>|clear]",
     source: { kind: "builtin" },
     run: (_c, args) => handleGoal(ctx, args.trim()),
   });
   ctx.registry.register({
     name: "predict",
-    description: "show or toggle next-input prediction",
+    description: t.commands.predict,
     argHint: "[on|off]",
     source: { kind: "builtin" },
     run: async (_c, args) => {
@@ -181,7 +182,7 @@ export function registerBuiltinSlashCommands(ctx: CliContext): void {
   });
   ctx.registry.register({
     name: "commands",
-    description: "list registered slash commands; use `reload` to rescan files",
+    description: t.commands.commands,
     argHint: "[reload]",
     source: { kind: "builtin" },
     run: async (_c, args) => {
@@ -191,7 +192,7 @@ export function registerBuiltinSlashCommands(ctx: CliContext): void {
   });
   ctx.registry.register({
     name: "skills",
-    description: "list discovered skills (SKILL.md)",
+    description: t.commands.skills,
     source: { kind: "builtin" },
     run: async () => {
       await handleSkills(ctx);
@@ -200,7 +201,7 @@ export function registerBuiltinSlashCommands(ctx: CliContext): void {
   });
   ctx.registry.register({
     name: "agents",
-    description: "list available sub-agent types; `reload` to rescan agent files",
+    description: t.commands.agents,
     argHint: "[reload]",
     source: { kind: "builtin" },
     run: async (_c, args) => {
@@ -210,27 +211,27 @@ export function registerBuiltinSlashCommands(ctx: CliContext): void {
   });
   ctx.registry.register({
     name: "agent",
-    description: "delegate a task to a named sub-agent",
+    description: t.commands.agent,
     argHint: "<name> <task>",
     source: { kind: "builtin" },
     run: (_c, args) => handleAgent(ctx, args),
   });
   ctx.registry.register({
     name: "nova-code-guide",
-    description: "ask a read-only guide about Nova itself, answered from its source",
+    description: t.commands.novaCodeGuide,
     argHint: "<question about Nova>",
     source: { kind: "builtin" },
     run: (_c, args) => handleNovaCodeGuide(ctx, args),
   });
   ctx.registry.register({
     name: "nova-code-guide-update",
-    description: "manually (re)fetch the Nova source the guide reads (remote mode)",
+    description: t.commands.novaCodeGuideUpdate,
     source: { kind: "builtin" },
     run: () => handleNovaCodeGuideUpdate(ctx),
   });
   ctx.registry.register({
     name: "tasks",
-    description: "view and manage background commands (runInBackground)",
+    description: t.commands.tasks,
     argHint: "[list|stop <id|all>]",
     source: { kind: "builtin" },
     run: async (_c, args) => {
@@ -240,7 +241,7 @@ export function registerBuiltinSlashCommands(ctx: CliContext): void {
   });
   ctx.registry.register({
     name: "mcp",
-    description: "open the MCP server menu (authenticate, reconnect, log out); `tools` to list",
+    description: t.commands.mcp,
     argHint: "[tools]",
     source: { kind: "builtin" },
     run: async (_c, args) => {
@@ -250,7 +251,7 @@ export function registerBuiltinSlashCommands(ctx: CliContext): void {
   });
   ctx.registry.register({
     name: "lsp",
-    description: "show configured language servers and their status",
+    description: t.commands.lsp,
     source: { kind: "builtin" },
     run: async () => {
       await handleLsp(ctx);
@@ -259,13 +260,13 @@ export function registerBuiltinSlashCommands(ctx: CliContext): void {
   });
   ctx.registry.register({
     name: "doctor",
-    description: "re-check the global nova config (press f to have the agent fix issues)",
+    description: t.commands.doctor,
     source: { kind: "builtin" },
     run: async () => handleDoctor(ctx),
   });
   ctx.registry.register({
     name: "plugin",
-    description: "list loaded plugins (manage them with the `nova plugin` CLI)",
+    description: t.commands.plugin,
     source: { kind: "builtin" },
     run: async () => {
       await handlePlugin(ctx);
@@ -274,7 +275,7 @@ export function registerBuiltinSlashCommands(ctx: CliContext): void {
   });
   ctx.registry.register({
     name: "usage",
-    description: "show this session's token usage and cache hit rate",
+    description: t.commands.usage,
     source: { kind: "builtin" },
     run: async () => {
       await handleUsage(ctx);
@@ -283,7 +284,7 @@ export function registerBuiltinSlashCommands(ctx: CliContext): void {
   });
   ctx.registry.register({
     name: "context",
-    description: "visualize the context window: what fills it, by category",
+    description: t.commands.context,
     source: { kind: "builtin" },
     run: async () => {
       await handleContext(ctx);
@@ -292,13 +293,13 @@ export function registerBuiltinSlashCommands(ctx: CliContext): void {
   });
   ctx.registry.register({
     name: "exit",
-    description: "leave the REPL",
+    description: t.commands.exit,
     source: { kind: "builtin" },
     run: () => handled,
   });
   ctx.registry.register({
     name: "quit",
-    description: "leave the REPL",
+    description: t.commands.quit,
     source: { kind: "builtin" },
     run: () => handled,
   });

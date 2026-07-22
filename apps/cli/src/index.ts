@@ -10,6 +10,7 @@ import {
   summarizeReport,
 } from "./doctor.js";
 import { runHeadless, type HeadlessOutputFormat } from "./headless.js";
+import { setLocale } from "./i18n/index.js";
 import { buildMcpCommand } from "./mcp-cli.js";
 import { buildPluginCommand } from "./plugin-cli.js";
 import type { HeadlessApprovalPolicy } from "./headless-screen.js";
@@ -195,6 +196,12 @@ async function run(positional: string[], opts: CliOptions): Promise<void> {
   });
   let settings = loaded;
 
+  // Localize the TUI before any UI text renders. setLocale honors the `locale`
+  // override (falling back to the already-resolved `language`); anything non-zh/en
+  // falls back to English. Re-applied after ensureSettings below, since interactive
+  // setup can change the language.
+  setLocale(settings.language, settings.locale);
+
   // `-p`/`--prompt` is the headless trigger (run once, print, exit); a non-TTY
   // environment also forces headless even without it. The bare positional
   // prompt stays interactive: it seeds the first turn, then the REPL takes over.
@@ -235,6 +242,9 @@ async function run(positional: string[], opts: CliOptions): Promise<void> {
   let think: ThinkOverride = {};
   try {
     settings = await ensureSettings(settings, screen);
+    // Setup may have changed the language; re-apply so the rest of the session
+    // (and everything registered in createContext) uses the final locale.
+    setLocale(settings.language, settings.locale);
     try {
       think = applyCliOverrides(settings, opts);
       // Seed the input-box permission mode from --permission-mode (still

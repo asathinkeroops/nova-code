@@ -11,6 +11,7 @@ import {
   type Settings,
 } from "@nova/runtime";
 import { bold, dim, green, red, yellow } from "./colors.js";
+import { t } from "./i18n/index.js";
 
 /**
  * Config check ("doctor"). Validates the global `~/.nova/nova.config.json` plus
@@ -83,9 +84,9 @@ function defaultSettings(): Settings {
 /** Info lines summarizing the (already schema-validated) MCP setup. */
 function mcpSummary(settings: Settings): string[] {
   const mcp = settings.mcp;
-  if (!mcp.enabled) return ["MCP: disabled (mcp.enabled = false)"];
+  if (!mcp.enabled) return [t.doctor.mcpDisabled];
   const servers = Object.values(mcp.servers);
-  if (servers.length === 0) return ["MCP: no servers configured"];
+  if (servers.length === 0) return [t.doctor.mcpNoServers];
   let stdio = 0;
   let http = 0;
   let disabled = 0;
@@ -94,12 +95,7 @@ function mcpSummary(settings: Settings): string[] {
     else stdio += 1;
     if (s.enabled === false) disabled += 1;
   }
-  const kinds = [stdio > 0 ? `${stdio} stdio` : "", http > 0 ? `${http} http` : ""]
-    .filter(Boolean)
-    .join(", ");
-  let line = `MCP: ${servers.length} server(s) configured${kinds ? ` (${kinds})` : ""}`;
-  if (disabled > 0) line += ` · ${disabled} disabled`;
-  return [line];
+  return [t.doctor.mcpConfigured({ total: servers.length, stdio, http, disabled })];
 }
 
 /**
@@ -127,9 +123,9 @@ export async function diagnoseConfig(
     } else {
       issues.push({
         level: "error",
-        title: "config file could not be read",
+        title: t.doctor.configUnreadableTitle,
         detail: err instanceof Error ? err.message : String(err),
-        hint: `check permissions on ${configPath}`,
+        hint: t.doctor.configUnreadableHint(configPath),
       });
     }
   }
@@ -141,9 +137,9 @@ export async function diagnoseConfig(
     } catch (err) {
       issues.push({
         level: "error",
-        title: "config is not valid JSON",
+        title: t.doctor.invalidJsonTitle,
         detail: err instanceof Error ? err.message : String(err),
-        hint: `fix the syntax in ${configPath}`,
+        hint: t.doctor.invalidJsonHint(configPath),
       });
     }
     if (raw !== undefined) {
@@ -156,14 +152,16 @@ export async function diagnoseConfig(
           for (const issue of zi) {
             issues.push({
               level: "error",
-              title: `invalid setting: ${issue.path.length > 0 ? issue.path.join(".") : "(root)"}`,
+              title: t.doctor.invalidSettingTitle(
+                issue.path.length > 0 ? issue.path.join(".") : "(root)",
+              ),
               detail: issue.message,
             });
           }
         } else {
           issues.push({
             level: "error",
-            title: "config failed validation",
+            title: t.doctor.configFailedValidationTitle,
             detail: err instanceof Error ? err.message : String(err),
           });
         }
@@ -179,15 +177,15 @@ export async function diagnoseConfig(
     if (!hasApiKey) {
       issues.push({
         level: "warn",
-        title: "no apiKey configured",
-        hint: 'nova will run first-time setup, or add "apiKey" to your config',
+        title: t.doctor.noApiKeyTitle,
+        hint: t.doctor.noApiKeyHint,
       });
     }
     if (hasApiKey && Object.keys(settings.models).length === 0) {
       issues.push({
         level: "warn",
-        title: "apiKey is set but no models are configured",
-        hint: `add a "models" table with all tiers (${REQUIRED_MODEL_TIERS.join(", ")})`,
+        title: t.doctor.noModelsTitle,
+        hint: t.doctor.noModelsHint(REQUIRED_MODEL_TIERS.join(", ")),
       });
     }
     // `provider` is a free-form string (the schema can't enumerate core's
@@ -199,9 +197,9 @@ export async function diagnoseConfig(
     if (!isProviderId(settings.provider)) {
       issues.push({
         level: "warn",
-        title: `provider "${settings.provider}" is not a built-in profile`,
-        detail: `using the generic "other" fallback (no effort knob, error translation, or balance)`,
-        hint: `set "provider" to one of: ${PROVIDER_IDS.join(", ")} — or keep it if this endpoint is a plain Anthropic-compatible one`,
+        title: t.doctor.unknownProviderTitle(settings.provider),
+        detail: t.doctor.unknownProviderDetail,
+        hint: t.doctor.unknownProviderHint(PROVIDER_IDS.join(", ")),
       });
     }
   }
@@ -215,13 +213,13 @@ export async function diagnoseConfig(
     for (const e of hooks.errors) {
       issues.push({
         level: "warn",
-        title: `invalid hook file: ${basename(e.source)}`,
+        title: t.doctor.invalidHookFileTitle(basename(e.source)),
         detail: e.message,
-        hint: "fix or remove it — nova skips it and continues",
+        hint: t.doctor.invalidHookFileHint,
       });
     }
     if (hooks.loaded.length > 0) {
-      info.push(`project hooks: loaded ${hooks.loaded.length} file(s)`);
+      info.push(t.doctor.projectHooksLoaded(hooks.loaded.length));
     }
   }
 
@@ -238,11 +236,10 @@ export async function diagnoseConfig(
 
 const errorCount = (r: ConfigReport): number => r.issues.filter((i) => i.level === "error").length;
 const warnCount = (r: ConfigReport): number => r.issues.filter((i) => i.level === "warn").length;
-const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /** One-line summary for a card/modal title / log prefix, e.g. `1 error, 2 warnings`. */
 export function summarizeReport(report: ConfigReport): string {
-  return `${plural(errorCount(report), "error")}, ${plural(warnCount(report), "warning")}`;
+  return t.doctor.summary(errorCount(report), warnCount(report));
 }
 
 /** Render the issue list as indented lines (used by the modal, doctor, and stderr). */
@@ -260,11 +257,11 @@ export function formatIssues(report: ConfigReport): string {
 
 /** Full `nova doctor` report: health line, issues, then any info lines. */
 export function formatDoctorReport(report: ConfigReport): string {
-  const blocks = [`${bold("config check")}  ${dim(report.configPath)}`];
+  const blocks = [`${bold(t.doctor.configCheckHeader)}  ${dim(report.configPath)}`];
   if (!report.exists) {
-    blocks.push(dim("no config file yet — nova will run first-time setup on launch."));
+    blocks.push(dim(t.doctor.noConfigFile));
   } else if (report.issues.length === 0) {
-    blocks.push(green("✓ config looks good"));
+    blocks.push(green(t.doctor.looksGood));
   } else {
     blocks.push(formatIssues(report));
     blocks.push(dim(summarizeReport(report)));
@@ -284,11 +281,11 @@ export function formatDoctorReport(report: ConfigReport): string {
  */
 export function formatInvalidConfigError(report: ConfigReport): string {
   return [
-    `${bold(red("your nova config has errors and can't be used as written:"))}`,
+    `${bold(red(t.doctor.invalidHeadline))}`,
     "",
     formatIssues(report),
     "",
-    dim(`fix ${report.configPath} (or run \`nova doctor\`) and re-launch.`),
+    dim(t.doctor.invalidFixHint(report.configPath)),
   ].join("\n");
 }
 

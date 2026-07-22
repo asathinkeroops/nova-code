@@ -1,6 +1,7 @@
 import React from "react";
 import { Box, Text } from "ink";
 import { ACCENT_HEX } from "../colors.js";
+import { t } from "../i18n/index.js";
 import { LOGO, LOGO_ROW_HEX } from "./logo.js";
 
 /**
@@ -36,7 +37,7 @@ export function TrustView({ state }: { state: TrustState }): React.ReactElement 
       </Box>
       <Box marginTop={1}>
         <Text bold color={ACCENT_HEX}>
-          Do you trust the files in this folder?
+          {t.trust.question}
         </Text>
       </Box>
       <Text>{state.workspace}</Text>

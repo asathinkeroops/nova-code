@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Box, Text, useInput, useStdout } from "ink";
 import { ACCENT_HEX, BASH_HEX, SELECTION_BG_HEX, sessionBadgeColor } from "../colors.js";
+import { t } from "../i18n/index.js";
 import { normalizeDroppedImagePath, type ClipboardPaste } from "../image-paste.js";
 import { setCursorTarget } from "./cursor-target.js";
 import { setInputMouseController } from "./input-mouse.js";
@@ -283,7 +284,7 @@ export function commandTokenRange(
  * walking ↑/↓ recall; sized to whatever width the session-name badge leaves.
  */
 export function historyRule(width: number, pos: number, total: number): string {
-  const label = ` History ${pos}/${total} `;
+  const label = t.input.history(pos, total);
   const lead = Math.min(4, Math.max(0, width));
   const trail = Math.max(0, width - lead - visibleWidth(label));
   return RULE_CHAR.repeat(lead) + label + RULE_CHAR.repeat(trail);
@@ -979,9 +980,11 @@ export function InputBox({
         </Text>
       ))}
       {queuedMoreRow ? (
-        <Text dimColor>{` ↳ +${queued.length - QUEUED_MAX_ROWS} more queued`}</Text>
+        <Text dimColor>{t.input.moreQueued(queued.length - QUEUED_MAX_ROWS)}</Text>
       ) : null}
-      {matches.length > 0 && safeOffset > 0 ? <Text dimColor> ↑ {safeOffset} more</Text> : null}
+      {matches.length > 0 && safeOffset > 0 ? (
+        <Text dimColor> ↑ {t.input.moreAbove(safeOffset)}</Text>
+      ) : null}
       {matches.slice(safeOffset, safeOffset + POPUP_MAX_ROWS).map((m, i) => {
         const absIndex = i + safeOffset;
         const isSel = absIndex === effectivePopupCursor;

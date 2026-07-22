@@ -2,6 +2,7 @@ import { homedir } from "node:os";
 import { canonicalizePath, saveSettings, type Settings } from "@nova/runtime";
 import { isWithin } from "@nova/safety";
 import { dim, PURPLE_HEX } from "./colors.js";
+import { t } from "./i18n/index.js";
 import { fatalExit, type Screen } from "./screen.js";
 import { pickerArrow } from "./ui/picker.js";
 import { readCliVersion } from "./version.js";
@@ -82,30 +83,24 @@ export async function ensureWorkspaceTrust(
   screen.beginTrust({
     version: await readCliVersion(),
     workspace: wsCanon,
-    lines: [
-      "nova has not been granted access to this folder yet. Granting access",
-      "lets it read and edit files here (and in subdirectories) without",
-      "confirming each time, and runs any project hooks the folder defines.",
-      "Only trust folders you recognize — declining exits without touching",
-      "anything.",
-    ],
+    lines: t.trust.lines,
   });
 
   try {
     const choice = await screen.pickOne<{ trust: boolean }>({
       items: [{ trust: true }, { trust: false }],
-      footer: dim("↑/↓ choose · Enter confirm · Ctrl+C to exit"),
+      footer: dim(t.trust.footer),
       border: false,
       topRuleColor: PURPLE_HEX,
       render: (it, selected) => {
-        const label = it.trust ? "Yes, trust this folder" : "No, exit";
+        const label = it.trust ? t.trust.yes : t.trust.no;
         return `${pickerArrow(selected)} ${label}`;
       },
     });
 
     if (choice === null || !choice.trust) {
       // fatalExit unmounts + exits; the finally below won't run.
-      await fatalExit(screen, `workspace not trusted — exiting.\n  ${wsCanon}`, 1);
+      await fatalExit(screen, t.trust.exiting(wsCanon), 1);
     }
 
     try {
@@ -114,9 +109,9 @@ export async function ensureWorkspaceTrust(
       // A failed write shouldn't crash the session — the user already consented,
       // so trust holds for this run; it just won't be remembered next time.
       const msg = err instanceof Error ? err.message : String(err);
-      screen.card(`could not persist workspace trust: ${msg}`, {
+      screen.card(t.trust.persistFailed(msg), {
         kind: "warn",
-        title: "workspace trust",
+        title: t.trust.persistFailedTitle,
       });
     }
   } finally {

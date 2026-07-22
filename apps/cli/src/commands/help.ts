@@ -1,16 +1,26 @@
 import type { SlashCommand, SlashCommandKind } from "@nova/external";
 import { accent, cyan, dim, PURPLE_HEX } from "../colors.js";
 import type { CliContext } from "../context.js";
+import { t } from "../i18n/index.js";
 import { pickerArrow } from "../ui/picker.js";
 
-const SECTION_TITLE: Record<SlashCommandKind, string> = {
-  builtin: "Built-in",
-  project: "Project",
-  user: "User",
-  skill: "Skills",
-  mcp: "MCP",
-  plugin: "Plugins",
-};
+// Read at call time (see i18n invariant), keyed by command kind.
+function sectionTitle(kind: SlashCommandKind): string {
+  switch (kind) {
+    case "builtin":
+      return t.help.sectionBuiltin;
+    case "project":
+      return t.help.sectionProject;
+    case "user":
+      return t.help.sectionUser;
+    case "skill":
+      return t.help.sectionSkill;
+    case "mcp":
+      return t.help.sectionMcp;
+    case "plugin":
+      return t.help.sectionPlugin;
+  }
+}
 const SECTION_ORDER: SlashCommandKind[] = ["builtin", "project", "user", "skill", "mcp", "plugin"];
 
 /** One line of the /help list: either a selectable command or a static row. */
@@ -44,26 +54,20 @@ export async function handleHelp(ctx: CliContext): Promise<void> {
       24,
       Math.max(...group.map((c) => `/${c.name}${c.argHint ? ` ${c.argHint}` : ""}`.length)),
     );
-    rows.push({ selectable: false, text: dim(`${SECTION_TITLE[kind]}:`) });
+    rows.push({ selectable: false, text: dim(`${sectionTitle(kind)}:`) });
     for (const c of group) rows.push({ selectable: true, text: formatRow(c, nameWidth) });
   }
   rows.push({ selectable: false, text: "" });
-  rows.push({
-    selectable: false,
-    text: dim("Paste an image (Cmd/Ctrl+V) or drag a file in — it's inserted as a path the model reads."),
-  });
-  rows.push({
-    selectable: false,
-    text: dim("Ctrl+D or /exit to leave. /commands lists everything; /commands reload re-scans files."),
-  });
+  rows.push({ selectable: false, text: dim(t.help.pasteHint) });
+  rows.push({ selectable: false, text: dim(t.help.leaveHint) });
 
   // A picker rather than a plain pager so the current command is highlighted as
   // the list scrolls; section headers and notes are non-selectable, so ↑↓ skips
   // straight between commands. Read-only — enter and esc both just close it.
   await ctx.screen.pickOne({
     items: rows,
-    header: `${accent("/help")}  ${dim(`${all.length} command${all.length === 1 ? "" : "s"}`)}`,
-    footer: dim("↑↓ navigate · ⌃a/⌃e top/bottom · enter/esc close"),
+    header: `${accent("/help")}  ${dim(t.help.commandCount(all.length))}`,
+    footer: dim(t.help.navFooter),
     pageSize: 24,
     border: false,
     topRuleColor: PURPLE_HEX,

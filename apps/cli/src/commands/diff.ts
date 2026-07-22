@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 
 import { bold, diffSign, dim, green, PURPLE_HEX, red, yellow } from "../colors.js";
 import type { CliContext } from "../context.js";
+import { t } from "../i18n/index.js";
 import { highlightContent } from "../ui/diff.js";
 import { pickerArrow, type ViewerLine } from "../ui/picker.js";
 import { overlayNotice } from "./overlay-notice.js";
@@ -38,17 +39,6 @@ interface Change {
   y: string;
   untracked: boolean;
 }
-
-const STATUS_WORD: Record<string, string> = {
-  M: "modified",
-  A: "added",
-  D: "deleted",
-  R: "renamed",
-  C: "copied",
-  T: "typechange",
-  U: "conflict",
-  "?": "untracked",
-};
 
 /** Parse `git status --porcelain` into one {@link Change} per file. */
 function collectChanges(cwd: string, pathspec: string): Change[] {
@@ -101,10 +91,10 @@ function statusCode(c: Change): string {
 
 /** A human description of a change's state, e.g. "staged modified · unstaged" or "untracked". */
 function statusLabel(c: Change): string {
-  if (c.untracked) return dim("untracked");
+  if (c.untracked) return dim(t.diff.untracked);
   const parts: string[] = [];
-  if (c.x !== " ") parts.push(green(`staged ${STATUS_WORD[c.x] ?? c.x}`));
-  if (c.y !== " ") parts.push(yellow(`unstaged ${STATUS_WORD[c.y] ?? c.y}`));
+  if (c.x !== " ") parts.push(green(t.diff.staged(t.diff.statusWord(c.x))));
+  if (c.y !== " ") parts.push(yellow(t.diff.unstaged(t.diff.statusWord(c.y))));
   return parts.join(dim(" · "));
 }
 
@@ -264,7 +254,7 @@ export async function handleDiff(ctx: CliContext, args: string): Promise<void> {
   try {
     git(cwd, ["rev-parse", "--is-inside-work-tree"]);
   } catch {
-    ctx.screen.card(dim("not a git repository."), { title: TITLE, kind: "warn" });
+    ctx.screen.card(dim(t.diff.notGitRepo), { title: TITLE, kind: "warn" });
     return;
   }
 
@@ -282,8 +272,8 @@ export async function handleDiff(ctx: CliContext, args: string): Promise<void> {
   }
 
   if (changes.length === 0) {
-    const scope = pathspec ? ` matching "${pathspec}"` : "";
-    await overlayNotice(ctx, TITLE, [dim(`working tree clean — no changes${scope}.`)]);
+    const scope = pathspec ? t.diff.matchingScope(pathspec) : "";
+    await overlayNotice(ctx, TITLE, [dim(t.diff.cleanTree(scope))]);
     return;
   }
 
@@ -293,8 +283,8 @@ export async function handleDiff(ctx: CliContext, args: string): Promise<void> {
   for (;;) {
     const pick = await ctx.screen.pickOne<Change>({
       items: changes,
-      header: dim(`${changes.length} changed file${changes.length === 1 ? "" : "s"}:`),
-      footer: dim("↑↓ navigate · enter view diff · esc close"),
+      header: dim(t.diff.changedFiles(changes.length)),
+      footer: dim(t.diff.listFooter),
       pageSize: 12,
       initialIndex: cursor,
       render: (c, selected) => {
@@ -312,11 +302,11 @@ export async function handleDiff(ctx: CliContext, args: string): Promise<void> {
     const diff = fileDiff(cwd, pick);
     const lines: Array<string | ViewerLine> = diff
       ? buildDiffLines(diff, pick.path)
-      : [dim("no textual diff (binary file or no content change).")];
+      : [dim(t.diff.noTextualDiff)];
     await ctx.screen.viewer({
       lines,
       header: `${bold(pick.path)}  ${statusLabel(pick)}`,
-      footer: dim("↑↓/PgUp/PgDn scroll · g/G top/bottom · enter/esc/q back to list"),
+      footer: dim(t.diff.viewerFooter),
       pageSize: 24,
       border: false,
       topRuleColor: PURPLE_HEX,

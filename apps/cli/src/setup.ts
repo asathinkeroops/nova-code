@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { highlight } from "cli-highlight";
 import { DEFAULT_CONFIG_PATH, saveSettings, type Settings } from "@nova/runtime";
 import { accent, dim, rgbFg, BLUE_RGB, PURPLE_HEX } from "./colors.js";
+import { t } from "./i18n/index.js";
 import { PROVIDER_TEMPLATES, type ProviderTemplate } from "./provider-templates.js";
 import { pickerArrow } from "./ui/picker.js";
 import { fatalExit, type Screen } from "./screen.js";
@@ -66,9 +67,9 @@ async function exitForManualConfig(screen: Screen, configPath: string): Promise<
   const path = accent(configPath);
   const json = highlight(EXAMPLE_CONFIG, { language: "json", ignoreIllegals: true });
   process.stdout.write(
-    `\nTo use another provider, create your config file at: ${path}\n\n` +
-      `with settings shaped like:\n\n${json}\n\n` +
-      `Then run nova again.\n`,
+    `\n${t.setup.manualIntro(path)}\n\n` +
+      `${t.setup.manualShape}\n\n${json}\n\n` +
+      `${t.setup.manualRerun}\n`,
   );
   process.exit(0);
 }
@@ -116,21 +117,21 @@ export async function ensureSettings(
         ? (choices[0] as Choice)
         : await screen.pickOne<Choice>({
             items: choices,
-            header: "Which provider are you connecting to?",
-            footer: dim("↑/↓ to choose · Enter to confirm · Ctrl+C to abort"),
+            header: t.setup.providerQuestion,
+            footer: dim(t.setup.providerFooter),
             border: false,
             topRuleColor: PURPLE_HEX,
             render: (it, selected) => {
-              const name = it.kind === "other" ? "Other provider" : it.template.label;
+              const name = it.kind === "other" ? t.setup.otherProvider : it.template.label;
               let badge = "";
               if (it.kind === "template") {
-                if (it.template.recommended) badge = `  ${accent("★ recommended")}`;
-                else if (it.template.beta) badge = `  ${rgbFg(BLUE_RGB, "Beta")}`;
+                if (it.template.recommended) badge = `  ${accent(t.setup.recommended)}`;
+                else if (it.template.beta) badge = `  ${rgbFg(BLUE_RGB, t.setup.beta)}`;
               }
               return `${pickerArrow(selected)} ${name}${badge}`;
             },
           });
-    if (choice === null) return fatalExit(screen, "setup aborted.");
+    if (choice === null) return fatalExit(screen, t.setup.aborted);
 
     // No built-in template for third-party providers: point the user at the
     // config-file path and let them author nova.config.json themselves.
@@ -142,15 +143,15 @@ export async function ensureSettings(
     let value: string | null = null;
     while (value === null) {
       screen.setSetupPrompt({
-        label: "API key",
+        label: t.setup.apiKeyLabel,
         hint: template.apiKeyHint,
         ...(template.settings.provider ? { provider: template.settings.provider } : {}),
       });
       const answer = await screen.promptInput({ mask: true });
-      if (answer === null) await fatalExit(screen, "setup aborted.");
+      if (answer === null) await fatalExit(screen, t.setup.aborted);
       const trimmed = (answer as string).trim();
       if (trimmed.length === 0) {
-        screen.pushSetupEntry({ kind: "err", text: "✗ API key cannot be empty" });
+        screen.pushSetupEntry({ kind: "err", text: t.setup.apiKeyEmpty });
         continue;
       }
       value = trimmed;
@@ -160,10 +161,10 @@ export async function ensureSettings(
     try {
       await saveSettings(patch, configPath);
       Object.assign(settings, patch);
-      screen.pushSetupEntry({ kind: "ok", text: `✓ saved ${template.label} settings` });
+      screen.pushSetupEntry({ kind: "ok", text: t.setup.saved(template.label) });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      await fatalExit(screen, `failed to save settings: ${msg}`);
+      await fatalExit(screen, t.common.saveFailed(msg));
     }
   } finally {
     screen.endSetup();

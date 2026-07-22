@@ -1,6 +1,7 @@
 import { getSkillList } from "@nova/tools";
 import { accent, dim, PURPLE_HEX } from "../colors.js";
 import type { CliContext } from "../context.js";
+import { t } from "../i18n/index.js";
 import { pickerArrow } from "../ui/picker.js";
 
 const TITLE = "/skills";
@@ -12,13 +13,13 @@ export async function handleSkills(ctx: CliContext): Promise<void> {
     ctx.screen.viewer({
       lines: [dim(text)],
       header: accent(TITLE),
-      footer: dim("enter/esc/q close"),
+      footer: dim(t.common.footerClose),
       border: false,
       topRuleColor: PURPLE_HEX,
     });
 
   if (!ctx.settings.skills.enabled) {
-    await notice("skills disabled in settings.");
+    await notice(t.skills.disabled);
     return;
   }
   const items = getSkillList({
@@ -29,15 +30,15 @@ export async function handleSkills(ctx: CliContext): Promise<void> {
     logger: ctx.logger,
   });
   if (items.length === 0) {
-    await notice("no skills found.");
+    await notice(t.skills.none);
     return;
   }
   const sorted = [...items].sort((a, b) => a.name.localeCompare(b.name));
   const nameWidth = Math.min(24, Math.max(...sorted.map((s) => s.name.length)));
   await ctx.screen.pickOne({
     items: sorted,
-    header: `${accent(TITLE)}  ${dim(`${sorted.length} skill${sorted.length === 1 ? "" : "s"}`)}`,
-    footer: dim("↑↓ navigate · ⌃a/⌃e top/bottom · enter/esc close"),
+    header: `${accent(TITLE)}  ${dim(t.skills.count(sorted.length))}`,
+    footer: dim(t.common.footerNavTopBottomClose),
     pageSize: 24,
     border: false,
     topRuleColor: PURPLE_HEX,

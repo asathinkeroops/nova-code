@@ -1,9 +1,8 @@
 import { MAGENTA_RGB, magenta } from "./colors.js";
-import { WORKING_WORDS } from "./constants.js";
+import { t } from "./i18n/index.js";
 import {
   armToolSpinner,
   clearToolSpinner,
-  INTERRUPT_HINT,
   refreshTaskFooter,
   refreshTodoFooter,
   stopSpinner,
@@ -37,9 +36,9 @@ export function registerUiHooks(ctx: CliContext): void {
     const notice = ctx.pendingAutoCompactNotice;
     ctx.pendingAutoCompactNotice = null;
     if (notice) {
-      ctx.screen.card(`context ${notice.before} → ${notice.after} msgs`, {
+      ctx.screen.card(t.hooks.autoCompact(notice.before, notice.after), {
         kind: "info",
-        title: "auto-compact",
+        title: t.hooks.autoCompactTitle,
       });
     }
   });
@@ -50,8 +49,8 @@ export function registerUiHooks(ctx: CliContext): void {
     // counts total task time rather than resetting each model-call / tool phase.
     const startedAt = (ctx.taskStartedAt ??= Date.now());
     ctx.spinner = ctx.screen.startSpinner(
-      { words: WORKING_WORDS, tint: MAGENTA_RGB, colorize: magenta },
-      INTERRUPT_HINT,
+      { words: t.spinner.workingWords, tint: MAGENTA_RGB, colorize: magenta },
+      t.spinner.interruptHint,
       startedAt,
     );
   });
@@ -68,9 +67,9 @@ export function registerUiHooks(ctx: CliContext): void {
       if (!isUserAction) {
         const seconds = (durationMs / 1000).toFixed(1);
         const word = ctx.spinner?.label() ?? "working";
-        ctx.screen.card(`${word} · ${seconds}s · ${error}`, {
+        ctx.screen.card(t.hooks.requestFailed(word, seconds, error), {
           kind: "error",
-          title: "request failed",
+          title: t.hooks.requestFailedTitle,
         });
       }
     }
@@ -109,9 +108,9 @@ export function registerUiHooks(ctx: CliContext): void {
   ctx.agent.on("error", ({ message }) => {
     ctx.taskStartedAt = null;
     stopSpinner(ctx);
-    ctx.screen.card(`${message}\nsee log: ${ctx.logPath}`, {
+    ctx.screen.card(t.hooks.loopTerminated(message, ctx.logPath), {
       kind: "error",
-      title: "loop terminated",
+      title: t.hooks.loopTerminatedTitle,
     });
   });
 }

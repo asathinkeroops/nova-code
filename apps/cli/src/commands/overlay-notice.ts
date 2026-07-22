@@ -1,5 +1,6 @@
 import { accent, dim, PURPLE_HEX } from "../colors.js";
 import type { CliContext } from "../context.js";
+import { t } from "../i18n/index.js";
 
 /**
  * Show a command's "nothing interactive to display" state — empty, disabled, or
@@ -16,7 +17,7 @@ export function overlayNotice(ctx: CliContext, title: string, lines: string[]): 
   return ctx.screen.viewer({
     lines,
     header: accent(title),
-    footer: dim("enter/esc/q close"),
+    footer: dim(t.common.footerClose),
     border: false,
     topRuleColor: PURPLE_HEX,
   });

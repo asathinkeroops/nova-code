@@ -4,6 +4,7 @@ import { estimateTextTokens, resolveProfile, toWireTools } from "@nova/core";
 import { resolveContextWindowSize } from "@nova/runtime";
 import { accent, blue, bold, cyan, dim, green, magenta, PURPLE_HEX, yellow } from "../colors.js";
 import type { CliContext } from "../context.js";
+import { t } from "../i18n/index.js";
 import { contextBar, formatPercent, formatTokenCount } from "../ui/status-format.js";
 
 const TITLE = "/context";
@@ -83,14 +84,19 @@ export async function handleContext(ctx: CliContext): Promise<void> {
   const freeSpace = Math.max(0, threshold - used);
 
   const rows: Row[] = [
-    { label: "system prompt", tokens: systemTokens, color: blue },
-    { label: "memory files", tokens: memoryTokens, color: green, hideWhenEmpty: true },
-    { label: "skills", tokens: skillsTokens, color: yellow, hideWhenEmpty: true },
-    { label: "tools", tokens: toolsTokens, color: cyan },
-    { label: "mcp tools", tokens: mcpTokens, color: magenta, hideWhenEmpty: true },
-    { label: "messages", tokens: messagesTokens, color: accent },
-    { label: "free space", tokens: freeSpace, color: dim },
-    { label: "autocompact buffer", tokens: autocompactBuffer, color: dim, hideWhenEmpty: true },
+    { label: t.contextView.labelSystemPrompt, tokens: systemTokens, color: blue },
+    { label: t.contextView.labelMemoryFiles, tokens: memoryTokens, color: green, hideWhenEmpty: true },
+    { label: t.contextView.labelSkills, tokens: skillsTokens, color: yellow, hideWhenEmpty: true },
+    { label: t.contextView.labelTools, tokens: toolsTokens, color: cyan },
+    { label: t.contextView.labelMcpTools, tokens: mcpTokens, color: magenta, hideWhenEmpty: true },
+    { label: t.contextView.labelMessages, tokens: messagesTokens, color: accent },
+    { label: t.contextView.labelFreeSpace, tokens: freeSpace, color: dim },
+    {
+      label: t.contextView.labelAutocompactBuffer,
+      tokens: autocompactBuffer,
+      color: dim,
+      hideWhenEmpty: true,
+    },
   ];
 
   const pad = (s: string): string => dim(s.padEnd(20, " "));
@@ -115,7 +121,7 @@ export async function handleContext(ctx: CliContext): Promise<void> {
   await ctx.screen.viewer({
     lines,
     header: `${accent(TITLE)}  ${dim(ctx.settings.model)}`,
-    footer: dim("↑↓ scroll · enter/esc/q close"),
+    footer: dim(t.common.footerScrollClose),
     pageSize: 24,
     border: false,
     topRuleColor: PURPLE_HEX,

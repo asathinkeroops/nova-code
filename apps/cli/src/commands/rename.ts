@@ -1,4 +1,5 @@
 import type { CliContext } from "../context.js";
+import { t } from "../i18n/index.js";
 import {
   clearSessionName,
   normalizeSessionName,
@@ -19,8 +20,8 @@ export async function handleRename(ctx: CliContext, arg: string): Promise<void> 
   if (input === "") {
     ctx.screen.card(
       ctx.sessionName
-        ? `current name: ${ctx.sessionName}`
-        : "no custom name set. usage: /rename <name> (or /rename clear)",
+        ? t.rename.currentName(ctx.sessionName)
+        : t.rename.noNameSet,
       { title: TITLE },
     );
     return;
@@ -30,13 +31,13 @@ export async function handleRename(ctx: CliContext, arg: string): Promise<void> 
     await clearSessionName(ctx.session.id);
     ctx.sessionName = null;
     ctx.screen.setSessionName(null);
-    ctx.screen.card("session name cleared", { title: TITLE });
+    ctx.screen.card(t.rename.cleared, { title: TITLE });
     return;
   }
 
   const name = normalizeSessionName(input);
   if (name.length === 0) {
-    ctx.screen.card("name is empty after trimming whitespace", {
+    ctx.screen.card(t.rename.emptyError, {
       kind: "warn",
       title: TITLE,
     });
@@ -45,5 +46,5 @@ export async function handleRename(ctx: CliContext, arg: string): Promise<void> 
   await saveSessionName(ctx.session.id, name);
   ctx.sessionName = name;
   ctx.screen.setSessionName(name);
-  ctx.screen.card(`renamed session to "${name}"`, { title: TITLE });
+  ctx.screen.card(t.rename.renamedTo(name), { title: TITLE });
 }

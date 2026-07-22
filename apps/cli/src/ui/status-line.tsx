@@ -4,6 +4,7 @@ import { basename } from "node:path";
 import { useShallow } from "zustand/react/shallow";
 import { computeCost, formatMoney } from "@nova/observability";
 import { ACCENT_HEX } from "../colors.js";
+import { t } from "../i18n/index.js";
 import type { AppStoreApi } from "./store.js";
 import {
   cacheHitRate,
@@ -12,7 +13,7 @@ import {
   fitSegments,
   formatPercent,
   formatTokenCount,
-  SHELL_MODE_INDICATOR,
+  shellModeIndicator,
   type StatusSegment,
 } from "./status-format.js";
 
@@ -101,10 +102,11 @@ export function StatusLine({ store, shellMode = false }: StatusLineProps): React
   // while a `!` line is being typed. The second row stays blank so the pinned
   // two-row height never changes.
   if (shellMode) {
+    const shell = shellModeIndicator();
     return (
       <Box flexDirection="column">
         <Box>
-          <Text color={SHELL_MODE_INDICATOR.color}>{` ${SHELL_MODE_INDICATOR.label}`}</Text>
+          <Text color={shell.color}>{` ${shell.label}`}</Text>
         </Box>
         <Box>
           <Text>{" "}</Text>
@@ -163,7 +165,7 @@ export function StatusLine({ store, shellMode = false }: StatusLineProps): React
   if (accountBalance) {
     usage.push({
       icon: "▰",
-      text: `${formatMoney(accountBalance.total, accountBalance.currency)} balance`,
+      text: `${formatMoney(accountBalance.total, accountBalance.currency)} ${t.status.usageBalance}`,
       color: accountBalance.available ? "green" : "yellow",
     });
   }
@@ -172,14 +174,18 @@ export function StatusLine({ store, shellMode = false }: StatusLineProps): React
     // A geometric glyph (not an emoji like ⚡): emoji render double-width but
     // `visibleWidth` counts them as 1, so the layout would under-reserve space
     // and leave a visible gap after the icon.
-    usage.push({ icon: "◆", text: `${formatPercent(hitRate)} cache`, color: "cyan" });
+    usage.push({ icon: "◆", text: `${formatPercent(hitRate)} ${t.status.usageCache}`, color: "cyan" });
   }
   const promptTotal = cacheReadTokens + cacheCreationTokens + uncachedInputTokens;
   if (promptTotal > 0) {
-    usage.push({ icon: "↑", text: `${formatTokenCount(promptTotal)} in`, color: "blue" });
+    usage.push({ icon: "↑", text: `${formatTokenCount(promptTotal)} ${t.status.usageIn}`, color: "blue" });
   }
   if (sessionOutputTokens > 0) {
-    usage.push({ icon: "↓", text: `${formatTokenCount(sessionOutputTokens)} out`, color: "magenta" });
+    usage.push({
+      icon: "↓",
+      text: `${formatTokenCount(sessionOutputTokens)} ${t.status.usageOut}`,
+      color: "magenta",
+    });
   }
   if (costRates && promptTotal + sessionOutputTokens > 0) {
     const cost = computeCost(
@@ -196,7 +202,7 @@ export function StatusLine({ store, shellMode = false }: StatusLineProps): React
       // A mid-tone amber hex rather than `yellowBright`: bright yellow is nearly
       // white and washes out on a light terminal background. This amber keeps
       // contrast on both light and dark themes (same tactic as ACCENT_HEX above).
-      text: `${formatMoney(cost.total, costRates.currency)} cost`,
+      text: `${formatMoney(cost.total, costRates.currency)} ${t.status.usageCost}`,
       color: "#d97706",
     });
   }

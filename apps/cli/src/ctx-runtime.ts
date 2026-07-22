@@ -3,7 +3,8 @@ import { homedir } from "node:os";
 import { resolveBudget, resolveProfile } from "@nova/core";
 import { resolveContextWindowSize, resolveModelId } from "@nova/runtime";
 import { ACCENT_RGB, accent } from "./colors.js";
-import { TOOL_SPINNER_DELAY_MS, WORKING_WORDS } from "./constants.js";
+import { TOOL_SPINNER_DELAY_MS } from "./constants.js";
+import { t } from "./i18n/index.js";
 import { resolveSessionRates } from "./commands/usage.js";
 import type { CliContext } from "./ctx-types.js";
 
@@ -71,9 +72,6 @@ export async function refreshTaskFooter(ctx: CliContext): Promise<void> {
   ctx.screen.setTasks(await ctx.taskStore.list());
 }
 
-/** Default spinner hint shown while a turn / tool is running. */
-export const INTERRUPT_HINT = "esc to interrupt";
-
 export function stopSpinner(ctx: CliContext): void {
   if (ctx.spinner) {
     ctx.spinner.stop();
@@ -91,8 +89,8 @@ export function armToolSpinner(ctx: CliContext): void {
   ctx.toolSpinnerTimer = setTimeout(() => {
     ctx.toolSpinnerTimer = null;
     ctx.spinner = ctx.screen.startSpinner(
-      { words: WORKING_WORDS, tint: ACCENT_RGB, colorize: accent },
-      INTERRUPT_HINT,
+      { words: t.spinner.workingWords, tint: ACCENT_RGB, colorize: accent },
+      t.spinner.interruptHint,
       ctx.taskStartedAt ?? undefined,
     );
   }, TOOL_SPINNER_DELAY_MS);

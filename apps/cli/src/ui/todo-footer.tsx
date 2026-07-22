@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Box, Text } from "ink";
 import type { Todo, TodoStatus } from "@nova/tools";
 import { MAGENTA_RGB, magenta } from "../colors.js";
+import { t } from "../i18n/index.js";
 import { Spinner } from "./spinner.js";
 import type { SpinnerSpec } from "./store.js";
 
@@ -80,10 +81,7 @@ function SummaryRow({
   return (
     <Text>
       {"     "}
-      <Text dimColor>
-        ... {hidden} More, {counts.completed} completed, {counts.pending} pending,{" "}
-        {counts.in_progress} in_progress
-      </Text>
+      <Text dimColor>{t.footer.summary(hidden, counts.completed, counts.pending, counts.in_progress)}</Text>
     </Text>
   );
 }
@@ -134,12 +132,12 @@ export function TodoFooter({ todos }: TodoFooterProps): React.ReactElement | nul
     ? {
         id: -1,
         label: {
-          words: [`TODO: ${spinnerTodo.description}`],
+          words: [`${t.footer.todoLabel} ${spinnerTodo.description}`],
           tint: MAGENTA_RGB,
           colorize: magenta,
         },
         startedAt,
-        activeWord: `TODO: ${spinnerTodo.description}...`,
+        activeWord: `${t.footer.todoLabel} ${spinnerTodo.description}...`,
       }
     : null;
 
