@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Nova — 为 DeepSeek 从头设计的开源终端编程 Agent。省钱、安全、灵活刻进架构:前缀缓存自动命中、操作系统级沙箱、一个 Markdown 文件即一项能力。">
+<meta name="description" content="Nova-Code — 为 DeepSeek 从头设计的开源终端编程 Agent。省钱、安全、灵活刻进架构：操作系统级沙箱、一个 Markdown 文件即一项能力。">
 <link rel="icon" href="./app-icon-v2.webp" type="image/webp">
-<title>Nova — 为 DeepSeek 而生的终端编程 Agent</title>
+<title>Nova-Code — 为 DeepSeek 而生的终端编程 Agent</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
@@ -145,7 +145,7 @@
   }
   .brand { display: flex; align-items: center; gap: 11px; margin-right: auto; }
   .brand .mark {
-    width: 32px; height: 32px;
+    width: 48px; height: 48px;
     filter: drop-shadow(0 6px 14px rgba(120,60,220,.55));
   }
   /* Keep circular cropping only where the icon is used as an embedded planet. */
@@ -941,9 +941,9 @@
 
 <header class="nav" id="nav">
   <div class="wrap nav-inner">
-    <a class="brand" href="#top" aria-label="Nova 首页">
-      <img class="mark" src="./app-icon-v2.webp" alt="Nova logo" width="32" height="32">
-      <span class="word"><b>&gt;_</b> nova</span>
+    <a class="brand" href="#top" aria-label="Nova-Code 首页">
+      <img class="mark" src="./app-icon-v2.webp" alt="Nova-Code logo" width="48" height="48">
+      <span class="word">Nova-Code</span>
     </a>
     <nav class="nav-links">
       <a href="#pillars">核心能力</a>
@@ -975,8 +975,8 @@
       <h1 class="hero-title"><span class="title-line">为 DeepSeek 而生的</span><span class="hl title-line">终端编程 Agent</span></h1>
       <div class="hero-grid">
         <div class="hero-copy">
-        <span class="badge"><span class="dot"></span>为 <b>DeepSeek</b> 从头设计 · Apache 2.0 开源</span>
-        <p class="hero-sub">大多数工具优先适配 Claude，DeepSeek 只是"能用"。Nova 反过来——把<b>省钱、安全、灵活</b>刻进架构，假设模型会出错，让每一层都为恢复而设计。</p>
+        <span class="badge"><span class="dot"></span>为 DeepSeek 原生设计 · Apache 2.0 开源</span>
+        <p class="hero-sub">架构级适配 DeepSeek，同等预算跑出数倍吞吐，效果丝毫不减。MCP、Skill、子代理、Goal、Hooks 一应俱全，命令行兼容 Claude Code，几乎零学习成本。</p>
         <div class="hero-actions">
           <a class="btn-primary" href="https://github.com/asathinkeroops/nova-code" target="_blank" rel="noopener">
             <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5A11.5 11.5 0 0 0 .5 12a11.5 11.5 0 0 0 7.86 10.92c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.53-1.34-1.29-1.7-1.29-1.7-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.2 1.77 1.2 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.7 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.43-2.7 5.4-5.26 5.69.41.36.78 1.05.78 2.12v3.14c0 .31.2.67.8.56A11.5 11.5 0 0 0 23.5 12 11.5 11.5 0 0 0 12 .5Z"/></svg>
@@ -991,17 +991,17 @@
         </div>
         <div class="hero-meta">
           <span>TypeScript 严格模式</span>
-          <span>pnpm 单仓 · 约 20 个包</span>
+          <span>pnpm 单仓 · 约 11 个包</span>
           <span>CLI 二进制 <code style="font-family:var(--font-mono);color:#E7A6FF">nova</code></span>
         </div>
         </div>
 
         <!-- Live terminal -->
-        <div class="term" id="term" aria-label="Nova 会话演示">
+        <div class="term" id="term" aria-label="Nova-Code 会话演示">
           <canvas data-stars="70"></canvas>
           <div class="term-bar">
             <span class="tl r"></span><span class="tl y"></span><span class="tl g"></span>
-            <span class="tt"><img src="./app-icon-v2.webp" alt="">nova — DeepSeek-native session</span>
+            <span class="tt"><img src="./app-icon-v2.webp" alt="">nova-code — DeepSeek-native session（示例）</span>
           </div>
           <div class="term-body" id="termBody"></div>
           <div class="term-foot">
@@ -1020,14 +1020,14 @@
       <div class="band-head reveal">
         <span class="eyebrow">三件最在乎的事</span>
         <h2>省钱、安全、灵活——不是堆功能，是一套架构</h2>
-        <p>挑一个终端 AI 编程工具，开发者最在意的三件事。Nova 把它们做成了设计里的硬约束。</p>
+        <p>终端 AI 编程工具，开发者最在意的三件事——Nova 把它们做进了架构底层。</p>
       </div>
       <div class="pillar-grid">
         <article class="pillar reveal">
           <div class="pillar-visual"><img src="./nova-prefix-cache.webp" alt="" width="1440" height="919" loading="lazy" decoding="async"></div>
           <div class="k">01 · 省钱</div>
-          <h3>缓存自动命中 <em>prefix cache</em></h3>
-          <p>为 DeepSeek 协议级适配。消息历史只追加、绝不原地改，连写盘都做成前缀感知——服务端缓存稳稳命中，默认关掉激进压缩。</p>
+          <h3>前缀缓存自动命中 <em>prefix cache</em></h3>
+          <p>为 DeepSeek 协议级适配。消息历史只追加、绝不原地改，写盘也是前缀感知——服务端缓存稳稳命中。</p>
           <div class="metric"><b>96%+</b> 前缀缓存命中率</div>
         </article>
         <article class="pillar reveal">
@@ -1041,7 +1041,7 @@
           <div class="pillar-visual skill-visual" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span></div>
           <div class="k">03 · 灵活</div>
           <h3>一个 .md 文件就是一项能力 <em>declarative</em></h3>
-          <p>放一个带 frontmatter 的 Markdown，它立刻变成运行时能力:子代理、斜杠命令、技能。不改源码、不重编译,提交到 Git 即团队共享。</p>
+          <p>放一个带 frontmatter 的 Markdown，它立刻变成运行时能力：子代理、斜杠命令、技能。不改源码、不重编译，提交到 Git 即团队共享。</p>
           <div class="metric"><b>0 行</b> 代码即可扩展</div>
         </article>
       </div>
@@ -1053,38 +1053,38 @@
     <div class="wrap">
       <div class="band-head reveal">
         <span class="eyebrow">Design pillars</span>
-        <h2>五根设计支柱,长在一套干净架构上</h2>
-        <p>统一的 hook 扩展点、严格单向的包依赖、全链路 schema 校验边界——核心循环不碰任何模型 SDK 与界面。</p>
+        <h2>五根设计支柱，长在一套干净架构上</h2>
+        <p>统一的 Hook 扩展点、严格的依赖方向、全链路类型校验——核心引擎不绑定任何模型 SDK 与 UI。</p>
       </div>
       <div class="index">
         <div class="row reveal">
           <div class="num">01</div>
           <div class="rtitle"><h3>Append-only 架构</h3><div class="sub">zero-cost prefix caching</div></div>
-          <div class="rdesc">每一字节历史写入即不可变,由单一 <code>appendMessage</code> 治理。压缩不截断历史,只追加一个 <code>&lt;compacted&gt;</code> 边界,归档完整保留。系统提示词全程冻结,缓存永不塌陷。</div>
+          <div class="rdesc">每一字节历史写入即不可变，由单一 <code>appendMessage</code> 治理。压缩不截断历史，只追加一个 <code>&lt;compacted&gt;</code> 边界，归档完整保留。系统提示词全程冻结，缓存永不塌陷。</div>
         </div>
         <div class="row reveal">
           <div class="num">02</div>
           <div class="rtitle"><h3>纵深防御</h3><div class="sub">every layer assumes failure</div></div>
-          <div class="rdesc">模型不可靠,系统必须优雅恢复。<code>max_tokens</code> 是暂停而非崩溃,自动续写;每个 tool_use 都配对 tool_result;字段名写错也照跑。
+          <div class="rdesc">模型不可靠，系统必须优雅恢复。<code>max_tokens</code> 是暂停而非崩溃，自动续写;每个 tool_use 都配对 tool_result;字段名写错也照跑。
             <div class="chips"><span class="chip">truncation 续写</span><span class="chip">tool_result 兜底</span><span class="chip">read-before-edit</span><span class="chip">mtime 漂移检测</span></div>
           </div>
         </div>
         <div class="row reveal">
           <div class="num">03</div>
           <div class="rtitle"><h3>Agent 化一切</h3><div class="sub">sub-agents as first-class</div></div>
-          <div class="rdesc">子代理是核心原语:<code>explore</code> / <code>plan</code> 只读、<code>general</code> 全能,双层强制权限。<code>/goal</code> 用独立校验子代理跑真实测试,输出 <code>VERDICT: MET</code> 才收工。
+          <div class="rdesc">子代理是核心原语：<code>explore</code> / <code>plan</code> 只读、<code>general-purpose</code> 全能，双层强制权限。<code>/goal</code> 用独立校验子代理跑真实测试，输出 <code>VERDICT: MET</code> 才收工。
             <div class="chips"><span class="chip">3 种内置类型</span><span class="chip">goal 自动纠错</span><span class="chip">AI 风险分级</span><span class="chip">实时进度流</span></div>
           </div>
         </div>
         <div class="row reveal">
           <div class="num">04</div>
           <div class="rtitle"><h3>真实代码智能</h3><div class="sub">LSP, not grep</div></div>
-          <div class="rdesc">目前唯一内置完整 LSP 客户端的开源 Agent。自建 JSON-RPC 传输、多语言服务多路复用,提供 IDE 级的跳转定义、类型悬停、引用查找与工作区符号——模型无需靠正则猜文件位置。</div>
+          <div class="rdesc">极少数将完整 LSP 作为一等工具内置的开源 Agent。自建 JSON-RPC 传输、多语言服务多路复用，提供 IDE 级的跳转定义、类型悬停、引用查找与工作区符号——模型无需靠正则猜文件位置。</div>
         </div>
         <div class="row reveal">
           <div class="num">05</div>
-          <div class="rtitle"><h3>OS 级安全,无摩擦</h3><div class="sub">safe to enable by default</div></div>
-          <div class="rdesc">封装 Seatbelt 与 bubblewrap 于内核层:写入限制、读黑名单、网络隔离、违规可见。设计成永不阻塞你——平台不支持则静默降为空操作,单条命令包装失败仍照常执行。</div>
+          <div class="rtitle"><h3>OS 级安全，无摩擦</h3><div class="sub">safe to enable by default</div></div>
+          <div class="rdesc">封装 Seatbelt 与 bubblewrap 于内核层：写入限制、读黑名单、网络隔离、违规可见。设计成永不阻塞你——平台不支持则静默降为空操作，单条命令包装失败仍照常执行。</div>
         </div>
       </div>
     </div>
@@ -1096,7 +1096,7 @@
       <div class="ext-copy reveal">
         <span class="eyebrow">声明式扩展</span>
         <h2>放一个 Markdown,就多一项能力</h2>
-        <p>Nova 的扩展哲学只有一句话:带 frontmatter 的 <code style="font-family:var(--font-mono);color:var(--accent)">.md</code> 文件,立刻变成运行时能力。所有外部能力都走声明式、零代码的入口,并共享同一道权限门。</p>
+        <p>Nova 的扩展哲学只有一句话：带 frontmatter 的 <code style="font-family:var(--font-mono);color:var(--accent)">.md</code> 文件，立刻变成运行时能力。所有外部能力都走声明式、零代码的入口，并共享同一道权限门。</p>
         <ul class="ext-list">
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span><b>子代理、斜杠命令、技能</b>——同一套模式定义</span></li>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span>兼容 Claude Code 的<b>生命周期 Hook 与 MCP 桥接</b></span></li>
@@ -1132,12 +1132,12 @@
         <h2>不只是 CLI,更像一个开发平台</h2>
       </div>
       <div class="caps reveal">
-        <div class="cap"><div class="ct"><span class="g"></span>多会话热切换</div><p><code>/resume</code> 交互式挑选历史会话,完整迁移 Agent 状态;<code>/clear</code> 开新会话而不丢旧的。</p></div>
-        <div class="cap"><div class="ct"><span class="g"></span>快照 + /rewind</div><p>写前 SHA-256 内容寻址快照。回滚同时还原对话与文件,并自动检测外部改动冲突。</p></div>
-        <div class="cap"><div class="ct"><span class="g"></span>Cron 调度</div><p>Agent 自建定时任务,支持 <code>5m</code> 间隔或 cron 表达式,<code>/resume</code> 时自动重新装载。</p></div>
-        <div class="cap"><div class="ct"><span class="g"></span>任务依赖图</div><p>跨会话持久化的任务图,带 <code>blockedBy</code> 依赖边,多个任务可并发进行中。</p></div>
+        <div class="cap"><div class="ct"><span class="g"></span>多会话热切换</div><p><code>/resume</code> 交互式挑选历史会话，完整迁移 Agent 状态；<code>/clear</code> 开新会话而不丢旧的。</p></div>
+        <div class="cap"><div class="ct"><span class="g"></span>快照 + /rewind</div><p>写前 SHA-256 内容寻址快照。回滚同时还原对话与文件，并自动检测外部改动冲突。</p></div>
+        <div class="cap"><div class="ct"><span class="g"></span>Cron 调度</div><p>Agent 自建定时任务，支持 <code>5m</code> 间隔或 cron 表达式，<code>/resume</code> 时自动重新装载。</p></div>
+        <div class="cap"><div class="ct"><span class="g"></span>任务依赖图</div><p>跨会话持久化的任务图，带 <code>blockedBy</code> 依赖边，多个任务可并发进行中。</p></div>
         <div class="cap"><div class="ct"><span class="g"></span>插件生态</div><p><code>nova plugin install</code> 兼容 Claude Code 插件格式:命令、子代理、技能、Hook、MCP、LSP。</p></div>
-        <div class="cap"><div class="ct"><span class="g"></span>Headless JSONL 评测</div><p><code>nova -p --format jsonl</code> 在 CI 里跑完整 Agent 循环,复用同一套 hook 与工具栈。</p></div>
+        <div class="cap"><div class="ct"><span class="g"></span>Headless JSONL 评测</div><p><code>nova -p "…" --output-format jsonl</code> 在 CI 里跑完整 Agent 循环，复用同一套 hook 与工具栈。</p></div>
       </div>
     </div>
   </section>
@@ -1148,12 +1148,12 @@
       <div class="band-head reveal">
         <span class="eyebrow">同类对比</span>
         <h2>把可靠性当成第一等的事</h2>
-        <p>许多能力,Nova 是开源阵营里唯一或最完整的一个。</p>
+        <p>许多能力 Nova 是开源阵营里唯一或最完整的一个（对比状态截至 2026 年，各家仍在演进）。</p>
       </div>
       <div class="cmp-wrap reveal">
         <table class="cmp">
           <thead>
-            <tr><th>能力</th><th class="nova">Nova</th><th>Claude Code</th><th>Aider</th><th>Cline</th></tr>
+            <tr><th>能力</th><th class="nova">Nova-Code</th><th>Claude Code</th><th>Aider</th><th>Cline</th></tr>
           </thead>
           <tbody>
             <tr><td>LSP 代码智能</td><td class="nova-col yes">✓ 一等工具</td><td class="no">仅 grep</td><td class="no">仅 grep</td><td class="no">外部</td></tr>
@@ -1173,9 +1173,9 @@
   <section class="cta-final">
     <div class="hero-orbs"><span class="o1" style="left:50%;top:-40px;transform:translateX(-50%)"></span></div>
     <div class="wrap" style="position:relative;z-index:1">
-      <img class="planet reveal" src="./app-icon-v2.webp" alt="Nova logo" width="96" height="96">
+      <img class="planet reveal" src="./app-icon-v2.webp" alt="Nova-Code logo" width="96" height="96">
       <h2 class="reveal">如果你在用 DeepSeek 写代码</h2>
-      <p class="reveal">一个假设模型会出错、优雅恢复、绝不丢失你工作的开源 Agent 运行时。去试试,顺手点个 Star。</p>
+      <p class="reveal">架构级适配 DeepSeek，MCP、Skill、子代理、Goal、Hooks 全内置，命令行兼容 Claude Code——省钱省心，还不丢工作。试试看，顺手 Star。</p>
       <div class="row-btns reveal">
         <a class="btn-primary" href="https://github.com/asathinkeroops/nova-code" target="_blank" rel="noopener">
           <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5A11.5 11.5 0 0 0 .5 12a11.5 11.5 0 0 0 7.86 10.92c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.53-1.34-1.29-1.7-1.29-1.7-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.2 1.77 1.2 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.7 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.43-2.7 5.4-5.26 5.69.41.36.78 1.05.78 2.12v3.14c0 .31.2.67.8.56A11.5 11.5 0 0 0 23.5 12 11.5 11.5 0 0 0 12 .5Z"/></svg>
@@ -1193,15 +1193,15 @@
 <footer class="foot">
   <div class="wrap foot-inner">
     <div class="foot-brand">
-      <img class="mark" src="./app-icon-v2.webp" alt="Nova logo" width="28" height="28">
-      <span class="word">nova</span>
+      <img class="mark" src="./app-icon-v2.webp" alt="Nova-Code logo" width="28" height="28">
+      <span class="word">Nova-Code</span>
       <span style="color:var(--faint);font-size:.86rem;font-family:var(--font-mono)">· 终端编程 Agent</span>
     </div>
     <div class="foot-meta">
       <span>Apache 2.0</span>
       <a href="https://github.com/asathinkeroops/nova-code" target="_blank" rel="noopener">GitHub</a>
       <span>Built for DeepSeek</span>
-      <span>© 2026 Nova</span>
+      <span>© 2026 Nova-Code</span>
     </div>
   </div>
 </footer>
@@ -1656,8 +1656,8 @@
   // ---- typing terminal ----
   var body = document.getElementById("termBody");
   var script = [
-    { d: 40,  html: '<span class="prm">$</span> <span class="u">nova</span>' },
-    { d: 260, html: '<span class="tok">✦ nova</span> <span class="dim">— DeepSeek-native coding agent · sandbox on</span>' },
+    { d: 40,  html: '<span class="prm">$</span> <span class="u">nova-code</span>' },
+    { d: 260, html: '<span class="tok">✦ nova-code</span> <span class="dim">— DeepSeek-native coding agent · sandbox on</span>' },
     { type: true, d: 22, html: '<span class="prm">›</span> 给 auth 模块加上速率限制,并跑测试确认' },
     { d: 340, html: '<span class="tag">● read</span> <span class="dim">packages/api/src/auth.ts</span>' },
     { d: 300, html: '<span class="tag">● lsp</span>  <span class="dim">references rateLimit →</span> <span class="tok">3 处调用</span>' },
