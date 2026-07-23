@@ -70,6 +70,7 @@ export const syntheticKindSchema = z.enum([
   "todo-reminder",
   "task-reminder",
   "background-notifier",
+  "plan-mode",
   "interrupted",
   "goal-eval",
   "compacted",

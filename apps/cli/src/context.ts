@@ -60,6 +60,7 @@ import {
   resolvePermissionRules,
 } from "./permissions.js";
 import { classifyCommandRisk } from "./auto-classify.js";
+import { makePlanModeReminder } from "./plan-mode-reminder.js";
 import { loadAgents } from "./agents.js";
 import { loadPlugins } from "./plugins/loader.js";
 import { DEFAULT_PLUGIN_CACHE_DIR } from "./plugins/install.js";
@@ -1031,6 +1032,12 @@ export async function createContext(
   registerInterject(ctx.agent, makeTodoReminder(todoStore));
   registerInterject(ctx.agent, makeTaskReminder(taskStore));
   ctx.agent.on("pre_request", makeBackgroundNotifier(backgroundManager));
+  // Announce plan-mode enter/leave on the next real request (lazy, trigger-
+  // agnostic). Registered AFTER the background notifier so that on the rare turn
+  // where both want to inject, the notifier wins the first-non-undefined-wins
+  // race and this reminder self-heals by deferring to the next request (its
+  // `announced` flag isn't advanced because the hook never runs).
+  ctx.agent.on("pre_request", makePlanModeReminder(() => ctx.screen.getPermissionMode()));
 
   // Push completion: when a background command finishes while the agent is idle,
   // nudge the REPL to wake and react (the notifier above injects the output on
