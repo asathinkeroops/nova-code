@@ -812,7 +812,7 @@
   .platform .eyebrow, .platform .row .num, .platform .row .rtitle .sub { color: #c6a2ff; }
   .platform .row { border-color: rgba(219,201,255,.12); }
   .platform .row:last-child { border-bottom-color: rgba(219,201,255,.12); }
-  .platform .row:hover { background: rgba(255,255,255,.035); box-shadow: inset 3px 0 0 #a855f7; }
+  .platform .row:hover { background: rgba(168,85,247,.07); }
   .platform .row .rdesc code { background: rgba(168,85,247,.12); color: #d7b9ff; }
   .platform .chip { background: rgba(255,255,255,.045); border-color: rgba(221,204,255,.14); color: rgba(235,228,248,.76); }
   .platform .caps { background: rgba(220,202,255,.1); border-color: rgba(220,202,255,.1); box-shadow: 0 28px 90px -42px rgba(94,36,190,.72); }
@@ -824,8 +824,8 @@
     display: grid; grid-template-columns: 68px 1fr 1.15fr; gap: 28px; align-items: start;
     padding: 30px 0; border-top: 1px solid var(--line-strong);
   }
-  .row { transition: padding-left .25s ease, padding-right .25s ease, background .25s ease; }
-  .row:hover { padding-left: 14px; padding-right: 14px; background: color-mix(in srgb, var(--surface) 68%, transparent); box-shadow: inset 3px 0 0 var(--accent); }
+  .row { transition: background .3s ease; }
+  .row:hover { background: color-mix(in srgb, var(--surface) 60%, transparent); }
   .row:last-child { border-bottom: 1px solid var(--line-strong); }
   @media (max-width: 780px) { .row { grid-template-columns: 48px 1fr; }
     .row .rdesc { grid-column: 1 / -1; padding-left: 0; } }
