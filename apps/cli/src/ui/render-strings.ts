@@ -744,7 +744,7 @@ export function renderItemToString(item: RenderItem, width: number): string {
     case "user-text":
       return renderUserBubble(item.text, width);
     case "assistant-text":
-      return renderMarkdown(item.text);
+      return renderMarkdown(item.text, width);
     case "thinking":
       return renderThinking(
         item.thinking,

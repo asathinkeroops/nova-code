@@ -1,4 +1,6 @@
 import { highlight, supportsLanguage } from "cli-highlight";
+import stringWidth from "string-width";
+import wrapAnsi from "wrap-ansi";
 import {
   bold,
   cyan,
@@ -11,98 +13,16 @@ import {
 } from "../colors.js";
 
 const HR_WIDTH = 60;
-// eslint-disable-next-line no-control-regex
-const ANSI_RE = /\x1b\[[0-9;]*m/g;
-
-function charWidth(cp: number): number {
-  if (cp === 0) return 0;
-  if (cp < 0x20 || (cp >= 0x7f && cp < 0xa0)) return 0;
-  if (
-    (cp >= 0x0300 && cp <= 0x036f) ||
-    (cp >= 0x0483 && cp <= 0x0489) ||
-    (cp >= 0x200b && cp <= 0x200f) ||
-    cp === 0xfeff ||
-    (cp >= 0xfe00 && cp <= 0xfe0f) ||
-    (cp >= 0xe0100 && cp <= 0xe01ef)
-  ) {
-    return 0;
-  }
-  if (
-    (cp >= 0x1100 && cp <= 0x115f) ||
-    (cp >= 0x2e80 && cp <= 0x303e) ||
-    (cp >= 0x3041 && cp <= 0x33ff) ||
-    (cp >= 0x3400 && cp <= 0x4dbf) ||
-    (cp >= 0x4e00 && cp <= 0x9fff) ||
-    (cp >= 0xa000 && cp <= 0xa4cf) ||
-    (cp >= 0xac00 && cp <= 0xd7a3) ||
-    (cp >= 0xf900 && cp <= 0xfaff) ||
-    (cp >= 0xfe30 && cp <= 0xfe4f) ||
-    (cp >= 0xff00 && cp <= 0xff60) ||
-    (cp >= 0xffe0 && cp <= 0xffe6) ||
-    (cp >= 0x1f300 && cp <= 0x1f64f) ||
-    (cp >= 0x1f680 && cp <= 0x1f6ff) ||
-    (cp >= 0x1f7e0 && cp <= 0x1f7eb) ||
-    (cp >= 0x1f900 && cp <= 0x1f9ff) ||
-    (cp >= 0x1fa70 && cp <= 0x1faff) ||
-    (cp >= 0x20000 && cp <= 0x2fffd) ||
-    (cp >= 0x30000 && cp <= 0x3fffd)
-  ) {
-    return 2;
-  }
-  // Default-emoji-presentation characters that sit OUTSIDE the CJK/astral
-  // blocks above — chiefly Dingbats (✅ U+2705, ❌ U+274C, ✔ ✖) and Misc
-  // Symbols — also render two cells wide in modern terminals. Without these a
-  // table cell like "✅ 完整" is undercounted by one column per emoji and the
-  // borders drift right (the classic mojibake-looking table misalignment).
-  // Ranges follow Unicode's Emoji_Presentation=Yes set within the BMP.
-  if (
-    cp === 0x231a ||
-    cp === 0x231b ||
-    (cp >= 0x23e9 && cp <= 0x23ec) ||
-    cp === 0x23f0 ||
-    cp === 0x23f3 ||
-    (cp >= 0x25fd && cp <= 0x25fe) ||
-    (cp >= 0x2614 && cp <= 0x2615) ||
-    (cp >= 0x2648 && cp <= 0x2653) ||
-    cp === 0x267f ||
-    cp === 0x2693 ||
-    cp === 0x26a1 ||
-    (cp >= 0x26aa && cp <= 0x26ab) ||
-    (cp >= 0x26bd && cp <= 0x26be) ||
-    (cp >= 0x26c4 && cp <= 0x26c5) ||
-    cp === 0x26ce ||
-    cp === 0x26d4 ||
-    cp === 0x26ea ||
-    (cp >= 0x26f2 && cp <= 0x26f3) ||
-    cp === 0x26f5 ||
-    cp === 0x26fa ||
-    cp === 0x26fd ||
-    cp === 0x2705 ||
-    (cp >= 0x270a && cp <= 0x270b) ||
-    cp === 0x2728 ||
-    cp === 0x274c ||
-    cp === 0x274e ||
-    (cp >= 0x2753 && cp <= 0x2755) ||
-    cp === 0x2757 ||
-    (cp >= 0x2795 && cp <= 0x2797) ||
-    cp === 0x27b0 ||
-    cp === 0x27bf ||
-    (cp >= 0x2b1b && cp <= 0x2b1c) ||
-    cp === 0x2b50 ||
-    cp === 0x2b55
-  ) {
-    return 2;
-  }
-  return 1;
-}
-
+/**
+ * Display width of an ANSI-bearing string in terminal cells. Delegates to
+ * `string-width` — the SAME primitive `wrap-ansi` uses internally — so the
+ * table renderer measures columns and the downstream hard-wrap (`measure.ts`)
+ * agree on every character (CJK, emoji, and text-presentation symbols like
+ * `↔`). A mismatch here is what chops a row's trailing border onto a phantom
+ * line and garbles the box.
+ */
 function visibleLength(s: string): number {
-  const stripped = s.replace(ANSI_RE, "");
-  let w = 0;
-  for (const ch of stripped) {
-    w += charWidth(ch.codePointAt(0) ?? 0);
-  }
-  return w;
+  return stringWidth(s);
 }
 
 type Align = "left" | "center" | "right";
@@ -154,6 +74,55 @@ function padCell(text: string, width: number, align: Align): string {
     return " ".repeat(l) + text + " ".repeat(need - l);
   }
   return text + " ".repeat(need);
+}
+
+/** Smallest column content width we'll shrink to before a table just clips. */
+const MIN_TABLE_COL = 3;
+
+/**
+ * Fit natural per-column content widths into `avail` total cells using max-min
+ * fair (water-filling) allocation: narrow columns keep their full width and the
+ * surplus is split evenly among the wide ones, so only genuinely oversized
+ * columns get squeezed. Returns the natural widths unchanged when they already
+ * fit. Used to keep a table within the terminal so borders don't get chopped by
+ * the downstream hard-wrap (which is what garbles a row that overflows).
+ */
+function fitColumnWidths(natural: number[], avail: number): number[] {
+  const cols = natural.length;
+  if (cols === 0) return [];
+  const total = natural.reduce((a, b) => a + b, 0);
+  if (total <= avail) return natural.slice();
+  // Too tight even for minimums: hand out an even (>=1) share to every column.
+  if (avail < cols * MIN_TABLE_COL) {
+    const base = Math.max(1, Math.floor(avail / cols));
+    return natural.map(() => base);
+  }
+  // Process columns narrowest-first: each takes its natural width if it fits
+  // within the even share of the remaining budget, otherwise it's capped at
+  // that share. Shares are non-decreasing, so every capped column gets >= the
+  // first share, which is >= MIN_TABLE_COL by the guard above.
+  const order = natural.map((w, idx) => ({ w, idx })).sort((a, b) => a.w - b.w);
+  const result = new Array<number>(cols).fill(0);
+  let remaining = avail;
+  let left = cols;
+  for (const { w, idx } of order) {
+    const share = Math.floor(remaining / left);
+    const give = w <= share ? w : share;
+    result[idx] = give;
+    remaining -= give;
+    left--;
+  }
+  return result;
+}
+
+/**
+ * Wrap one already-inline-rendered (ANSI-bearing) cell to `width` display
+ * cells, returning its visual lines. `wrap-ansi` keeps color/bold codes intact
+ * across breaks; `hard:true` guarantees even an unbroken token fits the column.
+ */
+function wrapCell(content: string, width: number): string[] {
+  if (width <= 0 || visibleLength(content) <= width) return [content];
+  return wrapAnsi(content, width, { hard: true, trim: true }).split("\n");
 }
 
 function highlightCode(code: string, lang: string | undefined): string {
@@ -326,7 +295,13 @@ function renderHeader(level: number, text: string): string {
   return bold(dim(`${"#".repeat(level)} ${inner}`));
 }
 
-export function renderMarkdown(input: string): string {
+/**
+ * Render markdown to an ANSI string. When `width` (the terminal inner width) is
+ * given, tables are laid out to fit it — oversized columns are shrunk and their
+ * cells wrapped onto multiple lines so the box borders stay aligned. Omitting
+ * `width` keeps the renderer width-agnostic (natural, uncapped table widths).
+ */
+export function renderMarkdown(input: string, width?: number): string {
   const lines = input.split("\n");
   const out: string[] = [];
   let i = 0;
@@ -380,12 +355,17 @@ export function renderMarkdown(input: string): string {
           while (r.length < cols) r.push("");
         }
 
-        const widths: number[] = [];
+        const natural: number[] = [];
         for (let c = 0; c < cols; c++) {
           let w = visibleLength(headers[c] ?? "");
           for (const r of body) w = Math.max(w, visibleLength(r[c] ?? ""));
-          widths.push(w);
+          natural.push(w);
         }
+        // Chrome per row = a leading/trailing bar plus, per column, one inner
+        // bar's worth of separator and two padding spaces: `│ … │ … │`.
+        const chrome = 3 * cols + 1;
+        const avail = width !== undefined ? Math.max(cols, width - chrome) : undefined;
+        const widths = avail !== undefined ? fitColumnWidths(natural, avail) : natural;
 
         const border = (left: string, mid: string, right: string): string => {
           const parts = widths.map((w) => "─".repeat(w + 2));
@@ -393,13 +373,18 @@ export function renderMarkdown(input: string): string {
         };
         const renderRow = (cells: string[], boldCells: boolean): string => {
           const bar = dim("│");
-          const inner = cells
-            .map((cell, c) => {
-              const content = boldCells ? bold(cell) : cell;
-              return ` ${padCell(content, widths[c] ?? 0, colAligns[c] ?? "left")} `;
-            })
-            .join(bar);
-          return `${bar}${inner}${bar}`;
+          const wrapped = cells.map((cell, c) =>
+            wrapCell(boldCells ? bold(cell) : cell, widths[c] ?? 0),
+          );
+          const height = Math.max(1, ...wrapped.map((w) => w.length));
+          const rows: string[] = [];
+          for (let li = 0; li < height; li++) {
+            const inner = widths
+              .map((w, c) => ` ${padCell(wrapped[c]?.[li] ?? "", w, colAligns[c] ?? "left")} `)
+              .join(bar);
+            rows.push(`${bar}${inner}${bar}`);
+          }
+          return rows.join("\n");
         };
 
         out.push(border("┌", "┬", "┐"));
