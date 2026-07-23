@@ -99,6 +99,17 @@ export interface CliContext {
   spinner: Spinner | null;
   toolSpinnerTimer: NodeJS.Timeout | null;
   /**
+   * Pending "all todos/tasks completed → wipe the finished list" timers.
+   * Scheduled on post_turn when a store is fully completed; after
+   * settings.{todo,task}.autoClearDelayMs they clear the store and refresh the
+   * footer, so the ✓'d list is visible for a beat before it vanishes. Each new
+   * schedule cancels the prior pending one; the condition and active-store
+   * identity are re-checked at fire time. See scheduleTodoAutoClear /
+   * scheduleTaskAutoClear.
+   */
+  todoAutoClearTimer: NodeJS.Timeout | null;
+  taskAutoClearTimer: NodeJS.Timeout | null;
+  /**
    * Epoch-ms the current agent turn's work began, or null between turns. The
    * working spinner is torn down and recreated at every model-call / tool phase
    * within a turn; anchoring the spinner's elapsed to this (set once per turn in

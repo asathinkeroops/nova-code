@@ -88,6 +88,8 @@ import {
   refreshBanner,
   refreshTaskFooter,
   refreshTodoFooter,
+  scheduleTaskAutoClear,
+  scheduleTodoAutoClear,
   stopSpinner,
   thinkingLevelLabel,
 } from "./ctx-runtime.js";
@@ -107,6 +109,8 @@ export {
   refreshBanner,
   refreshTaskFooter,
   refreshTodoFooter,
+  scheduleTaskAutoClear,
+  scheduleTodoAutoClear,
   stopSpinner,
   thinkingLevelLabel,
 };
@@ -577,6 +581,8 @@ export async function createContext(
     cronScheduler,
     spinner: null,
     toolSpinnerTimer: null,
+    todoAutoClearTimer: null,
+    taskAutoClearTimer: null,
     taskStartedAt: null,
     nextPlaceholder: "",
     pendingAutoCompactNotice: null,

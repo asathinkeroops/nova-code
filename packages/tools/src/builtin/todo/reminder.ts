@@ -5,8 +5,6 @@ export interface TodoReminderOptions {
   threshold?: number;
   toolName?: string;
   reminderText?: string;
-  /** Sent when every todo is finished, nudging a clearTodoList. */
-  clearReminderText?: string;
 }
 
 export type InterjectCtx = { turn: number; toolUses: ToolUseBlock[] };
@@ -16,28 +14,16 @@ export function makeTodoReminder(store: TodoStore, opts: TodoReminderOptions = {
   const threshold = opts.threshold ?? 3;
   const toolName = opts.toolName ?? "updateTodo";
   const text = opts.reminderText ?? "<todo-reminder>Update your todos.</todo-reminder>";
-  const clearText =
-    opts.clearReminderText ??
-    "<todo-reminder>All todos are completed — call clearTodoList to clear the list.</todo-reminder>";
   let streak = 0;
 
   return async ({ toolUses }) => {
     const list = store.list();
     const hasUnfinished = list.some((t) => t.status === "pending" || t.status === "in_progress");
 
-    // The list is done (non-empty, nothing left in flight) — this is exactly the
-    // moment clearTodoList should fire, and the moment the streak logic below
-    // used to go silent, leaving stale todos on screen forever. Nudge a clear
-    // immediately, regardless of streak or whether this turn touched updateTodo.
-    if (list.length > 0 && !hasUnfinished) {
-      streak = 0;
-      return [
-        markSynthetic(
-          { role: "user", content: [{ type: "text", text: clearText }] },
-          "todo-reminder",
-        ),
-      ];
-    }
+    // A fully-completed list (non-empty, nothing in flight) no longer nudges a
+    // clearTodoList here: the CLI auto-clears it after a short delay
+    // (scheduleTodoAutoClear), which doesn't depend on the model complying. Such
+    // a list just falls through to the `!hasUnfinished` suppression below.
 
     if (toolUses.some((u) => u.name === toolName)) {
       streak = 0;

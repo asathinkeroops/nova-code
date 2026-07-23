@@ -5,6 +5,8 @@ import {
   clearToolSpinner,
   refreshTaskFooter,
   refreshTodoFooter,
+  scheduleTaskAutoClear,
+  scheduleTodoAutoClear,
   stopSpinner,
   thinkingLevelLabel,
   type CliContext,
@@ -103,6 +105,10 @@ export function registerUiHooks(ctx: CliContext): void {
     stopSpinner(ctx);
     refreshTodoFooter(ctx);
     void refreshTaskFooter(ctx);
+    // The turn has settled — if a checklist/plan is now fully completed, wipe it
+    // after a short delay so the ✓'d list is visible for a beat first.
+    scheduleTodoAutoClear(ctx);
+    void scheduleTaskAutoClear(ctx);
   });
 
   ctx.agent.on("error", ({ message }) => {

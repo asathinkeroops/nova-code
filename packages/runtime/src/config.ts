@@ -845,6 +845,25 @@ export const settingsSchema = z.object({
         allowGitConfig: true,
       },
     }),
+  // Todo checklist behavior. When every todo reaches status=completed the
+  // checklist auto-clears after `autoClearDelayMs` — a short beat so the ✓'d
+  // list stays on screen before it vanishes — instead of relying on the model
+  // to call clearTodoList (which it routinely skips once it starts its final
+  // summary). Set to 0 to disable auto-clear and hand the finished list back to
+  // the model to clear itself.
+  todo: z
+    .object({
+      autoClearDelayMs: z.number().int().nonnegative().default(2500),
+    })
+    .default({ autoClearDelayMs: 2500 }),
+  // Task plan behavior. Mirror of `todo.autoClearDelayMs` for the persistent
+  // task store: a fully-completed plan auto-clears (deleting its `.tasks/` files)
+  // after this delay. 0 disables.
+  task: z
+    .object({
+      autoClearDelayMs: z.number().int().nonnegative().default(2500),
+    })
+    .default({ autoClearDelayMs: 2500 }),
   // Background commands launched with runInBackground. When a command
   // finishes while the agent is idle (REPL waiting for input),
   // autoContinueOnComplete wakes it with a continuation turn so it can react to

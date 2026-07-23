@@ -72,6 +72,65 @@ export async function refreshTaskFooter(ctx: CliContext): Promise<void> {
   ctx.screen.setTasks(await ctx.taskStore.list());
 }
 
+/** A non-empty list with every item completed — the auto-clear trigger. */
+function allCompleted(items: readonly { status: string }[]): boolean {
+  return items.length > 0 && items.every((i) => i.status === "completed");
+}
+
+/**
+ * When every todo is completed, wipe the checklist after
+ * `settings.todo.autoClearDelayMs` so the ✓'d list stays on screen for a beat,
+ * then refresh the footer so it actually disappears (the store doesn't notify
+ * the UI on its own). A deterministic replacement for nagging the model to call
+ * clearTodoList — which it routinely drops once it starts its final summary.
+ *
+ * Guards: a new schedule cancels any prior pending one; at fire time it
+ * re-checks the all-completed condition (a fresh todo, a manual clear, or a
+ * session switch in the meantime cancels the wipe) and confirms the store is
+ * still the active one, so a timer armed before a `/clear`/`/resume` switch
+ * can't clobber the session switched in. `delayMs <= 0` disables auto-clear.
+ */
+export function scheduleTodoAutoClear(ctx: CliContext): void {
+  if (ctx.todoAutoClearTimer) {
+    clearTimeout(ctx.todoAutoClearTimer);
+    ctx.todoAutoClearTimer = null;
+  }
+  const delayMs = ctx.settings.todo.autoClearDelayMs;
+  if (delayMs <= 0) return;
+  const store = ctx.todoStore;
+  if (!allCompleted(store.list())) return;
+  ctx.todoAutoClearTimer = setTimeout(() => {
+    ctx.todoAutoClearTimer = null;
+    if (ctx.todoStore !== store) return; // session switched out from under us
+    if (!allCompleted(store.list())) return; // list changed during the delay
+    store.clear();
+    refreshTodoFooter(ctx);
+  }, delayMs);
+  ctx.todoAutoClearTimer.unref();
+}
+
+/** Task-store mirror of {@link scheduleTodoAutoClear} (list is async; clear also deletes `.tasks/` files). */
+export async function scheduleTaskAutoClear(ctx: CliContext): Promise<void> {
+  if (ctx.taskAutoClearTimer) {
+    clearTimeout(ctx.taskAutoClearTimer);
+    ctx.taskAutoClearTimer = null;
+  }
+  const delayMs = ctx.settings.task.autoClearDelayMs;
+  if (delayMs <= 0) return;
+  const store = ctx.taskStore;
+  if (!allCompleted(await store.list())) return;
+  ctx.taskAutoClearTimer = setTimeout(() => {
+    ctx.taskAutoClearTimer = null;
+    void (async () => {
+      if (ctx.taskStore !== store) return; // session switched out from under us
+      if (!allCompleted(await store.list())) return; // plan changed during the delay
+      await store.clear();
+      await refreshTaskFooter(ctx);
+    })();
+  }, delayMs);
+  ctx.taskAutoClearTimer.unref();
+}
+
 export function stopSpinner(ctx: CliContext): void {
   if (ctx.spinner) {
     ctx.spinner.stop();

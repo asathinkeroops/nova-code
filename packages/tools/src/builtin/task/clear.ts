@@ -19,16 +19,15 @@ export function clearTaskListTool(store: TaskStore): ToolHandler {
     definition: {
       name: "clearTaskList",
       description:
-        "MUST be called to wipe the task list when ANY of these conditions hold:\n" +
-        "1. Every task currently in `getTaskList` has status=completed — the plan is done, " +
-        "clear it so the next user prompt starts fresh.\n" +
-        "2. The user's new request is unrelated to the current task list (e.g. they switched " +
+        "Wipe the task list. Call it when EITHER condition holds:\n" +
+        "1. The user's new request is unrelated to the current task list (e.g. they switched " +
         "topics, asked a fresh question, or said \"forget that\" / \"start over\").\n" +
-        "3. You are about to call `createTask` for a brand-new plan and the existing tasks " +
+        "2. You are about to call `createTask` for a brand-new plan and the existing tasks " +
         "would be irrelevant clutter — clear first, then create.\n" +
         "\n" +
-        "Tasks persist across turns and never auto-clear; if you skip this tool, stale tasks " +
-        "stay visible to the user forever. When in doubt at the end of a finished plan, CLEAR.\n" +
+        "You do NOT need to call this just because every task is completed: a fully-completed " +
+        "plan auto-clears shortly on its own. Use this tool for the topic-switch / start-fresh " +
+        "cases above, where clearing should not wait.\n" +
         "\n" +
         "Args: omit `ids` to wipe all (the common case). Pass `ids: [...]` only to remove " +
         "specific entries while keeping the rest.",

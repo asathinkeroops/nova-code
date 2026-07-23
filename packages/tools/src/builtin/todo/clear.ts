@@ -19,16 +19,15 @@ export function clearTodoListTool(store: TodoStore): ToolHandler {
     definition: {
       name: "clearTodoList",
       description:
-        "MUST be called to wipe the todo list when ANY of these conditions hold:\n" +
-        "1. Every todo currently in `getTodoList` has status=completed — the checklist is done, " +
-        "clear it so the next user prompt starts fresh.\n" +
-        "2. The user's new request is unrelated to the current todo list (e.g. they switched " +
+        "Wipe the todo list. Call it when EITHER condition holds:\n" +
+        "1. The user's new request is unrelated to the current todo list (e.g. they switched " +
         "topics, asked a fresh question, or said \"forget that\" / \"start over\").\n" +
-        "3. You are about to call `createTodo` for a brand-new checklist and the existing todos " +
+        "2. You are about to call `createTodo` for a brand-new checklist and the existing todos " +
         "would be irrelevant clutter — clear first, then create.\n" +
         "\n" +
-        "Todos persist across turns and never auto-clear; if you skip this tool, stale todos " +
-        "stay visible to the user forever. When in doubt at the end of a finished checklist, CLEAR.\n" +
+        "You do NOT need to call this just because every todo is completed: a fully-completed " +
+        "checklist auto-clears shortly on its own. Use this tool for the topic-switch / start-fresh " +
+        "cases above, where clearing should not wait.\n" +
         "\n" +
         "Args: omit `ids` to wipe all (the common case). Pass `ids: [...]` only to remove " +
         "specific entries while keeping the rest.",

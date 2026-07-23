@@ -79,47 +79,19 @@ describe("makeTodoReminder", () => {
     expect(await call(remind, [use("bash")])).toBeUndefined();
   });
 
-  it("nudges clearTodoList immediately when all todos are completed", async () => {
+  it("stays silent when every todo is completed (CLI auto-clears instead of nudging)", async () => {
     const store = new TodoStore();
     const t = store.create("done already");
     store.update(t.id, "completed");
     const remind = makeTodoReminder(store);
 
-    // No streak buildup needed: a fully-completed list nudges a clear at once.
-    expect(await call(remind, [use("bash")])).toEqual([
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: "<todo-reminder>All todos are completed — call clearTodoList to clear the list.</todo-reminder>",
-          },
-        ],
-        meta: { synthetic: true, kind: "todo-reminder" },
-      },
-    ]);
-  });
-
-  it("fires the clear nudge even on the turn that completed the last todo", async () => {
-    const store = new TodoStore();
-    const t = store.create("x");
-    store.update(t.id, "completed");
-    const remind = makeTodoReminder(store);
-
-    // updateTodo in the turn would normally reset/suppress — the clear nudge wins.
-    const out = await call(remind, [use("updateTodo")]);
-    expect(out).toBeDefined();
-  });
-
-  it("stops nudging once the list is cleared", async () => {
-    const store = new TodoStore();
-    const t = store.create("x");
-    store.update(t.id, "completed");
-    const remind = makeTodoReminder(store);
-
-    expect(await call(remind, [use("bash")])).toBeDefined();
-    store.clear();
+    // A fully-completed list no longer nudges a clearTodoList — the CLI wipes it
+    // deterministically via scheduleTodoAutoClear. The reminder falls through to
+    // the `!hasUnfinished` suppression and never injects, even on the very turn
+    // that completed the last todo (updateTodo present).
     expect(await call(remind, [use("bash")])).toBeUndefined();
+    expect(await call(remind, [use("updateTodo")])).toBeUndefined();
+    expect(await call(remind, [use("read")])).toBeUndefined();
   });
 
   it("preserves streak across suppressed turns: a new in_progress todo triggers immediately", async () => {

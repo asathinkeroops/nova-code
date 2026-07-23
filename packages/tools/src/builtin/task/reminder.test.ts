@@ -92,45 +92,19 @@ describe("makeTaskReminder", () => {
     expect(await call(remind, [use("bash")])).toBeUndefined();
   });
 
-  it("nudges clearTaskList immediately when all tasks are completed", async () => {
+  it("stays silent when every task is completed (CLI auto-clears instead of nudging)", async () => {
     const store = new TaskStore(workspace, "test-session");
     const t = await store.create("done already");
     await store.update(t.id, { status: "completed" });
     const remind = makeTaskReminder(store);
 
-    expect(await call(remind, [use("bash")])).toEqual([
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: "<task-reminder>All tasks are completed — call clearTaskList to clear the list.</task-reminder>",
-          },
-        ],
-        meta: { synthetic: true, kind: "task-reminder" },
-      },
-    ]);
-  });
-
-  it("fires the clear nudge even on the turn that completed the last task", async () => {
-    const store = new TaskStore(workspace, "test-session");
-    const t = await store.create("x");
-    await store.update(t.id, { status: "completed" });
-    const remind = makeTaskReminder(store);
-
-    const out = await call(remind, [use("updateTask")]);
-    expect(out).toBeDefined();
-  });
-
-  it("stops nudging once the list is cleared", async () => {
-    const store = new TaskStore(workspace, "test-session");
-    const t = await store.create("x");
-    await store.update(t.id, { status: "completed" });
-    const remind = makeTaskReminder(store);
-
-    expect(await call(remind, [use("bash")])).toBeDefined();
-    await store.clear();
+    // A fully-completed plan no longer nudges a clearTaskList — the CLI wipes it
+    // deterministically via scheduleTaskAutoClear. The reminder falls through to
+    // the `!hasUnfinished` suppression and never injects, even on the very turn
+    // that completed the last task (updateTask present).
     expect(await call(remind, [use("bash")])).toBeUndefined();
+    expect(await call(remind, [use("updateTask")])).toBeUndefined();
+    expect(await call(remind, [use("read")])).toBeUndefined();
   });
 
   it("preserves streak across suppressed turns: a new in_progress task triggers immediately", async () => {
