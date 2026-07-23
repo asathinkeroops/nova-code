@@ -509,12 +509,12 @@ export const settingsSchema = z.object({
   update: z
     .object({
       enabled: z.boolean().default(true),
-      checkIntervalHours: z.number().int().positive().default(24),
+      notifyIntervalHours: z.number().int().positive().default(6),
       command: z.string().default("npm install -g @asathinkeroops/nova-code@latest"),
     })
     .default({
       enabled: true,
-      checkIntervalHours: 24,
+      notifyIntervalHours: 6,
       command: "npm install -g @asathinkeroops/nova-code@latest",
     }),
   logging: z

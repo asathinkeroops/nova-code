@@ -9,7 +9,7 @@ import {
   fetchLatestVersion,
   isNewerVersion,
   runUpgrade,
-  shouldCheck,
+  shouldNotify,
   type UpdateCache,
 } from "./update.js";
 
@@ -48,18 +48,16 @@ describe("isNewerVersion / compareVersions", () => {
   });
 });
 
-describe("shouldCheck", () => {
+describe("shouldNotify", () => {
   const HOUR = 60 * 60 * 1000;
-  it("checks when there is no cache", () => {
-    expect(shouldCheck(null, 1_000_000, 24)).toBe(true);
+  it("notifies when it has never notified (lastNotifiedAt 0)", () => {
+    expect(shouldNotify(0, 1_000_000, 24)).toBe(true);
   });
-  it("skips within the interval", () => {
-    const cache: UpdateCache = { lastCheckAt: 100 * HOUR, latestVersion: "1.0.0" };
-    expect(shouldCheck(cache, 100 * HOUR + 1 * HOUR, 24)).toBe(false);
+  it("stays quiet within the interval", () => {
+    expect(shouldNotify(100 * HOUR, 100 * HOUR + 1 * HOUR, 24)).toBe(false);
   });
-  it("checks once the interval has elapsed", () => {
-    const cache: UpdateCache = { lastCheckAt: 100 * HOUR, latestVersion: "1.0.0" };
-    expect(shouldCheck(cache, 100 * HOUR + 25 * HOUR, 24)).toBe(true);
+  it("notifies again once the interval has elapsed", () => {
+    expect(shouldNotify(100 * HOUR, 100 * HOUR + 25 * HOUR, 24)).toBe(true);
   });
 });
 
@@ -91,7 +89,7 @@ describe("checkForUpdate", () => {
       settings: {
         update: {
           enabled: overrides.enabled ?? true,
-          checkIntervalHours: 24,
+          notifyIntervalHours: 24,
           command: "echo upgrade",
         },
       },
@@ -111,20 +109,23 @@ describe("checkForUpdate", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  it("shows a card when a newer version is published and writes the cache", async () => {
+  it("shows a card when a newer version is published and records the notice time", async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ version: "1.2.0" }), { status: 200 }));
     await checkForUpdate(makeCtx(), { now: 1_000, cachePath, fetchImpl, packageName: "@scope/pkg" });
     expect(cards).toHaveLength(1);
     expect(cards[0]?.title).toBe("update available");
     expect(cards[0]?.text).toContain("1.2.0");
     const cache = JSON.parse(await readFile(cachePath, "utf8")) as UpdateCache;
-    expect(cache).toMatchObject({ lastCheckAt: 1_000, latestVersion: "1.2.0" });
+    expect(cache).toMatchObject({ latestVersion: "1.2.0", lastNotifiedAt: 1_000 });
   });
 
   it("shows no card when already up to date", async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ version: "1.0.0" }), { status: 200 }));
     await checkForUpdate(makeCtx(), { now: 1_000, cachePath, fetchImpl, packageName: "@scope/pkg" });
     expect(cards).toHaveLength(0);
+    // No notice fired, so lastNotifiedAt stays 0 (reminder immediately due next time).
+    const cache = JSON.parse(await readFile(cachePath, "utf8")) as UpdateCache;
+    expect(cache).toMatchObject({ latestVersion: "1.0.0", lastNotifiedAt: 0 });
   });
 
   it("bails out (no fetch, no card) when disabled", async () => {
@@ -134,13 +135,35 @@ describe("checkForUpdate", () => {
     expect(cards).toHaveLength(0);
   });
 
-  it("reuses the cached version without fetching inside the throttle window", async () => {
-    const cache: UpdateCache = { lastCheckAt: 5_000, latestVersion: "1.5.0" };
+  it("fetches every call but does not re-notify within the interval", async () => {
+    const cache: UpdateCache = { latestVersion: "1.5.0", lastNotifiedAt: 5_000 };
     await writeFile(cachePath, JSON.stringify(cache), "utf8");
-    const fetchImpl = vi.fn(async () => new Response("{}", { status: 200 }));
-    // 1h later — well within the 24h interval.
-    await checkForUpdate(makeCtx(), { now: 5_000 + 60 * 60 * 1000, cachePath, fetchImpl });
-    expect(fetchImpl).not.toHaveBeenCalled();
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ version: "1.5.0" }), { status: 200 }));
+    // 1h later — well within the 24h notify interval.
+    await checkForUpdate(makeCtx(), { now: 5_000 + 60 * 60 * 1000, cachePath, fetchImpl, packageName: "@scope/pkg" });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(cards).toHaveLength(0);
+  });
+
+  it("re-notifies once the interval has elapsed", async () => {
+    const cache: UpdateCache = { latestVersion: "1.5.0", lastNotifiedAt: 5_000 };
+    await writeFile(cachePath, JSON.stringify(cache), "utf8");
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ version: "1.5.0" }), { status: 200 }));
+    const now = 5_000 + 25 * 60 * 60 * 1000; // 25h later, past the 24h interval
+    await checkForUpdate(makeCtx(), { now, cachePath, fetchImpl, packageName: "@scope/pkg" });
+    expect(cards).toHaveLength(1);
+    expect(cards[0]?.text).toContain("1.5.0");
+    const updated = JSON.parse(await readFile(cachePath, "utf8")) as UpdateCache;
+    expect(updated.lastNotifiedAt).toBe(now);
+  });
+
+  it("falls back to the cached version when the fetch fails", async () => {
+    const cache: UpdateCache = { latestVersion: "1.5.0", lastNotifiedAt: 0 };
+    await writeFile(cachePath, JSON.stringify(cache), "utf8");
+    const fetchImpl = vi.fn(async () => {
+      throw new Error("network down");
+    });
+    await checkForUpdate(makeCtx(), { now: 1_000_000, cachePath, fetchImpl, packageName: "@scope/pkg" });
     expect(cards).toHaveLength(1);
     expect(cards[0]?.text).toContain("1.5.0");
   });

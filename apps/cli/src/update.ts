@@ -23,12 +23,12 @@ export const UPDATE_CACHE_PATH = join(homedir(), ".nova", "update-check.json");
 
 const REGISTRY_BASE = "https://registry.npmjs.org";
 
-/** Persisted throttle state so we don't hit the registry on every launch. */
+/** Persisted state gating the reminder (not the fetch — that runs every call). */
 export interface UpdateCache {
-  /** Epoch ms of the last successful (or attempted) registry check. */
-  lastCheckAt: number;
-  /** The latest version seen at that check, reused for the notice within the interval. */
+  /** The latest version seen at the most recent fetch (fallback if a fetch fails). */
   latestVersion: string | null;
+  /** Epoch ms of the last time we actually showed a notice — gates re-notifying. */
+  lastNotifiedAt: number;
 }
 
 interface ParsedVersion {
@@ -130,10 +130,9 @@ async function readCache(path: string): Promise<UpdateCache | null> {
   try {
     const raw = await readFile(path, "utf8");
     const parsed = JSON.parse(raw) as Partial<UpdateCache>;
-    if (typeof parsed.lastCheckAt !== "number") return null;
     return {
-      lastCheckAt: parsed.lastCheckAt,
       latestVersion: typeof parsed.latestVersion === "string" ? parsed.latestVersion : null,
+      lastNotifiedAt: typeof parsed.lastNotifiedAt === "number" ? parsed.lastNotifiedAt : 0,
     };
   } catch {
     return null;
@@ -146,17 +145,13 @@ async function writeCache(path: string, cache: UpdateCache): Promise<void> {
 }
 
 /**
- * Whether a fresh registry check is due. A missing/invalid cache always checks;
- * otherwise we wait `intervalHours` from the last check. `now` is injected for
+ * Whether enough time has passed since the last notice to show it again. The
+ * fetch itself is never throttled — only the reminder is. `now` is injected for
  * testability.
  */
-export function shouldCheck(
-  cache: UpdateCache | null,
-  now: number,
-  intervalHours: number,
-): boolean {
-  if (!cache) return true;
-  return now - cache.lastCheckAt >= intervalHours * 60 * 60 * 1000;
+export function shouldNotify(lastNotifiedAt: number, now: number, intervalHours: number): boolean {
+  if (lastNotifiedAt <= 0) return true; // never notified — always due
+  return now - lastNotifiedAt >= intervalHours * 60 * 60 * 1000;
 }
 
 /** Options for {@link checkForUpdate}, all injectable so it can be unit-tested. */
@@ -176,9 +171,11 @@ function notify(ctx: CliContext, latest: string): void {
 }
 
 /**
- * Startup update check. Non-blocking and best-effort: bails when disabled,
- * throttles via the on-disk cache, and shows a notice card when a newer version
- * exists. Any failure is swallowed so it can never disrupt startup.
+ * Update check. Non-blocking and best-effort: bails when disabled, always fetches
+ * the freshest published version, and shows a notice card when a newer version
+ * exists — but only if the reminder interval (`settings.update.notifyIntervalHours`)
+ * has elapsed since the last notice, so a long-lived session isn't nagged every
+ * poll. Any failure is swallowed so it can never disrupt the caller.
  */
 export async function checkForUpdate(ctx: CliContext, deps: CheckDeps = {}): Promise<void> {
   try {
@@ -187,19 +184,24 @@ export async function checkForUpdate(ctx: CliContext, deps: CheckDeps = {}): Pro
     const now = deps.now ?? Date.now();
     const cache = await readCache(cachePath);
 
-    if (!shouldCheck(cache, now, ctx.settings.update.checkIntervalHours)) {
-      // Still within the throttle window — reuse the last-seen version so the
-      // notice keeps showing between checks without hitting the network.
-      if (cache?.latestVersion && isNewerVersion(cache.latestVersion, ctx.version)) {
-        notify(ctx, cache.latestVersion);
-      }
-      return;
+    // Always fetch the freshest version; fall back to the last-seen one if the
+    // registry is unreachable so we can still remind from cache.
+    const pkgName = deps.packageName ?? (await readCliPackage()).name;
+    const fetched = await fetchLatestVersion(pkgName, deps.fetchImpl);
+    const latestVersion = fetched ?? cache?.latestVersion ?? null;
+
+    // The interval throttles the *notice*, not the fetch.
+    let lastNotifiedAt = cache?.lastNotifiedAt ?? 0;
+    if (
+      latestVersion &&
+      isNewerVersion(latestVersion, ctx.version) &&
+      shouldNotify(lastNotifiedAt, now, ctx.settings.update.notifyIntervalHours)
+    ) {
+      notify(ctx, latestVersion);
+      lastNotifiedAt = now;
     }
 
-    const pkgName = deps.packageName ?? (await readCliPackage()).name;
-    const latest = await fetchLatestVersion(pkgName, deps.fetchImpl);
-    await writeCache(cachePath, { lastCheckAt: now, latestVersion: latest ?? cache?.latestVersion ?? null });
-    if (latest && isNewerVersion(latest, ctx.version)) notify(ctx, latest);
+    await writeCache(cachePath, { latestVersion, lastNotifiedAt });
   } catch (err) {
     ctx.logger.debug({ err }, "update check failed");
   }

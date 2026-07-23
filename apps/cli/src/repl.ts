@@ -458,9 +458,21 @@ export async function runRepl(ctx: CliContext, initialPrompt: string): Promise<v
   // first prompt; it's refreshed after every turn below as tokens are spent.
   void refreshBalance(ctx);
 
-  // Notify (never install) if a newer CLI version is on npm. Fire-and-forget and
-  // throttled on disk, so a slow registry never delays the first prompt.
+  // Notify (never install) if a newer CLI version is on npm. Fire-and-forget so a
+  // slow registry never delays the first prompt.
   void checkForUpdate(ctx);
+
+  // Re-check periodically so a long-lived session still notices new releases
+  // without a restart. We poll hourly to always fetch the freshest version;
+  // checkForUpdate throttles only the *notice* on disk
+  // (settings.update.notifyIntervalHours, default 6h), so it fetches every tick
+  // but never nags more than once per interval. unref() so the timer alone never
+  // keeps the process alive.
+  const UPDATE_POLL_MS = 60 * 60 * 1000;
+  const updateInterval = ctx.settings.update.enabled
+    ? setInterval(() => void checkForUpdate(ctx), UPDATE_POLL_MS)
+    : undefined;
+  updateInterval?.unref();
 
   if (initialPrompt) {
     const ok = await runTurnWithStopHooks(ctx, initialPrompt);
@@ -527,6 +539,7 @@ export async function runRepl(ctx: CliContext, initialPrompt: string): Promise<v
     fields: { reason: "exit" },
   });
 
+  if (updateInterval) clearInterval(updateInterval);
   ctx.cronScheduler.dispose();
   await ctx.transcript.flush();
   await ctx.backgroundManager.disposeAll();

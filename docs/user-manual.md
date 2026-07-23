@@ -612,7 +612,7 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 
 ### 版本更新
 
-- **启动检查（只提醒，不安装）**：交互启动时，Nova 会（限流地）比对 npm 上是否有新版，有则提示——从不自动安装。节流状态记在 `~/.nova/update-check.json`，间隔 `update.checkIntervalHours`（默认 24h）；设 `update.enabled: false` 静音。
+- **更新检查（只提醒，不安装）**：交互启动时以及运行中每小时，Nova 会比对 npm 上是否有新版，有则提示——从不自动安装。为避免长时间会话被反复打扰，提示做了限流：同一提醒最多每 `update.notifyIntervalHours`（默认 6h）弹一次（拉取版本本身不限流）。上次提醒时间记在 `~/.nova/update-check.json`；设 `update.enabled: false` 静音。
 - **手动升级**：`nova upgrade` 跑 `update.command`（默认 `npm install -g @asathinkeroops/nova-code@latest`，可改成 pnpm/yarn/bun 全局安装）把自己升到最新版。`nova --version` 打印当前版本。
 
 ### 数据落在哪
@@ -713,8 +713,8 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 | `transcript.enabled` | `true` | 写 transcript（`--no-transcript` 临时关） |
 | `sessionCleanup.enabled` | `true` | 启动时清理旧 session |
 | `sessionCleanup.maxAgeDays` | `30` | 旧 session 的天数阈值 |
-| `update.enabled` | `true` | 启动时检查 npm 新版并提醒（从不自动装），见 [§19](#19-会话检查点与数据落盘) |
-| `update.checkIntervalHours` | `24` | 更新检查节流间隔 |
+| `update.enabled` | `true` | 检查 npm 新版并提醒（从不自动装），见 [§19](#19-会话检查点与数据落盘) |
+| `update.notifyIntervalHours` | `6` | 同一更新提醒的最小间隔（限流提示，不限流拉取） |
 | `update.command` | `npm install -g @asathinkeroops/nova-code@latest` | `nova upgrade` 跑的安装器（可改 pnpm/yarn/bun） |
 
 ### 扩展子系统
