@@ -11,6 +11,7 @@
   *, *::before, *::after { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
   :root {
+    color-scheme: light;
     --ground: #FAF9FE;
     --ground-2: #F3F0FB;
     --surface: #FFFFFF;
@@ -44,6 +45,7 @@
 
   @media (prefers-color-scheme: dark) {
     :root {
+      color-scheme: dark;
       --ground: #0A0713;
       --ground-2: #100B1F;
       --surface: #140F24;
@@ -64,6 +66,7 @@
     }
   }
   :root[data-theme="light"] {
+    color-scheme: light;
     --ground: #FAF9FE; --ground-2: #F3F0FB; --surface: #FFFFFF;
     --ink: #14101F; --ink-soft: #2C2640; --muted: #6C6579; --faint: #9A93A8;
     --line: #ECE8F5; --line-strong: #DED7EF;
@@ -72,6 +75,7 @@
     --shadow-panel: 0 24px 70px -24px rgba(60,30,120,.45), 0 2px 8px rgba(20,16,31,.18);
   }
   :root[data-theme="dark"] {
+    color-scheme: dark;
     --ground: #0A0713; --ground-2: #100B1F; --surface: #140F24;
     --ink: #F1ECFB; --ink-soft: #D6CEEE; --muted: #9A92B4; --faint: #6E6788;
     --line: #241D3C; --line-strong: #322853;
@@ -81,7 +85,9 @@
   }
 
   * { box-sizing: border-box; }
-  html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+  /* themed root background so content-visibility section seams never reveal the
+     white UA canvas as a 1px light hairline (paired with color-scheme above) */
+  html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; background: var(--ground); }
   body {
     margin: 0;
     background: var(--ground);
@@ -370,15 +376,16 @@
   .hero.anim-paused, .hero.anim-paused *,
   .hero.anim-paused::before, .hero.anim-paused::after,
   .hero.anim-paused *::before, .hero.anim-paused *::after { animation-play-state: paused !important; }
-  /* long, gentle melt into the light page below */
+  /* long, gentle melt into the deep demo band below (was --ground; the demo band is
+     now dark so the hero resolves into darkness, keeping the deep/light rhythm intact) */
   .hero::after {
     content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 420px;
     background: linear-gradient(to bottom,
       transparent 0%,
-      color-mix(in srgb, var(--ground) 18%, transparent) 32%,
-      color-mix(in srgb, var(--ground) 55%, transparent) 62%,
-      color-mix(in srgb, var(--ground) 85%, transparent) 84%,
-      var(--ground) 100%);
+      color-mix(in srgb, #0a0616 18%, transparent) 32%,
+      color-mix(in srgb, #0a0616 55%, transparent) 62%,
+      color-mix(in srgb, #0a0616 85%, transparent) 84%,
+      #0a0616 100%);
     z-index: 1; pointer-events: none;
   }
   .galaxy-static {
@@ -629,10 +636,11 @@
   section { position: relative; }
   section[id] { scroll-margin-top: 82px; }
   .band { padding: 90px 0; }
-  /* Skip rendering (layout/paint) AND freeze in-section animations while a band is
-     off-screen. contain-intrinsic-size keeps the scrollbar stable; `auto` remembers
-     the real size after first paint. Ignored by browsers without support → no-op. */
-  .band { isolation: isolate; overflow: hidden; content-visibility: auto; contain-intrinsic-size: auto 720px; }
+  /* NOTE: content-visibility:auto was removed here — its scroll-time virtualization
+     flashed a 1px light seam between adjacent bands (a blank sliver during re-paint),
+     visible as a white line at the deep/light section boundaries. The perf win isn't
+     worth the artifact on a single landing page; isolation + overflow are enough. */
+  .band { isolation: isolate; overflow: hidden; }
   .band-head { max-width: 620px; }
   .band-head h2 {
     font-size: clamp(1.85rem, 3.6vw, 2.55rem);
@@ -642,38 +650,51 @@
   .band-head p { margin: 16px 0 0; color: var(--muted); font-size: 1.08rem; }
 
   /* ---------- Showcase video ---------- */
-  .showcase { padding-top: 6px; }
+  /* deep band: pairs with the hero above and keeps the page's deep/light rhythm
+     (demo→pillars→platform→extend→caps→compare = deep,light,deep,light,deep,light) */
+  .showcase {
+    background:
+      radial-gradient(100% 90% at 92% 8%, rgba(168,85,247,.17), transparent 46%),
+      radial-gradient(72% 80% at 0% 100%, rgba(72,130,255,.09), transparent 50%),
+      linear-gradient(145deg, #090514 0%, #110923 56%, #0a0616 100%);
+    border-bottom: 1px solid rgba(214,190,255,.12);
+    color: var(--cosmos-ink);
+  }
   .showcase::before {
     content: ""; position: absolute; z-index: -1; width: 820px; height: 820px; left: 50%; top: -220px; transform: translateX(-50%);
-    background: radial-gradient(circle, color-mix(in srgb, var(--accent) 10%, transparent), transparent 68%);
+    background: radial-gradient(circle, rgba(168,85,247,.14), transparent 68%);
     pointer-events: none;
   }
+  .showcase .band-head h2 { color: #f7f3ff; }
+  .showcase .band-head p { color: rgba(219,210,238,.68); }
+  .showcase .eyebrow { color: #c6a2ff; }
   .showcase-frame {
     position: relative; margin-top: 48px;
-    border: 1px solid var(--line-strong); border-radius: var(--radius-lg);
-    background: var(--surface); box-shadow: var(--shadow-panel);
+    border: 1px solid rgba(220,202,255,.14); border-radius: var(--radius-lg);
+    background: #0b0718; box-shadow: 0 28px 90px -42px rgba(94,36,190,.72);
     overflow: hidden; isolation: isolate;
   }
   .showcase-frame::after {
     content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 2;
-    border-radius: inherit; border: 1px solid color-mix(in srgb, var(--accent-bright) 18%, transparent);
+    border-radius: inherit; border: 1px solid color-mix(in srgb, var(--accent-bright) 24%, transparent);
   }
   .showcase-bar {
     display: flex; align-items: center; gap: 8px;
-    padding: 11px 16px; border-bottom: 1px solid var(--line);
-    background: color-mix(in srgb, var(--surface) 82%, var(--ground-2));
+    padding: 11px 16px; border-bottom: 1px solid rgba(255,255,255,.06);
+    background: linear-gradient(to bottom, rgba(255,255,255,.04), transparent);
   }
   .showcase-bar .tl { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
   .showcase-bar .tl.r { background: #ff5f57; } .showcase-bar .tl.y { background: #febc2e; } .showcase-bar .tl.g { background: #28c840; }
   .showcase-bar .tt {
-    margin-left: 8px; font: 500 .82rem/1 var(--font-mono); color: var(--muted);
+    margin-left: 8px; font: 500 .82rem/1 var(--font-mono); color: var(--cosmos-muted);
     display: inline-flex; align-items: center; gap: 7px;
   }
   .showcase-bar .tt img { width: 15px; height: 15px; border-radius: 4px; }
   .showcase-frame video { display: block; width: 100%; height: auto; background: #000; }
 
   /* ---------- Three pillars ---------- */
-  .pillars { padding-top: 6px; }
+  /* first light band after the deep hero+demo pair — full top padding for the dark→light break */
+  .pillars { padding-top: 90px; }
   .pillars::before {
     content: ""; position: absolute; z-index: -1; width: 760px; height: 760px; left: 50%; top: -260px; transform: translateX(-50%);
     background: radial-gradient(circle, color-mix(in srgb, var(--accent) 9%, transparent), transparent 67%);
@@ -941,8 +962,7 @@
   table.cmp td .mono { font-family: var(--font-mono); font-size: .84rem; }
 
   /* ---------- CTA / footer ---------- */
-  .cta-final { padding: 96px 0; text-align: center; position: relative; overflow: hidden;
-    content-visibility: auto; contain-intrinsic-size: auto 560px; }
+  .cta-final { padding: 96px 0; text-align: center; position: relative; overflow: hidden; }
   .cta-final::before {
     content: ""; position: absolute; width: 680px; height: 680px; left: 50%; top: 36%; transform: translate(-50%,-50%);
     border-radius: 50%; border: 1px solid color-mix(in srgb, var(--accent) 14%, transparent);
@@ -965,8 +985,7 @@
   .cta-final p { margin: 18px auto 0; max-width: 44ch; color: var(--muted); font-size: 1.08rem; }
   .cta-final .row-btns { margin-top: 34px; display: flex; justify-content: center; flex-wrap: wrap; gap: 14px; }
 
-  footer.foot { border-top: 1px solid var(--line); padding: 40px 0 54px; background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--accent-wash) 36%, transparent));
-    content-visibility: auto; contain-intrinsic-size: auto 180px; }
+  footer.foot { border-top: 1px solid var(--line); padding: 40px 0 54px; background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--accent-wash) 36%, transparent)); }
   .foot-inner { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; justify-content: space-between; }
   .foot-brand { display: flex; align-items: center; gap: 11px; }
   .foot-brand .mark { width: 28px; height: 28px; }
@@ -1230,7 +1249,7 @@
   </section>
 
   <!-- CAPABILITIES -->
-  <section class="band platform" style="padding-top:78px;padding-bottom:78px">
+  <section class="band platform" style="padding-top:78px;padding-bottom:78px;border-bottom:none">
     <div class="wrap">
       <div class="band-head reveal">
         <span class="eyebrow">开发体验</span>
