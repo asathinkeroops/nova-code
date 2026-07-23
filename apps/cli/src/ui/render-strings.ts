@@ -678,12 +678,6 @@ export function toolBatchSummary(members: BatchMember[]): string {
     .join(", ");
 }
 
-// Left spine that visually wraps an expanded batch's children under the title,
-// aligning the bar under the disclosure triangle. Two visual columns ("│ ") so
-// children render against `width - 2` and the prefix never forces a re-wrap.
-const BATCH_GUTTER = `${dim("│")} `;
-const BATCH_GUTTER_W = 2;
-
 /**
  * Aggregate state of a batch: pending while any member is still running, then
  * error if any failed, else ok. Drives the disclosure marker colour so a
@@ -713,19 +707,14 @@ function renderToolBatch(
   if (collapsed) return `${tinted} ${dim(summary)}`;
   const title = `${tinted} ${summary}`;
   // Expanded: the title, then every member rendered exactly as an un-batched
-  // tool call but hung off a continuous left spine (│) so the children read as
-  // one group owned by the title. Members are separated by a bar-only row and
-  // the group is closed with a `╰` corner.
-  const childWidth = Math.max(1, width - BATCH_GUTTER_W);
-  const lines = [title];
-  members.forEach((m, i) => {
-    if (i > 0) lines.push(dim("│"));
-    for (const ln of renderToolCall(m.use, m.result, childWidth).split("\n")) {
-      lines.push(`${BATCH_GUTTER}${ln}`);
-    }
-  });
-  lines.push(dim("╰"));
-  return lines.join("\n");
+  // tool call, hung under a single `⎿` gutter — the same presentation as a
+  // thinking block (elbow on the first row, continuations aligned under it) —
+  // rather than a `│` left spine + `╰` closing corner.
+  const childWidth = Math.max(1, width - THINKING_INDENT.length);
+  const body = members
+    .map((m) => renderToolCall(m.use, m.result, childWidth))
+    .join("\n");
+  return `${title}\n${gutterIndent(body)}`;
 }
 
 // ─── dispatch ──────────────────────────────────────────────────────────────

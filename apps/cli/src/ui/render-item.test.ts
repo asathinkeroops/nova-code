@@ -398,7 +398,7 @@ describe("renderItemToString tool batch", () => {
     expect(out).toContain("read");
   });
 
-  it("wraps expanded children in a left spine closed with a corner", () => {
+  it("hangs expanded children under a ⎿ gutter like a thinking block", () => {
     const out = batch(
       [
         { name: "read", id: "r1" },
@@ -407,12 +407,12 @@ describe("renderItemToString tool batch", () => {
       false,
     );
     const rows = out.split("\n");
-    // First row is the disclosure title; every child row hangs off the │ spine.
+    // First row is the disclosure title; the children hang under a single `⎿`
+    // elbow (thinking-style), not a `│` left spine closed by a `╰` corner.
     expect(rows[0]).toContain("▾");
-    const body = rows.slice(1);
-    expect(body.every((r) => r.includes("│") || r.includes("╰"))).toBe(true);
-    // The group is closed by a final corner row.
-    expect(rows[rows.length - 1]).toContain("╰");
+    expect(rows[1]).toContain("⎿");
+    expect(out).not.toContain("│");
+    expect(out).not.toContain("╰");
   });
 });
 
