@@ -123,7 +123,7 @@ nova -p "解释这段代码"              # headless 模式：只跑一轮，输
 nova upgrade                       # 更新到最新版本（启动时也会自动检查并提示）
 ```
 
-首次启动进入交互式配置向导，写入 `~/.nova/nova.config.json`（API key、模型、session 目录等）。模型按 `lite` / `pro` / `max` 三档配置，每档可单独设定 thinking 等级与定价（`models.<档>.pricing`，支持 USD / CNY）；`/model`、`--model` 切换的是档位而非裸 provider id。默认 provider 为 `deepseek`，`settings.provider` 可切到 `moonshot`（Kimi，beta）或通用 `other`。
+首次启动进入交互式配置向导，写入 `~/.nova/nova.config.json`（API key、模型、session 目录等）。模型按 `lite` / `pro` / `max` 三档配置，每档可单独设定 thinking 等级与定价（`models.<档>.pricing`，支持 USD / CNY）；`/model`、`--model` 切换的是档位而非裸 provider id。默认 provider 为 `deepseek`，`settings.provider` 可切到 `moonshot`（Kimi，beta）或通用 `other`。界面与回复语言由 `settings.language`（模型回复语言，默认跟随系统 locale）与 `settings.locale`（仅 TUI 静态文案，内置 zh-CN / EN）分别控制。
 
 ### 📦 更多子命令
 
@@ -144,7 +144,7 @@ nova upgrade                       # 更新到最新版本（启动时也会自�
 
 | 工具 | 能力 |
 | --- | --- |
-| `read` / `write` / `edit` | 读文件（行号 + 分页，支持 `.xlsx` / `.ods` 表格；图片需模型档位支持图像输入）、整文件写、精确文本替换 |
+| `read` / `write` / `edit` | 读文件（行号 + 分页，支持 `.xlsx` / `.ods` 表格与 `.pdf` 文档；图片需模型档位支持图像输入）、整文件写、精确文本替换 |
 | `glob` / `grep` | 按文件名匹配、全文正则搜索 |
 | `bash` | 运行 shell 命令 |
 | `runInBackground` / `getBackgroundOutput` / `killBackground` | 后台跑 dev server、watcher 等长任务 |
@@ -193,6 +193,7 @@ nova upgrade                       # 更新到最新版本（启动时也会自�
 | 🧩 插件 | `nova plugin` 从本地路径 / GitHub / git url / marketplace 安装、启停插件；一个插件可贡献命令、agent、skill、hooks、MCP / LSP server 与 `bin/` 可执行文件，兼容 Claude Code 插件格式 |
 | 🗂️ 三层记忆 | 全局 → 用户 → 项目，按 `NOVA.md` > `CLAUDE.md` > `AGENTS.md` 优先级加载 |
 | 💻 交互体验 | 全屏 Ink/React REPL，流式输出 + 鼠标；`@path` / `/` 补全、<kbd>↑</kbd> <kbd>↓</kbd> 翻历史；实时状态行显示 token 用量、缓存命中、花费、provider 余额（DeepSeek / Kimi）、git 分支、上下文占用 |
+| 🌐 多语言 | 界面与模型回复语言分开配置：`settings.language` 控制模型回复语言（默认跟随系统 locale），`settings.locale` 单独覆盖 TUI 静态文案（内置 zh-CN / EN），二者可不同（如中文界面 + 英文回复）；不支持的语言标签回落到英文 |
 
 <br>
 

@@ -123,7 +123,7 @@ nova -p "explain this code"        # headless: one turn, print & exit
 nova upgrade                       # update to the latest version (also auto-checked at startup)
 ```
 
-First launch walks through an interactive setup (API key, model, etc.) → `~/.nova/nova.config.json`. Models are configured as a `lite` / `pro` / `max` ladder, each tier with its own thinking level and pricing (`models.<tier>.pricing`, USD / CNY); `/model` and `--model` switch tiers, not raw provider ids. The default provider is `deepseek`; set `settings.provider` to `moonshot` (Kimi, beta) or the generic `other`.
+First launch walks through an interactive setup (API key, model, etc.) → `~/.nova/nova.config.json`. Models are configured as a `lite` / `pro` / `max` ladder, each tier with its own thinking level and pricing (`models.<tier>.pricing`, USD / CNY); `/model` and `--model` switch tiers, not raw provider ids. The default provider is `deepseek`; set `settings.provider` to `moonshot` (Kimi, beta) or the generic `other`. Interface and reply language are controlled separately by `settings.language` (the model's reply language, defaults to the system locale) and `settings.locale` (TUI static text only, bundled zh-CN / EN).
 
 ### 📦 More subcommands
 
@@ -144,7 +144,7 @@ Tools the model can call — covering read/write, search, execution, code intell
 
 | Tool | Capability |
 | --- | --- |
-| `read` / `write` / `edit` | Read files (line-numbered + paginated, incl. `.xlsx` / `.ods` spreadsheets; images on image-capable model tiers), whole-file write, exact-text replace |
+| `read` / `write` / `edit` | Read files (line-numbered + paginated, incl. `.xlsx` / `.ods` spreadsheets and `.pdf` documents; images on image-capable model tiers), whole-file write, exact-text replace |
 | `glob` / `grep` | Filename matching, full-text regex search |
 | `bash` | Run shell commands |
 | `runInBackground` / `getBackgroundOutput` / `killBackground` | Run long tasks (dev servers, watchers) in the background |
@@ -193,6 +193,7 @@ Tools the model can call — covering read/write, search, execution, code intell
 | 🧩 Plugins | `nova plugin` installs / enables / disables plugins from a local path, GitHub, git url, or marketplace; one plugin can contribute commands, agents, skills, hooks, MCP / LSP servers, and `bin/` executables, in the Claude Code-compatible plugin format |
 | 🗂️ Three-layer memory | Global → user → project, loaded by `NOVA.md` > `CLAUDE.md` > `AGENTS.md` priority |
 | 💻 TUI | Full-screen Ink/React REPL, streaming output + mouse; `@path` / `/` completion, <kbd>↑</kbd> <kbd>↓</kbd> history; live status line with token usage, cache hits, cost, provider balance (DeepSeek / Kimi), git branch, context fill |
+| 🌐 Multilingual | UI and model-reply language configured independently: `settings.language` drives the model's reply language (defaults to the system locale), `settings.locale` overrides the TUI's static text (bundled zh-CN / EN); the two can differ (e.g. Chinese UI + English replies), and an unsupported tag falls back to English |
 
 <br>
 
