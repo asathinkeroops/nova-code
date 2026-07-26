@@ -223,13 +223,14 @@
       <section id="sec-1" class="mb-20">
         <div class="flex items-center gap-3 mb-5"><span class="sec-num">01</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">它能做什么</h2></div>
         <ul class="space-y-3 list-none pl-0">
-          <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>Agentic 编码循环</strong> —— 给它一个目标，它自己读代码、改文件、跑命令，一步步把任务做完。同一轮里互相独立的工具调用以<strong>有界并发</strong>运行（默认每轮 3 个）。<code>max_tokens</code> 截断可自动续传（默认最多连续 3 次，可配），DeepSeek 的 8K 输出限制不再是硬墙。</span></li>
-          <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>代码与系统工具</strong> —— 文件 read / write / edit，<code>glob</code> + <code>grep</code> 搜索，<code>bash</code>（60s 硬超时）与 <code>runInBackground</code> 后台长任务，web fetch / search，向你提问。</span></li>
+          <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>Agentic 编码循环</strong> —— 给它一个目标，它自己读代码、改文件、跑命令，一步步把任务做完。同一轮里互相独立的工具调用以<strong>有界并发</strong>运行（默认每轮 3 个）。<code>max_tokens</code> 截断可自动续传（默认最多连续 3 次，可配），单次响应写不完不再是硬墙。</span></li>
+          <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>代码与系统工具</strong> —— 文件 read / write / edit（文本、表格、<strong>PDF</strong>、图片都能读），<code>glob</code> + <code>grep</code> 搜索，<code>bash</code>（默认与上限均 3 分钟超时）与 <code>runInBackground</code> 后台长任务，web fetch / search，向你提问。</span></li>
           <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>LSP 代码智能</strong> —— 直连语言服务器做 go-to-definition、find-references、hover、诊断、符号搜索，比 grep 更懂作用域和类型。</span></li>
           <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>扩展 thinking</strong> —— 五档（<code>off</code>/<code>low</code>/<code>medium</code>/<code>high</code>/<code>max</code>）或显式 token 预算。</span></li>
           <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>Plan 模式与子 agent</strong> —— 把庞大的调查/规划交给全新上下文的 worker，结论汇报回来，主对话保持干净。内置三种类型 + 支持自定义。</span></li>
           <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>记忆、Skills、自定义命令、MCP、Hook</strong> —— 项目 / 用户级的知识与工具扩展；Shell 钩子在工具调用 / 用户提交 / 压缩等生命周期节点插入自定义逻辑。</span></li>
-          <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>权限与沙箱</strong> —— 基于规则的拦截 + OS 级文件写入隔离，双层防护。危险 bash 模式（rm -rf /、fork bomb、mkfs 等）直接拒绝，不可绕过。</span></li>
+          <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>多语言</strong> —— 模型回复语言（<code>language</code>）与 TUI 界面语言（<code>locale</code>，内置 zh-CN / EN）分开配置，默认都跟随系统 locale。</span></li>
+          <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>权限与沙箱</strong> —— 工作区信任门 + 基于规则的拦截 + OS 级文件写入隔离，三层防护。危险 bash 模式（rm -rf /、fork bomb、mkfs 等）直接拒绝，不可绕过。</span></li>
           <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>可恢复会话</strong> —— append-only 持久化，随时 <code>--resume</code> / <code>--continue</code>，<code>/rewind</code> 回到更早节点（含文件改动预览确认）。</span></li>
           <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>DeepSeek 深度定制</strong> —— thinking 映射到 DeepSeek 的 <code>output_config.effort</code>，请求结构对自动上下文缓存友好，错误码翻译与瞬时重试。模型按 <code>lite</code>/<code>pro</code>/<code>max</code> 三档配置（DeepSeek 模板：<code>lite</code>→<code>deepseek-v4-flash</code>，<code>pro</code>/<code>max</code>→<code>deepseek-v4-pro</code>，各档 thinking 深度不同），默认档位 <code>pro</code>，支持 <code>/model</code> 运行时切换。</span></li>
         </ul>
@@ -307,7 +308,8 @@
           <li><strong>位置参数即初始 prompt</strong>：<code>nova 把 README 翻译成英文</code> 会先跑这一轮，再停在 REPL 等你继续。</li>
           <li><strong><code>-p / --prompt</code> 是无头模式</strong>：传了这个 flag，Nova 跑一轮后直接打印结果并退出，不进入交互式 REPL。如果 stdin/stdout 不是 TTY（管道、重定向、CI），也会自动进入无头模式。用 <code>--output-format json</code> 可以拿到结构化 JSON。</li>
           <li><strong><code>-m</code> / <code>-t</code> / <code>--max-turns</code> 都是本次会话的临时覆盖</strong>，不写回配置文件。</li>
-          <li><strong><code>--cwd</code></strong> 决定工具的「工作区根」—— 读写权限、沙箱写入范围都以它为基准（见 <a class="inline-link" href="#sec-10">§10</a>）。</li>
+          <li><strong><code>--cwd</code></strong> 决定工具的「工作区根」—— 读写权限、沙箱写入范围、工作区信任判定都以它为基准（见 <a class="inline-link" href="#sec-10">§10</a>）。</li>
+          <li><strong>首次在某个目录启动会先问「是否信任这个文件夹」</strong>；headless 弹不出确认框，未信任的工作区直接失败退出（见 <a class="inline-link" href="#sec-10">§10</a>）。</li>
           <li><strong><code>--permission-mode</code></strong> 启动时直接设定权限模式（REPL 内也可用 <span class="kbd">Shift+Tab</span> 切换）。<code>--dangerously-skip-permissions</code> 对所有权限提示自动批准，适合无人值守场景。</li>
           <li><strong>session 列表</strong> 在 REPL 内用 <code>/resume</code>（不带参数）的交互式选择器查看，无独立 CLI 参数。</li>
         </ul>
@@ -325,9 +327,11 @@
           <tr><td><span class="kbd">Ctrl+C</span></td><td>有回合在跑时中断它；空闲时再按一次退出</td></tr>
           <tr><td><span class="kbd">Ctrl+D</span></td><td>退出 Nova</td></tr>
           <tr><td><span class="kbd">Shift+Tab</span></td><td>循环切换权限模式：default → accept edits → auto → plan（见 <a class="inline-link" href="#sec-10">§10</a>）</td></tr>
+          <tr><td><span class="kbd">Ctrl+V</span></td><td>从剪贴板粘贴：<strong>图片</strong>（截图 / 复制的图）落盘后以路径形式插入并登记为附件，否则按普通文本粘贴</td></tr>
           <tr><td>鼠标滚轮</td><td>在历史区上下滚动</td></tr>
           <tr><td>鼠标拖拽</td><td>选中文本（用于复制）</td></tr>
         </tbody></table></div>
+        <p class="mt-4">把图片文件<strong>拖拽</strong>到终端窗口上同样有效 —— 路径会被规范化成绝对路径并当作附件插入。图片能否真的送进模型，取决于当前档位是否支持图像输入（见 <a class="inline-link" href="#sec-9">§9</a> <code>read</code>）。</p>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">输入框编辑键（emacs 风格）</h3>
         <div class="tbl-wrap"><table class="doc"><thead><tr><th>按键</th><th>作用</th></tr></thead><tbody>
@@ -346,7 +350,26 @@
         </ul>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)"><code>@path</code> 文件引用补全</h3>
-        <p>在输入框里打 <code>@</code> 开头的词，会弹出<strong>工作区文件路径</strong>补全（按 basename 前缀优先排序，遵守 <code>.gitignore</code>、跳过 <code>node_modules</code>/<code>.git</code>，与 <code>glob</code>/<code>grep</code> 看到的文件一致）。<span class="kbd">↑</span>/<span class="kbd">↓</span> 选择、<span class="kbd">Enter</span> 或 <span class="kbd">Tab</span> 补全。命令行（<code>/</code> 开头）上不触发 <code>@</code> 补全。</p>
+        <p>在输入框里打 <code>@</code> 开头的词，会弹出<strong>工作区文件路径</strong>补全。文件清单与 <code>glob</code>/<code>grep</code> 看到的一致：遵守 <code>.gitignore</code>（逐层向仓库根收集）、跳过 <code>node_modules</code>/<code>.git</code>、不含隐藏文件，最多 10000 条。</p>
+        <p>排序由具体到宽泛：<strong>文件名前缀命中</strong> &gt; 文件名内含 &gt; 整条路径内含，同分则短路径优先。<span class="kbd">↑</span>/<span class="kbd">↓</span> 选择、<span class="kbd">Enter</span> 或 <span class="kbd">Tab</span> 补全 —— 补全只替换那个 <code>@…</code> 词，<strong>不会提交</strong>。命令行（<code>/</code> 开头）上只弹 slash 命令补全，不触发 <code>@</code>。</p>
+
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)"><code>!</code> shell 直通</h3>
+        <p>以 <code>!</code> 开头的一行<strong>不发给模型</strong>，直接在 shell 里跑（输入框边框会变绿提示）。它复用 <code>bash</code> 工具：同样在工作区根执行、同样受 OS 沙箱约束（见 <a class="inline-link" href="#sec-11">§11</a>），输出以一张卡片贴回历史区，<span class="kbd">Esc</span> 可中断。因为是你自己敲的命令，<strong>不走权限门</strong>。</p>
+        <p>它和 <code>/</code> 命令行一样带本地副作用，所以即使在回合运行中键入也<strong>始终排队</strong>、由 REPL 在空闲时派发 —— 不会被 <code>queue.consumeInLoop</code> 折进当前回合（见 <a class="inline-link" href="#sec-20">§20</a>）。</p>
+
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">状态行</h3>
+        <p>输入框下方两行实时状态：</p>
+        <ul class="space-y-2">
+          <li><strong>第一行</strong>：模型档位 + 思考等级 + 上下文窗口、上下文占用进度条与百分比、工作区目录名、git 分支、完整 cwd。</li>
+          <li><strong>第二行（累计用量）</strong>：账户余额（仅接 DeepSeek 官方 API 时出现；账户不可扣费时转为琥珀色）、缓存命中率、累计输入 / 输出 token、按当前档位 <code>pricing</code> 估算的花费。终端过窄时从右往左丢弃分段，余额和命中率优先保留。</li>
+        </ul>
+
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">界面语言（i18n）</h3>
+        <ul class="space-y-2">
+          <li><code>settings.language</code> 决定<strong>模型回复语言</strong>（注入 system prompt），默认 <code>auto</code> —— 跟随系统 locale（<code>$LC_ALL</code>/<code>$LANG</code>/<code>$LANGUAGE</code>，macOS 还会读 <code>AppleLocale</code>）。</li>
+          <li><code>settings.locale</code> 只覆盖 <strong>TUI 静态文案</strong>（菜单、提示、状态行），默认 <code>auto</code> 即跟随 <code>language</code>。内置 zh-CN 与 EN 两套文案，不认识的标签一律回落到英文。</li>
+          <li>两者可以不同 —— 比如中文界面 + 英文回复：<code>{"locale": "zh-CN", "language": "en"}</code>。改动需重启生效（语言写进 system prompt，会话中途变更会击穿前缀缓存）。</li>
+        </ul>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">输入预测</h3>
         <p>每成功跑完一轮，Nova 会用主模型预测你<strong>下一句可能想说什么</strong>，作为输入框的灰色占位提示（默认开启，超时 8s，最多 300 字）。用 <code>/predict on|off</code> 开关，或在配置里调 <code>predict</code>。</p>
@@ -434,7 +457,7 @@
           <tr><td><code>nova-code-guide</code></td><td>只读（限于 Nova 源码检出）</td><td>就 Nova 自身答疑（<code>/nova-code-guide</code>）</td></tr>
         </tbody></table></div>
         <p>同一轮里的多个 <code>createSubAgent</code> 调用会<strong>并发执行</strong>（受 <code>toolConcurrency</code> 限制）。父 agent 只会收到每个子 agent 的<strong>最终一条消息</strong> —— 庞大的中间调查被挡在主上下文之外。</p>
-        <p>通过 <code>settings.subagent</code> 配置：<code>enabled</code> / <code>model</code> / <code>maxTurns</code>（默认 100）/ <code>maxTokens</code>（默认 32768；DeepSeek 端点输出上限 8192，需调低）。<code>model</code> 是一张<strong>按子 agent 名索引的表</strong>（如 <code>{"plan":"max","explore":"pro"}</code>），可给每个 agent 单独指定模型档位；解析顺序由具体到宽泛：该表的对应条目 → 内置默认（<code>general-purpose</code>/<code>plan</code>→<code>max</code>，<code>explore</code>/<code>nova-code-guide</code>→<code>pro</code>）→ 自定义 agent 自己 frontmatter 里的 <code>model</code> → 当前主模型；整张表省略则全部沿用默认。每个子 agent 的 transcript 落在 <code>~/.nova/sessions/{id}/subagents/</code>。</p>
+        <p>通过 <code>settings.subagent</code> 配置：<code>enabled</code> / <code>model</code> / <code>maxTurns</code>（默认 100）/ <code>maxTokens</code>（默认 32768，独立于顶层的每响应输出上限）。<code>model</code> 是一张<strong>按子 agent 名索引的表</strong>（如 <code>{"plan":"max","explore":"pro"}</code>），可给每个 agent 单独指定模型档位；解析顺序由具体到宽泛：该表的对应条目 → 内置默认（<code>general-purpose</code>/<code>plan</code>→<code>max</code>，<code>explore</code>/<code>nova-code-guide</code>→<code>pro</code>）→ 自定义 agent 自己 frontmatter 里的 <code>model</code> → 当前主模型；整张表省略则全部沿用默认。每个子 agent 的 transcript 落在 <code>~/.nova/sessions/{id}/subagents/</code>。</p>
         <div class="callout callout-info">
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
           <div><p>子 agent 调用 todo / task / 长任务这类「有状态」工具时，操作的是<strong>父 session</strong> 的共享存储。</p></div>
@@ -473,10 +496,10 @@
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">文件与文本</h3>
         <div class="tbl-wrap"><table class="doc"><thead><tr><th>工具</th><th>权限</th><th>说明</th></tr></thead><tbody>
-          <tr><td><code>read</code></td><td><span class="pill pill-ro">只读</span></td><td>读<strong>文本 / 表格 / 图片</strong>：文本输出带 <code>cat -n</code> 风格行号（1-based），<code>offset</code> 起始行、<code>limit</code> 最大行数，单页约 20 万字符上限、单行超 1.6 万字符会截断并标注，超出时提示用 <code>offset</code> 续读；行号前缀仅用于显示，传给 <code>edit</code> 前需去掉。表格（<code>.xlsx/.xls/.xlsm/.xlsb/.ods</code>）每行渲成 TSV 带表头，<code>sheet</code> 选工作表。图片（<code>.png/.jpg/.jpeg/.gif/.webp</code>，≤20MB）以 base64 块返回 —— <strong>仅当前档位支持图片输入时</strong>（否则提示切到 image-capable 档位）。含 NUL 字节的二进制文件直接拒读并给出 <code>file</code>/<code>xxd</code> 建议</td></tr>
+          <tr><td><code>read</code></td><td><span class="pill pill-ro">只读</span></td><td>读<strong>文本 / 表格 / PDF / 图片</strong>：文本输出带 <code>cat -n</code> 风格行号（1-based），<code>offset</code> 起始行、<code>limit</code> 最大行数，单页约 20 万字符上限、单行超 1.6 万字符会截断并标注，超出时提示用 <code>offset</code> 续读；行号前缀仅用于显示，传给 <code>edit</code> 前需去掉。表格（<code>.xlsx/.xls/.xlsm/.xlsb/.ods</code>）每行渲成 TSV 带表头，<code>sheet</code> 选工作表。<strong>PDF</strong>（<code>.pdf</code>，≤30MB）抽取文本后同样带行号返回，每页前插一条 <code>[Page N]</code> 标记，<code>offset</code>/<code>limit</code> 照常分页；扫描件 / 纯图片 PDF 抽不出文本，会明说并建议改用 OCR 工具。图片（<code>.png/.jpg/.jpeg/.gif/.webp</code>，≤20MB）以 base64 块返回 —— <strong>仅当前档位支持图片输入时</strong>（否则提示切到 image-capable 档位）。含 NUL 字节的二进制文件直接拒读并给出 <code>file</code>/<code>xxd</code> 建议</td></tr>
           <tr><td><code>write</code></td><td><span class="pill pill-ap">需批准</span></td><td>写整个文件（覆盖），默认自动创建父目录</td></tr>
           <tr><td><code>edit</code></td><td><span class="pill pill-ap">需批准</span></td><td>精确字符串替换；<code>old_string</code> 默认须唯一匹配，<code>replace_all</code> 可全替</td></tr>
-          <tr><td><code>bash</code></td><td><span class="pill pill-ap">需批准</span></td><td>执行短小、阻塞的 shell 命令；<strong>硬超时 60s（默认也是 60s）</strong>，输出截到 200KB。更长的任务用 <code>runInBackground</code></td></tr>
+          <tr><td><code>bash</code></td><td><span class="pill pill-ap">需批准</span></td><td>执行阻塞的 shell 命令（<code>bash -lc</code>）；<code>timeout_ms</code> <strong>默认与上限都是 180000（3 分钟）</strong>，<code>cwd</code> 可覆盖工作目录，输出截到 200KB。更长的任务应改用 <code>runInBackground</code></td></tr>
         </tbody></table></div>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">搜索与发现</h3>
@@ -502,10 +525,10 @@
         </tbody></table></div>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">计划管理：Todo（会话内，内存态）</h3>
-        <p><code>createTodo</code> / <code>updateTodo</code> / <code>getTodoList</code> / <code>clearTodoList</code> —— 把多步计划外化成一张清单，<strong>只存内存</strong>，进程退出即丢。任一时刻最多一个 todo 处于 <code>in_progress</code>。</p>
+        <p><code>createTodo</code> / <code>updateTodo</code> / <code>getTodoList</code> / <code>clearTodoList</code> —— 把多步计划外化成一张清单，<strong>只存内存</strong>，进程退出即丢。任一时刻最多一个 todo 处于 <code>in_progress</code>。全部完成后清单会在 <code>todo.autoClearDelayMs</code>（默认 2.5s，留一拍让你看到那排 ✓）后自动清空，不指望模型自己去调 <code>clearTodoList</code>。</p>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">计划管理：Task（工作区内，落盘持久）</h3>
-        <p><code>createTask</code> / <code>updateTask</code> / <code>getTaskList</code> / <code>clearTaskList</code> —— 更大、值得跨会话保留的计划，落盘到工作区的 <code>.tasks/{id}.json</code>。支持 <code>blockedBy</code> 依赖关系，允许多个并行 <code>in_progress</code>。</p>
+        <p><code>createTask</code> / <code>updateTask</code> / <code>getTaskList</code> / <code>clearTaskList</code> —— 更大、值得跨会话保留的计划，落盘到工作区的 <code>.tasks/{id}.json</code>。支持 <code>blockedBy</code> 依赖关系，允许多个并行 <code>in_progress</code>。整份计划做完后同样会在 <code>task.autoClearDelayMs</code>（默认 2.5s）后自动清空并删掉对应的 <code>.tasks/</code> 文件。</p>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">定时调度：Cron（会话内，落盘持久）</h3>
         <div class="tbl-wrap"><table class="doc"><thead><tr><th>工具</th><th>权限</th><th>说明</th></tr></thead><tbody>
@@ -535,6 +558,17 @@
       <!-- §10 -->
       <section id="sec-10" class="mb-20">
         <div class="flex items-center gap-3 mb-5"><span class="sec-num">10</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">权限与安全</h2></div>
+        <h3 class="text-base font-semibold mt-2 mb-3" style="color:var(--text)">工作区信任（启动前的第一道门）</h3>
+        <p>在任何工具能跑起来之前，Nova 先确认你<strong>允许它访问当前这个文件夹</strong>。首次在某个目录启动时会占满屏幕弹一张确认卡片，选 Yes 才继续，选 No / <span class="kbd">Esc</span> 直接退出。</p>
+        <ul class="space-y-2">
+          <li>信任记录写在<strong>用户全局配置</strong> <code>~/.nova/nova.config.json</code> 的 <code>trust.trustedRoots</code>（绝对、符号链接已解析的路径），<strong>从不写进项目内的文件</strong> —— 所以 clone 下来的仓库无法把自己标记为可信。</li>
+          <li>判定是<strong>包含关系</strong>：工作区等于或位于某个已记录根之下即视为可信，因此信任仓库根即覆盖其所有子目录。</li>
+          <li><strong>家目录例外</strong>：对 <code>~</code> 授予的信任只在本次会话有效，不落盘。</li>
+          <li><strong>headless（<code>-p</code> / 无 TTY）没法弹确认框</strong>，所以未信任的工作区是<strong>硬性拒绝</strong>：先交互式跑一次并信任、或手工把路径加进 <code>trust.trustedRoots</code>、或传 <code>--dangerously-skip-permissions</code> 绕过。</li>
+          <li>写配置失败不会中断会话（你已经同意了，本次有效，只是下次还会再问）。设 <code>trust.enabled: false</code> 可恢复「启动即信任」的旧行为。</li>
+        </ul>
+
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">权限引擎</h3>
         <p>权限引擎（<code>@nova/safety</code> 的 <code>PermissionEngine</code>）是模型与文件系统之间的一道闸门。每次工具调用按下面的顺序裁决：</p>
         <ol class="space-y-3 list-none pl-0 counter-reset my-5">
           <li class="flex gap-3"><span class="sec-num" style="width:1.6rem;height:1.6rem;font-size:.75rem">1</span><span><strong>危险 bash 直接拒绝。</strong>命令若匹配内置危险模式（<code>rm -r /</code>、fork bomb、<code>mkfs</code>、<code>dd if=… of=/dev/…</code>、重定向到块设备），立即 deny，无法绕过。</span></li>
@@ -645,7 +679,7 @@
         <p>历史是 <strong>append-only</strong> 的：每轮只往后追加新消息，从不改写更早的内容 —— 这既让持久化只做追加写，也让 DeepSeek 的<strong>自动上下文缓存前缀</strong>能持续存活。</p>
         <p class="font-medium mt-5" style="color:var(--text)"><code>max_tokens</code> 截断自动续传：</p>
         <ul class="space-y-3">
-          <li>当模型因 <code>stop_reason: "max_tokens"</code> 被截断且没有未完成的工具调用时，loop 会自动重新提示模型从断点继续 —— 这对 DeepSeek 的 8K 输出限制尤为重要。默认最多连续重试 <strong>3 次</strong>（<code>maxTokensContinuations: 3</code>），每次有实质性进展时计数器重置。设为 <code>0</code> 则回到旧行为：首次截断即硬停止。</li>
+          <li>当模型因 <code>stop_reason: "max_tokens"</code> 被截断且没有未完成的工具调用时，loop 会自动重新提示模型从断点继续 —— 长回复撞上该档 <code>maxTokens</code> 时不再半途而废。默认最多连续重试 <strong>3 次</strong>（<code>maxTokensContinuations: 3</code>），每次有实质性进展时计数器重置。设为 <code>0</code> 则回到旧行为：首次截断即硬停止。</li>
         </ul>
         <p class="font-medium mt-5" style="color:var(--text)">auto 压缩（默认开）：</p>
         <ul class="space-y-3">
@@ -860,14 +894,15 @@
           <tr><td><code>models</code></td><td><code>{}</code></td><td>命名的模型档位表，value 为<strong>档位对象</strong>，每档带自己的 <code>id</code>、<code>maxTokens</code>、<code>contextWindowSize</code>、<code>thinking</code>、<code>modalities</code>、<code>pricing</code>、可选 <code>description</code>。非空时<strong>必须含 <code>lite</code>/<code>pro</code>/<code>max</code> 三档</strong>（schema 强制）；首次向导按 provider 模板写入，schema 不再提供默认值</td></tr>
           <tr><td><code>baseURL</code></td><td>（无）</td><td>Anthropic 兼容端点 URL（provider 模板写入；缺省用 SDK 默认端点）</td></tr>
           <tr><td><code>sessionDir</code></td><td><code>~/.nova/sessions</code></td><td>session 存放目录</td></tr>
-          <tr><td><code>language</code></td><td><code>"auto"</code></td><td>UI / 回复语言；<code>auto</code> 跟随系统 locale（<code>$LC_ALL</code>/<code>$LANG</code>，macOS 还读 <code>AppleLocale</code>），否则填 BCP-47 标签如 <code>en</code>/<code>zh-CN</code></td></tr>
+          <tr><td><code>language</code></td><td><code>"auto"</code></td><td><strong>模型回复语言</strong>（注入 system prompt），同时也是 TUI 界面语言的默认来源；<code>auto</code> 跟随系统 locale（<code>$LC_ALL</code>/<code>$LANG</code>/<code>$LANGUAGE</code>，macOS 还读 <code>AppleLocale</code>），否则填 BCP-47 标签如 <code>en</code>/<code>zh-CN</code>。加载时 <code>auto</code> 会被解析成具体标签</td></tr>
+          <tr><td><code>locale</code></td><td><code>"auto"</code></td><td><strong>仅 TUI 静态文案</strong>的语言覆盖（菜单/提示/状态行）；<code>auto</code> = 跟随 <code>language</code>。内置 zh-CN 与 EN，其它标签回落英文。两者可不同（中文界面 + 英文回复），见 <a class="inline-link" href="#sec-5">§5</a></td></tr>
           <tr><td><code>maxTokensContinuations</code></td><td><code>3</code></td><td>当 <code>max_tokens</code> 截断且无工具调用时，连续重提示模型继续的最多次数；<code>0</code> 禁用（硬停止）。每次有进展时计数器重置</td></tr>
           <tr><td><code>maxTurns</code></td><td><code>100</code></td><td>单轮最大循环次数</td></tr>
           <tr><td><code>toolConcurrency</code></td><td><code>3</code></td><td>单轮内工具并发上限（1 = 全串行）</td></tr>
         </tbody></table></div>
         <div class="callout callout-info">
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
-          <div><p><strong>每档输出上限 / 上下文窗口现在是 per-tier 的</strong>：写在 <code>models.&lt;tier&gt;.maxTokens</code>（缺省 32768；DeepSeek 端点须调低到 8192）和 <code>models.&lt;tier&gt;.contextWindowSize</code>（缺省 1000000），不再是顶层字段。<code>models.&lt;tier&gt;.thinking</code> 让同一模型 id 拉出 lite/pro/max 能力梯度（见 <a class="inline-link" href="#sec-7">§7</a>）；<code>models.&lt;tier&gt;.pricing</code> 提供 <code>/usage</code> 成本估算单价。</p></div>
+          <div><p><strong>每档输出上限 / 上下文窗口是 per-tier 的</strong>：写在 <code>models.&lt;tier&gt;.maxTokens</code>（schema 缺省 32768，DeepSeek 模板三档均写 384000）和 <code>models.&lt;tier&gt;.contextWindowSize</code>（缺省 1000000），不再是顶层字段。<code>models.&lt;tier&gt;.thinking</code> 让同一模型 id 拉出 lite/pro/max 能力梯度（见 <a class="inline-link" href="#sec-7">§7</a>）；<code>models.&lt;tier&gt;.pricing</code> 提供 <code>/usage</code> 成本估算单价。</p></div>
         </div>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)"><code>permissions</code></h3>
@@ -879,6 +914,12 @@
           <tr><td><code>autoMode.llmClassifier</code></td><td><code>true</code></td><td><code>auto</code> 模式下把规则判不定的命令交给 LLM 风险分类器；关掉则一律弹确认</td></tr>
           <tr><td><code>autoMode.model</code></td><td>（无→便宜档）</td><td>分类器用的模型（裸 id 或档位名），独立于 <code>/model</code></td></tr>
           <tr><td><code>autoMode.classifierTimeoutMs</code></td><td><code>8000</code></td><td>分类器超时；超时按「有风险」处理（弹确认，不静默执行）</td></tr>
+        </tbody></table></div>
+
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)"><code>trust</code>（工作区信任）</h3>
+        <div class="tbl-wrap"><table class="doc"><thead><tr><th>字段</th><th>默认</th><th>说明</th></tr></thead><tbody>
+          <tr><td><code>trust.enabled</code></td><td><code>true</code></td><td>启动时确认工作区可访问；<code>false</code> 恢复「启动即信任」，见 <a class="inline-link" href="#sec-10">§10</a></td></tr>
+          <tr><td><code>trust.trustedRoots</code></td><td><code>[]</code></td><td>已信任的绝对路径（授权时自动追加，也可手工预置）；工作区位于任一根之下即可信</td></tr>
         </tbody></table></div>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">思考等级（thinking）</h3>
@@ -903,6 +944,8 @@
           <tr><td><code>predict.enabled</code></td><td><code>true</code></td><td>下一条输入预测（<code>/predict</code> 切换）</td></tr>
           <tr><td><code>predict.timeoutMs</code></td><td><code>8000</code></td><td>预测超时</td></tr>
           <tr><td><code>predict.maxChars</code></td><td><code>300</code></td><td>预测占位最大字符数</td></tr>
+          <tr><td><code>todo.autoClearDelayMs</code></td><td><code>2500</code></td><td>一张 todo 清单全部完成后自动清空前的停留时长（<code>0</code> = 不自动清，交给模型自己调 <code>clearTodoList</code>）</td></tr>
+          <tr><td><code>task.autoClearDelayMs</code></td><td><code>2500</code></td><td>同上，但针对落盘的 Task 计划 —— 全部完成后连同 <code>.tasks/</code> 文件一起删（<code>0</code> 关闭）</td></tr>
           <tr><td><code>terminal.syncOutput</code> / <code>cursorFollow</code></td><td><code>true</code> / <code>true</code></td><td>同步输出（防闪烁）/ 光标跟随输入框（IME 定位）</td></tr>
           <tr><td><code>logging.level</code></td><td><code>"info"</code></td><td><code>trace</code>…<code>fatal</code></td></tr>
           <tr><td><code>logging.pretty</code></td><td><code>true</code></td><td>pretty 日志（<code>--no-pretty</code> 关）</td></tr>
@@ -996,6 +1039,27 @@
           </details>
           <details class="group bg-surface border border-line rounded-xl overflow-hidden">
             <summary class="cursor-pointer list-none px-5 py-3.5 flex items-center justify-between gap-3 font-medium select-none" style="color:var(--text)">
+              <span>启动时让我确认「是否信任这个文件夹」</span>
+              <svg class="w-4 h-4 text-mute transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+            </summary>
+            <p class="px-5 pb-4 pt-0 text-sm m-0 max-w-none">这是工作区信任门（见 <a class="inline-link" href="#sec-10">§10</a>）。选 Yes 会把该目录记进 <code>~/.nova/nova.config.json</code> 的 <code>trust.trustedRoots</code>，以后不再问；对 <code>~</code> 授予的信任只在本次会话有效。headless 场景弹不出这张卡片，未信任会直接失败 —— 先交互式信任一次，或手工加进 <code>trust.trustedRoots</code>，或用 <code>--dangerously-skip-permissions</code>。</p>
+          </details>
+          <details class="group bg-surface border border-line rounded-xl overflow-hidden">
+            <summary class="cursor-pointer list-none px-5 py-3.5 flex items-center justify-between gap-3 font-medium select-none" style="color:var(--text)">
+              <span>想要中文界面但英文回复（或反过来）</span>
+              <svg class="w-4 h-4 text-mute transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+            </summary>
+            <p class="px-5 pb-4 pt-0 text-sm m-0 max-w-none"><code>language</code> 管模型回复语言，<code>locale</code> 只管 TUI 静态文案。要中文界面 + 英文回复就写 <code>{"locale": "zh-CN", "language": "en"}</code>；两者默认都是 <code>auto</code>（跟随系统 locale）。改完重启生效 —— 回复语言写在 system prompt 里，会话中途改会击穿前缀缓存。</p>
+          </details>
+          <details class="group bg-surface border border-line rounded-xl overflow-hidden">
+            <summary class="cursor-pointer list-none px-5 py-3.5 flex items-center justify-between gap-3 font-medium select-none" style="color:var(--text)">
+              <span>能读 PDF 吗？</span>
+              <svg class="w-4 h-4 text-mute transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+            </summary>
+            <p class="px-5 pb-4 pt-0 text-sm m-0 max-w-none">能。<code>read</code> 直接吃 <code>.pdf</code>（≤30MB），抽取的文本带行号、每页前有 <code>[Page N]</code> 标记，<code>offset</code>/<code>limit</code> 照常翻页。扫描件 / 纯图片 PDF 抽不出文本，工具会明说并建议改用 <code>ocrmypdf</code>/<code>tesseract</code> 之类先 OCR。</p>
+          </details>
+          <details class="group bg-surface border border-line rounded-xl overflow-hidden">
+            <summary class="cursor-pointer list-none px-5 py-3.5 flex items-center justify-between gap-3 font-medium select-none" style="color:var(--text)">
               <span>每次写文件 / 跑命令都来问我，太烦</span>
               <svg class="w-4 h-4 text-mute transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
             </summary>
@@ -1031,10 +1095,10 @@
           </details>
           <details class="group bg-surface border border-line rounded-xl overflow-hidden">
             <summary class="cursor-pointer list-none px-5 py-3.5 flex items-center justify-between gap-3 font-medium select-none" style="color:var(--text)">
-              <span>DeepSeek 长回复被截断（8K 限制）</span>
+              <span>长回复被 <code>max_tokens</code> 截断</span>
               <svg class="w-4 h-4 text-mute transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
             </summary>
-            <p class="px-5 pb-4 pt-0 text-sm m-0 max-w-none">Nova 的 loop 会自动检测 <code>max_tokens</code> 截断并重新提示模型继续。默认最多连续续传 3 次（<code>maxTokensContinuations: 3</code>），每次有进展时计数器重置。设为 <code>0</code> 可禁用此特性。同时建议检查 <code>maxTokens</code> 设置是否为 8192 或更低。</p>
+            <p class="px-5 pb-4 pt-0 text-sm m-0 max-w-none">Nova 的 loop 会自动检测 <code>max_tokens</code> 截断并重新提示模型继续。默认最多连续续传 3 次（<code>maxTokensContinuations: 3</code>），每次有进展时计数器重置。设为 <code>0</code> 可禁用此特性。若长回复频繁被截断，也可以直接调高该档的 <code>models.&lt;tier&gt;.maxTokens</code>（DeepSeek 模板默认已是 384000）。</p>
           </details>
           <details class="group bg-surface border border-line rounded-xl overflow-hidden">
             <summary class="cursor-pointer list-none px-5 py-3.5 flex items-center justify-between gap-3 font-medium select-none" style="color:var(--text)">

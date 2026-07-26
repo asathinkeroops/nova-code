@@ -35,12 +35,13 @@
 ## 1. 它能做什么
 
 - **Agentic 编码循环** —— 给它一个目标，它自己读代码、改文件、跑命令，一步步把任务做完。同一轮里互相独立的工具调用以**有界并发**运行（默认每轮 3 个）。
-- **代码与系统工具** —— 文件 read / write / edit，`glob` + `grep` 搜索，`bash` 与后台长任务（`runInBackground`），web fetch / search，向你提问。
+- **代码与系统工具** —— 文件 read / write / edit（文本、表格、**PDF**、图片都能读），`glob` + `grep` 搜索，`bash` 与后台长任务（`runInBackground`），web fetch / search，向你提问。
 - **LSP 代码智能** —— 直连语言服务器做 go-to-definition、find-references、hover、诊断、符号搜索，比 grep 更懂作用域和类型。
 - **扩展 thinking** —— 五档（`off`/`low`/`medium`/`high`/`max`）或显式 token 预算。
 - **Plan 模式与子 agent** —— 把庞大的调查/规划交给全新上下文的 worker，结论汇报回来，主对话保持干净。
 - **记忆、Skills、自定义命令、MCP** —— 项目/用户级的知识与工具扩展。
-- **权限与沙箱** —— 基于规则的拦截 + OS 级文件写入隔离，双层防护。
+- **多语言** —— 模型回复语言（`language`）与 TUI 界面语言（`locale`，内置 zh-CN / EN）分开配置，默认都跟随系统 locale。
+- **权限与沙箱** —— 工作区信任门 + 基于规则的拦截 + OS 级文件写入隔离，三层防护。
 - **可恢复会话** —— append-only 持久化，随时 `--resume` / `--continue`，`/rewind` 回到更早节点。
 - **DeepSeek 深度定制** —— thinking 映射到 DeepSeek 的 `output_config.effort`，请求结构对自动上下文缓存友好，错误码翻译与瞬时重试。
 
@@ -115,7 +116,8 @@ nova upgrade                       # 跑配置里的安装器把 nova 升到最�
 - **位置参数即初始 prompt（交互）**：`nova 把 README 翻译成英文` 会先跑这一轮，再停在 REPL 等你继续。
 - **`-p/--prompt` 是 headless 触发器**：跑**一轮**、打印结果、直接退出，**不进 REPL**——和位置参数不同。**没有 TTY** 时（管道 / 重定向 / CI）也会自动走 headless；此时若没给 prompt，会从 **stdin** 读取。`--output-format json|jsonl` 让 headless 输出结构化结果（`json` = 结果 + 完整消息；`jsonl` = 流式事件）。
 - **`-m` / `-t` / `--max-turns` 都是本次会话的临时覆盖**，不写回配置文件。
-- **`--cwd`** 决定工具的「工作区根」——读写权限、沙箱写入范围都以它为基准（见 [§10](#10-权限与安全)）。
+- **`--cwd`** 决定工具的「工作区根」——读写权限、沙箱写入范围、工作区信任判定都以它为基准（见 [§10](#10-权限与安全)）。
+- **首次在某个目录启动会先问「是否信任这个文件夹」**；headless 弹不出确认框，未信任的工作区直接失败退出（见 [§10](#10-权限与安全)）。
 
 ---
 
@@ -131,8 +133,12 @@ Nova 是一个全屏 Ink/React REPL：顶部是滚动的历史区，底部是固
 | `Esc` | 中断正在运行的回合 |
 | `Ctrl+C` | 有回合在跑时中断它；空闲时再按一次退出 |
 | `Ctrl+D` | 退出 Nova |
+| `Shift+Tab` | 循环切换权限模式：default → accept edits → auto → plan（见 [§10](#10-权限与安全)） |
+| `Ctrl+V` | 从剪贴板粘贴：**图片**（截图 / 复制的图）落盘后以路径形式插入并登记为附件，否则按普通文本粘贴 |
 | 鼠标滚轮 | 在历史区上下滚动 |
 | 鼠标拖拽 | 选中文本（用于复制） |
+
+> 把图片文件**拖拽**到终端窗口上同样有效——路径会被规范化成绝对路径并当作附件插入。图片能否真的送进模型，取决于当前档位是否支持图像输入（见 [§9](#9-内置工具一览) `read`）。
 
 ### 输入框编辑键（emacs 风格）
 
@@ -149,6 +155,31 @@ Nova 是一个全屏 Ink/React REPL：顶部是滚动的历史区，底部是固
 - 确认：`Enter`；取消/拒绝：`Esc`
 - 多选题用 `空格` 勾选
 - 审批框还支持 `PageUp`/`PageDown` 滚动周围的视口，方便先看清要批准的内容
+
+### `@path` 文件引用补全
+
+在输入框里打一个 `@` 开头的词，会弹出**工作区文件路径**补全。文件清单与 `glob`/`grep` 看到的一致：遵守 `.gitignore`（逐层向仓库根收集）、跳过 `node_modules`/`.git`、不含隐藏文件，最多 10000 条。
+
+排序由具体到宽泛：**文件名前缀命中** > 文件名内含 > 整条路径内含，同分则短路径优先。`↑`/`↓` 选择，`Enter` / `Tab` 补全——补全只替换那个 `@…` 词，**不会提交**。命令行（`/` 开头）上只弹 slash 命令补全，不触发 `@`。
+
+### `!` shell 直通
+
+以 `!` 开头的一行**不发给模型**，直接在 shell 里跑（输入框边框会变绿提示）。它复用 `bash` 工具：同样在工作区根执行、同样受 OS 沙箱约束（见 [§11](#11-命令沙箱)），输出以一张卡片贴回历史区，`Esc` 可中断。因为是你自己敲的命令，**不走权限门**。
+
+它和 `/` 命令行一样带本地副作用，所以即使在回合运行中键入也**始终排队**、由 REPL 在空闲时派发——不会被 `queue.consumeInLoop` 折进当前回合（见 [§20](#20-配置文件完整参考)）。
+
+### 状态行
+
+输入框下方两行实时状态：
+
+- **第一行**：模型档位 + 思考等级 + 上下文窗口、上下文占用进度条与百分比、工作区目录名、git 分支、完整 cwd。
+- **第二行（累计用量）**：账户余额（仅接 DeepSeek 官方 API 时出现；账户不可扣费时转为琥珀色）、缓存命中率、累计输入 / 输出 token、按当前档位 `pricing` 估算的花费。终端过窄时从右往左丢弃分段，余额和命中率优先保留。
+
+### 界面语言（i18n）
+
+- `settings.language` 决定**模型回复语言**（注入 system prompt），默认 `auto` —— 跟随系统 locale（`$LC_ALL`/`$LANG`/`$LANGUAGE`，macOS 还会读 `AppleLocale`）。
+- `settings.locale` 只覆盖 **TUI 静态文案**（菜单、提示、状态行），默认 `auto` 即跟随 `language`。内置 zh-CN 与 EN 两套文案，不认识的标签一律回落到英文。
+- 两者可以不同——比如中文界面 + 英文回复：`{"locale": "zh-CN", "language": "en"}`。改动需重启生效（语言写进 system prompt，会话中途变更会击穿前缀缓存）。
 
 ### 输入预测
 
@@ -247,10 +278,10 @@ Nova 把「extended thinking」暴露成五个等级，或一个显式的 token 
 
 | 工具 | 权限 | 说明 |
 |------|------|------|
-| `read` | 只读 | 读**文本 / 表格 / 图片**：文本输出带 `cat -n` 风格行号（1-based），`offset` 起始行、`limit` 最大行数，单页约 20 万字符上限、单行超 1.6 万字符会截断并标注，超出时提示用 `offset` 续读；行号前缀仅用于显示，传给 `edit` 前需去掉。表格（`.xlsx/.xls/.xlsm/.xlsb/.ods`）每行渲成 TSV 带表头，`sheet` 选工作表。图片（`.png/.jpg/.jpeg/.gif/.webp`，≤20MB）以 base64 块返回——**仅当前档位支持图片输入时**（否则提示切到 image-capable 档位）。含 NUL 字节的二进制文件直接拒读并给出 `file`/`xxd` 建议 |
+| `read` | 只读 | 读**文本 / 表格 / PDF / 图片**：文本输出带 `cat -n` 风格行号（1-based），`offset` 起始行、`limit` 最大行数，单页约 20 万字符上限、单行超 1.6 万字符会截断并标注，超出时提示用 `offset` 续读；行号前缀仅用于显示，传给 `edit` 前需去掉。表格（`.xlsx/.xls/.xlsm/.xlsb/.ods`）每行渲成 TSV 带表头，`sheet` 选工作表。**PDF**（`.pdf`，≤30MB）抽取文本后同样带行号返回，每页前插一条 `[Page N]` 标记，`offset`/`limit` 照常分页；扫描件 / 纯图片 PDF 抽不出文本，会明说并建议改用 OCR 工具。图片（`.png/.jpg/.jpeg/.gif/.webp`，≤20MB）以 base64 块返回——**仅当前档位支持图片输入时**（否则提示切到 image-capable 档位）。含 NUL 字节的二进制文件直接拒读并给出 `file`/`xxd` 建议 |
 | `write` | 需批准 | 写整个文件（覆盖），默认自动创建父目录 |
 | `edit` | 需批准 | 精确字符串替换；`old_string` 默认须唯一匹配，`replace_all` 可全替 |
-| `bash` | 需批准 | 执行短小、阻塞的 shell 命令；**硬超时 10s**，输出截到 200KB |
+| `bash` | 需批准 | 执行阻塞的 shell 命令（`bash -lc`）；`timeout_ms` **默认与上限都是 180000（3 分钟）**，`cwd` 可覆盖工作目录，输出截到 200KB。更长的任务应改用 `runInBackground` |
 
 ### 搜索与发现
 
@@ -280,11 +311,11 @@ Nova 把「extended thinking」暴露成五个等级，或一个显式的 token 
 
 ### 计划管理：Todo（会话内，内存态）
 
-`createTodo` / `updateTodo` / `getTodoList` / `clearTodoList`——把多步计划外化成一张清单，**只存内存**，进程退出即丢。任一时刻最多一个 todo 处于 `in_progress`。
+`createTodo` / `updateTodo` / `getTodoList` / `clearTodoList`——把多步计划外化成一张清单，**只存内存**，进程退出即丢。任一时刻最多一个 todo 处于 `in_progress`。全部完成后清单会在 `todo.autoClearDelayMs`（默认 2.5s，留一拍让你看到那排 ✓）后自动清空，不指望模型自己去调 `clearTodoList`。
 
 ### 计划管理：Task（工作区内，落盘持久）
 
-`createTask` / `updateTask` / `getTaskList` / `clearTaskList`——更大、值得跨会话保留的计划，落盘到工作区的 `.tasks/{id}.json`。支持 `blockedBy` 依赖关系，允许多个并行 `in_progress`。
+`createTask` / `updateTask` / `getTaskList` / `clearTaskList`——更大、值得跨会话保留的计划，落盘到工作区的 `.tasks/{id}.json`。支持 `blockedBy` 依赖关系，允许多个并行 `in_progress`。整份计划做完后同样会在 `task.autoClearDelayMs`（默认 2.5s）后自动清空并删掉对应的 `.tasks/` 文件。
 
 ### 定时调度：Cron（会话内，落盘持久）
 
@@ -320,6 +351,18 @@ Nova 把「extended thinking」暴露成五个等级，或一个显式的 token 
 ---
 
 ## 10. 权限与安全
+
+### 工作区信任（启动前的第一道门）
+
+在任何工具能跑起来之前，Nova 先确认你**允许它访问当前这个文件夹**。首次在某个目录启动时会占满屏幕弹一张确认卡片，选 Yes 才继续，选 No / `Esc` 直接退出。
+
+- 信任记录写在**用户全局配置** `~/.nova/nova.config.json` 的 `trust.trustedRoots`（绝对、符号链接已解析的路径），**从不写进项目内的文件**——所以 clone 下来的仓库无法把自己标记为可信。
+- 判定是**包含关系**：工作区等于或位于某个已记录根之下即视为可信，因此信任仓库根即覆盖其所有子目录。
+- **家目录例外**：对 `~` 授予的信任只在本次会话有效，不落盘。
+- **headless（`-p` / 无 TTY）没法弹确认框**，所以未信任的工作区是**硬性拒绝**：先交互式跑一次并信任、或手工把路径加进 `trust.trustedRoots`、或传 `--dangerously-skip-permissions` 绕过。
+- 写配置失败不会中断会话（你已经同意了，本次有效，只是下次还会再问）。设 `trust.enabled: false` 可恢复「启动即信任」的旧行为。
+
+### 权限引擎
 
 权限引擎（`@nova/safety` 的 `PermissionEngine`）是模型与文件系统之间的一道闸门。每次工具调用按下面的顺序裁决：
 
@@ -649,12 +692,13 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 | `models` | `{}` | 命名的模型档位表，value 为**档位对象**，每档带自己的 `id`、`maxTokens`、`contextWindowSize`、`thinking`、`modalities`、`pricing`、可选 `description`。非空时**必须含 `lite`/`pro`/`max` 三档**（schema 强制）；首次向导按 provider 模板写入，schema 不再提供默认值 |
 | `baseURL` | （无） | Anthropic 兼容端点 URL（provider 模板写入；缺省则用 SDK 默认端点） |
 | `sessionDir` | （无→ `~/.nova/sessions`） | session 存放目录 |
-| `language` | `"auto"` | UI / 回复语言；`auto` 跟随系统 locale（`$LC_ALL`/`$LANG`，macOS 还读 `AppleLocale`），否则填 BCP-47 标签如 `en`/`zh-CN` |
-| `maxTokensContinuations` | `3` | 单次响应被 `maxTokens` 截断时，允许自动「续写」的连续次数（`0` = 老式硬停）。DeepSeek 端点输出上限 8192，长回复常触发 |
+| `language` | `"auto"` | **模型回复语言**（注入 system prompt），同时也是 TUI 界面语言的默认来源；`auto` 跟随系统 locale（`$LC_ALL`/`$LANG`/`$LANGUAGE`，macOS 还读 `AppleLocale`），否则填 BCP-47 标签如 `en`/`zh-CN`。加载时 `auto` 会被解析成具体标签 |
+| `locale` | `"auto"` | **仅 TUI 静态文案**的语言覆盖（菜单/提示/状态行）；`auto` = 跟随 `language`。内置 zh-CN 与 EN，其它标签回落英文。两者可不同（中文界面 + 英文回复），见 [§5](#5-交互式界面tui) |
+| `maxTokensContinuations` | `3` | 单次响应被该档 `maxTokens` 截断时，允许自动「续写」的连续次数（`0` = 老式硬停） |
 | `maxTurns` | `100` | 单轮最大循环次数 |
 | `toolConcurrency` | `3` | 单轮内工具并发上限（1 = 全串行） |
 
-> **每档输出上限 / 上下文窗口现在是 per-tier 的**：写在 `models.<tier>.maxTokens`（缺省 32768；DeepSeek 端点须调低到 8192）和 `models.<tier>.contextWindowSize`（缺省 1000000）里，不再是顶层字段。`models.<tier>.thinking` 让同一个模型 id 也能拉出 lite/pro/max 的能力梯度（见 [§7](#7-思考等级thinking)）；`models.<tier>.pricing` 提供 `/usage` 成本估算的每百万 token 单价（见 `pricing` 一节）。
+> **每档输出上限 / 上下文窗口是 per-tier 的**：写在 `models.<tier>.maxTokens`（schema 缺省 32768，DeepSeek 模板三档均写 384000）和 `models.<tier>.contextWindowSize`（缺省 1000000）里，不再是顶层字段。`models.<tier>.thinking` 让同一个模型 id 也能拉出 lite/pro/max 的能力梯度（见 [§7](#7-思考等级thinking)）；`models.<tier>.pricing` 提供 `/usage` 成本估算的每百万 token 单价（见 `pricing` 一节）。
 
 ### `permissions`
 
@@ -667,6 +711,13 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 | `autoMode.llmClassifier` | `true` | `auto` 模式下把规则判不定的命令交给 LLM 风险分类器；关掉则一律弹确认 |
 | `autoMode.model` | （无→ 便宜档） | 分类器用的模型（裸 id 或档位名），独立于 `/model` |
 | `autoMode.classifierTimeoutMs` | `8000` | 分类器超时；超时按「有风险」处理（弹确认，不静默执行） |
+
+### `trust`（工作区信任）
+
+| 字段 | 默认 | 说明 |
+|------|------|------|
+| `trust.enabled` | `true` | 启动时确认工作区可访问；`false` 恢复「启动即信任」，见 [§10](#10-权限与安全) |
+| `trust.trustedRoots` | `[]` | 已信任的绝对路径（授权时自动追加，也可手工预置）；工作区位于任一根之下即可信 |
 
 ### 思考等级（thinking）
 
@@ -703,6 +754,8 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 | `predict.enabled` | `true` | 下一条输入预测（`/predict` 切换） |
 | `predict.timeoutMs` | `8000` | 预测超时 |
 | `predict.maxChars` | `300` | 预测占位最大字符数 |
+| `todo.autoClearDelayMs` | `2500` | 一张 todo 清单全部完成后自动清空前的停留时长（`0` = 不自动清，交给模型自己调 `clearTodoList`） |
+| `task.autoClearDelayMs` | `2500` | 同上，但针对落盘的 Task 计划——全部完成后连同 `.tasks/` 文件一起删（`0` 关闭） |
 | `logging.level` | `"info"` | `trace`…`fatal` |
 | `logging.pretty` | `true` | pretty 日志（`--no-pretty` 关） |
 
@@ -853,6 +906,15 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 
 **Q：在管道 / CI 里能用吗？没有 TTY 会怎样？**
 A：能。没有 TTY 时 Nova 不会报错，而是走 **headless** 模式：跑一轮（prompt 从参数、`-p` 或 stdin 取）、打印结果、退出。要机器可读输出用 `--output-format json|jsonl`；无人值守批准配 `--dangerously-skip-permissions`。全屏 REPL 才需要真正的终端。
+
+**Q：启动时让我确认「是否信任这个文件夹」。**
+A：这是工作区信任门（见 [§10](#10-权限与安全)）。选 Yes 会把该目录记进 `~/.nova/nova.config.json` 的 `trust.trustedRoots`，以后不再问；对 `~` 授予的信任只在本次会话有效。headless 场景弹不出这张卡片，未信任会直接失败——先交互式信任一次，或手工加进 `trust.trustedRoots`，或用 `--dangerously-skip-permissions`。
+
+**Q：想要中文界面但英文回复（或反过来）。**
+A：`language` 管模型回复语言，`locale` 只管 TUI 静态文案。要中文界面 + 英文回复就写 `{"locale": "zh-CN", "language": "en"}`；两者默认都是 `auto`（跟随系统 locale）。改完重启生效——回复语言写在 system prompt 里，会话中途改会击穿前缀缓存。
+
+**Q：能读 PDF 吗？**
+A：能。`read` 直接吃 `.pdf`（≤30MB），抽取的文本带行号、每页前有 `[Page N]` 标记，`offset`/`limit` 照常翻页。扫描件 / 纯图片 PDF 抽不出文本，工具会明说并建议改用 `ocrmypdf`/`tesseract` 之类先 OCR。
 
 **Q：启动报 apiKey 未设置。**
 A：跑一次首启向导填上，或手动编辑 `~/.nova/nova.config.json` 的 `apiKey`/`baseURL`/`model`。
