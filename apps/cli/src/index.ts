@@ -76,11 +76,13 @@ function applyCliOverrides(settings: Settings, opts: CliOptions): ThinkOverride 
 }
 
 /**
- * Validate `--permission-mode`, defaulting to `default`. Throws on an unknown
- * value so each entry path can surface it its own way (dieHeadless vs fatalExit).
+ * Validate `--permission-mode`, defaulting to `auto` (the startup mode when the
+ * flag is omitted — in-workspace write/edit auto-granted, commands cleared by
+ * the risk classifier). Throws on an unknown value so each entry path can
+ * surface it its own way (dieHeadless vs fatalExit).
  */
 function parsePermissionMode(raw: string | undefined): PermissionMode {
-  const mode = (raw ?? "default") as PermissionMode;
+  const mode = (raw ?? "auto") as PermissionMode;
   if (!["default", "acceptEdits", "auto", "plan"].includes(mode)) {
     throw new Error(
       `invalid --permission-mode: ${raw} (expected default, acceptEdits, auto, or plan)`,
@@ -319,7 +321,7 @@ program
   )
   .option(
     "--permission-mode <mode>",
-    "initial permission mode: default | acceptEdits | auto | plan",
+    "initial permission mode: auto (default) | default | acceptEdits | plan",
   )
   .option(
     "--dangerously-skip-permissions",

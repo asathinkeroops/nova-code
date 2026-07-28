@@ -12,7 +12,7 @@ import {
   shellModeIndicator,
   type StatusSegment,
 } from "./status-format.js";
-import { BASH_HEX } from "../colors.js";
+import { BASH_HEX, GRAY_HEX } from "../colors.js";
 
 describe("formatDuration", () => {
   it("shows hours/minutes/seconds for long spans", () => {
@@ -147,8 +147,11 @@ describe("fitSegments", () => {
 });
 
 describe("permissionModeIndicator", () => {
-  it("shows nothing in default mode (no extra row below the status line)", () => {
-    expect(permissionModeIndicator("default")).toBeNull();
+  it("labels default mode as manual, in light grey", () => {
+    expect(permissionModeIndicator("default")).toEqual({
+      label: "⏸ manual mode on",
+      color: GRAY_HEX,
+    });
   });
 
   it("labels accept-edits, auto, plan, and bypass in distinct colors (hint appended dim by the renderer)", () => {

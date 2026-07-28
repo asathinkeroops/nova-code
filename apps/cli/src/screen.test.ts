@@ -5,9 +5,9 @@ import type { Card } from "./ui/store.js";
 // These exercise the headless-free parts of Screen: it never calls mount(), so
 // no Ink/terminal is touched — only the underlying zustand store is mutated.
 describe("Screen permission state", () => {
-  it("starts in default mode with the bypass off", () => {
+  it("starts in auto mode with the bypass off", () => {
     const screen = new Screen();
-    expect(screen.getPermissionMode()).toBe("default");
+    expect(screen.getPermissionMode()).toBe("auto");
   });
 
   it("setPermissionMode seeds the initial mode (e.g. --permission-mode)", () => {

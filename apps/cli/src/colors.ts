@@ -53,6 +53,13 @@ export const BLUE_RGB: Rgb = [37, 99, 235];
 export const BASH_HEX = "#7fd99a";
 
 /**
+ * Light grey for the `default` ("manual") permission-mode label below the
+ * StatusLine — present but visually recessive next to the coloured labels of
+ * the modes that actually relax gating (green/yellow/cyan/red).
+ */
+export const GRAY_HEX = "#9ca3af";
+
+/**
  * Candidate backgrounds for the session-name badge (`/rename`). A session name
  * is hashed to one of these (see {@link sessionBadgeColor}) so each named window
  * gets a stable, distinct colour — making it easy to tell several open sessions

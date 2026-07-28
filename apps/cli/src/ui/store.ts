@@ -362,6 +362,7 @@ export interface AppState {
    * Input-box permission mode, cycled with shift+tab and shown as an indicator
    * below the InputBox. Read by the CLI's `checkPermission` to bias tool gating
    * (accept-edits auto-grants in-workspace writes; plan denies write/edit/bash).
+   * Starts at `auto` — the startup default, overridable with `--permission-mode`.
    * Session-only (not persisted to config) and preserved across `reset()`
    * (`/clear`) like `inputPlaceholder`.
    */
@@ -665,7 +666,7 @@ export function createAppStore(opts: AppStoreOptions = {}): AppStoreApi {
       inputPlaceholder: "",
       userDisplayOverrides: {},
       toolDetails: {},
-      permissionMode: "default",
+      permissionMode: "auto",
       bypassAllowed: false,
 
       // ===== Actions =====

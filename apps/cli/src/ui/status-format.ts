@@ -1,4 +1,4 @@
-import { BASH_HEX } from "../colors.js";
+import { BASH_HEX, GRAY_HEX } from "../colors.js";
 import { t } from "../i18n/index.js";
 import { visibleWidth } from "./width.js";
 import type { PermissionMode } from "../permissions.js";
@@ -30,14 +30,16 @@ export function shellModeIndicator(): PermissionModeIndicator {
 }
 
 /**
- * Colored label shown below the StatusLine for a non-default permission mode,
- * or null for `default` (no extra row). Each mode gets a distinct color for
- * at-a-glance distinction — green for accept-edits (writes flowing), yellow for
- * auto (writes plus unattended commands), cyan for plan (read-only), red for the
- * dangerous bypass. The PERMISSION_MODE_HINT is rendered after it in the
- * StatusLine's dim color. Cycled with shift+tab.
+ * Colored label shown below the StatusLine for the current permission mode.
+ * Every mode has a label — `default` included, since `auto` is now the startup
+ * mode and "no row at all" would read as "no mode" rather than "gating is on".
+ * Each mode gets a distinct color for at-a-glance distinction — light grey for
+ * default/manual (every write asks), green for accept-edits (writes flowing),
+ * yellow for auto (writes plus unattended commands), cyan for plan (read-only),
+ * red for the dangerous bypass. The PERMISSION_MODE_HINT is rendered after it
+ * in the StatusLine's dim color. Cycled with shift+tab.
  */
-export function permissionModeIndicator(mode: PermissionMode): PermissionModeIndicator | null {
+export function permissionModeIndicator(mode: PermissionMode): PermissionModeIndicator {
   switch (mode) {
     case "acceptEdits":
       return { label: t.status.acceptEdits, color: "green" };
@@ -48,7 +50,7 @@ export function permissionModeIndicator(mode: PermissionMode): PermissionModeInd
     case "bypassPermissions":
       return { label: t.status.bypass, color: "red" };
     default:
-      return null;
+      return { label: t.status.manualMode, color: GRAY_HEX };
   }
 }
 

@@ -92,7 +92,7 @@ nova [prompt...]                   # 先跑一轮初始 prompt，再留在 REPL�
   -t, --think off|low|medium|high|max   # thinking 等级，或一个正整数 token 预算
       --max-turns <n>              # 单轮最大循环次数
       --cwd <dir>                  # 工具的工作目录（工作区根）
-      --permission-mode default|acceptEdits|auto|plan   # 初始权限模式（默认 default）
+      --permission-mode default|acceptEdits|auto|plan   # 初始权限模式（默认 auto）
       --dangerously-skip-permissions   # 全自动批准（适合 CI/无人值守）
       --output-format text|json|jsonl  # headless 输出格式（默认 text）
       --resume <id>                # 恢复指定 id 的 session
@@ -385,12 +385,12 @@ Nova 把「extended thinking」暴露成五个等级，或一个显式的 token 
 
 | 模式 | 状态行 | 行为 |
 |------|--------|------|
-| `default` | （无额外行） | 不改变任何裁决，`write`/`edit`/`bash` 照常落到引擎的 `ask` |
+| `default` | ⏸ manual mode on（浅灰） | 不改变任何裁决，`write`/`edit`/`bash` 照常落到引擎的 `ask` |
 | `acceptEdits` | ⏵⏵ accept edits on | **工作区内**的 `write`/`edit` 自动放行；`bash` 与工作区外的写仍然询问 |
-| `auto` | ⏵⏵ auto mode on | **自主模式**：在 `acceptEdits` 基础上，命令工具（`bash`、`runInBackground`）也自动放行、无人值守运行（先过一层风险分类器）。比 `acceptEdits` 更宽，但仍窄于 `bypassPermissions`——工作区外的写和用户 `deny` 规则不被绕过 |
+| `auto`（启动默认） | ⏵⏵ auto mode on | **自主模式**：在 `acceptEdits` 基础上，命令工具（`bash`、`runInBackground`）也自动放行、无人值守运行（先过一层风险分类器）。比 `acceptEdits` 更宽，但仍窄于 `bypassPermissions`——工作区外的写和用户 `deny` 规则不被绕过 |
 | `plan` | ⏸ plan mode on | **只读**：`write`/`edit`/`bash` 一律拒绝，逼模型先调查、给出分步计划——与只读 `/plan` 子 agent 同源 |
 
-启动时可用 `--permission-mode` 指定初始档位；`--dangerously-skip-permissions` 直接进入 `bypassPermissions`（每次审批自动放行，适合 CI/无人值守）。
+不指定时启动即为 `auto`；用 `--permission-mode` 可指定别的初始档位，`--dangerously-skip-permissions` 直接进入 `bypassPermissions`（每次审批自动放行，适合 CI/无人值守）。
 
 ### 读操作被限定在工作区
 

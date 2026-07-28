@@ -6,7 +6,7 @@ import type { PermissionMode } from "./permissions.js";
 export type HeadlessApprovalPolicy = "deny" | "allow";
 
 export interface HeadlessScreenOptions {
-  /** Permission mode reported to the engine (default/acceptEdits/plan). */
+  /** Permission mode reported to the engine; `auto` (the CLI default) when omitted. */
   permissionMode?: PermissionMode;
   /**
    * What to answer when a tool falls through to an interactive approval prompt.
@@ -32,7 +32,7 @@ export class HeadlessScreen extends Screen {
 
   constructor(opts: HeadlessScreenOptions = {}) {
     super();
-    this.mode = opts.permissionMode ?? "default";
+    this.mode = opts.permissionMode ?? "auto";
     this.approvalPolicy = opts.approvalPolicy ?? "deny";
   }
 

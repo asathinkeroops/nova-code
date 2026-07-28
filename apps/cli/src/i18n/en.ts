@@ -108,6 +108,7 @@ export const en = {
   status: {
     modeHint: "(shift+tab to cycle)",
     shellMode: "! for shell mode",
+    manualMode: "⏸ manual mode on",
     acceptEdits: "⏵⏵ accept edits on",
     autoMode: "⏵⏵ auto mode on",
     planMode: "⏸ plan mode on",

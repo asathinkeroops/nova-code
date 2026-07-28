@@ -146,24 +146,24 @@ describe("live draft", () => {
 });
 
 describe("permission mode", () => {
-  it("starts in default mode", () => {
-    expect(createAppStore().getState().permissionMode).toBe("default");
+  it("starts in auto mode", () => {
+    expect(createAppStore().getState().permissionMode).toBe("auto");
   });
 
-  it("cycles default → acceptEdits → auto → plan → default and returns the new mode", () => {
+  it("cycles auto → plan → default → acceptEdits → auto and returns the new mode", () => {
     const store = createAppStore();
-    expect(store.getState().cyclePermissionMode()).toBe("acceptEdits");
-    expect(store.getState().permissionMode).toBe("acceptEdits");
-    expect(store.getState().cyclePermissionMode()).toBe("auto");
     expect(store.getState().cyclePermissionMode()).toBe("plan");
+    expect(store.getState().permissionMode).toBe("plan");
     expect(store.getState().cyclePermissionMode()).toBe("default");
+    expect(store.getState().cyclePermissionMode()).toBe("acceptEdits");
+    expect(store.getState().cyclePermissionMode()).toBe("auto");
   });
 
   it("survives reset (/clear) like the input placeholder", () => {
     const store = createAppStore();
-    store.getState().cyclePermissionMode(); // → acceptEdits
+    store.getState().cyclePermissionMode(); // → plan
     store.getState().reset();
-    expect(store.getState().permissionMode).toBe("acceptEdits");
+    expect(store.getState().permissionMode).toBe("plan");
   });
 
   it("setPermissionMode seeds the mode directly (e.g. from --permission-mode)", () => {
@@ -177,9 +177,7 @@ describe("bypass permissions mode", () => {
   it("is not armed by default and stays out of the cycle", () => {
     const store = createAppStore();
     expect(store.getState().bypassAllowed).toBe(false);
-    store.getState().cyclePermissionMode(); // acceptEdits
-    store.getState().cyclePermissionMode(); // auto
-    store.getState().cyclePermissionMode(); // plan
+    store.getState().cyclePermissionMode(); // plan — bypass would come next when armed
     expect(store.getState().cyclePermissionMode()).toBe("default"); // skips bypass
   });
 

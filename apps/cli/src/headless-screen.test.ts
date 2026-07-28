@@ -3,7 +3,8 @@ import { HeadlessScreen } from "./headless-screen.js";
 
 describe("HeadlessScreen", () => {
   it("reports the configured permission mode", () => {
-    expect(new HeadlessScreen().getPermissionMode()).toBe("default");
+    expect(new HeadlessScreen().getPermissionMode()).toBe("auto");
+    expect(new HeadlessScreen({ permissionMode: "default" }).getPermissionMode()).toBe("default");
     expect(new HeadlessScreen({ permissionMode: "plan" }).getPermissionMode()).toBe("plan");
     expect(new HeadlessScreen({ permissionMode: "acceptEdits" }).getPermissionMode()).toBe(
       "acceptEdits",

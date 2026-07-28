@@ -227,11 +227,13 @@ export function App({ store }: AppProps): React.ReactElement {
     );
   }
 
-  // Mode indicator below the StatusLine — one extra reserved row when a
-  // non-default permission mode is active, nothing in default mode. Shell mode
-  // takes over the StatusLine row itself (segments hidden, only the `!` hint),
-  // so it suppresses this separate row entirely. The bypass mode is just another
-  // cycled mode now (red label), so it carries the shift+tab hint like the rest.
+  // Mode indicator below the StatusLine — one extra reserved row, always
+  // present since every permission mode has a label (`default` shows a light
+  // grey "manual mode on"). Shell mode takes over the StatusLine row itself
+  // (segments hidden, only the `!` hint), so it suppresses this separate row
+  // entirely — the only case where the row is reclaimed. The bypass mode is just
+  // another cycled mode now (red label), so it carries the shift+tab hint like
+  // the rest.
   const modeIndicator = shellMode ? null : permissionModeIndicator(permissionMode);
   const indicatorRows = modeIndicator ? 1 : 0;
 
