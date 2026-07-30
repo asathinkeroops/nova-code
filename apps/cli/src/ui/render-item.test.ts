@@ -1,8 +1,19 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { MessageParam } from "@nova/core";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { RenderItem } from "./render-item.js";
 import { buildLiveDraftItems, buildRenderItems } from "./render-item.js";
 import { renderItemToString } from "./render-strings.js";
+
+/**
+ * Drop CSI escape sequences (colour, and the diff renderer's clear-to-EOL) so
+ * assertions can match on the plain text. Built from a string rather than a regex
+ * literal to keep the ESC byte out of the source (no-control-regex).
+ */
+const ANSI_CSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*[a-zA-Z]`, "g");
+const stripAnsi = (s: string): string => s.replace(ANSI_CSI, "");
 
 describe("buildLiveDraftItems", () => {
   it("emits reasoning then the answer, each with a leading spacer", () => {
@@ -533,9 +544,6 @@ describe("renderItemToString bash command layout", () => {
       result: undefined,
     }) as RenderItem;
 
-  // eslint-disable-next-line no-control-regex -- ANSI SGR sequences require the ESC control char
-  const stripAnsi = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, "");
-
   const headerLine = (out: string): string => stripAnsi(out).split("\n")[0] ?? "";
 
   it("renders a single-row command inline in the header", () => {
@@ -622,5 +630,147 @@ describe("buildRenderItems thinking expand state", () => {
     // With the key flagged, the same block builds as expanded.
     const expanded = buildThinking({ [key]: true });
     expect(expanded).toMatchObject({ collapsed: true, expanded: true });
+  });
+});
+
+describe("buildRenderItems item interning", () => {
+  // The measure cache (measure.ts) is keyed by item identity, and a miss re-runs
+  // markdown highlighting / diff rendering / wrapping for that item. The loop
+  // fires post_messages ~2N+3 times per turn, each time handing over a NEW
+  // messages array built from the SAME content blocks — so identity has to
+  // survive that, or every one of those fires re-measures the whole transcript.
+  const blocks: MessageParam["content"] = [
+    { type: "text", text: "narrating first" },
+    { type: "tool_use", id: "g1", name: "grep", input: { pattern: "x" } },
+  ];
+  const messages: MessageParam[] = [
+    { role: "user", content: "hello" },
+    { role: "assistant", content: blocks },
+  ];
+  const build = (msgs: MessageParam[]) =>
+    buildRenderItems({ banner: null, cards: [], messages: msgs });
+
+  it("returns the same item references when the message array is rebuilt", () => {
+    const first = build(messages);
+    // A new array (and a new assistant MessageParam) over the same blocks —
+    // exactly what the loop's progressive reveal produces.
+    const second = build([messages[0]!, { role: "assistant", content: blocks }]);
+    expect(second).toHaveLength(first.length);
+    second.forEach((item, i) => expect(item).toBe(first[i]));
+  });
+
+  it("rebuilds only the item whose derived state changed", () => {
+    const first = build(messages);
+    // The grep call's result lands: its item must be rebuilt, the text item must not.
+    const withResult = build([
+      ...messages,
+      { role: "user", content: [{ type: "tool_result", tool_use_id: "g1", content: "ok" }] },
+    ]);
+    const textOf = (items: RenderItem[]) => items.find((i) => i.kind === "assistant-text");
+    const callOf = (items: RenderItem[]) => items.find((i) => i.kind === "tool-call");
+    expect(textOf(withResult)).toBe(textOf(first));
+    expect(callOf(withResult)).not.toBe(callOf(first));
+    expect(callOf(withResult)).toMatchObject({ result: { content: "ok" } });
+  });
+
+  it("keeps item keys stable when an anchored card is inserted before them", () => {
+    const keysOf = (items: RenderItem[]) =>
+      items.filter((i) => i.kind === "tool-call").map((i) => i.key);
+    const before = keysOf(build(messages));
+    const after = keysOf(
+      buildRenderItems({
+        banner: null,
+        messages,
+        // Anchored at the first message, so it renders ahead of the tool call.
+        cards: [{ id: 1, anchor: 0, kind: "info", text: "a notice" }],
+      }),
+    );
+    expect(before).toEqual(after);
+    expect(before).toHaveLength(1);
+  });
+});
+
+describe("buildRenderItems write baseline", () => {
+  // The `write` diff needs the file's PRE-write content. The renderer runs long
+  // after the tool has, so reading the file from there yielded the post-write
+  // content and the diff degraded into `- new / + new` — the scrollback rewrote
+  // itself once the call completed. The baseline is captured once, when the item
+  // is first built (during the post_messages that reveals the tool_use).
+  const NEW = "new line 1\nnew line 2\n";
+  let dir: string;
+  let target: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "nova-write-baseline-"));
+    target = join(dir, "target.txt");
+  });
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  /** The write's tool_use block. Stable across rebuilds, exactly as in the loop. */
+  const writeUse = () =>
+    ({
+      type: "tool_use",
+      id: "w1",
+      name: "write",
+      input: { path: target, content: NEW },
+    }) as const;
+
+  const itemFor = (use: object, result?: unknown): RenderItem =>
+    buildRenderItems({
+      banner: null,
+      cards: [],
+      messages: [
+        { role: "assistant", content: [use] as MessageParam["content"] },
+        ...(result
+          ? [{ role: "user" as const, content: [result] as MessageParam["content"] }]
+          : []),
+      ],
+    }).find((i) => i.kind === "tool-call")!;
+
+  it("diffs against the pre-write content, and keeps doing so after the write lands", async () => {
+    await writeFile(target, "old line 1\nold line 2\n", "utf8");
+    // One block object seen across both builds — the append-only history rebuilds
+    // the MessageParam but reuses the block, so the baseline is read only once.
+    const use = writeUse();
+    const before = stripAnsi(renderItemToString(itemFor(use), 80));
+    expect(before).toContain("- old line 1");
+    expect(before).toContain("+ new line 1");
+
+    // The tool now runs: the file on disk becomes the new content.
+    await writeFile(target, NEW, "utf8");
+    const done = itemFor(use, { type: "tool_result", tool_use_id: "w1", content: "ok" });
+    const after = stripAnsi(renderItemToString(done, 80));
+    // Still the real diff — never "- new line 1".
+    expect(after).toContain("- old line 1");
+    expect(after).not.toContain("- new line 1");
+  });
+
+  it("shows the written file instead of a self-diff when only the post-write content is knowable", async () => {
+    // A transcript loaded from disk (/resume): the write landed long ago, so the
+    // only baseline obtainable is its own output.
+    await writeFile(target, NEW, "utf8");
+    const out = stripAnsi(
+      renderItemToString(
+        itemFor(writeUse(), { type: "tool_result", tool_use_id: "w1", content: "ok" }),
+        80,
+      ),
+    );
+    expect(out).toContain("new line 1");
+    expect(out).not.toContain("- new line 1");
+    expect(out).not.toContain("+ new line 1");
+  });
+
+  it("renders a create (no such file) as file content, not a diff", () => {
+    const out = stripAnsi(renderItemToString(itemFor(writeUse()), 80));
+    expect(out).toContain("write");
+    expect(out).not.toContain("overwrite");
+    expect(out).toContain("new line 1");
+    expect(out).not.toContain("+ new line 1");
+  });
+
+  it("counts a trailing newline as one line, not two", () => {
+    expect(stripAnsi(renderItemToString(itemFor(writeUse()), 80))).toContain("2 lines");
   });
 });

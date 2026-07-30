@@ -21,7 +21,6 @@ import { LOGO, bannerLine } from "./logo.js";
 import {
   COMPACT_MAX_LINES,
   compactBody,
-  readExisting,
   renderDiff,
   renderFileContent,
   splitDisplayLines,
@@ -225,8 +224,22 @@ interface UseView {
   body?: string;
 }
 
+/**
+ * Per-item inputs a `use` renderer may need beyond the tool input itself.
+ * Everything here is captured when the RenderItem is built, so rendering stays a
+ * pure function of the item — which is what makes the line cache in `measure.ts`
+ * sound.
+ */
+interface UseCtx {
+  /**
+   * Pre-write file content for a `write` call (`null` = the file did not exist),
+   * or undefined for every other tool. See `RenderItem.baseline`.
+   */
+  baseline?: string | null;
+}
+
 interface ToolStr {
-  use?(input: Record<string, unknown>, width: number): UseView;
+  use?(input: Record<string, unknown>, width: number, ctx: UseCtx): UseView;
   result?(result: ToolResultBlock, input: Record<string, unknown> | undefined): string;
 }
 
@@ -361,17 +374,27 @@ const tools: Record<string, ToolStr> = {
     },
   },
   write: {
-    use: (input) => {
+    use: (input, _width, ctx) => {
       const path = aliasedPath(input) ?? "?";
       const content = typeof input.content === "string" ? input.content : "";
-      const existing = readExisting(path);
-      const lines = content.length === 0 ? 0 : content.split("\n").length;
-      const verb = existing !== null ? "overwrite" : "write";
+      // The pre-write content, captured when this item was built — never read
+      // from disk here (by render time the file already holds `content`, which
+      // would turn the diff into `- new / + new`).
+      const existing = ctx.baseline ?? null;
+      const overwrite = existing !== null;
+      const lines = splitDisplayLines(content).length;
+      const verb = overwrite ? "overwrite" : "write";
       const meta = `(${content.length} bytes · ${lines} line${lines === 1 ? "" : "s"})`;
       const h = header(verb, `${path} ${dim(meta)}`);
-      if (content.length === 0 && existing === null) return { header: h };
+      if (content.length === 0 && !overwrite) return { header: h };
+      // `existing === content` means there is no change to show. That covers a
+      // transcript loaded from disk (/resume), where the write has long since
+      // landed and the only obtainable baseline is its own output — show the
+      // written file rather than a diff of it against itself.
       const body =
-        existing !== null ? renderDiff(existing, content, path) : renderFileContent(content, path);
+        overwrite && existing !== content
+          ? renderDiff(existing, content, path)
+          : renderFileContent(content, path);
       return { header: h, body };
     },
     result: (result) => {
@@ -547,6 +570,19 @@ function genericUseHeader(use: ToolUseBlock): string {
   return header(use.name, dim(trim(compact)));
 }
 
+/**
+ * The header (and optional body) for a tool call — the tool's own `use`
+ * renderer, or a generic JSON-input header for tools without one. Shared by
+ * {@link renderToolCall} and {@link toolCallToggleLineIndex} so both derive the
+ * same view from the same inputs.
+ */
+function toolUseView(use: ToolUseBlock, width: number, ctx: UseCtx): UseView {
+  const def = tools[use.name];
+  return def?.use
+    ? def.use(use.input as Record<string, unknown>, width, ctx)
+    : { header: genericUseHeader(use) };
+}
+
 /** Glyph per sub-agent detail kind, shown at the head of each detail row. */
 const DETAIL_MARK: Record<SubAgentDetail["type"], string> = {
   thinking: "✦",
@@ -610,17 +646,19 @@ function toolGutterBody(body: string, resultStr: string | undefined, expanded: b
   return resultStr === undefined ? view : `${resultStr}\n${view}`;
 }
 
+interface ToolCallOpts extends UseCtx {
+  details?: SubAgentDetail[];
+  expanded?: boolean;
+}
+
 function renderToolCall(
   use: ToolUseBlock,
   result: ToolResultBlock | undefined,
   width: number,
-  details?: SubAgentDetail[],
-  expanded = false,
+  opts: ToolCallOpts = {},
 ): string {
-  const def = tools[use.name];
-  const view: UseView = def?.use
-    ? def.use(use.input as Record<string, unknown>, width)
-    : { header: genericUseHeader(use) };
+  const { details, expanded = false } = opts;
+  const view = toolUseView(use, width, opts);
   const head = `${marker(toolState(result))} ${view.header}`;
   const detailRows = renderSubAgentDetails(details);
 
@@ -745,7 +783,11 @@ export function renderItemToString(item: RenderItem, width: number): string {
     case "redacted-thinking":
       return renderRedactedThinking(item.label);
     case "tool-call":
-      return renderToolCall(item.use, item.result, width, item.details, item.expanded ?? false);
+      return renderToolCall(item.use, item.result, width, {
+        details: item.details,
+        expanded: item.expanded ?? false,
+        baseline: item.baseline,
+      });
     case "tool-batch":
       return renderToolBatch(item.members, item.collapsed, width);
     case "card":
@@ -766,10 +808,7 @@ export function toolCallToggleLineIndex(
   width: number,
 ): number | null {
   if (item.result === undefined) return null;
-  const def = tools[item.use.name];
-  const view: UseView = def?.use
-    ? def.use(item.use.input as Record<string, unknown>, width)
-    : { header: genericUseHeader(item.use) };
+  const view = toolUseView(item.use, width, { baseline: item.baseline });
   if (!view.body || view.body.split("\n").length <= COMPACT_MAX_LINES) return null;
   const head = `${marker(toolState(item.result))} ${view.header}`;
   const resultStr = toolResultStr(item.use, item.result);

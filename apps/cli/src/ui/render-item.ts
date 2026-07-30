@@ -5,7 +5,9 @@ import {
   type ToolResultBlock,
   type ToolUseBlock,
 } from "@nova/core";
+import { aliasedPath } from "@nova/tools";
 import type { SubAgentDetail } from "@nova/subagent";
+import { readExisting } from "./diff.js";
 import type { Card } from "./store.js";
 
 /** Data needed to render the startup banner (logo + session metadata). */
@@ -63,6 +65,13 @@ export type RenderItem =
        * done; the trailing hint is a click target keyed by this item's `key`.
        */
       expanded?: boolean;
+      /**
+       * For a `write` call only: the target file's content as it was BEFORE the
+       * write, so the renderer can diff against it. `null` means the file did not
+       * exist (a create); absent for every other tool. Captured here rather than
+       * read by the renderer — see {@link writeBaseline}.
+       */
+      baseline?: string | null;
     }
   | {
       kind: "tool-batch";
@@ -98,6 +107,107 @@ const HIDDEN_TOOLS = new Set([
   "getTaskList",
   "clearTaskList",
 ]);
+
+// ─── item interning ─────────────────────────────────────────────────────────
+
+/**
+ * Previously built items, keyed by their stable {@link RenderItem.key}.
+ *
+ * `buildRenderItems` runs on every store update, and the loop fires
+ * `post_messages` roughly `2 × toolCalls + 3` times per turn. The line cache in
+ * `measure.ts` is keyed by item IDENTITY, and a miss there re-runs markdown
+ * highlighting, diff rendering and ANSI wrapping for that item — so handing back
+ * freshly allocated items re-measured the WHOLE transcript on every one of those
+ * fires (tens of ms per fire, growing with history length).
+ *
+ * The objects items render from are reference-stable: `messages` is append-only,
+ * and the loop's in-place message replacements (progressive tool_use reveal,
+ * incremental tool_result commits) rebuild the MessageParam from the SAME
+ * ContentBlock objects. So each item is cached under its key and the previous
+ * instance is returned whenever every input it renders from is still identical,
+ * which keeps the measure cache warm across rebuilds.
+ *
+ * Inputs are compared by reference, never by content: deep-comparing e.g. a long
+ * assistant text would cost about as much as the re-measure it avoids.
+ */
+const interned = new Map<string, { deps: readonly unknown[]; item: RenderItem }>();
+
+function sameDeps(a: readonly unknown[], b: readonly unknown[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+/**
+ * Per-build state: the interning bookkeeping plus the lookup tables the item
+ * builders need. Threaded through the `append*` helpers instead of a growing
+ * positional parameter list.
+ */
+interface BuildCtx {
+  /** Keys produced by the current build, used to prune the cache afterwards. */
+  used: Set<string>;
+  resultIndex: Map<string, ToolResultBlock>;
+  thinkingLabel: string | undefined;
+  overrides: Record<string, string> | undefined;
+  toolDetails: Record<string, SubAgentDetail[]> | undefined;
+  expandedItems: Record<string, boolean>;
+}
+
+/**
+ * Return the cached item for `key` when every entry of `deps` is still
+ * reference-identical; otherwise build it with `make` and cache that. `deps`
+ * must name every input the item renders from — by convention the source
+ * block / message / card first, then the derived state (result, details, flags).
+ */
+function intern<T extends RenderItem>(
+  ctx: BuildCtx,
+  key: string,
+  deps: readonly unknown[],
+  make: () => T,
+): T {
+  ctx.used.add(key);
+  const hit = interned.get(key);
+  if (hit && sameDeps(hit.deps, deps)) return hit.item as T;
+  const item = make();
+  interned.set(key, { deps, item });
+  return item;
+}
+
+/** Push `item` behind its own blank-line spacer (interned alongside it). */
+function pushWithSpacer(items: RenderItem[], ctx: BuildCtx, item: RenderItem): void {
+  const key = `sp:${item.key}`;
+  items.push(intern(ctx, key, [], () => ({ kind: "spacer", key })));
+  items.push(item);
+}
+
+// ─── write baseline ─────────────────────────────────────────────────────────
+
+/**
+ * The target file's pre-write content for a `write` tool_use, read at most once
+ * per block.
+ *
+ * The renderer must NOT read the file itself. It re-renders long after the tool
+ * has run, so by then the file holds the content being written and the diff
+ * degrades into `- new / + new` — the scrollback silently rewrites itself into a
+ * bogus diff. Reading here instead pins the baseline to the first time the block
+ * is seen, which is the `post_messages` that reveals the tool_use — before the
+ * loop has executed it. `null` means the file did not exist (a create).
+ *
+ * A transcript loaded from disk (`/resume`) is first seen with its results
+ * already in place, so the only baseline obtainable is the post-write content;
+ * the renderer detects `baseline === content` and shows the written file rather
+ * than a diff of it against itself.
+ */
+const writeBaselines = new WeakMap<ToolUseBlock, string | null>();
+
+function writeBaseline(block: ToolUseBlock): string | null {
+  const hit = writeBaselines.get(block);
+  if (hit !== undefined) return hit;
+  const path = aliasedPath(block.input);
+  const existing = path ? readExisting(path) : null;
+  writeBaselines.set(block, existing);
+  return existing;
+}
 
 function buildResultIndex(messages: MessageParam[]): Map<string, ToolResultBlock> {
   const idx = new Map<string, ToolResultBlock>();
@@ -154,11 +264,22 @@ export function buildRenderItems(opts: BuildOpts): RenderItem[] {
     expandedItems,
   } = opts;
   const items: RenderItem[] = [];
-  let n = 0;
-  const nextKey = (prefix: string): string => `${prefix}#${n++}`;
+  // Item keys are derived from the message/block position or the card id rather
+  // than a running counter: a counter shifts every later key when an anchored
+  // card is inserted or a hidden tool is skipped, which both breaks the
+  // `expandedItems` mapping (a collapse state jumps to a different item) and
+  // defeats interning. Positions never shift — the history is append-only.
+  const ctx: BuildCtx = {
+    used: new Set<string>(),
+    resultIndex: buildResultIndex(messages),
+    thinkingLabel,
+    overrides: userDisplayOverrides,
+    toolDetails,
+    expandedItems: expandedItems ?? {},
+  };
 
   if (banner) {
-    items.push({ kind: "banner", key: nextKey("banner"), banner });
+    items.push(intern(ctx, "banner", [banner], () => ({ kind: "banner", key: "banner", banner })));
   }
 
   const cardsByAnchor = new Map<number, Card[]>();
@@ -168,45 +289,46 @@ export function buildRenderItems(opts: BuildOpts): RenderItem[] {
     else cardsByAnchor.set(c.anchor, [c]);
   }
 
-  for (const c of cardsByAnchor.get(-1) ?? []) {
-    items.push({ kind: "spacer", key: nextKey("sp") });
-    items.push({ kind: "card", key: `card#${c.id}`, card: c });
-  }
+  const pushCard = (c: Card): void => {
+    const key = `card#${c.id}`;
+    pushWithSpacer(
+      items,
+      ctx,
+      intern(ctx, key, [c], () => ({ kind: "card", key, card: c })),
+    );
+  };
 
-  const resultIndex = buildResultIndex(messages);
+  for (const c of cardsByAnchor.get(-1) ?? []) pushCard(c);
 
   for (let mi = 0; mi < messages.length; mi++) {
     const msg = messages[mi];
     if (!msg) continue;
 
     if (msg.role === "user") {
-      appendUserItems(items, msg, nextKey, userDisplayOverrides);
+      appendUserItems(items, ctx, msg, mi);
     } else {
-      appendAssistantItems(
-        items,
-        msg,
-        resultIndex,
-        thinkingLabel,
-        nextKey,
-        toolDetails,
-        expandedItems ?? {},
-      );
+      appendAssistantItems(items, ctx, msg, mi);
     }
 
-    for (const c of cardsByAnchor.get(mi) ?? []) {
-      items.push({ kind: "spacer", key: nextKey("sp") });
-      items.push({ kind: "card", key: `card#${c.id}`, card: c });
-    }
+    for (const c of cardsByAnchor.get(mi) ?? []) pushCard(c);
   }
 
   for (const c of cards) {
-    if (c.anchor >= messages.length) {
-      items.push({ kind: "spacer", key: nextKey("sp") });
-      items.push({ kind: "card", key: `card#${c.id}`, card: c });
+    if (c.anchor >= messages.length) pushCard(c);
+  }
+
+  const out = coalesceToolBatches(items, ctx);
+
+  // Drop entries this build didn't produce, so a truncated (`/rewind`) or
+  // replaced (`/clear`, `/resume`) transcript can't leave the tail of the
+  // previous one cached forever.
+  if (interned.size > ctx.used.size) {
+    for (const key of interned.keys()) {
+      if (!ctx.used.has(key)) interned.delete(key);
     }
   }
 
-  return coalesceToolBatches(items, expandedItems ?? {});
+  return out;
 }
 
 type ToolCallItem = Extract<RenderItem, { kind: "tool-call" }>;
@@ -231,7 +353,7 @@ function isBatchableToolCall(item: RenderItem | undefined): item is ToolCallItem
  * member's `tool_use` id — stable across appends, so its expand/collapse state
  * survives re-renders.
  */
-function coalesceToolBatches(items: RenderItem[], expanded: Record<string, boolean>): RenderItem[] {
+function coalesceToolBatches(items: RenderItem[], ctx: BuildCtx): RenderItem[] {
   const out: RenderItem[] = [];
   let i = 0;
   while (i < items.length) {
@@ -246,13 +368,21 @@ function coalesceToolBatches(items: RenderItem[], expanded: Record<string, boole
       }
       if (members.length >= 2) {
         const firstId = members[0]!.use.id;
+        const collapsed = ctx.expandedItems[firstId] !== true;
+        // `members` is a fresh array every build, so the interning deps name each
+        // member's blocks individually — the batch is unchanged as long as the
+        // same uses and results are still folded into it.
+        const deps: unknown[] = [collapsed];
+        for (const m of members) deps.push(m.use, m.result);
         out.push(item); // keep the run's leading spacer
-        out.push({
-          kind: "tool-batch",
-          key: firstId,
-          members,
-          collapsed: expanded[firstId] !== true,
-        });
+        out.push(
+          intern(ctx, firstId, deps, () => ({
+            kind: "tool-batch",
+            key: firstId,
+            members,
+            collapsed,
+          })),
+        );
         i = j;
         continue;
       }
@@ -291,12 +421,7 @@ export function buildLiveDraftItems(
   return items;
 }
 
-function appendUserItems(
-  items: RenderItem[],
-  msg: MessageParam,
-  nextKey: (p: string) => string,
-  overrides: Record<string, string> | undefined,
-): void {
+function appendUserItems(items: RenderItem[], ctx: BuildCtx, msg: MessageParam, mi: number): void {
   // nova-injected messages (reminders, background-notifier notices, the
   // <compacted> boundary, goal-eval continuations) are read by the model but
   // never typed by the user — skip their bubbles. Identified structurally via
@@ -305,42 +430,40 @@ function appendUserItems(
   if (msg.meta?.synthetic) return;
   // Prefer the user's original typed input over the expanded model text for
   // slash commands that expand (e.g. `/agent`). Keyed by exact content.
-  const display = (text: string): string => overrides?.[text] ?? text;
+  const display = (text: string): string => ctx.overrides?.[text] ?? text;
+  const pushText = (key: string, src: object, raw: string): void => {
+    const text = display(raw);
+    pushWithSpacer(
+      items,
+      ctx,
+      intern(ctx, key, [src, text], () => ({ kind: "user-text", key, text })),
+    );
+  };
   if (typeof msg.content === "string") {
-    items.push({ kind: "spacer", key: nextKey("sp") });
-    items.push({
-      kind: "user-text",
-      key: nextKey("user"),
-      text: display(msg.content),
-    });
+    pushText(`u:${mi}`, msg, msg.content);
     return;
   }
-  for (const b of msg.content) {
-    if (b.type !== "text") continue;
+  for (let bi = 0; bi < msg.content.length; bi++) {
+    const b = msg.content[bi];
+    if (!b || b.type !== "text") continue;
     if (b.text.trim().length === 0) continue;
-    items.push({ kind: "spacer", key: nextKey("sp") });
-    items.push({ kind: "user-text", key: nextKey("user"), text: display(b.text) });
+    pushText(`u:${mi}:${bi}`, b, b.text);
   }
 }
 
 function appendAssistantItems(
   items: RenderItem[],
+  ctx: BuildCtx,
   msg: MessageParam,
-  resultIndex: Map<string, ToolResultBlock>,
-  thinkingLabel: string | undefined,
-  nextKey: (p: string) => string,
-  toolDetails: Record<string, SubAgentDetail[]> | undefined,
-  expandedItems: Record<string, boolean>,
+  mi: number,
 ): void {
   const blocks = blocksOf(msg);
+  const { thinkingLabel, expandedItems } = ctx;
   // Each visible item gets a leading spacer so consecutive tools / thinking
   // / assistant-text rows are separated by a blank line. Spacer is owned by
   // the item rather than the section so the layout stays consistent
   // regardless of which item type comes first.
-  const push = (item: RenderItem): void => {
-    items.push({ kind: "spacer", key: nextKey("sp") });
-    items.push(item);
-  };
+  const push = (item: RenderItem): void => pushWithSpacer(items, ctx, item);
 
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i] as ContentBlock;
@@ -351,51 +474,68 @@ function appendAssistantItems(
       // guard in buildLiveDraftItems. `redacted_thinking` still renders: it
       // stands in for encrypted reasoning that genuinely exists.
       if (block.thinking.trim().length === 0) continue;
-      const thKey = nextKey("th");
-      push({
-        kind: "thinking",
-        key: thKey,
-        thinking: block.thinking,
-        // Committed thinking is "done": collapse it to a short preview. The
-        // live draft (buildLiveDraftItems) stays uncollapsed so reasoning still
-        // streams in full while it is being produced. The preview's "… +N lines"
-        // hint is a click target (keyed by thKey) that expands the full text.
-        collapsed: true,
-        ...(expandedItems[thKey] ? { expanded: true } : {}),
-        ...(thinkingLabel !== undefined ? { label: thinkingLabel } : {}),
-      });
+      const thKey = `th:${mi}:${i}`;
+      const expanded = expandedItems[thKey] === true;
+      push(
+        intern(ctx, thKey, [block, thinkingLabel, expanded], () => ({
+          kind: "thinking",
+          key: thKey,
+          thinking: block.thinking,
+          // Committed thinking is "done": collapse it to a short preview. The
+          // live draft (buildLiveDraftItems) stays uncollapsed so reasoning still
+          // streams in full while it is being produced. The preview's "… +N lines"
+          // hint is a click target (keyed by thKey) that expands the full text.
+          collapsed: true,
+          ...(expanded ? { expanded: true } : {}),
+          ...(thinkingLabel !== undefined ? { label: thinkingLabel } : {}),
+        })),
+      );
     } else if (block.type === "redacted_thinking") {
-      push({
-        kind: "redacted-thinking",
-        key: nextKey("rth"),
-        ...(thinkingLabel !== undefined ? { label: thinkingLabel } : {}),
-      });
+      const key = `rth:${mi}:${i}`;
+      push(
+        intern(ctx, key, [block, thinkingLabel], () => ({
+          kind: "redacted-thinking",
+          key,
+          ...(thinkingLabel !== undefined ? { label: thinkingLabel } : {}),
+        })),
+      );
     } else if (block.type === "tool_use") {
       if (HIDDEN_TOOLS.has(block.name)) continue;
 
-      const details = toolDetails?.[block.id];
-      const tcKey = nextKey("tc");
-      push({
-        kind: "tool-call",
-        key: tcKey,
-        use: block,
-        result: resultIndex.get(block.id),
-        ...(details && details.length > 0 ? { details } : {}),
-        // A done body-bearing call (write/edit/bash) collapses to a preview; if
-        // the user clicked its hint, `expandedItems` carries the key and we show
-        // the full body. Mirrors the committed-thinking expand path above.
-        ...(expandedItems[tcKey] ? { expanded: true } : {}),
-      });
+      const details = ctx.toolDetails?.[block.id];
+      const tcKey = `tc:${mi}:${i}`;
+      const result = ctx.resultIndex.get(block.id);
+      const expanded = expandedItems[tcKey] === true;
+      // Read the pre-write file once, here, so the diff can never be recomputed
+      // against the post-write content (see writeBaseline).
+      const baseline = block.name === "write" ? writeBaseline(block) : undefined;
+      push(
+        intern(ctx, tcKey, [block, result, details, expanded], () => ({
+          kind: "tool-call",
+          key: tcKey,
+          use: block,
+          result,
+          ...(details && details.length > 0 ? { details } : {}),
+          // A done body-bearing call (write/edit/bash) collapses to a preview; if
+          // the user clicked its hint, `expandedItems` carries the key and we show
+          // the full body. Mirrors the committed-thinking expand path above.
+          ...(expanded ? { expanded: true } : {}),
+          ...(baseline !== undefined ? { baseline } : {}),
+        })),
+      );
     } else if (block.type === "text") {
       // Render text at its real position in the block stream so "narrate then
       // act" turns (text before tool_use in the same message) keep their order.
       // Skip empty text blocks — a pure tool-call turn often carries one.
       if (block.text.trim().length === 0) continue;
-      push({
-        kind: "assistant-text",
-        key: nextKey("at"),
-        text: block.text,
-      });
+      const key = `at:${mi}:${i}`;
+      push(
+        intern(ctx, key, [block], () => ({
+          kind: "assistant-text",
+          key,
+          text: block.text,
+        })),
+      );
     }
   }
 }

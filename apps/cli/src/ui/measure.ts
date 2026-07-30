@@ -5,15 +5,30 @@ import { clickTargetLine, renderItemToString } from "./render-strings.js";
 interface CacheEntry {
   width: number;
   lines: string[];
+  /**
+   * Cached {@link clickTargetLine}, filled on first use. `undefined` means "not
+   * computed yet" — `null` is a real answer (the item has no control row), and
+   * only visible items are ever asked, so this stays lazy.
+   */
+  target?: number | null;
 }
 
 /**
- * Global per-item line cache. Keyed by `RenderItem` identity —
- * `buildRenderItems` returns stable references for unchanged inputs, so cache
- * hits are common across re-renders. On `/clear` / `/compact` / `/resume`
- * the whole RenderItem tree is dropped and the WeakMap GCs naturally.
+ * Global per-item line cache. Keyed by `RenderItem` identity — `buildRenderItems`
+ * interns items, returning the same reference whenever nothing an item renders
+ * from has changed, so cache hits are the norm across re-renders. On `/clear` /
+ * `/resume` the whole RenderItem tree is dropped and the WeakMap GCs naturally.
  */
 const cache = new WeakMap<RenderItem, CacheEntry>();
+
+/** The cache entry for `item` at `width`, measuring it if needed. */
+function entryFor(item: RenderItem, width: number): CacheEntry {
+  const hit = cache.get(item);
+  if (hit && hit.width === width) return hit;
+  const entry: CacheEntry = { width, lines: wrapToLines(renderItemToString(item, width), width) };
+  cache.set(item, entry);
+  return entry;
+}
 
 /**
  * Hard-wrap an ANSI string to the given column width and return the visual
@@ -41,11 +56,21 @@ export function countWrappedLines(s: string, width: number): number {
  * identity; recomputed if the cached entry was for a different width.
  */
 export function measureItem(item: RenderItem, width: number): string[] {
-  const hit = cache.get(item);
-  if (hit && hit.width === width) return hit.lines;
-  const lines = wrapToLines(renderItemToString(item, width), width);
-  cache.set(item, { width, lines });
-  return lines;
+  return entryFor(item, width).lines;
+}
+
+/**
+ * Index of `item`'s click/hover control row, cached alongside its lines.
+ *
+ * Uncached this was a per-frame cost, not a per-item one: `sliceLines` asks for
+ * every visible item on every render, and for a body-bearing tool call the answer
+ * is derived by re-rendering the whole diff. It shares the line cache's width key
+ * because it depends on exactly the same inputs.
+ */
+export function itemTargetLine(item: RenderItem, width: number): number | null {
+  const entry = entryFor(item, width);
+  if (entry.target === undefined) entry.target = clickTargetLine(item, width);
+  return entry.target;
 }
 
 /**
@@ -116,7 +141,7 @@ export function sliceLines(
     // control row; tag that row with the item key so the mouse layer can resolve
     // a viewport row to the item. Only the control row itself is tagged, and
     // only while it is visible (a scrolled-off control can't be clicked).
-    const targetLine = clickTargetLine(it, width);
+    const targetLine = itemTargetLine(it, width);
     const key = targetLine !== null ? it.key : null;
     for (let li = 0; li < itemLines.length; li++) {
       if (scanned >= off && scanned < end) {
