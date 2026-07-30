@@ -560,6 +560,41 @@ interface ModalSlot {
  */
 export const CONTINUE_SENTINEL = "\x00__nova_continue__";
 
+/**
+ * Value equality for the checklist footers.
+ *
+ * `refreshTodoFooter` / `refreshTaskFooter` run on every `post_messages` — which
+ * the loop fires roughly `2 × toolCalls + 3` times per turn — and both stores
+ * hand back a freshly cloned array each time. Without a value compare, each of
+ * those publishes a new reference and re-renders the whole Viewport even when
+ * the checklist is untouched. Every other setter in this store already guards
+ * the no-op path; these two did not.
+ */
+function sameTodos(a: readonly Todo[], b: readonly Todo[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  return a.every((x, i) => {
+    const y = b[i];
+    return !!y && x.id === y.id && x.description === y.description && x.status === y.status;
+  });
+}
+
+function sameTasks(a: readonly Task[], b: readonly Task[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  return a.every((x, i) => {
+    const y = b[i];
+    return (
+      !!y &&
+      x.id === y.id &&
+      x.description === y.description &&
+      x.status === y.status &&
+      x.blockedBy.length === y.blockedBy.length &&
+      x.blockedBy.every((dep, j) => dep === y.blockedBy[j])
+    );
+  });
+}
+
 export interface AppStoreOptions {
   /**
    * Persist the ↑/↓ recall history after a submit extends it. Called with the
@@ -709,10 +744,12 @@ export function createAppStore(opts: AppStoreOptions = {}): AppStoreApi {
       },
 
       setTodos(todos) {
+        if (sameTodos(get().todos, todos)) return;
         set({ todos });
       },
 
       setTasks(tasks) {
+        if (sameTasks(get().tasks, tasks)) return;
         set({ tasks });
       },
 

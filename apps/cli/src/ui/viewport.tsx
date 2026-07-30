@@ -47,8 +47,20 @@ export interface ViewportProps {
  * is short, padding sits at the top and chrome lands right after the latest
  * message — feeling like a natural continuation rather than a floating
  * footer.
+ *
+ * Memoized on its props. It subscribes to the store itself, so store updates
+ * still reach it; what `memo` skips is the re-render App triggers whenever
+ * *its* slice changes for reasons the viewport does not care about — a queued
+ * prompt, a refreshed @-mention index, a new placeholder, a permission-mode
+ * cycle, shell mode. All three props are stable references (the store, and
+ * zustand actions defined once in the store closure) apart from `rows`, which
+ * only moves when the terminal or the input box is resized.
  */
-export function Viewport({ store, rows, resolveModal }: ViewportProps): React.ReactElement {
+export const Viewport = React.memo(function Viewport({
+  store,
+  rows,
+  resolveModal,
+}: ViewportProps): React.ReactElement {
   const {
     banner,
     messages,
@@ -251,7 +263,7 @@ export function Viewport({ store, rows, resolveModal }: ViewportProps): React.Re
       <Box flexGrow={1} />
     </Box>
   );
-}
+});
 
 /**
  * Thin wrapper that subscribes to the full spinner spec so token-count

@@ -2,9 +2,24 @@ import { readFile } from "node:fs/promises";
 import { basename, extname, resolve } from "node:path";
 import { z } from "zod";
 import type { ImageBlock, ToolHandler } from "@nova/core";
-import * as XLSX from "xlsx";
+import type * as XLSX from "xlsx";
 import { extractText } from "unpdf";
 import { PATH_ALIASES, withAliases } from "../schema.js";
+
+/**
+ * `xlsx` costs ~57ms to evaluate and is pulled in by `@nova/tools`' entry point,
+ * so every `nova` launch paid for it whether or not a spreadsheet was ever read.
+ * Loaded on first use instead; the module cache makes repeat reads free. Only
+ * the types are imported statically (erased at compile time).
+ *
+ * `unpdf` measures ~3ms — it defers its own heavy work — so it stays eager.
+ */
+let xlsxModule: typeof XLSX | null = null;
+
+async function loadXlsx(): Promise<typeof XLSX> {
+  xlsxModule ??= await import("xlsx");
+  return xlsxModule;
+}
 
 // Secondary safety budget on the size of a single response, measured in JS
 // string length (UTF-16 code units ≈ characters), NOT disk bytes. The model-
@@ -319,9 +334,10 @@ async function readExcel(abs: string, input: ExcelInput, path: string) {
     return { output: `read failed: ${msg}`, isError: true };
   }
 
+  const xlsx = await loadXlsx();
   let wb: XLSX.WorkBook;
   try {
-    wb = XLSX.read(buf, { type: "buffer" });
+    wb = xlsx.read(buf, { type: "buffer" });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return { output: `read failed: cannot parse ${path} as a spreadsheet: ${msg}`, isError: true };
@@ -346,7 +362,7 @@ async function readExcel(abs: string, input: ExcelInput, path: string) {
   // Convert sheet to array-of-arrays. `header: 1` emits every row verbatim
   // (row 1 = array index 0); `defval: ""` fills missing cells with "" so every
   // row has the same column count.
-  const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+  const rows: unknown[][] = xlsx.utils.sheet_to_json(ws, { header: 1, defval: "" });
   const totalRows = rows.length;
   const numCols = rows.length > 0 ? rows[0]!.length : 0;
 

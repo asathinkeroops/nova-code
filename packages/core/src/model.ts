@@ -138,6 +138,15 @@ export interface WireTool {
 }
 
 /**
+ * Serialized form per tool definition. Definitions are stable objects (the
+ * registry hands back the same ones every call), so the zod → JSON Schema
+ * conversion below runs once per tool instead of once per model call — it was
+ * re-deriving every schema on every request, including each sub-agent's. Keyed
+ * weakly so re-registered tools (an MCP server reconnecting) don't accumulate.
+ */
+const wireToolCache = new WeakMap<ToolDefinition, WireTool>();
+
+/**
  * Serialize tool definitions to the `tools` payload sent to the model: each
  * tool's `input_schema` is its `inputJsonSchema` when present (MCP servers
  * publish native JSON Schema) or derived from its zod `inputSchema` otherwise.
@@ -145,15 +154,21 @@ export interface WireTool {
  * model receives — the CLI's `/context` breakdown estimates this way.
  */
 export function toWireTools(tools: ToolDefinition[]): WireTool[] {
-  return tools.map((t) => ({
-    name: t.name,
-    description: t.description,
-    input_schema: (t.inputJsonSchema ??
-      zodToJsonSchema(t.inputSchema, {
-        target: "jsonSchema7",
-        $refStrategy: "none",
-      })) as Record<string, unknown>,
-  }));
+  return tools.map((t) => {
+    const hit = wireToolCache.get(t);
+    if (hit) return hit;
+    const wire: WireTool = {
+      name: t.name,
+      description: t.description,
+      input_schema: (t.inputJsonSchema ??
+        zodToJsonSchema(t.inputSchema, {
+          target: "jsonSchema7",
+          $refStrategy: "none",
+        })) as Record<string, unknown>,
+    };
+    wireToolCache.set(t, wire);
+    return wire;
+  });
 }
 
 export function createAnthropicModel(config: AnthropicModelConfig): ModelClient {

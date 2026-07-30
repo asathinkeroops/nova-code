@@ -211,3 +211,59 @@ describe("bypass permissions mode", () => {
     expect(store.getState().cyclePermissionMode()).toBe("bypassPermissions");
   });
 });
+
+describe("checklist footers", () => {
+  // Both stores hand back a freshly cloned array on every read, and the CLI
+  // re-reads them on every post_messages (~2N+3 times per turn). Publishing a
+  // new reference each time re-renders the whole Viewport for nothing.
+  const todos = () => [{ id: "t1", description: "do it", status: "pending" as const }];
+  const tasks = () => [
+    { id: "k1", description: "ship it", blockedBy: ["k0"], status: "pending" as const },
+  ];
+
+  it("ignores a todo list that is equal in value to the current one", () => {
+    const store = createAppStore();
+    store.getState().setTodos(todos());
+    const first = store.getState().todos;
+    store.getState().setTodos(todos());
+    expect(store.getState().todos).toBe(first);
+  });
+
+  it("publishes a todo list whose status changed", () => {
+    const store = createAppStore();
+    store.getState().setTodos(todos());
+    const first = store.getState().todos;
+    store.getState().setTodos([{ id: "t1", description: "do it", status: "completed" }]);
+    expect(store.getState().todos).not.toBe(first);
+    expect(store.getState().todos[0]).toMatchObject({ status: "completed" });
+  });
+
+  it("ignores a task list that is equal in value to the current one", () => {
+    const store = createAppStore();
+    store.getState().setTasks(tasks());
+    const first = store.getState().tasks;
+    store.getState().setTasks(tasks());
+    expect(store.getState().tasks).toBe(first);
+  });
+
+  it("publishes a task list whose blockedBy changed", () => {
+    const store = createAppStore();
+    store.getState().setTasks(tasks());
+    const first = store.getState().tasks;
+    store
+      .getState()
+      .setTasks([{ id: "k1", description: "ship it", blockedBy: [], status: "pending" }]);
+    expect(store.getState().tasks).not.toBe(first);
+  });
+
+  it("publishes a list that gained or lost an entry", () => {
+    const store = createAppStore();
+    store.getState().setTodos(todos());
+    const first = store.getState().todos;
+    store
+      .getState()
+      .setTodos([...todos(), { id: "t2", description: "and this", status: "pending" }]);
+    expect(store.getState().todos).not.toBe(first);
+    expect(store.getState().todos).toHaveLength(2);
+  });
+});
