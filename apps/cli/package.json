@@ -1,6 +1,6 @@
 {
   "name": "@asathinkeroops/nova-code",
-  "version": "0.1.0-beta.10",
+  "version": "0.1.0",
   "description": "A terminal coding agent, deeply tuned for DeepSeek.",
   "type": "module",
   "license": "MIT",
@@ -38,6 +38,7 @@
     "build": "tsup",
     "dev": "tsx src/index.ts",
     "prepub": "pnpm publish --access public --tag beta --no-git-checks --registry=https://registry.npmjs.org/ && npm dist-tag add $npm_package_name@$npm_package_version latest --registry=https://registry.npmjs.org/",
+    "pub": "pnpm publish --access public --tag latest --no-git-checks --registry=https://registry.npmjs.org/",
     "prepublishOnly": "pnpm build",
     "typecheck": "tsc --noEmit"
   },
