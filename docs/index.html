@@ -1001,6 +1001,10 @@
   .foot-brand .word { font-family: var(--font-mono); font-weight: 600; color: var(--ink); }
   .foot-meta { font-family: var(--font-mono); font-size: .8rem; color: var(--faint); display: flex; gap: 18px; flex-wrap: wrap; }
   .foot-meta a:hover { color: var(--accent); }
+  .foot-beian { margin-top: 26px; padding-top: 20px; border-top: 1px solid var(--line);
+    font-family: var(--font-mono); font-size: .78rem; color: var(--faint); text-align: center; }
+  .foot-beian a { color: inherit; }
+  .foot-beian a:hover { color: var(--accent); }
 
   /* ---------- reveal ---------- */
   .reveal { opacity: 0; transform: translateY(18px); transition: opacity .7s ease var(--reveal-delay, 0ms), transform .7s ease var(--reveal-delay, 0ms); }
@@ -1351,6 +1355,11 @@
       <a href="https://github.com/asathinkeroops/nova-code" target="_blank" rel="noopener">GitHub</a>
       <span>Built for DeepSeek</span>
       <span>© 2026 Nova-Code</span>
+    </div>
+  </div>
+  <div class="wrap">
+    <div class="foot-beian">
+      <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">浙ICP备2026058677号</a>
     </div>
   </div>
 </footer>
