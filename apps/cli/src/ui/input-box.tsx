@@ -322,8 +322,17 @@ export function sessionNameBadge(
  * cursor cell inverted, everything else plain. Walks character by character and
  * coalesces runs that share styling so we emit as few `<Text>` nodes as possible.
  * `hl` and `sel` are buffer-coordinate `[start, end)` ranges.
+ *
+ * A trailing run of spaces is emitted dim (invisible — a space has no glyph to
+ * dim) so it survives Ink's per-line `trimEnd()`. Without a style, Ink drops
+ * those cells from the frame, so typing a space at the end of the buffer
+ * produces a byte-identical frame: Ink skips the write entirely, the stdout
+ * wrapper never re-parks the real cursor, and the space looks like it wasn't
+ * typed until the next character lands. (The inverse caret cell used to keep the
+ * line non-blank at the end; with the real terminal caret parked there instead,
+ * nothing does.)
  */
-function styledSpans(
+export function styledSpans(
   content: string,
   lineBufStart: number,
   cursorCol: number | null,
@@ -336,6 +345,9 @@ function styledSpans(
   let segStart = 0;
   let segHl = false;
   let segSel = false;
+  let segDim = false;
+  // Start of the line's trailing run of spaces (content.length when there is none).
+  const trailStart = content.length - (/ *$/.exec(content)?.[0].length ?? 0);
   const flush = (end: number): void => {
     if (end <= segStart) return;
     const slice = content.slice(segStart, end);
@@ -344,6 +356,7 @@ function styledSpans(
         key={key++}
         color={segHl ? ACCENT_HEX : undefined}
         backgroundColor={segSel ? SELECTION_BG_HEX : undefined}
+        dimColor={segDim}
       >
         {slice}
       </Text>,
@@ -354,6 +367,7 @@ function styledSpans(
     const bufIdx = lineBufStart + k;
     const inHl = hl ? bufIdx >= hl[0] && bufIdx < hl[1] : false;
     const inSel = sel ? bufIdx >= sel[0] && bufIdx < sel[1] : false;
+    const inTrail = k >= trailStart;
     if (cursorCol !== null && k === cursorCol) {
       flush(k);
       nodes.push(
@@ -364,12 +378,14 @@ function styledSpans(
       segStart = k + 1;
       segHl = inHl;
       segSel = inSel;
+      segDim = inTrail;
       continue;
     }
-    if (inHl !== segHl || inSel !== segSel) {
+    if (inHl !== segHl || inSel !== segSel || inTrail !== segDim) {
       flush(k);
       segHl = inHl;
       segSel = inSel;
+      segDim = inTrail;
     }
   }
   flush(content.length);

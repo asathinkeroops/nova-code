@@ -8,6 +8,7 @@ import {
   mentionTokenAt,
   sanitizePastedText,
   sessionNameBadge,
+  styledSpans,
   wrapBuffer,
   type InputHitLayout,
   type SlashCommand,
@@ -215,6 +216,37 @@ describe("sanitizePastedText", () => {
 
   it("leaves plain text untouched", () => {
     expect(sanitizePastedText("hello world")).toBe("hello world");
+  });
+});
+
+describe("styledSpans", () => {
+  interface SpanProps {
+    children?: string;
+    dimColor?: boolean;
+    inverse?: boolean;
+  }
+  const props = (nodes: React.ReactNode[]): SpanProps[] =>
+    nodes.map((n) => (n as React.ReactElement<SpanProps>).props);
+
+  it("emits a trailing run of spaces dim so Ink's per-line trimEnd keeps it", () => {
+    // Without a style Ink drops those cells, the frame comes out byte-identical
+    // to the previous one, and the typed space never reaches the screen.
+    const spans = props(styledSpans("hi  ", 0, null, false, null, null));
+    expect(spans.map((p) => p.children)).toEqual(["hi", "  "]);
+    expect(spans[0]?.dimColor).toBe(false);
+    expect(spans[1]?.dimColor).toBe(true);
+  });
+
+  it("leaves interior spaces alone", () => {
+    const spans = props(styledSpans("a b", 0, null, false, null, null));
+    expect(spans.map((p) => p.children)).toEqual(["a b"]);
+    expect(spans[0]?.dimColor).toBe(false);
+  });
+
+  it("keeps the inverse caret cell when the caret sits on a trailing space", () => {
+    const spans = props(styledSpans("hi ", 0, 2, false, null, null));
+    expect(spans.map((p) => p.children)).toEqual(["hi", " "]);
+    expect(spans[1]?.inverse).toBe(true);
   });
 });
 
