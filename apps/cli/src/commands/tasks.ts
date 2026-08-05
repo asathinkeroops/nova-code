@@ -1,4 +1,4 @@
-import type { CommandRecord } from "@nova/tools";
+import type { CommandRecord, MonitorRecord } from "@nova/tools";
 
 import { bold, dim, green, PURPLE_HEX, red, yellow } from "../colors.js";
 import type { CliContext } from "../context.js";
@@ -53,6 +53,17 @@ function summary(records: CommandRecord[]): string {
 /** Kill one record by id, surfacing the outcome as a transient notice. */
 function stopOne(ctx: CliContext, id: string): void {
   try {
+    // Ids come from two disjoint namespaces (background commands and monitors),
+    // so one `/tasks stop <id>` can serve both without ambiguity.
+    if (ctx.monitorManager.get(id) !== undefined) {
+      const stopped = ctx.monitorManager.stop(id);
+      ctx.screen.notice(
+        stopped.alreadyStopped
+          ? t.tasks.alreadyFinished(id)
+          : t.tasks.stopping(id, oneLine(stopped.description, 40)),
+      );
+      return;
+    }
     const res = ctx.backgroundManager.kill(id);
     ctx.screen.notice(
       res.alreadyExited
@@ -64,6 +75,36 @@ function stopOne(ctx: CliContext, id: string): void {
   }
 }
 
+/** A coloured dot for a monitor: only `running` is live; the rest are done. */
+function monitorDot(m: MonitorRecord): string {
+  if (m.status === "running") return yellow("●");
+  if (m.status === "exited" || m.status === "stopped") return green("✓");
+  return red("✗");
+}
+
+/**
+ * Monitor rows appended to the `/tasks` list. Monitors are surfaced here — not
+ * only through the model's stopMonitor tool — because a `persistent` watch
+ * outlives every turn: with no user-visible list it would be an invisible
+ * process the user can neither see nor stop.
+ */
+function monitorLines(records: MonitorRecord[]): string[] {
+  if (records.length === 0) return [];
+  const width = Math.min(
+    CMD_MAX,
+    Math.max(0, ...records.map((m) => oneLine(m.description, CMD_MAX).length)),
+  );
+  return [
+    "",
+    dim(t.tasks.monitorsHeader),
+    ...records.map((m) => {
+      const label = oneLine(m.description, CMD_MAX).padEnd(width);
+      const tail = `${m.id}   ${t.tasks.eventCount(m.eventCount)}${m.persistent ? dim(" · persistent") : ""}`;
+      return `${monitorDot(m)}   ${label}   ${dim(tail)}`;
+    }),
+  ];
+}
+
 /** Render a card listing every task — the non-interactive `/tasks list` form. */
 function listCard(ctx: CliContext, records: CommandRecord[]): void {
   const cmdWidth = commandColumnWidth(records);
@@ -72,11 +113,12 @@ function listCard(ctx: CliContext, records: CommandRecord[]): void {
     (r) =>
       `${statusDot(r.status)}   ${oneLine(r.command, CMD_MAX).padEnd(cmdWidth)}   ${metaColumn(r, pidWidth)}`,
   );
-  ctx.screen.card([summary(records), "", ...lines].join("\n"), { title: TITLE });
+  const body = [summary(records), "", ...lines, ...monitorLines(ctx.monitorManager.list())];
+  ctx.screen.card(body.join("\n"), { title: TITLE });
 }
 
 /**
- * View and manage background commands (those started by `runInBackground`).
+ * View and manage background commands (those started by `bash` with `run_in_background`).
  *
  * With no argument, opens an interactive modal: a list of running/finished
  * tasks → an action row per task (view output / stop). The two loop until the
@@ -94,6 +136,11 @@ export async function handleTasks(ctx: CliContext, args: string): Promise<void> 
     const target = rest.join(" ").trim();
     if (verb === "list") {
       const records = ctx.backgroundManager.list();
+      const monitors = ctx.monitorManager.list();
+      if (records.length === 0 && monitors.length > 0) {
+        ctx.screen.card(monitorLines(monitors).slice(1).join("\n"), { title: TITLE });
+        return;
+      }
       if (records.length === 0) {
         ctx.screen.card(dim(t.tasks.noneDot), { title: TITLE });
         return;
@@ -102,7 +149,10 @@ export async function handleTasks(ctx: CliContext, args: string): Promise<void> 
       return;
     }
     if (verb === "stop" || verb === "kill") {
-      const running = ctx.backgroundManager.list().filter((r) => r.status === "running");
+      const running = [
+        ...ctx.backgroundManager.list().filter((r) => r.status === "running"),
+        ...ctx.monitorManager.list().filter((m) => m.status === "running"),
+      ];
       if (target === "all") {
         if (running.length === 0) {
           ctx.screen.card(dim(t.tasks.noRunning), { title: TITLE });
@@ -133,7 +183,14 @@ export async function handleTasks(ctx: CliContext, args: string): Promise<void> 
   for (;;) {
     const records = ctx.backgroundManager.list();
     if (records.length === 0) {
-      await overlayNotice(ctx, TITLE, [dim(t.tasks.noneHint)]);
+      // The interactive picker covers background commands only; monitors are
+      // listed (and stoppable by id) through the argument forms.
+      const monitors = monitorLines(ctx.monitorManager.list());
+      await overlayNotice(
+        ctx,
+        TITLE,
+        monitors.length > 0 ? monitors.slice(1) : [dim(t.tasks.noneHint)],
+      );
       return;
     }
 
@@ -186,7 +243,9 @@ async function openTaskActions(ctx: CliContext, id: string): Promise<void> {
 
   // view: non-consuming snapshot so the completion notifier keeps its bytes.
   const snap = ctx.backgroundManager.peek(id);
-  const lines = snap.output ? snap.output.replace(/\n$/, "").split("\n") : [dim(t.tasks.noOutputYet)];
+  const lines = snap.output
+    ? snap.output.replace(/\n$/, "").split("\n")
+    : [dim(t.tasks.noOutputYet)];
   await ctx.screen.viewer({
     lines,
     header: `${bold(oneLine(snap.command))}  ${dim(statusWord(snap.status))}\n`,

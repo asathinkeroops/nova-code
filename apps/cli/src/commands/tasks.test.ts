@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { CommandRecord } from "@nova/tools";
+import type { CommandRecord, MonitorRecord } from "@nova/tools";
 
 import type { CliContext } from "../context.js";
 import { handleTasks } from "./tasks.js";
@@ -51,6 +51,24 @@ function makeManager(records: CommandRecord[], kills: string[]) {
   };
 }
 
+/**
+ * Stand-in for the MonitorManager. `monitors` defaults to empty, so the existing
+ * background-command cases exercise the "no watches" path; a case that passes
+ * records covers the monitor rows and the shared `/tasks stop <id>` dispatch.
+ */
+function makeMonitorManager(monitors: MonitorRecord[], stops: string[]) {
+  return {
+    list: () => monitors.slice(),
+    get: (id: string) => monitors.find((m) => m.id === id),
+    stop: (id: string) => {
+      const m = monitors.find((x) => x.id === id);
+      if (!m) throw new Error(`no monitor with id ${id}`);
+      stops.push(id);
+      return { id, description: m.description, alreadyStopped: m.status !== "running" };
+    },
+  };
+}
+
 interface CtxStub {
   cards: Card[];
   notices: Notice[];
@@ -69,6 +87,8 @@ function makeCtx(
   kills: string[],
   pickResponses: Array<number | null> = [],
   hpickResponses: Array<number | null> = [],
+  monitors: MonitorRecord[] = [],
+  stops: string[] = [],
 ): CtxStub {
   const cards: Card[] = [];
   const notices: Notice[] = [];
@@ -77,6 +97,7 @@ function makeCtx(
   const viewers: ViewerCall[] = [];
   const ctx = {
     backgroundManager: makeManager(records, kills),
+    monitorManager: makeMonitorManager(monitors, stops),
     screen: {
       card: (text: string, opts: Card["opts"] = {}) => cards.push({ text, opts }),
       notice: (text: string, _ttl?: number, tone?: string) => notices.push({ text, tone }),
@@ -100,6 +121,18 @@ function makeCtx(
 
 function rec(over: Partial<CommandRecord> & Pick<CommandRecord, "id">): CommandRecord {
   return { pid: 100, command: "sleep 1", status: "running", ...over };
+}
+
+function mon(over: Partial<MonitorRecord> & Pick<MonitorRecord, "id">): MonitorRecord {
+  return {
+    pid: 200,
+    command: "tail -f app.log",
+    description: "errors in app.log",
+    status: "running",
+    persistent: false,
+    eventCount: 0,
+    ...over,
+  };
 }
 
 describe("handleTasks", () => {
@@ -182,6 +215,52 @@ describe("handleTasks", () => {
     const { ctx } = makeCtx(records, kills);
     await handleTasks(ctx, "stop all");
     expect(kills.sort()).toEqual(["aaa", "bbb"]);
+  });
+
+  it("lists monitors alongside background tasks", async () => {
+    const monitors = [mon({ id: "m1", description: "errors in app.log", eventCount: 7 })];
+    const { ctx, cards } = makeCtx([rec({ id: "aaa" })], [], [], [], monitors);
+    await handleTasks(ctx, "list");
+    expect(cards[0]?.text).toContain("aaa");
+    expect(cards[0]?.text).toContain("errors in app.log");
+    expect(cards[0]?.text).toContain("m1");
+  });
+
+  it("lists monitors even when there is no background task", async () => {
+    // A persistent watch must never be invisible just because nothing else runs.
+    const monitors = [mon({ id: "m1", persistent: true })];
+    const { ctx, cards, picks } = makeCtx([], [], [], [], monitors);
+    await handleTasks(ctx, "list");
+    expect(picks).toHaveLength(0);
+    expect(cards[0]?.text).toContain("m1");
+    expect(cards[0]?.text).toContain("persistent");
+  });
+
+  it("`stop <id>` routes a monitor id to the monitor manager", async () => {
+    const kills: string[] = [];
+    const stops: string[] = [];
+    const monitors = [mon({ id: "m1" })];
+    const { ctx } = makeCtx([rec({ id: "aaa" })], kills, [], [], monitors, stops);
+    await handleTasks(ctx, "stop m1");
+    expect(stops).toEqual(["m1"]);
+    expect(kills).toEqual([]);
+  });
+
+  it("`stop all` covers running monitors too", async () => {
+    const kills: string[] = [];
+    const stops: string[] = [];
+    const monitors = [mon({ id: "m1" }), mon({ id: "m2", status: "exited" })];
+    const { ctx } = makeCtx(
+      [rec({ id: "aaa", status: "running" })],
+      kills,
+      [],
+      [],
+      monitors,
+      stops,
+    );
+    await handleTasks(ctx, "stop all");
+    expect(kills).toEqual(["aaa"]);
+    expect(stops).toEqual(["m1"]);
   });
 
   it("warns on an unknown action", async () => {

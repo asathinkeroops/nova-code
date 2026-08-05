@@ -422,7 +422,7 @@ export function buildLiveDraftItems(
 }
 
 function appendUserItems(items: RenderItem[], ctx: BuildCtx, msg: MessageParam, mi: number): void {
-  // nova-injected messages (reminders, background-notifier notices, the
+  // nova-injected messages (reminders, background-notification notices, the
   // <compacted> boundary, goal-eval continuations) are read by the model but
   // never typed by the user — skip their bubbles. Identified structurally via
   // meta.synthetic, so a user who types a `<...>` tag still sees their message.

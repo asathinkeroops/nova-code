@@ -45,7 +45,7 @@ export const en = {
     agent: "delegate a task to a named sub-agent",
     novaCodeGuide: "ask a read-only guide about Nova itself, answered from its source",
     novaCodeGuideUpdate: "manually (re)fetch the Nova source the guide reads (remote mode)",
-    tasks: "view and manage background commands (runInBackground)",
+    tasks: "view and manage background commands (bash run_in_background)",
     mcp: "open the MCP server menu (authenticate, reconnect, log out); `tools` to list",
     lsp: "show configured language servers and their status",
     doctor: "re-check the global nova config (press f to have the agent fix issues)",
@@ -67,6 +67,7 @@ export const en = {
     webfetch: "Allow fetching this URL?",
     websearch: "Allow searching the web?",
     createSubAgent: "Allow spawning a subagent?",
+    monitor: "Allow starting this monitor? Every line it prints becomes a notification.",
     runInBackground: "Allow running this command in the background?",
     fallback: "Allow this operation?",
     allowOnce: "Allow once",
@@ -250,7 +251,8 @@ export const en = {
     goalCheckSkipped: (msg: string): string => `goal check skipped: ${msg}`,
     goalAchieved: "🎯 goal achieved:",
     goalNotReached: (n: number): string => `goal not reached after ${n} continuation(s); stopping.`,
-    goalContinuing: (n: number, max: number): string => `goal not yet met — continuing (${n}/${max})`,
+    goalContinuing: (n: number, max: number): string =>
+      `goal not yet met — continuing (${n}/${max})`,
     stopHookCapped: (max: number): string =>
       `Stop hook kept blocking; stopping after ${max} continuations`,
     stopHookTitle: "Stop hook",
@@ -274,7 +276,9 @@ export const en = {
     stoppingN: (n: number): string => `stopping ${n} task${n === 1 ? "" : "s"}…`,
     usage: "usage: /tasks stop <id|all>",
     unknownAction: (verb: string): string => `unknown action "${verb}" — try: list, stop <id|all>`,
-    noneHint: "no background tasks — start one with the runInBackground tool.",
+    monitorsHeader: "monitors",
+    eventCount: (n: number) => `${n} event${n === 1 ? "" : "s"}`,
+    noneHint: "no background tasks — start one with bash's run_in_background.",
     header: "Background tasks",
     listFooter: "↑↓ navigate · enter open · esc close",
     viewOutput: "View output",
@@ -516,7 +520,12 @@ export const en = {
     invalidHookFileHint: "fix or remove it — nova skips it and continues",
     mcpDisabled: "MCP: disabled (mcp.enabled = false)",
     mcpNoServers: "MCP: no servers configured",
-    mcpConfigured: (p: { total: number; stdio: number; http: number; disabled: number }): string => {
+    mcpConfigured: (p: {
+      total: number;
+      stdio: number;
+      http: number;
+      disabled: number;
+    }): string => {
       const kinds = [p.stdio > 0 ? `${p.stdio} stdio` : "", p.http > 0 ? `${p.http} http` : ""]
         .filter(Boolean)
         .join(", ");
@@ -649,6 +658,17 @@ export const en = {
     requestFailedTitle: "request failed",
     loopTerminated: (message: string, logPath: string): string => `${message}\nsee log: ${logPath}`,
     loopTerminatedTitle: "loop terminated",
+  },
+
+  /** Startup update-check cards (`update.ts`). */
+  update: {
+    available: "available",
+    availableTitle: "update available",
+    installed: "installed in the background",
+    installedTitle: "update installed",
+    youHave: (version: string): string => `(you have ${version})`,
+    runUpgrade: (command: string): string => `run ${command} to update`,
+    effectiveNextLaunch: "it takes effect the next time you start nova",
   },
 
   /** Input box chrome (`ui/input-box.tsx`): queued prompts, history, popup. */

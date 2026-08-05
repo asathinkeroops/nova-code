@@ -146,8 +146,9 @@ Tools the model can call — covering read/write, search, execution, code intell
 | --- | --- |
 | `read` / `write` / `edit` | Read files (line-numbered + paginated, incl. `.xlsx` / `.ods` spreadsheets and `.pdf` documents; images on image-capable model tiers), whole-file write, exact-text replace |
 | `glob` / `grep` | Filename matching, full-text regex search |
-| `bash` | Run shell commands |
-| `runInBackground` / `getBackgroundOutput` / `killBackground` | Run long tasks (dev servers, watchers) in the background |
+| `bash` | Run shell commands; with `run_in_background: true` it detaches long tasks (dev servers, watchers) and returns an id, pid, and log path immediately |
+| `killBackground` | Terminate a background command |
+| `monitor` / `stopMonitor` | Watch scripts: every stdout line becomes a notification (`tail -f`, watchers, poll loops) |
 | `lsp` | Code intelligence: go-to-definition, references, hover, diagnostics, symbol search |
 | `webfetch` / `websearch` | Fetch web pages, search the web |
 | `createTodo` / `updateTodo` / `getTodoList` / `clearTodoList` | In-session multi-step checklist |
@@ -176,7 +177,7 @@ Tools the model can call — covering read/write, search, execution, code intell
 | `/loop` | Re-run a prompt or command on an interval (`/loop <interval> <prompt\|/cmd>`, `/loop stop` to end) |
 | `/doctor` | Health-check the global config (JSON/schema, model/key, hooks, MCP), report issues, optionally hand them to the agent to fix in place |
 | `/usage` · `/context` | See token usage, cache hits, context fill |
-| `/tasks` | View and manage background commands (`runInBackground`) — list / stop |
+| `/tasks` | View and manage background commands (`bash` + `run_in_background`) — list / stop |
 | `/predict` | Toggle next-input prediction |
 | `/exit` · `/quit` | Quit |
 

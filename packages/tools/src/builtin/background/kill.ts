@@ -7,7 +7,7 @@ const inputSchema = z
     id: z
       .string()
       .min(1)
-      .describe("The id returned by runInBackground for the command to terminate."),
+      .describe("The id returned by bash's run_in_background, for the command to terminate."),
   })
   .strict();
 
@@ -16,7 +16,7 @@ export function killBackgroundTool(manager: BackgroundCommandManager): ToolHandl
     definition: {
       name: "killBackground",
       description:
-        "Terminate a background command started with runInBackground, by id. " +
+        "Terminate a background command started with bash's run_in_background, by id. " +
         "Sends SIGTERM and escalates to SIGKILL if it lingers; the command's " +
         "final output is still delivered to you when it exits. No-op if the " +
         "command has already finished.",

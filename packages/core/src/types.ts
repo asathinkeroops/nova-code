@@ -69,7 +69,8 @@ export type ContentBlock = z.infer<typeof contentBlockSchema>;
 export const syntheticKindSchema = z.enum([
   "todo-reminder",
   "task-reminder",
-  "background-notifier",
+  "background-notification",
+  "monitor-notification",
   "plan-mode",
   "interrupted",
   "goal-eval",
@@ -78,10 +79,34 @@ export const syntheticKindSchema = z.enum([
 
 export type SyntheticKind = z.infer<typeof syntheticKindSchema>;
 
-export const messageMetaSchema = z.object({
-  synthetic: z.literal(true),
-  kind: syntheticKindSchema,
-});
+/**
+ * Renamed `kind` values → their current name. `kind` is PERSISTED in
+ * `messages.jsonl`, so dropping an old value from the enum would make every
+ * session that contains it fail to parse — taking the whole transcript with it,
+ * not just the one message. Renames therefore have to land here as well.
+ */
+const RENAMED_KINDS: Readonly<Record<string, SyntheticKind>> = {
+  "background-notifier": "background-notification",
+};
+
+/**
+ * Rewrite a legacy `kind` before validation, so sessions written under the old
+ * name still load. Applied via `preprocess` rather than at the one call site
+ * that loads transcripts, so EVERY parse path is covered.
+ */
+export const messageMetaSchema = z.preprocess(
+  (raw) => {
+    if (typeof raw !== "object" || raw === null) return raw;
+    const meta = raw as { kind?: unknown };
+    if (typeof meta.kind !== "string") return raw;
+    const renamed = RENAMED_KINDS[meta.kind];
+    return renamed ? { ...meta, kind: renamed } : raw;
+  },
+  z.object({
+    synthetic: z.literal(true),
+    kind: syntheticKindSchema,
+  }),
+);
 
 export type MessageMeta = z.infer<typeof messageMetaSchema>;
 
@@ -181,7 +206,7 @@ export interface FileAccessLedger {
 
 /**
  * Optional OS-level sandbox bridge. When present on a ToolContext, tools that
- * spawn a subprocess (bash, runInBackground) route their command through
+ * spawn a subprocess (bash, foreground and run_in_background alike) route their command through
  * `wrapCommand` before spawning, so it executes inside the platform sandbox
  * (macOS Seatbelt / Linux bubblewrap). Injected by the CLI; @nova/core and
  * @nova/tools never import the sandbox SDK directly, keeping those layers

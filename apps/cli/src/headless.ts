@@ -80,6 +80,7 @@ export async function runHeadless(settings: Settings, opts: HeadlessOptions): Pr
   } finally {
     await ctx.transcript.flush();
     await ctx.backgroundManager.disposeAll();
+    await ctx.monitorManager.disposeAll();
     if (ctx.lspManager) await ctx.lspManager.disposeAll();
     await ctx.sandbox.dispose();
     if (ctx.mcp) await ctx.mcp.close();

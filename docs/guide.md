@@ -35,7 +35,7 @@
 ## 1. 它能做什么
 
 - **Agentic 编码循环** —— 给它一个目标，它自己读代码、改文件、跑命令，一步步把任务做完。同一轮里互相独立的工具调用以**有界并发**运行（默认每轮 3 个）。
-- **代码与系统工具** —— 文件 read / write / edit（文本、表格、**PDF**、图片都能读），`glob` + `grep` 搜索，`bash` 与后台长任务（`runInBackground`），web fetch / search，向你提问。
+- **代码与系统工具** —— 文件 read / write / edit（文本、表格、**PDF**、图片都能读），`glob` + `grep` 搜索，`bash`（含 `run_in_background` 后台长任务），web fetch / search，向你提问。
 - **LSP 代码智能** —— 直连语言服务器做 go-to-definition、find-references、hover、诊断、符号搜索，比 grep 更懂作用域和类型。
 - **扩展 thinking** —— 五档（`off`/`low`/`medium`/`high`/`max`）或显式 token 预算。
 - **Plan 模式与子 agent** —— 把庞大的调查/规划交给全新上下文的 worker，结论汇报回来，主对话保持干净。
@@ -219,7 +219,7 @@ Nova 是一个全屏 Ink/React REPL：顶部是滚动的历史区，底部是固
 | `/lsp` | 查看已配置的语言服务器（是否在 PATH、本 session 是否已启动） |
 | `/plugin` | 列出已加载的插件及其贡献（安装 / 启停用 `nova plugin` CLI，见 [§18](#18-插件plugins)） |
 | `/sandbox [on\|off]` | 本会话内开关 OS 命令沙箱（见 [§11](#11-命令沙箱)） |
-| `/tasks [list\|stop <id\|all>]` | 查看和管理后台命令（`runInBackground`），支持 list / stop |
+| `/tasks [list\|stop <id\|all>]` | 查看和管理后台命令（`bash` + `run_in_background`），支持 list / stop |
 | `/exit`, `/quit` | 退出 |
 
 `/help` 与 `/commands` 会把**内置 + 项目 + 用户**三层命令都列出来。`/model` 只按已配置的档位名切换（如 `/model pro`），裸模型 id 会被拒绝。自定义命令的加载规则见 [§15](#15-自定义-slash-命令)。
@@ -281,7 +281,7 @@ Nova 把「extended thinking」暴露成五个等级，或一个显式的 token 
 | `read` | 只读 | 读**文本 / 表格 / PDF / 图片**：文本输出带 `cat -n` 风格行号（1-based），`offset` 起始行、`limit` 最大行数，单页约 20 万字符上限、单行超 1.6 万字符会截断并标注，超出时提示用 `offset` 续读；行号前缀仅用于显示，传给 `edit` 前需去掉。表格（`.xlsx/.xls/.xlsm/.xlsb/.ods`）每行渲成 TSV 带表头，`sheet` 选工作表。**PDF**（`.pdf`，≤30MB）抽取文本后同样带行号返回，每页前插一条 `[Page N]` 标记，`offset`/`limit` 照常分页；扫描件 / 纯图片 PDF 抽不出文本，会明说并建议改用 OCR 工具。图片（`.png/.jpg/.jpeg/.gif/.webp`，≤20MB）以 base64 块返回——**仅当前档位支持图片输入时**（否则提示切到 image-capable 档位）。含 NUL 字节的二进制文件直接拒读并给出 `file`/`xxd` 建议 |
 | `write` | 需批准 | 写整个文件（覆盖），默认自动创建父目录 |
 | `edit` | 需批准 | 精确字符串替换；`old_string` 默认须唯一匹配，`replace_all` 可全替 |
-| `bash` | 需批准 | 执行阻塞的 shell 命令（`bash -lc`）；`timeout_ms` **默认与上限都是 180000（3 分钟）**，`cwd` 可覆盖工作目录，输出截到 200KB。更长的任务应改用 `runInBackground` |
+| `bash` | 需批准 | 执行 shell 命令（`bash -lc`）。默认阻塞：`timeout_ms` **默认与上限都是 180000（3 分钟）**，`cwd` 可覆盖工作目录，输出截到 200KB。更长的任务传 `run_in_background: true`——命令转入后台、立即返回 `{id, pid, output_path}`，`env` 可追加环境变量 |
 
 ### 搜索与发现
 
@@ -330,9 +330,29 @@ Nova 把「extended thinking」暴露成五个等级，或一个显式的 token 
 
 | 工具 | 权限 | 说明 |
 |------|------|------|
-| `runInBackground` | 需批准 | 后台起一个命令（dev server / watcher 等），立即返回 id；session 退出时子进程被杀 |
-| `getBackgroundOutput` | 只读 | 取某个后台命令累计的输出与状态 |
+| `bash`（`run_in_background: true`） | 需批准 | 后台起一个命令（dev server / watcher 等），立即返回 `{id, pid, output_path}`；session 退出时子进程被杀 |
 | `killBackground` | 需批准 | 终止一个后台命令 |
+| `monitor` | 需批准 | 起一个**监听脚本**：它 stdout 的**每一行**都会变成一条通知推给模型。用于 `tail -f`、`inotifywait -m`、轮询循环等「每次发生都要知道」的场景。返回 `{id, pid, watching, persistent, log_path}` |
+| `stopMonitor` | 只读 | 按 id 停掉一个监听 |
+
+**`monitor` 和后台命令的分工，按「你要被通知几次」划分**：只要**一次**（构建结束、服务起来了）用 `bash` + `run_in_background`，配一个条件满足就退出的命令（`until grep -q 'ready' dev.log; do sleep 0.5; done`）；**每次发生都要**用 `monitor`。用 `tail -f` 去做「只通知一次」是典型误用——事件早触发了，监听还挂到超时。
+
+过滤要写在命令里（`grep -E --line-buffered`），而且**必须覆盖失败**：只匹配成功标记的过滤器在崩溃、hang、OOM 时同样一声不吭，而沉默和「还在跑」无法区分。stderr **不是**事件流，只进 `log_path`，需要它触发通知就 `2>&1` 合并。
+
+事件量受 `settings.monitor` 限流：超过 `maxEventsPerWindow`（默认 60 条/分钟）的监听会被**直接杀掉**并在通知里说明——静默限流会让模型误以为自己仍在被完整告知。未消费队列上限 `maxQueuedEvents`（默认 200），溢出丢**最旧**的并报告丢弃条数。`persistent: true` 的监听没有超时，随会话结束才停；`/tasks` 里能看到并 `stop`。
+
+
+后台命令没有专门的读取工具：`output_path` 指向 `~/.nova/sessions/{id}/background/{命令id}.log`，这是命令 stdout+stderr 的**完整**日志，用普通的 `read` / `grep` 跟读即可（该目录已默认放行，不会每次弹权限）。
+
+命令结束时会由 `<background-notification>` 自动注入一条**公告**——只带 id、状态、退出原因和日志路径，**不内联输出**：
+
+```xml
+<background-notification id="a1B2c3" command="pnpm dev" status="error"
+                     output="~/.nova/sessions/{id}/background/a1B2c3.log">[exited with code 1]
+Output: … — read or grep it if you need the command's output.</background-notification>
+```
+
+这样输出**只有一条投递通道**（文件）。若通知里也内联一份，模型自己 `read` 过的内容就会被重复推送一遍，而且一个跑久的 dev server 结束时可能一次性往 append-only 历史里灌进上百 KB。状态和退出原因留在通知里，已经足够模型判断要不要再花一轮去读日志。
 
 ### Skills
 
@@ -374,8 +394,8 @@ Nova 把「extended thinking」暴露成五个等级，或一个显式的 token 
 
 ### 默认放行 vs 默认询问
 
-- **默认放行（只读或仅登记元数据的）**：`read`/`glob`/`grep`（限定在工作区内，见下）、`webfetch`、`websearch`、`askUserQuestion`、`lsp`、`loadSkill`、`createSubAgent`、`getBackgroundOutput`/`killBackground`、**todo 全套**、**task 全套**（含写操作 create/update/clear）、**cron 全套**（`cronCreate`/`cronList`/`cronDelete`）。task/cron 的写只改自己的清单/排程，payload 真正动手时仍走权限门，所以放行它们不越权。
-- **默认询问（会改文件 / 跑命令的）**：`write`、`edit`、`bash`、`runInBackground`——落到 `defaultEffect`（默认 `ask`）。
+- **默认放行（只读或仅登记元数据的）**：`read`/`glob`/`grep`（限定在工作区内，见下）、`webfetch`、`websearch`、`askUserQuestion`、`lsp`、`loadSkill`、`createSubAgent`、`killBackground`、**todo 全套**、**task 全套**（含写操作 create/update/clear）、**cron 全套**（`cronCreate`/`cronList`/`cronDelete`）。task/cron 的写只改自己的清单/排程，payload 真正动手时仍走权限门，所以放行它们不越权。
+- **默认询问（会改文件 / 跑命令的）**：`write`、`edit`、`bash`（前台和 `run_in_background` 一视同仁）——落到 `defaultEffect`（默认 `ask`）。
 
 > `permissions.deny`（裸工具名数组）是更强的一档：列进去的工具会在启动时从注册表**摘除**，模型根本看不到、也调不了（区别于 `rules` 里 `effect: "deny"`——后者仍把工具报给模型、只在调用时拒）。
 
@@ -387,7 +407,7 @@ Nova 把「extended thinking」暴露成五个等级，或一个显式的 token 
 |------|--------|------|
 | `default` | ⏸ manual mode on（浅灰） | 不改变任何裁决，`write`/`edit`/`bash` 照常落到引擎的 `ask` |
 | `acceptEdits` | ⏵⏵ accept edits on | **工作区内**的 `write`/`edit` 自动放行；`bash` 与工作区外的写仍然询问 |
-| `auto`（启动默认） | ⏵⏵ auto mode on | **自主模式**：在 `acceptEdits` 基础上，命令工具（`bash`、`runInBackground`）也自动放行、无人值守运行（先过一层风险分类器）。比 `acceptEdits` 更宽，但仍窄于 `bypassPermissions`——工作区外的写和用户 `deny` 规则不被绕过 |
+| `auto`（启动默认） | ⏵⏵ auto mode on | **自主模式**：在 `acceptEdits` 基础上，命令工具（`bash`，含 `run_in_background`）也自动放行、无人值守运行（先过一层风险分类器）。比 `acceptEdits` 更宽，但仍窄于 `bypassPermissions`——工作区外的写和用户 `deny` 规则不被绕过 |
 | `plan` | ⏸ plan mode on | **只读**：`write`/`edit`/`bash` 一律拒绝，逼模型先调查、给出分步计划——与只读 `/plan` 子 agent 同源 |
 
 不指定时启动即为 `auto`；用 `--permission-mode` 可指定别的初始档位，`--dangerously-skip-permissions` 直接进入 `bypassPermissions`（每次审批自动放行，适合 CI/无人值守）。
@@ -441,7 +461,7 @@ Nova 把「extended thinking」暴露成五个等级，或一个显式的 token 
 
 ## 11. 命令沙箱
 
-在权限引擎之上再叠一层 **OS 级纵深防御**：把会起子进程的工具（`bash`、`runInBackground`）放进操作系统沙箱里跑，把**文件写入**限制在工作区根内。底层是 [`@anthropic-ai/sandbox-runtime`](https://github.com/anthropic-experimental/sandbox-runtime)：macOS 用 Seatbelt（`sandbox-exec`），Linux 用 bubblewrap。
+在权限引擎之上再叠一层 **OS 级纵深防御**：把会起子进程的工具（`bash`，前台和后台两条路径都算）放进操作系统沙箱里跑，把**文件写入**限制在工作区根内。底层是 [`@anthropic-ai/sandbox-runtime`](https://github.com/anthropic-experimental/sandbox-runtime)：macOS 用 Seatbelt（`sandbox-exec`），Linux 用 bubblewrap。
 
 要点：
 
@@ -620,7 +640,7 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 
 - **slash 命令、子 agent、skills、生命周期 hooks** —— 与你手写的 `.md` 扩展（[§14](#14-skills)/[§15](#15-自定义-slash-命令)）同源，只是随插件一起分发；命令 / agent 名以 `<插件名>:<名字>` 命名空间化。
 - **MCP servers、LSP servers** —— 桥接进 [§16](#16-mcp-外部工具)/[§17](#17-lsp-代码智能) 的同一套机制。
-- **`bin/` 可执行文件** —— 其目录被加进 `PATH`，供 `bash`/`runInBackground`（及沙箱）调用。
+- **`bin/` 可执行文件** —— 其目录被加进 `PATH`，供 `bash`（及沙箱）调用。
 
 用 `nova plugin` 子命令从 shell 管理（它编辑 `~/.nova/nova.config.json` 的 `plugins` 块）：
 
@@ -655,7 +675,8 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 
 ### 版本更新
 
-- **更新检查（只提醒，不安装）**：交互启动时以及运行中每小时，Nova 会比对 npm 上是否有新版，有则提示——从不自动安装。为避免长时间会话被反复打扰，提示做了限流：同一提醒最多每 `update.notifyIntervalHours`（默认 6h）弹一次（拉取版本本身不限流）。上次提醒时间记在 `~/.nova/update-check.json`；设 `update.enabled: false` 静音。
+- **更新检查 + 后台自动安装**：交互启动时以及运行中每小时，Nova 会比对 npm 上是否有新版。默认（`update.autoInstall: true`）发现新版就在后台静默跑 `update.command` 装好——但**当前进程已经把代码加载进内存了，装完不会热生效，下次启动 nova 才是新版**，卡片文案也据此提示。安装失败（比如全局安装权限不足）会退回普通的「运行 `nova upgrade`」提示，并按 `notifyIntervalHours` 退避后重试，不会每小时重装。设 `update.autoInstall: false` 回到只提醒不安装。
+- **提醒限流**：为避免长时间会话被反复打扰，同一提醒最多每 `update.notifyIntervalHours`（默认 6h）弹一次（拉取版本本身不限流；一次成功的后台安装则总会提示一次）。上次提醒时间和最近一次自动安装记在 `~/.nova/update-check.json`；设 `update.enabled: false` 整个静音。
 - **手动升级**：`nova upgrade` 跑 `update.command`（默认 `npm install -g @asathinkeroops/nova-code@latest`，可改成 pnpm/yarn/bun 全局安装）把自己升到最新版。`nova --version` 打印当前版本。
 
 ### 数据落在哪
@@ -766,8 +787,9 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 | `transcript.enabled` | `true` | 写 transcript（`--no-transcript` 临时关） |
 | `sessionCleanup.enabled` | `true` | 启动时清理旧 session |
 | `sessionCleanup.maxAgeDays` | `30` | 旧 session 的天数阈值 |
-| `update.enabled` | `true` | 检查 npm 新版并提醒（从不自动装），见 [§19](#19-会话检查点与数据落盘) |
-| `update.notifyIntervalHours` | `6` | 同一更新提醒的最小间隔（限流提示，不限流拉取） |
+| `update.enabled` | `true` | 检查 npm 新版，见 [§19](#19-会话检查点与数据落盘) |
+| `update.autoInstall` | `true` | 发现新版就后台静默安装（下次启动生效）；`false` 则只提醒 |
+| `update.notifyIntervalHours` | `6` | 同一更新提醒的最小间隔（同时用作失败安装的退避间隔） |
 | `update.command` | `npm install -g @asathinkeroops/nova-code@latest` | `nova upgrade` 跑的安装器（可改 pnpm/yarn/bun） |
 
 ### 扩展子系统

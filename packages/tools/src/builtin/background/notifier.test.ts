@@ -1,3 +1,6 @@
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { MessageParam, ToolDefinition } from "@nova/core";
 import { BackgroundCommandManager } from "./manager.js";
@@ -31,7 +34,7 @@ describe("makeBackgroundNotifier", () => {
   });
 
   it("appends a user message rendering each drained command and drains the queue", async () => {
-    const mgr = new BackgroundCommandManager();
+    const mgr = new BackgroundCommandManager({ outputDir: mkdtempSync(join(tmpdir(), "nova-n-")) });
     const { id: a } = mgr.start({ command: "echo aa", cwd: process.cwd() });
     const { id: b } = mgr.start({ command: "exit 5", cwd: process.cwd() });
     await waitFor(() => mgr.get(a)?.status !== "running" && mgr.get(b)?.status !== "running");
@@ -53,7 +56,9 @@ describe("makeBackgroundNotifier", () => {
     expect(text).toContain(`id="${b}"`);
     expect(text).toContain('status="completed"');
     expect(text).toContain('status="error"');
-    expect(text).toContain("aa");
+    // The notice announces; it does not deliver — it points at each log file.
+    expect(text).toContain(`${a}.log`);
+    expect(text).toContain(`${b}.log`);
     expect(text).toContain("exited with code 5");
 
     // queue drained
@@ -61,15 +66,18 @@ describe("makeBackgroundNotifier", () => {
     expect(second).toBeUndefined();
   });
 
-  it("does not re-push output already consumed via read()", async () => {
-    const mgr = new BackgroundCommandManager();
+  it("never inlines output the model may already have read from the log", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "nova-n-"));
+    const mgr = new BackgroundCommandManager({ outputDir: dir });
     // Output ("42") is computed, so it appears nowhere in the command string —
-    // letting us assert it is absent from the completion push.
+    // letting us assert it is absent from the notice regardless of any read.
     const { id } = mgr.start({ command: "echo $((6 * 7))", cwd: process.cwd() });
     await waitFor(() => mgr.get(id)?.status !== "running");
 
-    // The model already streamed the output via getBackgroundOutput.
-    expect(mgr.read(id).output).toContain("42");
+    const logPath = join(dir, `${id}.log`);
+    // Whether or not the model read the log, the notice looks the same — which
+    // is the point: one channel, so there is nothing to de-duplicate.
+    expect(readFileSync(logPath, "utf8")).toContain("42");
 
     const hook = makeBackgroundNotifier(mgr);
     const out = await hook(basePayload([{ role: "user", content: "hi" }]));
@@ -77,25 +85,35 @@ describe("makeBackgroundNotifier", () => {
     const text = blocks[0]!.text;
     expect(text).toContain('status="completed"');
     expect(text).not.toContain("42");
-    expect(text).toContain("[no new output]");
+    expect(text).toContain(logPath);
   });
 
-  it("still pushes the unread tail and exit marker on completion", async () => {
-    const mgr = new BackgroundCommandManager();
-    const { id } = mgr.start({
-      command: "echo first; echo second; exit 2",
-      cwd: process.cwd(),
-    });
+  it("announces the exit marker and the log path on a failed command", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "nova-n-"));
+    const mgr = new BackgroundCommandManager({ outputDir: dir });
+    // Computed output, so it appears nowhere in the echoed `command=` attribute.
+    const { id } = mgr.start({ command: "echo $((20 + 22)); exit 2", cwd: process.cwd() });
     await waitFor(() => mgr.get(id)?.status !== "running");
 
-    // Read only enough to consume some, then completion delivers the rest.
-    // (Here we read nothing first, so the full tail plus the marker arrive.)
     const hook = makeBackgroundNotifier(mgr);
     const out = await hook(basePayload([{ role: "user", content: "hi" }]));
     const blocks = out!.messages![1]!.content as Array<{ text: string }>;
     const text = blocks[0]!.text;
-    expect(text).toContain("first");
-    expect(text).toContain("second");
     expect(text).toContain("exited with code 2");
+    expect(text).toContain(join(dir, `${id}.log`));
+    // The output stayed in the file.
+    expect(text).not.toContain("42");
+    expect(readFileSync(join(dir, `${id}.log`), "utf8")).toContain("42");
+  });
+
+  it("falls back to inlining when no outputDir is configured (single channel)", async () => {
+    const mgr = new BackgroundCommandManager();
+    const { id } = mgr.start({ command: "echo $((6 * 7))", cwd: process.cwd() });
+    await waitFor(() => mgr.get(id)?.status !== "running");
+
+    const hook = makeBackgroundNotifier(mgr);
+    const out = await hook(basePayload([{ role: "user", content: "hi" }]));
+    const blocks = out!.messages![1]!.content as Array<{ text: string }>;
+    expect(blocks[0]!.text).toContain("42");
   });
 });

@@ -4,7 +4,9 @@ import { describe, expect, it } from "vitest";
 import {
   applyToolDenylist,
   autoMemoryRules,
+  sessionLogRules,
   DEFAULT_PERMISSION_RULES,
+  MODE_COMMAND_TOOLS,
   resolveModeDecision,
   resolvePermissionRules,
   workspaceReadRules,
@@ -50,11 +52,11 @@ describe("resolvePermissionRules", () => {
         "cronCreate",
         "cronDelete",
         "cronList",
-        "getBackgroundOutput",
         "getTaskList",
         "getTodoList",
         "killBackground",
         "loadSkill",
+        "stopMonitor",
         "lsp",
         "updateTask",
         "updateTodo",
@@ -131,6 +133,37 @@ describe("auto-memory rules", () => {
     expect(merged.slice(0, mem.length)).toEqual(mem);
   });
 
+  it("auto-allows read/glob/grep scoped to the session log dirs", () => {
+    const BG = `${CWD}/.nova/sessions/s1/background`;
+    const MON = `${CWD}/.nova/sessions/s1/monitors`;
+    expect(sessionLogRules([BG, MON])).toEqual([
+      { tool: "read", effect: "allow", match: { path: { within: [BG, MON] } } },
+      { tool: "glob", effect: "allow", match: { path: { within: [BG, MON] } } },
+      { tool: "grep", effect: "allow", match: { path: { within: [BG, MON] } } },
+    ]);
+  });
+
+  it("lets the engine read a captured-output log without prompting, but not write one", () => {
+    // Following a running command is a plain `read` of its output_path, and the
+    // logs live outside the workspace — without this rule every poll would ask.
+    const LOGS = "/tmp/nova-sessions/s1/background";
+    const MON = "/tmp/nova-sessions/s1/monitors";
+    const settings = parseSettings({});
+    const eng = new PermissionEngine({
+      defaultEffect: settings.permissions.defaultEffect,
+      rules: resolvePermissionRules(settings, [CWD], undefined, [LOGS, MON]),
+    });
+    expect(eng.evaluate({ tool: "read", input: { path: `${LOGS}/abc.log` } }).effect).toBe("allow");
+    expect(eng.evaluate({ tool: "grep", input: { path: `${LOGS}/abc.log` } }).effect).toBe("allow");
+    expect(eng.evaluate({ tool: "read", input: { path: `${MON}/xyz.log` } }).effect).toBe("allow");
+    // Only the read-only set is granted; the manager owns writing these files.
+    expect(eng.evaluate({ tool: "write", input: { path: `${LOGS}/abc.log` } }).effect).not.toBe(
+      "allow",
+    );
+    // And the grant does not leak to other out-of-workspace paths.
+    expect(eng.evaluate({ tool: "read", input: { path: "/etc/hosts" } }).effect).not.toBe("allow");
+  });
+
   it("lets the engine auto-allow write/edit inside the memory dir but still ask outside", () => {
     const settings = parseSettings({});
     const eng = new PermissionEngine({
@@ -138,9 +171,13 @@ describe("auto-memory rules", () => {
       rules: resolvePermissionRules(settings, [CWD], MEM),
     });
     expect(eng.evaluate({ tool: "write", input: { path: `${MEM}/fact.md` } }).effect).toBe("allow");
-    expect(eng.evaluate({ tool: "edit", input: { path: `${MEM}/MEMORY.md` } }).effect).toBe("allow");
+    expect(eng.evaluate({ tool: "edit", input: { path: `${MEM}/MEMORY.md` } }).effect).toBe(
+      "allow",
+    );
     // A write elsewhere in the workspace still prompts (prompt-on-write default).
-    expect(eng.evaluate({ tool: "write", input: { path: `${CWD}/src/foo.ts` } }).effect).toBe("ask");
+    expect(eng.evaluate({ tool: "write", input: { path: `${CWD}/src/foo.ts` } }).effect).toBe(
+      "ask",
+    );
   });
 
   it("lets a user rule force memory writes back to ask (first-match wins)", () => {
@@ -299,8 +336,11 @@ describe("resolveModeDecision", () => {
   it("auto defers the command tools to the async classifier (not decided here)", () => {
     // Command gating in auto mode is async (it may call the model), so it lives
     // in checkPermission, not resolveModeDecision — which returns null here.
+    // `bash` is the whole set now: its run_in_background input picks foreground
+    // vs detached, and both branches must clear the same classifier.
     expect(resolveModeDecision("auto", "bash", undefined, roots)).toBeNull();
-    expect(resolveModeDecision("auto", "runInBackground", undefined, roots)).toBeNull();
+    expect(resolveModeDecision("auto", "monitor", undefined, roots)).toBeNull();
+    expect([...MODE_COMMAND_TOOLS].sort()).toEqual(["bash", "monitor"]);
   });
 
   it("auto leaves read-only tools to the engine", () => {

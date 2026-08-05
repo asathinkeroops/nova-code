@@ -38,7 +38,7 @@ export const zh: DeepPartial<Catalog> = {
     agent: "把任务委派给指定的子智能体",
     novaCodeGuide: "向只读向导询问 Nova 自身，由其源码作答",
     novaCodeGuideUpdate: "手动（重新）拉取向导所读取的 Nova 源码（远程模式）",
-    tasks: "查看和管理后台命令（runInBackground）",
+    tasks: "查看和管理后台命令（bash run_in_background）",
     mcp: "打开 MCP 服务器菜单（认证、重连、登出）；用 `tools` 列出工具",
     lsp: "显示已配置的语言服务器及其状态",
     doctor: "重新检查全局 nova 配置（按 f 让智能体修复问题）",
@@ -59,6 +59,7 @@ export const zh: DeepPartial<Catalog> = {
     webfetch: "允许抓取该 URL？",
     websearch: "允许联网搜索？",
     createSubAgent: "允许启动子智能体？",
+    monitor: "允许启动这个监听？它打印的每一行都会变成一条通知。",
     runInBackground: "允许在后台运行该命令？",
     fallback: "允许该操作？",
     allowOnce: "仅允许一次",
@@ -233,7 +234,9 @@ export const zh: DeepPartial<Catalog> = {
     stoppingN: (n: number): string => `正在停止 ${n} 个任务…`,
     usage: "用法：/tasks stop <id|all>",
     unknownAction: (verb: string): string => `未知操作 "${verb}" —— 可试：list、stop <id|all>`,
-    noneHint: "没有后台任务 —— 用 runInBackground 工具启动一个。",
+    monitorsHeader: "监听（monitor）",
+    eventCount: (n: number) => `${n} 条事件`,
+    noneHint: "没有后台任务 —— 用 bash 的 run_in_background 启动一个。",
     header: "后台任务",
     listFooter: "↑↓ 导航 · enter 打开 · esc 关闭",
     viewOutput: "查看输出",
@@ -283,8 +286,16 @@ export const zh: DeepPartial<Catalog> = {
     invalidHookFileHint: "修复或删除它 —— nova 会跳过它并继续",
     mcpDisabled: "MCP：已禁用（mcp.enabled = false）",
     mcpNoServers: "MCP：未配置任何服务器",
-    mcpConfigured: (p: { total: number; stdio: number; http: number; disabled: number }): string => {
-      const kinds = [p.stdio > 0 ? `${p.stdio} 个 stdio` : "", p.http > 0 ? `${p.http} 个 http` : ""]
+    mcpConfigured: (p: {
+      total: number;
+      stdio: number;
+      http: number;
+      disabled: number;
+    }): string => {
+      const kinds = [
+        p.stdio > 0 ? `${p.stdio} 个 stdio` : "",
+        p.http > 0 ? `${p.http} 个 http` : "",
+      ]
         .filter(Boolean)
         .join("、");
       let line = `MCP：已配置 ${p.total} 个服务器${kinds ? `（${kinds}）` : ""}`;
@@ -365,8 +376,7 @@ export const zh: DeepPartial<Catalog> = {
       `${connected}/${total} 已连接 · 已桥接 ${bridged} 个工具` +
       (prompts > 0 ? ` · ${prompts} 个提示词` : "") +
       (resourceServers > 0 ? ` · ${resourceServers} 个服务器提供资源` : ""),
-    pendingHint: (pending: string): string =>
-      `运行 \`/mcp\` 并选择“认证” —— 待认证：${pending}`,
+    pendingHint: (pending: string): string => `运行 \`/mcp\` 并选择“认证” —— 待认证：${pending}`,
     toolsHint: "运行 `/mcp tools` 可列出已桥接的工具和提示词名称",
     waitingForAuth: "等待浏览器认证",
     approveInBrowser: "请在浏览器中批准该请求，然后返回这里。",
@@ -553,8 +563,8 @@ export const zh: DeepPartial<Catalog> = {
     cleared: "已清除目标：",
     disabled: "目标模式已禁用（settings.goal.enabled = false）。",
     set: "目标已设置：",
-    setHelp: "Nova 将立即开始推进此目标，并在每轮结束后重新检查直至达成。" +
-      "运行 /goal clear 可停止。",
+    setHelp:
+      "Nova 将立即开始推进此目标，并在每轮结束后重新检查直至达成。" + "运行 /goal clear 可停止。",
   },
 
   help: {
@@ -576,8 +586,19 @@ export const zh: DeepPartial<Catalog> = {
     requestFailed: (word: string, seconds: string, error: string): string =>
       `${word} · ${seconds}s · ${error}`,
     requestFailedTitle: "请求失败",
-    loopTerminated: (message: string, logPath: string): string => `${message}\n详见日志：${logPath}`,
+    loopTerminated: (message: string, logPath: string): string =>
+      `${message}\n详见日志：${logPath}`,
     loopTerminatedTitle: "循环已终止",
+  },
+
+  update: {
+    available: "可用",
+    availableTitle: "有新版本",
+    installed: "已在后台安装",
+    installedTitle: "更新已安装",
+    youHave: (version: string): string => `（当前 ${version}）`,
+    runUpgrade: (command: string): string => `运行 ${command} 更新`,
+    effectiveNextLaunch: "下次启动 nova 时生效",
   },
 
   input: {

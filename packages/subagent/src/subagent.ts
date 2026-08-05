@@ -61,7 +61,7 @@ function summarizeToolInput(input: Record<string, unknown>): string {
  * tool-list level (the child never sees them) and at the permission level
  * (defense-in-depth, in case they reach dispatch another way).
  */
-const MUTATING_TOOLS: ReadonlySet<string> = new Set(["write", "edit", "bash"]);
+const MUTATING_TOOLS: ReadonlySet<string> = new Set(["write", "edit", "bash", "monitor"]);
 
 const inputSchema = z
   .object({

@@ -10,7 +10,14 @@ import type {
 import type { SlashRegistry, McpManager } from "@nova/external";
 import type { LspManager } from "@nova/lsp";
 import type { Transcript } from "@nova/observability";
-import type { BackgroundCommandManager, CronStore, TaskStore, TodoStore, ToolRegistry } from "@nova/tools";
+import type {
+  BackgroundCommandManager,
+  CronStore,
+  MonitorManager,
+  TaskStore,
+  TodoStore,
+  ToolRegistry,
+} from "@nova/tools";
 import type { Logger, Session, Settings } from "@nova/runtime";
 import type { PermissionEngine } from "@nova/safety";
 import type { SandboxControl } from "@nova/sandbox";
@@ -161,6 +168,8 @@ export interface CliContext {
   readonly todoStore: TodoStore;
   readonly taskStore: TaskStore;
   readonly backgroundManager: BackgroundCommandManager;
+  /** Watch scripts started with the `monitor` tool; stopped on session exit. */
+  readonly monitorManager: MonitorManager;
   /** LSP code-intelligence manager. Undefined when settings.lsp.enabled is false. */
   readonly lspManager: LspManager | undefined;
   /** OS command sandbox handle. Inactive (bridge undefined) unless opted in via settings.sandbox. */

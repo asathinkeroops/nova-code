@@ -17,6 +17,8 @@ import {
   TaskStore,
   TodoStore,
   makeBackgroundNotifier,
+  makeMonitorNotifier,
+  MonitorManager,
   makeTaskReminder,
   makeTodoReminder,
   type InterjectFn,
@@ -355,7 +357,23 @@ export async function createContext(
     maxIterations: settings.cron.maxIterations,
     maxSchedules: settings.cron.maxSchedules,
   });
-  const backgroundManager = new BackgroundCommandManager();
+  // Background command logs live beside the session's other artifacts, so they
+  // are pruned with it by the session cleanup pass. The path of each `{id}.log`
+  // is handed to the model in the `bash` result — reading a running command back
+  // is a plain `read`/`grep` on that file, not a dedicated tool.
+  const backgroundManager = new BackgroundCommandManager({
+    outputDir: join(session.dir, "background"),
+  });
+  // Watch scripts (`monitor` tool). Their stdout lines become notifications;
+  // stderr lands only in the per-monitor log beside the background ones.
+  const monitorManager = new MonitorManager({
+    maxConcurrent: settings.monitor.maxConcurrent,
+    maxEventsPerWindow: settings.monitor.maxEventsPerWindow,
+    windowMs: settings.monitor.windowMs,
+    maxQueuedEvents: settings.monitor.maxQueuedEvents,
+    maxLineBytes: settings.monitor.maxLineBytes,
+    outputDir: join(session.dir, "monitors"),
+  });
   // LSP code intelligence: one manager per session, rooted at the workspace.
   // Servers are started lazily on first `lsp` tool call and disposed at exit.
   const pluginLspServers = pluginResult.plugins.flatMap((p) => p.lspServers);
@@ -370,7 +388,7 @@ export async function createContext(
       })
     : undefined;
   // Plugin `bin/` dirs join PATH so their executables are on the shell path for
-  // bash / runInBackground (and the sandbox, which wraps the same command).
+  // bash (and the sandbox, which wraps the same command).
   const pluginBinDirs = pluginResult.plugins.flatMap((p) => p.binDirs);
   if (pluginBinDirs.length > 0) {
     process.env.PATH = [...pluginBinDirs, process.env.PATH ?? ""].filter(Boolean).join(":");
@@ -383,6 +401,7 @@ export async function createContext(
       backgroundManager,
       lspManager,
       settings.cron.enabled ? cronStore : undefined,
+      monitorManager,
     ),
   );
 
@@ -441,7 +460,7 @@ export async function createContext(
   // Permission is gated by a pre_tool_use hook upstream of executeTool, so a
   // denied write never reaches here. This is also where the OS sandbox bridge
   // is threaded onto the ToolContext, so subprocess tools (bash,
-  // runInBackground) — and the sub-agent calls that reuse this dispatch —
+  // incl. run_in_background) — and the sub-agent calls that reuse this dispatch —
   // wrap their commands before spawning.
   const dispatch: ToolExecutor = async (use, toolCtx) => {
     let snapshotPath: string | undefined;
@@ -600,6 +619,7 @@ export async function createContext(
     todoStore,
     taskStore,
     backgroundManager,
+    monitorManager,
     lspManager,
     sandbox: null as unknown as SandboxControl,
     setSandbox: null as unknown as CliContext["setSandbox"],
@@ -676,9 +696,16 @@ export async function createContext(
     memoryOpts.autoDir !== undefined
       ? await canonicalizePath(workspace, memoryOpts.autoDir)
       : undefined;
+  // Captured-output dirs are the model's read-back path for still-running work
+  // (`bash` returns a background command's `output_path`; `monitor` returns its
+  // watch script's `log_path`), so read/grep must be allowed there — they live
+  // under the session dir, outside the workspace fence.
+  const sessionLogDirs = await Promise.all(
+    ["background", "monitors"].map((d) => canonicalizePath(workspace, join(session.dir, d))),
+  );
   const permission = new PermissionEngine({
     defaultEffect: settings.permissions.defaultEffect,
-    rules: resolvePermissionRules(settings, allowedRoots, autoMemoryDir),
+    rules: resolvePermissionRules(settings, allowedRoots, autoMemoryDir, sessionLogDirs),
     ask: askWithSignal,
   });
   (ctx as { permission: PermissionEngine }).permission = permission;
@@ -1032,12 +1059,16 @@ export async function createContext(
   registerInterject(ctx.agent, makeTodoReminder(todoStore));
   registerInterject(ctx.agent, makeTaskReminder(taskStore));
   ctx.agent.on("pre_request", makeBackgroundNotifier(backgroundManager));
+  ctx.agent.on("pre_request", makeMonitorNotifier(monitorManager));
   // Announce plan-mode enter/leave on the next real request (lazy, trigger-
   // agnostic). Registered AFTER the background notifier so that on the rare turn
   // where both want to inject, the notifier wins the first-non-undefined-wins
   // race and this reminder self-heals by deferring to the next request (its
   // `announced` flag isn't advanced because the hook never runs).
-  ctx.agent.on("pre_request", makePlanModeReminder(() => ctx.screen.getPermissionMode()));
+  ctx.agent.on(
+    "pre_request",
+    makePlanModeReminder(() => ctx.screen.getPermissionMode()),
+  );
 
   // Push completion: when a background command finishes while the agent is idle,
   // nudge the REPL to wake and react (the notifier above injects the output on
@@ -1046,6 +1077,14 @@ export async function createContext(
   // loop to wake, so wake() is a no-op there.
   if (ctx.settings.background.autoContinueOnComplete) {
     backgroundManager.onComplete(() => {
+      if (!ctx.agent.currentSignal()) ctx.screen.wake();
+    });
+  }
+
+  // Same push path for monitor events — the difference is only what triggers
+  // it: a background command fires once on exit, a monitor fires per event.
+  if (ctx.settings.monitor.autoContinueOnEvent) {
+    monitorManager.onEvents(() => {
       if (!ctx.agent.currentSignal()) ctx.screen.wake();
     });
   }

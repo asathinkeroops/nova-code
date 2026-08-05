@@ -10,7 +10,13 @@ export type ApprovalAnswer = "yes" | "no" | "always-allow";
 
 // Read `t` at call time (never at module top-level — see i18n invariant): the
 // catalog is chosen by `setLocale` after this module is first evaluated.
-function promptFor(tool: string): string {
+function promptFor(tool: string, input?: PermissionInput["input"]): string {
+  // `bash` covers both the blocking and the detached spawn, so the wording is
+  // chosen from the input rather than the tool name — approving a dev server
+  // that outlives the turn should not read like approving a one-shot command.
+  if (tool === "bash" && input?.run_in_background === true) {
+    return t.approval.runInBackground;
+  }
   const prompts: Record<string, string> = {
     read: t.approval.read,
     write: t.approval.write,
@@ -21,7 +27,7 @@ function promptFor(tool: string): string {
     webfetch: t.approval.webfetch,
     websearch: t.approval.websearch,
     createSubAgent: t.approval.createSubAgent,
-    runInBackground: t.approval.runInBackground,
+    monitor: t.approval.monitor,
   };
   return prompts[tool] ?? t.approval.fallback;
 }
@@ -145,7 +151,7 @@ export function approvalRows(input: PermissionInput, cols: number): number {
   const base =
     2 + // border top + bottom
     2 + // outer marginTop + marginBottom
-    countWrappedLines(promptFor(input.tool), inner) +
+    countWrappedLines(promptFor(input.tool, input.input), inner) +
     1 + // blank gap line
     1 + // options box marginTop
     OPTIONS.length;
@@ -242,8 +248,8 @@ export function ApprovalPrompt({
       borderStyle="round"
       borderColor="gray"
     >
-      <Text>{promptFor(input.tool)}</Text>
-      <Text>{' '}</Text>
+      <Text>{promptFor(input.tool, input.input)}</Text>
+      <Text> </Text>
       {input.tool === "bash" ? (
         // Mirror the message-stream bash rendering: `● bash` header with the
         // command under a `⎿` gutter, so heredocs/long one-liners preview the

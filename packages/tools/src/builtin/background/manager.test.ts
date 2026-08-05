@@ -1,3 +1,6 @@
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { BackgroundCommandError, BackgroundCommandManager } from "./manager.js";
 
@@ -108,42 +111,58 @@ describe("BackgroundCommandManager", () => {
     expect(mgr.drainNotifications()).toEqual([c.id]);
   });
 
-  it("read() consumes output incrementally and reports nothing new on re-read", async () => {
+  it("completionNotice() points at the log file instead of carrying the output", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "nova-mgr-"));
+    const mgr = new BackgroundCommandManager({ outputDir: dir });
+    const { id } = mgr.start({ command: "echo hello", cwd: process.cwd() });
+    await waitFor(() => mgr.get(id)?.status !== "running");
+
+    const notice = mgr.completionNotice(id);
+    expect(notice?.status).toBe("completed");
+    expect(notice?.outputPath).toBe(join(dir, `${id}.log`));
+    // The output lives in the file, NOT in the notice — one delivery channel.
+    expect(notice?.inlineOutput).toBeUndefined();
+    expect(readFileSync(notice!.outputPath!, "utf8")).toContain("hello");
+  });
+
+  it("completionNotice() is repeatable — nothing is consumed by reading it", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "nova-mgr-"));
+    const mgr = new BackgroundCommandManager({ outputDir: dir });
+    const { id } = mgr.start({ command: "echo hello", cwd: process.cwd() });
+    await waitFor(() => mgr.get(id)?.status !== "running");
+
+    expect(mgr.completionNotice(id)).toEqual(mgr.completionNotice(id));
+  });
+
+  it("completionNotice() carries the exit reason for a failed command", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "nova-mgr-"));
+    const mgr = new BackgroundCommandManager({ outputDir: dir });
+    const { id } = mgr.start({ command: "echo boom; exit 9", cwd: process.cwd() });
+    await waitFor(() => mgr.get(id)?.status !== "running");
+
+    const notice = mgr.completionNotice(id);
+    expect(notice?.status).toBe("error");
+    expect(notice?.reason).toBe("exited with code 9");
+  });
+
+  it("completionNotice() inlines the output only when there is no log file", async () => {
+    // Degraded config (no outputDir): with nothing to point at, the notice
+    // becomes the single channel rather than a second one.
     const mgr = new BackgroundCommandManager();
     const { id } = mgr.start({ command: "echo hello", cwd: process.cwd() });
     await waitFor(() => mgr.get(id)?.status !== "running");
 
-    const first = mgr.read(id);
-    expect(first.output).toContain("hello");
-    expect(first.droppedBytes).toBe(0);
-    expect(first.status).toBe("completed");
-
-    const second = mgr.read(id);
-    expect(second.output).toBe("");
-    expect(second.droppedBytes).toBe(0);
+    const notice = mgr.completionNotice(id);
+    expect(notice?.outputPath).toBeUndefined();
+    expect(notice?.inlineOutput).toContain("hello");
   });
 
-  it("read() reports bytes dropped from the ring buffer between reads", async () => {
-    const mgr = new BackgroundCommandManager({ bufferBytes: 1024 });
-    const { id } = mgr.start({
-      command: "head -c 8192 /dev/zero | tr '\\0' 'a'",
-      cwd: process.cwd(),
-    });
-    await waitFor(() => mgr.get(id)?.status !== "running");
-
-    // The cursor starts at 0 but 8192 bytes were produced into a 1024 cap, so
-    // ~7168 bytes scrolled out before this first read.
-    const res = mgr.read(id);
-    expect(res.droppedBytes).toBe(8192 - res.output.length);
-    expect(res.output.length).toBeLessThanOrEqual(1024);
-  });
-
-  it("read() throws on an unknown id", () => {
+  it("completionNotice() returns undefined for an unknown id", () => {
     const mgr = new BackgroundCommandManager();
-    expect(() => mgr.read("nope")).toThrow(BackgroundCommandError);
+    expect(mgr.completionNotice("nope")).toBeUndefined();
   });
 
-  it("peek() snapshots output without advancing the read cursor", async () => {
+  it("peek() snapshots output non-destructively, for the /tasks panel", async () => {
     const mgr = new BackgroundCommandManager();
     const { id } = mgr.start({ command: "echo hello", cwd: process.cwd() });
     await waitFor(() => mgr.get(id)?.status !== "running");
@@ -153,8 +172,6 @@ describe("BackgroundCommandManager", () => {
     expect(first.status).toBe("completed");
     // A second peek still sees the same output — non-consuming.
     expect(mgr.peek(id).output).toBe(first.output);
-    // And a subsequent read still receives the full output (peek didn't steal it).
-    expect(mgr.read(id).output).toContain("hello");
   });
 
   it("peek() throws on an unknown id", () => {

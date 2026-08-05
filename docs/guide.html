@@ -502,7 +502,7 @@
         <div class="flex items-center gap-3 mb-5"><span class="sec-num">01</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">它能做什么</h2></div>
         <ul class="space-y-3 list-none pl-0">
           <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>Agentic 编码循环</strong> —— 给它一个目标，它自己读代码、改文件、跑命令，一步步把任务做完。同一轮里互相独立的工具调用以<strong>有界并发</strong>运行（默认每轮 3 个）。<code>max_tokens</code> 截断可自动续传（默认最多连续 3 次，可配），单次响应写不完不再是硬墙。</span></li>
-          <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>代码与系统工具</strong> —— 文件 read / write / edit（文本、表格、<strong>PDF</strong>、图片都能读），<code>glob</code> + <code>grep</code> 搜索，<code>bash</code>（默认与上限均 3 分钟超时）与 <code>runInBackground</code> 后台长任务，web fetch / search，向你提问。</span></li>
+          <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>代码与系统工具</strong> —— 文件 read / write / edit（文本、表格、<strong>PDF</strong>、图片都能读），<code>glob</code> + <code>grep</code> 搜索，<code>bash</code>（默认与上限均 3 分钟超时，<code>run_in_background</code> 转后台长任务），web fetch / search，向你提问。</span></li>
           <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>LSP 代码智能</strong> —— 直连语言服务器做 go-to-definition、find-references、hover、诊断、符号搜索，比 grep 更懂作用域和类型。</span></li>
           <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>扩展 thinking</strong> —— 五档（<code>off</code>/<code>low</code>/<code>medium</code>/<code>high</code>/<code>max</code>）或显式 token 预算。</span></li>
           <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>Plan 模式与子 agent</strong> —— 把庞大的调查/规划交给全新上下文的 worker，结论汇报回来，主对话保持干净。内置三种类型 + 支持自定义。</span></li>
@@ -686,7 +686,7 @@
           <tr><td><code>/lsp</code></td><td>查看已配置的语言服务器（是否在 PATH、本 session 是否已启动）</td></tr>
           <tr><td><code>/plugin</code></td><td>列出已加载的插件及其贡献（安装 / 启停用 <code>nova plugin</code> CLI，见 <a class="inline-link" href="#sec-18">§18</a>）</td></tr>
           <tr><td><code>/sandbox [on|off]</code></td><td>本会话内开关 OS 命令沙箱（见 <a class="inline-link" href="#sec-11">§11</a>）</td></tr>
-          <tr><td><code>/tasks [list|stop &lt;id|all&gt;]</code></td><td>查看和管理后台命令（<code>runInBackground</code>），支持 list / stop</td></tr>
+          <tr><td><code>/tasks [list|stop &lt;id|all&gt;]</code></td><td>查看和管理后台命令（<code>bash</code> + <code>run_in_background</code>），支持 list / stop</td></tr>
           <tr><td><code>/exit</code>, <code>/quit</code></td><td>退出</td></tr>
         </tbody></table></div>
         <div class="callout callout-info">
@@ -777,7 +777,7 @@
           <tr><td><code>read</code></td><td><span class="pill pill-ro">只读</span></td><td>读<strong>文本 / 表格 / PDF / 图片</strong>：文本输出带 <code>cat -n</code> 风格行号（1-based），<code>offset</code> 起始行、<code>limit</code> 最大行数，单页约 20 万字符上限、单行超 1.6 万字符会截断并标注，超出时提示用 <code>offset</code> 续读；行号前缀仅用于显示，传给 <code>edit</code> 前需去掉。表格（<code>.xlsx/.xls/.xlsm/.xlsb/.ods</code>）每行渲成 TSV 带表头，<code>sheet</code> 选工作表。<strong>PDF</strong>（<code>.pdf</code>，≤30MB）抽取文本后同样带行号返回，每页前插一条 <code>[Page N]</code> 标记，<code>offset</code>/<code>limit</code> 照常分页；扫描件 / 纯图片 PDF 抽不出文本，会明说并建议改用 OCR 工具。图片（<code>.png/.jpg/.jpeg/.gif/.webp</code>，≤20MB）以 base64 块返回 —— <strong>仅当前档位支持图片输入时</strong>（否则提示切到 image-capable 档位）。含 NUL 字节的二进制文件直接拒读并给出 <code>file</code>/<code>xxd</code> 建议</td></tr>
           <tr><td><code>write</code></td><td><span class="pill pill-ap">需批准</span></td><td>写整个文件（覆盖），默认自动创建父目录</td></tr>
           <tr><td><code>edit</code></td><td><span class="pill pill-ap">需批准</span></td><td>精确字符串替换；<code>old_string</code> 默认须唯一匹配，<code>replace_all</code> 可全替</td></tr>
-          <tr><td><code>bash</code></td><td><span class="pill pill-ap">需批准</span></td><td>执行阻塞的 shell 命令（<code>bash -lc</code>）；<code>timeout_ms</code> <strong>默认与上限都是 180000（3 分钟）</strong>，<code>cwd</code> 可覆盖工作目录，输出截到 200KB。更长的任务应改用 <code>runInBackground</code></td></tr>
+          <tr><td><code>bash</code></td><td><span class="pill pill-ap">需批准</span></td><td>执行 shell 命令（<code>bash -lc</code>）。默认阻塞：<code>timeout_ms</code> <strong>默认与上限都是 180000（3 分钟）</strong>，<code>cwd</code> 可覆盖工作目录，输出截到 200KB。更长的任务传 <code>run_in_background: true</code>——命令转入后台、立即返回 <code>{id, pid, output_path}</code>，<code>env</code> 可追加环境变量</td></tr>
         </tbody></table></div>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">搜索与发现</h3>
@@ -817,10 +817,14 @@
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">后台长任务</h3>
         <div class="tbl-wrap"><table class="doc"><thead><tr><th>工具</th><th>权限</th><th>说明</th></tr></thead><tbody>
-          <tr><td><code>runInBackground</code></td><td><span class="pill pill-ap">需批准</span></td><td>后台起一个命令（dev server / watcher 等），立即返回 id 和 pid；session 退出时子进程被杀。可传 <code>env</code> 追加环境变量</td></tr>
+          <tr><td><code>bash</code>（<code>run_in_background: true</code>）</td><td><span class="pill pill-ap">需批准</span></td><td>后台起一个命令（dev server / watcher 等），立即返回 <code>{id, pid, output_path}</code>；session 退出时子进程被杀。可传 <code>env</code> 追加环境变量</td></tr>
           <tr><td><code>killBackground</code></td><td><span class="pill pill-ap">需批准</span></td><td>按 id 终止后台命令（先 SIGTERM，残留则 SIGKILL）；已退出则无操作</td></tr>
-          <tr><td><code>getBackgroundOutput</code></td><td><span class="pill pill-ro">只读</span></td><td>按 id 读取后台命令自上次读取以来的新增输出；支持可选正则过滤</td></tr>
+          <tr><td><code>monitor</code></td><td><span class="pill pill-ap">需批准</span></td><td>起一个<strong>监听脚本</strong>：它 stdout 的<strong>每一行</strong>都变成一条通知推给模型。用于 <code>tail -f</code>、<code>inotifywait -m</code>、轮询循环。返回 <code>{id, pid, watching, persistent, log_path}</code></td></tr>
+          <tr><td><code>stopMonitor</code></td><td><span class="pill pill-ro">只读</span></td><td>按 id 停掉一个监听</td></tr>
         </tbody></table></div>
+        <p class="mt-3">后台命令没有专门的读取工具：<code>output_path</code> 指向 <code>~/.nova/sessions/{id}/background/{命令id}.log</code>，这是命令 stdout+stderr 的<strong>完整</strong>日志，用普通的 <code>read</code> / <code>grep</code> 跟读即可（该目录已默认放行，不会每次弹权限）。</p>
+        <p class="mt-3"><strong><code>monitor</code> 与后台命令的分工，按「你要被通知几次」划分</strong>：只要<strong>一次</strong>（构建结束、服务起来了）用 <code>bash</code> + <code>run_in_background</code> 配一个条件满足就退出的命令；<strong>每次发生都要</strong>才用 <code>monitor</code>。过滤写在命令里（<code>grep -E --line-buffered</code>）且<strong>必须覆盖失败</strong>——只匹配成功标记的过滤器在崩溃时同样沉默，而沉默和「还在跑」无法区分。stderr 不是事件流，只进 <code>log_path</code>。超过 <code>settings.monitor.maxEventsPerWindow</code>（默认 60 条/分钟）的监听会被直接杀掉并在通知里说明。</p>
+        <p class="mt-3">命令结束时会由 <code>&lt;background-notification&gt;</code> 自动注入一条<strong>公告</strong>——只带 id、状态、退出原因和日志路径，<strong>不内联输出</strong>。这样输出<strong>只有一条投递通道</strong>（文件）：若通知里也内联一份，模型自己 <code>read</code> 过的内容就会被重复推送一遍，而且一个跑久的 dev server 结束时可能一次性往 append-only 历史里灌进上百 KB。状态和退出原因留在通知里，已经足够模型判断要不要再花一轮去读日志。</p>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">Skills 与子 Agent</h3>
         <div class="tbl-wrap"><table class="doc"><thead><tr><th>工具</th><th>权限</th><th>说明</th></tr></thead><tbody>
@@ -861,7 +865,7 @@
         <div class="tbl-wrap"><table class="doc"><thead><tr><th>模式</th><th>状态行</th><th>行为</th></tr></thead><tbody>
           <tr><td><code>default</code></td><td><span style="color:#9ca3af">⏸ manual mode on</span></td><td>不改变任何裁决，<code>write</code>/<code>edit</code>/<code>bash</code> 照常落到引擎的 <code>ask</code></td></tr>
           <tr><td><code>acceptEdits</code></td><td><span style="color:var(--ok)">⏵⏵ accept edits on</span></td><td><strong>工作区内</strong>的 <code>write</code>/<code>edit</code> 自动放行（不再逐次询问）；<code>bash</code> 与工作区外的写仍然询问</td></tr>
-          <tr><td><code>auto</code><br><span class="text-xs" style="color:var(--muted)">启动默认</span></td><td><span style="color:#ca8a04">⏵⏵ auto mode on</span></td><td><strong>自主模式</strong>：在 <code>acceptEdits</code> 基础上，命令工具（<code>bash</code>、<code>runInBackground</code>）也自动放行、无人值守运行（先过一层风险分类器）。比 <code>acceptEdits</code> 更宽，但仍窄于 <code>bypassPermissions</code> —— 工作区外的写和用户 <code>deny</code> 规则不被绕过</td></tr>
+          <tr><td><code>auto</code><br><span class="text-xs" style="color:var(--muted)">启动默认</span></td><td><span style="color:#ca8a04">⏵⏵ auto mode on</span></td><td><strong>自主模式</strong>：在 <code>acceptEdits</code> 基础上，命令工具（<code>bash</code>，含 <code>run_in_background</code>）也自动放行、无人值守运行（先过一层风险分类器）。比 <code>acceptEdits</code> 更宽，但仍窄于 <code>bypassPermissions</code> —— 工作区外的写和用户 <code>deny</code> 规则不被绕过</td></tr>
           <tr><td><code>plan</code></td><td><span style="color:#0891b2">⏸ plan mode on</span></td><td><strong>只读</strong>：<code>write</code>/<code>edit</code>/<code>bash</code> 一律拒绝，逼模型先调查、给出分步计划，而不动手改 —— 与只读 <code>/plan</code> 子 agent 同源</td></tr>
         </tbody></table></div>
         <div class="callout callout-info">
@@ -871,8 +875,8 @@
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">默认放行 vs 默认询问</h3>
         <ul class="space-y-2">
-          <li><strong>默认放行（只读或仅登记元数据的）</strong>：<code>read</code>/<code>glob</code>/<code>grep</code>（限定在工作区内）、<code>webfetch</code>、<code>websearch</code>、<code>askUserQuestion</code>、<code>lsp</code>、<code>loadSkill</code>、<code>createSubAgent</code>、<code>getBackgroundOutput</code>/<code>killBackground</code>、<strong>todo 全套</strong>、<strong>task 全套</strong>（含写操作）、<strong>cron 全套</strong>（<code>cronCreate</code>/<code>cronList</code>/<code>cronDelete</code>）。task/cron 的写只改自己的清单 / 排程，payload 真正动手时仍走权限门。</li>
-          <li><strong>默认询问（会改文件 / 跑命令的）</strong>：<code>write</code>、<code>edit</code>、<code>bash</code>、<code>runInBackground</code> —— 落到 <code>defaultEffect</code>（默认 <code>ask</code>）。</li>
+          <li><strong>默认放行（只读或仅登记元数据的）</strong>：<code>read</code>/<code>glob</code>/<code>grep</code>（限定在工作区内）、<code>webfetch</code>、<code>websearch</code>、<code>askUserQuestion</code>、<code>lsp</code>、<code>loadSkill</code>、<code>createSubAgent</code>、<code>killBackground</code>、<strong>todo 全套</strong>、<strong>task 全套</strong>（含写操作）、<strong>cron 全套</strong>（<code>cronCreate</code>/<code>cronList</code>/<code>cronDelete</code>）。task/cron 的写只改自己的清单 / 排程，payload 真正动手时仍走权限门。</li>
+          <li><strong>默认询问（会改文件 / 跑命令的）</strong>：<code>write</code>、<code>edit</code>、<code>bash</code>（前台和 <code>run_in_background</code> 一视同仁） —— 落到 <code>defaultEffect</code>（默认 <code>ask</code>）。</li>
           <li><strong><code>permissions.deny</code></strong>（裸工具名数组）更硬一档：列进去的工具启动时从注册表<strong>摘除</strong>，模型看不到也调不了（区别于 <code>rules</code> 里 <code>effect: "deny"</code> —— 后者仍把工具报给模型、只在调用时拒）。</li>
         </ul>
 
@@ -918,7 +922,7 @@
       <!-- §11 -->
       <section id="sec-11" class="mb-20">
         <div class="flex items-center gap-3 mb-5"><span class="sec-num">11</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">命令沙箱</h2></div>
-        <p>在权限引擎之上再叠一层 <strong>OS 级纵深防御</strong>：把会起子进程的工具（<code>bash</code>、<code>runInBackground</code>）放进操作系统沙箱里跑，把<strong>文件写入</strong>限制在工作区根内。底层是 <code>@anthropic-ai/sandbox-runtime</code>：macOS 用 Seatbelt（<code>sandbox-exec</code>），Linux 用 bubblewrap。</p>
+        <p>在权限引擎之上再叠一层 <strong>OS 级纵深防御</strong>：把会起子进程的工具（<code>bash</code>，前台和后台两条路径都算）放进操作系统沙箱里跑，把<strong>文件写入</strong>限制在工作区根内。底层是 <code>@anthropic-ai/sandbox-runtime</code>：macOS 用 Seatbelt（<code>sandbox-exec</code>），Linux 用 bubblewrap。</p>
         <ul class="space-y-2">
           <li><strong>默认关闭（opt-in）。</strong>需显式设 <code>sandbox.enabled: true</code> 才开启（或会话内 <code>/sandbox on</code>）。开启后读放行；<strong>网络默认不限制</strong>（只管文件系统），但可选 <code>network.allowedDomains</code> / <code>deniedDomains</code> 收紧出站连接。</li>
           <li><strong>自动降级安全。</strong>仅 macOS / Linux 支持；不支持的平台或缺依赖（macOS 需 <code>ripgrep</code>；Linux 还需 <code>bubblewrap</code>/<code>socat</code>）会<strong>静默降级</strong>为不沙箱，agent 照常运行。</li>
@@ -1104,7 +1108,7 @@
         <ul class="space-y-2">
           <li><strong>slash 命令、子 agent、skills、生命周期 hooks</strong> —— 与你手写的 <code>.md</code> 扩展（<a class="inline-link" href="#sec-14">§14</a>/<a class="inline-link" href="#sec-15">§15</a>）同源，只是随插件一起分发；命令 / agent 名以 <code>&lt;插件名&gt;:&lt;名字&gt;</code> 命名空间化。</li>
           <li><strong>MCP servers、LSP servers</strong> —— 桥接进 <a class="inline-link" href="#sec-16">§16</a>/<a class="inline-link" href="#sec-17">§17</a> 的同一套机制。</li>
-          <li><strong><code>bin/</code> 可执行文件</strong> —— 其目录被加进 <code>PATH</code>，供 <code>bash</code>/<code>runInBackground</code>（及沙箱）调用。</li>
+          <li><strong><code>bin/</code> 可执行文件</strong> —— 其目录被加进 <code>PATH</code>，供 <code>bash</code>（及沙箱）调用。</li>
         </ul>
         <p>用 <code>nova plugin</code> 子命令从 shell 管理（它编辑 <code>~/.nova/nova.config.json</code> 的 <code>plugins</code> 块）：</p>
         <div class="tbl-wrap"><table class="doc"><thead><tr><th>命令</th><th>作用</th></tr></thead><tbody>

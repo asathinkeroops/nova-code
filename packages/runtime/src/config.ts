@@ -429,7 +429,7 @@ export const settingsSchema = z.object({
       // workspace cwd is always an allowed root and need not be listed here.
       additionalDirectories: z.array(z.string().min(1)).default([]),
       // The `auto` permission mode (shift+tab) runs commands (bash,
-      // runInBackground) unattended, gated by a command-risk classifier:
+      // incl. run_in_background) unattended, gated by a command-risk classifier:
       // static rules block clearly destructive commands and fast-path clearly
       // read-only ones; whatever the rules can't decide goes to an LLM
       // classifier. A command judged risky falls back to a confirmation prompt
@@ -750,7 +750,7 @@ export const settingsSchema = z.object({
     }),
   // OS-level command sandbox (@anthropic-ai/sandbox-runtime). Opt-in
   // (default OFF). When enabled, tools that spawn a subprocess (bash,
-  // runInBackground) run inside a platform sandbox — macOS Seatbelt via
+  // incl. run_in_background) run inside a platform sandbox — macOS Seatbelt via
   // sandbox-exec, Linux bubblewrap — that confines filesystem *writes* to the
   // workspace roots (the same allowed roots the permission engine uses) plus a
   // few system defaults. Reads stay open and the network is UNRESTRICTED by
@@ -869,7 +869,7 @@ export const settingsSchema = z.object({
       autoClearDelayMs: z.number().int().nonnegative().default(2500),
     })
     .default({ autoClearDelayMs: 2500 }),
-  // Background commands launched with runInBackground. When a command
+  // Background commands launched with bash's run_in_background. When a command
   // finishes while the agent is idle (REPL waiting for input),
   // autoContinueOnComplete wakes it with a continuation turn so it can react to
   // the result — the captured output is injected via the same notifier that
@@ -881,6 +881,36 @@ export const settingsSchema = z.object({
       autoContinueOnComplete: z.boolean().default(true),
     })
     .default({ autoContinueOnComplete: true }),
+  // Watch scripts started with the `monitor` tool: every stdout line becomes a
+  // notification injected into the conversation. Unlike a background command's
+  // output — which lives in a file the model reads on demand — events have no
+  // other channel, so they are inlined and the volume must be bounded at the
+  // source. `maxEventsPerWindow` per `windowMs` is a hard ceiling: a monitor
+  // that exceeds it is KILLED (not throttled), because a silently-throttled
+  // watch would keep burning CPU while the model believes it is still being
+  // told everything. `maxQueuedEvents` bounds what can pile up between turns,
+  // dropping the OLDEST — when a watch outruns the agent the newest lines
+  // matter more (a crash marker beats stale progress). `autoContinueOnEvent`
+  // mirrors `background.autoContinueOnComplete`: wake an idle REPL so the agent
+  // reacts to an event now, rather than at the next user message. REPL-only; a
+  // headless (`-p`) run has no input loop to wake.
+  monitor: z
+    .object({
+      maxConcurrent: z.number().int().positive().max(32).default(4),
+      maxEventsPerWindow: z.number().int().positive().default(60),
+      windowMs: z.number().int().positive().default(60_000),
+      maxQueuedEvents: z.number().int().positive().default(200),
+      maxLineBytes: z.number().int().positive().default(2_000),
+      autoContinueOnEvent: z.boolean().default(true),
+    })
+    .default({
+      maxConcurrent: 4,
+      maxEventsPerWindow: 60,
+      windowMs: 60_000,
+      maxQueuedEvents: 200,
+      maxLineBytes: 2_000,
+      autoContinueOnEvent: true,
+    }),
   // Queued input handling. Prompts typed while a turn runs pile up in the input
   // queue and are normally drained one-per-turn back at the REPL once the turn
   // ends. When `consumeInLoop` is on, a running turn instead folds the next

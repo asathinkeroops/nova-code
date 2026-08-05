@@ -46,9 +46,11 @@ const LEGACY_TAG_KINDS: ReadonlyArray<readonly [string, SyntheticKind]> = [
   // Pre-split sessions used a shared `<reminder>` for both todo and task nudges;
   // the subtype drives nothing (both merely hide), so map to todo-reminder.
   ["<reminder>", "todo-reminder"],
-  ["<background-notifier", "background-notifier"],
-  // Pre-rename sessions used `<background-command …>` for the same notification.
-  ["<background-command", "background-notifier"],
+  ["<background-notification", "background-notification"],
+  // Earlier tags for the same notification, in rename order:
+  // `<background-command …>` → `<background-notifier …>` → current.
+  ["<background-notifier", "background-notification"],
+  ["<background-command", "background-notification"],
   ["<interrupted-by-user>", "interrupted"],
   ["<goal-eval>", "goal-eval"],
   ["<compacted>", "compacted"],

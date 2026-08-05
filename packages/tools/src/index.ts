@@ -1,7 +1,7 @@
 import type { ToolHandler } from "@nova/core";
 import type { LspManager } from "@nova/lsp";
 import { askUserQuestionTool } from "./builtin/ask-user.js";
-import { bashTool } from "./builtin/bash.js";
+import { bashTool, createBashTool } from "./builtin/bash.js";
 import { editTool } from "./builtin/edit.js";
 import { globTool } from "./builtin/glob.js";
 import { grepTool } from "./builtin/grep.js";
@@ -17,6 +17,8 @@ import { TodoStore } from "./builtin/todo/store.js";
 import { createTodoTools } from "./builtin/todo/index.js";
 import { type BackgroundCommandManager } from "./builtin/background/manager.js";
 import { createBackgroundCommandTools } from "./builtin/background/index.js";
+import { type MonitorManager } from "./builtin/monitor/manager.js";
+import { createMonitorTools } from "./builtin/monitor/index.js";
 import { webfetchTool } from "./builtin/webfetch.js";
 import { websearchTool } from "./builtin/websearch.js";
 import { writeTool } from "./builtin/write.js";
@@ -33,6 +35,7 @@ export {
 export {
   askUserQuestionTool,
   bashTool,
+  createBashTool,
   editTool,
   globTool,
   grepTool,
@@ -94,11 +97,25 @@ export {
   type CronFields,
 } from "./builtin/cron/parse.js";
 export {
-  runInBackgroundTool,
+  killBackgroundTool,
   createBackgroundCommandTools,
   makeBackgroundNotifier,
   type BackgroundNotifierHook,
 } from "./builtin/background/index.js";
+export {
+  MonitorManager,
+  MonitorError,
+  monitorTool,
+  stopMonitorTool,
+  createMonitorTools,
+  makeMonitorNotifier,
+  type MonitorNotifierHook,
+  type MonitorRecord,
+  type MonitorStatus,
+  type MonitorEvents,
+  type MonitorOptions,
+  type StartMonitorInput,
+} from "./builtin/monitor/index.js";
 export {
   BackgroundCommandManager,
   BackgroundCommandError,
@@ -133,9 +150,12 @@ export function builtinTools(
   backgroundManager?: BackgroundCommandManager,
   lspManager?: LspManager,
   cronStore?: CronStore,
+  monitorManager?: MonitorManager,
 ): ToolHandler[] {
   const tools: ToolHandler[] = [
-    bashTool,
+    // bash owns both the foreground and the background command path — the
+    // manager (when present) enables its `run_in_background` branch.
+    createBashTool(backgroundManager),
     readTool,
     writeTool,
     editTool,
@@ -151,6 +171,9 @@ export function builtinTools(
   }
   if (backgroundManager) {
     tools.push(...createBackgroundCommandTools(backgroundManager));
+  }
+  if (monitorManager) {
+    tools.push(...createMonitorTools(monitorManager));
   }
   if (lspManager) {
     tools.push(createLspTool(lspManager));

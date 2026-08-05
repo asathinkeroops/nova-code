@@ -10,7 +10,7 @@ import { isWithin } from "@nova/safety";
  *                  out-of-workspace write/edit still ask.
  * - `auto`       — autonomous: in-workspace write/edit auto-granted like
  *                  `acceptEdits`, and additionally the command tools (bash,
- *                  runInBackground) auto-run without a prompt. More permissive
+ *                  incl. run_in_background) auto-run without a prompt. More permissive
  *                  than `acceptEdits` (arbitrary commands run unattended) but
  *                  still narrower than `bypassPermissions` — out-of-workspace
  *                  write/edit and user `deny` rules are NOT bypassed. Mirrors
@@ -27,17 +27,19 @@ export type PermissionMode = "default" | "acceptEdits" | "auto" | "plan" | "bypa
  * Workspace-mutating tools, withheld in `plan` mode. Mirrors the read-only
  * sub-agent's MUTATING_TOOLS set (packages/subagent/src/subagent.ts).
  */
-const MODE_MUTATING_TOOLS: ReadonlySet<string> = new Set(["write", "edit", "bash"]);
+const MODE_MUTATING_TOOLS: ReadonlySet<string> = new Set(["write", "edit", "bash", "monitor"]);
 
 /**
  * Command-execution tools that `auto` mode runs unattended — but only after a
  * risk classifier clears them (see auto-classify.ts). Unlike the synchronous
  * edit grant, command gating is async (it may call the model), so it lives in
  * `checkPermission` rather than `resolveModeDecision`; this set just tells the
- * caller which tools to route through the classifier. Both spawn an arbitrary
- * shell (`runInBackground` is the background variant of `bash`).
+ * caller which tools to route through the classifier. Both entries spawn an
+ * arbitrary shell: `bash` (its `run_in_background` input picks foreground vs
+ * detached — both branches clear the same classifier) and `monitor`, whose
+ * watch script is shell all the same.
  */
-export const MODE_COMMAND_TOOLS: ReadonlySet<string> = new Set(["bash", "runInBackground"]);
+export const MODE_COMMAND_TOOLS: ReadonlySet<string> = new Set(["bash", "monitor"]);
 
 /**
  * Mode-specific permission decision, applied by `checkPermission` AFTER it has
@@ -57,7 +59,7 @@ export function resolveModeDecision(
     return {
       granted: false,
       reason:
-        "Plan mode is on (read-only): the write, edit, and bash tools are disabled. " +
+        "Plan mode is on (read-only): the write, edit, bash, and monitor tools are disabled. " +
         "Investigate the relevant code and present a concrete step-by-step plan instead " +
         "of changing anything; the user can turn off plan mode (shift+tab) to apply it.",
     };
@@ -69,7 +71,7 @@ export function resolveModeDecision(
       return { granted: true };
     }
   }
-  // `auto` mode's command tools (bash, runInBackground) are gated by an async
+  // `auto` mode's command tool (bash, either branch) is gated by an async
   // risk classifier in `checkPermission`, not here — see MODE_COMMAND_TOOLS.
   return null;
 }
@@ -108,11 +110,16 @@ export const DEFAULT_PERMISSION_RULES: readonly PermissionRule[] = [
   { tool: "loadSkill", effect: "allow" },
   // The lsp tool is read-only (queries language servers; never mutates files).
   { tool: "lsp", effect: "allow" },
-  // Managing a command we already launched is safe to auto-allow: reading its
-  // buffered output is read-only, and killing only targets a child nova spawned.
-  // (runInBackground itself stays `ask` — it spawns arbitrary shell, like bash.)
-  { tool: "getBackgroundOutput", effect: "allow" },
+  // Killing a command we already launched is safe to auto-allow: it only ever
+  // targets a child nova spawned. Starting one is not here — that is `bash`
+  // with `run_in_background`, which stays `ask` like any other shell spawn.
+  // Reading one back needs no rule here either: it is a plain `read`/`grep` of
+  // the log file under the session dir, granted by `backgroundLogRules`.
   { tool: "killBackground", effect: "allow" },
+  // Stopping a watch we already started is safe for the same reason: it only
+  // targets a child nova spawned. Starting one (`monitor`) stays `ask` — it
+  // spawns arbitrary shell, like bash.
+  { tool: "stopMonitor", effect: "allow" },
   // Spawning a sub-agent is itself safe to auto-allow: the sub-agent's own tool
   // calls run through this same PermissionEngine, so its bash/write/edit still
   // hit `ask`. Allowing the spawn just avoids a prompt for the delegation step.
@@ -184,6 +191,28 @@ export function autoMemoryRules(autoDir: string): PermissionRule[] {
 }
 
 /**
+ * Auto-allow the read-only tools inside the session's captured-output
+ * directories: background-command logs and monitor logs. Both hand the model a
+ * path instead of a dedicated read-back tool, so following a running command —
+ * or checking a watch script's stderr — IS a `read`/`grep`. Those are otherwise
+ * fenced to the workspace by {@link workspaceReadRules}, while the logs live
+ * under `~/.nova/sessions/`; without this rule every such read would prompt.
+ *
+ * Safe to allow: these directories hold nothing but output nova itself captured
+ * from commands the user already approved at launch. `dirs` must already be
+ * canonicalized (see canonicalizeRoots); writing there is the managers' business
+ * alone, so only the read-only set is granted.
+ */
+export function sessionLogRules(dirs: readonly string[]): PermissionRule[] {
+  const within = [...dirs];
+  return WORKSPACE_READ_TOOLS.map((tool) => ({
+    tool,
+    effect: "allow" as const,
+    match: { path: { within } },
+  }));
+}
+
+/**
  * Merge user-provided rules with CLI defaults. User rules come first so the
  * PermissionEngine's first-match evaluation lets users override a default
  * (e.g. force `read` back to `ask`, or `write` inside the memory dir back to
@@ -219,10 +248,12 @@ export function resolvePermissionRules(
   settings: Settings,
   roots: readonly string[],
   autoMemoryDir?: string,
+  sessionLogDirs: readonly string[] = [],
 ): PermissionRule[] {
   return [
     ...settings.permissions.rules,
     ...(autoMemoryDir ? autoMemoryRules(autoMemoryDir) : []),
+    ...(sessionLogDirs.length > 0 ? sessionLogRules(sessionLogDirs) : []),
     ...workspaceReadRules(roots),
     ...DEFAULT_PERMISSION_RULES,
   ];

@@ -1,6 +1,7 @@
 import { execa, type ExecaError } from "execa";
 import { z } from "zod";
 import type { ToolContext, ToolHandler, ToolRunResult } from "@nova/core";
+import { BackgroundCommandError, type BackgroundCommandManager } from "./background/manager.js";
 
 const inputSchema = z.object({
   command: z.string().min(1).describe("The shell command to execute (run with `bash -lc`)"),
@@ -11,10 +12,26 @@ const inputSchema = z.object({
     .max(180_000)
     .default(180_000)
     .describe(
-      "Timeout in milliseconds. Default and max 180000 (3 min). Anything that " +
-        "might take longer should be launched with runInBackground instead.",
+      "Timeout in milliseconds. Default and max 180000 (3 min). Ignored when " +
+        "run_in_background is true — background commands are not time-capped. " +
+        "Anything that might take longer than 3 min should set run_in_background.",
     ),
   cwd: z.string().optional().describe("Working directory; defaults to the nova session cwd."),
+  run_in_background: z
+    .boolean()
+    .default(false)
+    .describe(
+      "Run the command detached instead of blocking. Returns its id, pid, and " +
+        "the path of the log file its stdout+stderr stream into, immediately. " +
+        "Use for dev servers, watchers, and anything longer than 3 minutes.",
+    ),
+  env: z
+    .record(z.string(), z.string())
+    .optional()
+    .describe(
+      "Extra environment variables merged onto the inherited env. " +
+        "Only honoured when run_in_background is true.",
+    ),
 });
 
 const MAX_OUTPUT = 200_000;
@@ -97,66 +114,148 @@ async function confirmUnsandboxedRerun(
   return answer?.selected.includes("Re-run unsandboxed") ?? false;
 }
 
-export const bashTool: ToolHandler = {
-  definition: {
-    name: "bash",
-    description:
-      "Execute a short, blocking shell command and return stdout+stderr. " +
-      "Use for quick scripts, lookups, builds that finish in seconds, etc. " +
-      "Hard cap is 3 minutes — for anything that might take longer (dev " +
-      "servers, watchers, long builds, sleeps, downloads) use " +
-      "runInBackground instead.",
-    inputSchema,
-  },
-  async run(rawInput, ctx) {
-    const input = inputSchema.parse(rawInput);
-    const cwd = input.cwd ?? ctx.cwd;
-    // Annotate against the ORIGINAL command — the sandbox keys violations by the
-    // unwrapped command string. No-op when there are no violations.
-    const annotate = (s: string): string =>
-      ctx.sandbox ? ctx.sandbox.annotateOutput(input.command, s) : s;
+/**
+ * Launch the command detached via the background manager and report where its
+ * output lands. There is no dedicated read-back tool: the returned
+ * `output_path` is an ordinary file, so the model follows a running command
+ * with `read`/`grep` and gets the finished output pushed to it by the
+ * completion notifier.
+ */
+async function startBackground(
+  manager: BackgroundCommandManager | undefined,
+  input: z.infer<typeof inputSchema>,
+  ctx: ToolContext,
+): Promise<ToolRunResult> {
+  if (!manager) {
+    return {
+      output:
+        "bash: run_in_background is unavailable — this nova build has no " +
+        "background command manager wired in. Re-run without it.",
+      isError: true,
+    };
+  }
+  try {
+    // Confine background commands too when a sandbox is wired in. Unlike the
+    // foreground path, the child outlives this call, so per-command cleanup
+    // (afterCommand) is left to session-end dispose — the sandbox's mount-point
+    // cleanup is reference-counted and won't disturb a still-running child.
+    // wrapCommand is a passthrough when sandboxing is off.
+    const command = ctx.sandbox
+      ? await ctx.sandbox.wrapCommand(input.command, ctx.signal)
+      : input.command;
+    const { id, pid, outputPath } = manager.start({
+      command,
+      // Record the original command, not the sandbox-wrapped form, so `/tasks`
+      // and completion notices show what was actually requested.
+      label: input.command,
+      cwd: input.cwd ?? ctx.cwd,
+      ...(input.env ? { env: input.env } : {}),
+    });
+    return {
+      output: JSON.stringify({ id, pid, ...(outputPath ? { output_path: outputPath } : {}) }),
+    };
+  } catch (err) {
+    const msg =
+      err instanceof BackgroundCommandError
+        ? err.message
+        : err instanceof Error
+          ? err.message
+          : String(err);
+    return { output: `bash: failed to start background command: ${msg}`, isError: true };
+  }
+}
 
-    // No sandbox wired in: run the command directly.
-    if (!ctx.sandbox) {
-      return exec(input.command, { cwd, timeoutMs: input.timeout_ms, signal: ctx.signal, annotate });
-    }
+/**
+ * Build the `bash` tool. Passing a {@link BackgroundCommandManager} enables the
+ * `run_in_background` branch; without one the tool is foreground-only and that
+ * input is rejected with an explanatory error (see {@link startBackground}).
+ */
+export function createBashTool(manager?: BackgroundCommandManager): ToolHandler {
+  return {
+    definition: {
+      name: "bash",
+      description:
+        "Execute a shell command (via `bash -lc`) and return stdout+stderr. " +
+        "Blocking by default, with a hard 3-minute cap — use for quick scripts, " +
+        "lookups, and builds that finish in seconds. For anything longer-lived " +
+        "(dev servers, watchers, long builds, downloads) set " +
+        "run_in_background: true; that returns immediately with an id, a pid, " +
+        "and an output_path — the command's full stdout+stderr log, which you " +
+        "`read`/`grep` whenever you want its output, during the run or after. " +
+        "You are notified automatically when a background command finishes, " +
+        "with its exit status, so never poll waiting for that. Terminate one " +
+        "early with killBackground; all children die when the session exits.",
+      inputSchema,
+    },
+    run: (rawInput, ctx) => runBash(rawInput, ctx, manager),
+  };
+}
 
-    // Confine the command before spawning. wrapCommand returns it unchanged when
-    // sandboxing is inactive, so the no-sandbox path is unaffected. We still
-    // execa with shell:/bin/bash — the wrapped string carries its own
-    // sandbox-exec/bwrap invocation around an inner `/bin/bash -c`.
-    const wrapped = await ctx.sandbox.wrapCommand(input.command, ctx.signal);
-    let result: ToolRunResult;
-    try {
-      result = await exec(wrapped, { cwd, timeoutMs: input.timeout_ms, signal: ctx.signal, annotate });
-    } finally {
-      ctx.sandbox.afterCommand();
-    }
+/**
+ * Foreground-only `bash` handler, kept as a standalone export for the CLI's `!`
+ * shell escape (`apps/cli/src/repl.ts`), which runs user-typed commands
+ * synchronously and never needs the background branch.
+ */
+export const bashTool: ToolHandler = createBashTool();
 
-    // If the OS sandbox blocked any filesystem/network access while the command
-    // ran, degrade to the unsandboxed environment: ask the user whether to
-    // re-run with confinement lifted, and on confirmation execute the ORIGINAL
-    // (unwrapped) command once more. Keyed on recorded violations, NOT the exit
-    // code — a denied write often still lets the command exit 0 (e.g. a
-    // redirection failure swallowed by a trailing `; echo`, or a best-effort
-    // write the script ignores), so an isError gate would miss it. The model
-    // can't grant itself a sandbox escape, so the decision is the user's. With
-    // no violations, no monitoring, or no way to ask, the result stands.
-    const violations = ctx.sandbox.violationsForCommand(input.command);
-    if (violations.length > 0 && (await confirmUnsandboxedRerun(ctx, input.command, violations))) {
-      const rerun = await exec(input.command, {
-        cwd,
-        timeoutMs: input.timeout_ms,
-        signal: ctx.signal,
-        annotate: (s) => s,
-      });
-      return {
-        output:
-          "[sandbox] command was blocked by the OS sandbox; re-ran unsandboxed at the user's request.\n" +
-          rerun.output,
-        ...(rerun.isError ? { isError: true } : {}),
-      };
-    }
-    return result;
-  },
-};
+async function runBash(
+  rawInput: unknown,
+  ctx: ToolContext,
+  manager: BackgroundCommandManager | undefined,
+): Promise<ToolRunResult> {
+  const input = inputSchema.parse(rawInput);
+  if (input.run_in_background) return startBackground(manager, input, ctx);
+  const cwd = input.cwd ?? ctx.cwd;
+  // Annotate against the ORIGINAL command — the sandbox keys violations by the
+  // unwrapped command string. No-op when there are no violations.
+  const annotate = (s: string): string =>
+    ctx.sandbox ? ctx.sandbox.annotateOutput(input.command, s) : s;
+
+  // No sandbox wired in: run the command directly.
+  if (!ctx.sandbox) {
+    return exec(input.command, { cwd, timeoutMs: input.timeout_ms, signal: ctx.signal, annotate });
+  }
+
+  // Confine the command before spawning. wrapCommand returns it unchanged when
+  // sandboxing is inactive, so the no-sandbox path is unaffected. We still
+  // execa with shell:/bin/bash — the wrapped string carries its own
+  // sandbox-exec/bwrap invocation around an inner `/bin/bash -c`.
+  const wrapped = await ctx.sandbox.wrapCommand(input.command, ctx.signal);
+  let result: ToolRunResult;
+  try {
+    result = await exec(wrapped, {
+      cwd,
+      timeoutMs: input.timeout_ms,
+      signal: ctx.signal,
+      annotate,
+    });
+  } finally {
+    ctx.sandbox.afterCommand();
+  }
+
+  // If the OS sandbox blocked any filesystem/network access while the command
+  // ran, degrade to the unsandboxed environment: ask the user whether to
+  // re-run with confinement lifted, and on confirmation execute the ORIGINAL
+  // (unwrapped) command once more. Keyed on recorded violations, NOT the exit
+  // code — a denied write often still lets the command exit 0 (e.g. a
+  // redirection failure swallowed by a trailing `; echo`, or a best-effort
+  // write the script ignores), so an isError gate would miss it. The model
+  // can't grant itself a sandbox escape, so the decision is the user's. With
+  // no violations, no monitoring, or no way to ask, the result stands.
+  const violations = ctx.sandbox.violationsForCommand(input.command);
+  if (violations.length > 0 && (await confirmUnsandboxedRerun(ctx, input.command, violations))) {
+    const rerun = await exec(input.command, {
+      cwd,
+      timeoutMs: input.timeout_ms,
+      signal: ctx.signal,
+      annotate: (s) => s,
+    });
+    return {
+      output:
+        "[sandbox] command was blocked by the OS sandbox; re-ran unsandboxed at the user's request.\n" +
+        rerun.output,
+      ...(rerun.isError ? { isError: true } : {}),
+    };
+  }
+  return result;
+}

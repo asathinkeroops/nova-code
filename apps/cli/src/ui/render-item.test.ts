@@ -158,7 +158,10 @@ describe("buildRenderItems hides system-injected user messages", () => {
   it.each([
     ["todo-reminder", "<todo-reminder>Update your todos.</todo-reminder>"],
     ["task-reminder", "<task-reminder>Update your tasks.</task-reminder>"],
-    ["background-notifier", '<background-notifier id="1" status="done">x</background-notifier>'],
+    [
+      "background-notification",
+      '<background-notification id="1" status="done">x</background-notification>',
+    ],
     ["interrupted", "<interrupted></interrupted>"],
     ["goal-eval", "<goal-eval>\nEvaluation: tests fail\n</goal-eval>"],
     ["compacted", "<compacted>\n[Conversation compacted [compacted].]\n\nSUMMARY\n</compacted>"],
@@ -568,6 +571,73 @@ describe("renderItemToString bash command layout", () => {
     // Header no longer carries the command inline; it wraps under the gutter.
     expect(headerLine(out)).not.toContain("xxxx");
     expect(stripAnsi(out)).toContain("⎿");
+  });
+
+  it("labels a detached launch `bg`, not `bash`", () => {
+    // The tools merged, but the feed must still distinguish a command that
+    // outlives the turn from one that blocked it.
+    const item = {
+      kind: "tool-call",
+      key: "tc#b",
+      use: {
+        type: "tool_use",
+        id: "b1",
+        name: "bash",
+        input: { command: "pnpm dev", run_in_background: true },
+      },
+      result: undefined,
+    } as RenderItem;
+    expect(headerLine(renderItemToString(item, WIDTH))).toContain("bg  pnpm dev");
+    expect(headerLine(renderItemToString(bashItem("pnpm dev"), WIDTH))).toContain("bash  pnpm dev");
+  });
+
+  it("labels a monitor call `monitor`, showing what it watches", () => {
+    const item = {
+      kind: "tool-call",
+      key: "tc#m",
+      use: {
+        type: "tool_use",
+        id: "m1",
+        name: "monitor",
+        input: { command: "tail -f app.log | grep ERROR", description: "errors in app.log" },
+      },
+      result: {
+        type: "tool_result",
+        tool_use_id: "m1",
+        content: JSON.stringify({
+          id: "Zq9",
+          pid: 42,
+          watching: "errors in app.log",
+          persistent: true,
+        }),
+      },
+    } as RenderItem;
+    const out = stripAnsi(renderItemToString(item, WIDTH));
+    expect(headerLine(out)).toContain("monitor");
+    expect(headerLine(out)).toContain("errors in app.log");
+    // The tool is named `monitor` everywhere in the UI — never "watch".
+    expect(headerLine(out)).not.toContain("watch");
+    expect(out).toContain("monitoring Zq9");
+    expect(out).toContain("persistent");
+  });
+
+  it("summarises a background launch result as the started id", () => {
+    const item = {
+      kind: "tool-call",
+      key: "tc#b",
+      use: {
+        type: "tool_use",
+        id: "b1",
+        name: "bash",
+        input: { command: "pnpm dev", run_in_background: true },
+      },
+      result: {
+        type: "tool_result",
+        tool_use_id: "b1",
+        content: JSON.stringify({ id: "a1B2c3", pid: 4242, output_path: "/tmp/s/a1B2c3.log" }),
+      },
+    } as RenderItem;
+    expect(stripAnsi(renderItemToString(item, WIDTH))).toContain("started a1B2c3");
   });
 });
 

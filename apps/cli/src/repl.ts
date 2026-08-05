@@ -203,16 +203,19 @@ async function runContinuationTurn(ctx: CliContext): Promise<boolean> {
 }
 
 /**
- * True when a background command has finished and the agent should wake to react
- * to it now, rather than waiting for the next typed prompt. Gated by the setting
- * and only meaningful between turns (no turn in flight).
+ * True when a background command has finished, or a monitor has fired events,
+ * and the agent should wake to react now rather than waiting for the next typed
+ * prompt. Each source is gated by its own setting. Only meaningful between turns
+ * (no turn in flight) — and it re-checks here rather than trusting the `wake()`
+ * that fired at the time, so an event that landed mid-turn still gets picked up
+ * once the turn ends.
  */
 function shouldAutoContinue(ctx: CliContext): boolean {
-  return (
-    ctx.settings.background.autoContinueOnComplete &&
-    ctx.backgroundManager.hasPending() &&
-    !ctx.agent.currentSignal()
-  );
+  if (ctx.agent.currentSignal()) return false;
+  if (ctx.settings.background.autoContinueOnComplete && ctx.backgroundManager.hasPending()) {
+    return true;
+  }
+  return ctx.settings.monitor.autoContinueOnEvent && ctx.monitorManager.hasPending();
 }
 
 /**
@@ -341,10 +344,10 @@ async function maybeContinueForGoal(ctx: CliContext): Promise<string | null> {
   if (goal.continuations >= max) {
     ctx.goal = null;
     await clearGoal(ctx.session.dir);
-    ctx.screen.card(
-      `${t.repl.goalNotReached(goal.continuations)}\n${dim(verdict.reason)}`,
-      { kind: "warn", title: GOAL_TITLE },
-    );
+    ctx.screen.card(`${t.repl.goalNotReached(goal.continuations)}\n${dim(verdict.reason)}`, {
+      kind: "warn",
+      title: GOAL_TITLE,
+    });
     return null;
   }
 
@@ -355,10 +358,9 @@ async function maybeContinueForGoal(ctx: CliContext): Promise<string | null> {
     const msg = err instanceof Error ? err.message : String(err);
     ctx.logger.warn({ err: msg }, "failed to persist goal");
   }
-  ctx.screen.card(
-    dim(t.repl.goalContinuing(goal.continuations, max) + `\n${verdict.reason}`),
-    { title: GOAL_TITLE },
-  );
+  ctx.screen.card(dim(t.repl.goalContinuing(goal.continuations, max) + `\n${verdict.reason}`), {
+    title: GOAL_TITLE,
+  });
   // Return the <goal-eval>-tagged continuation. The model reads the tag's
   // contents; the UI hides the bubble via meta.kind === "goal-eval", stamped by
   // the caller (runTurnWithStopHooks) when it drives this turn. It is the
@@ -388,10 +390,10 @@ async function runTurnWithStopHooks(ctx: CliContext, prompt: string): Promise<bo
     const decision = await ctx.userHooks.runStop({ stop_continuation: stopContinuations });
     if (decision.continue) {
       if (stopContinuations >= MAX_STOP_CONTINUATIONS) {
-        ctx.screen.card(
-          t.repl.stopHookCapped(MAX_STOP_CONTINUATIONS),
-          { kind: "warn", title: t.repl.stopHookTitle },
-        );
+        ctx.screen.card(t.repl.stopHookCapped(MAX_STOP_CONTINUATIONS), {
+          kind: "warn",
+          title: t.repl.stopHookTitle,
+        });
         break;
       }
       stopContinuations++;
@@ -458,8 +460,9 @@ export async function runRepl(ctx: CliContext, initialPrompt: string): Promise<v
   // first prompt; it's refreshed after every turn below as tokens are spent.
   void refreshBalance(ctx);
 
-  // Notify (never install) if a newer CLI version is on npm. Fire-and-forget so a
-  // slow registry never delays the first prompt.
+  // Check npm for a newer CLI version — and, with settings.update.autoInstall
+  // (default on), install it in the background for the next launch. Fire-and-forget
+  // so neither the registry nor the installer delays the first prompt.
   void checkForUpdate(ctx);
 
   // Re-check periodically so a long-lived session still notices new releases
@@ -543,6 +546,7 @@ export async function runRepl(ctx: CliContext, initialPrompt: string): Promise<v
   ctx.cronScheduler.dispose();
   await ctx.transcript.flush();
   await ctx.backgroundManager.disposeAll();
+  await ctx.monitorManager.disposeAll();
   if (ctx.lspManager) await ctx.lspManager.disposeAll();
   await ctx.sandbox.dispose();
   if (ctx.mcp) await ctx.mcp.close();

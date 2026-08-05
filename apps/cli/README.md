@@ -55,7 +55,8 @@ nova upgrade                       # 更新到最新版本（启动时也会自�
 | `read` / `write` / `edit` | 读文件（行号 + 分页，支持 `.xlsx` / `.ods` 表格；图片需模型档位支持图像输入）、整文件写、精确文本替换 |
 | `glob` / `grep` | 按文件名匹配、全文正则搜索 |
 | `bash` | 运行 shell 命令 |
-| `runInBackground` / `getBackgroundOutput` / `killBackground` | 后台跑 dev server、watcher 等长任务 |
+| `killBackground` | 终止一个后台命令（后台启动是 `bash` 的 `run_in_background`） |
+| `monitor` / `stopMonitor` | 监听脚本：stdout 每一行变成一条通知（`tail -f`、watcher、轮询循环） |
 | `lsp` | 代码智能：定义跳转、引用查找、hover、diagnostics、符号搜索 |
 | `webfetch` / `websearch` | 抓取网页、联网搜索 |
 | `createTodo` / `updateTodo` / `getTodoList` / `clearTodoList` | 会话内多步清单 |
@@ -84,7 +85,7 @@ nova upgrade                       # 更新到最新版本（启动时也会自�
 | `/loop` | 按间隔重复跑某条 prompt 或命令（`/loop <间隔> <prompt|/cmd>`，`/loop stop` 停止） |
 | `/doctor` | 体检全局配置（JSON/schema、模型/key、hooks、MCP），报告问题，可交给 agent 就地修复 |
 | `/usage` · `/context` | 查看 token 用量、缓存命中、上下文占用 |
-| `/tasks` | 查看和管理后台命令（`runInBackground`），支持 list / stop |
+| `/tasks` | 查看和管理后台命令（`bash` + `run_in_background`），支持 list / stop |
 | `/predict` | 开关下一条输入预测 |
 | `/exit` · `/quit` | 退出 |
 

@@ -337,24 +337,37 @@ const tools: Record<string, ToolStr> = {
   bash: {
     use: (input, width) => {
       const cmd = typeof input.command === "string" ? input.command : JSON.stringify(input);
+      // Background launches keep their own `bg` label so the feed still shows at
+      // a glance which calls detached — the tool merged, the display did not.
+      const label = input.run_in_background === true ? "bg" : "bash";
       // A command that renders on a single row reads best inline in the header
       // (`● bash <cmd>`) — no extra `⎿` child node. "Single row" is a rendering
       // judgement, not just newline-free: the command must have no newline AND
       // fit the header width once the `● bash  ` prefix is accounted for. Heredocs
       // and long one-liners that would wrap fall through to the `⎿` gutter body,
       // where they wrap cleanly instead of being flattened/truncated.
-      const prefixWidth = visibleWidth(`${marker("pending")} ${header("bash")}  `);
+      const prefixWidth = visibleWidth(`${marker("pending")} ${header(label)}  `);
       if (!cmd.includes("\n") && prefixWidth + visibleWidth(cmd) <= width) {
-        return { header: header("bash", cmd) };
+        return { header: header(label, cmd) };
       }
       // Pre-wrap to the body width so continuation rows stay aligned;
       // renderToolCall adds the gutter.
-      return { header: header("bash"), body: wrapBodyToWidth(cmd, width) };
+      return { header: header(label), body: wrapBodyToWidth(cmd, width) };
     },
     result: (result) => {
       if (result.is_error) return errLine(result);
       const text = contentToString(result.content);
       if (text.length === 0) return okLine(t.render.noOutput);
+      // A background launch returns `{id, pid, output_path}` — summarise it as
+      // the started id rather than dumping the JSON envelope.
+      try {
+        const parsed = JSON.parse(text) as { id?: unknown; pid?: unknown };
+        if (typeof parsed.id === "string" && typeof parsed.pid === "number") {
+          return okLine(`started ${parsed.id}`);
+        }
+      } catch {
+        // Not a background launch — fall through to the first-line summary.
+      }
       const firstLine = text.split("\n", 1)[0] ?? "";
       return okLine(trim(firstLine, 60));
     },
@@ -538,21 +551,36 @@ const tools: Record<string, ToolStr> = {
       return okLine(formatBytes(contentToString(result.content).length));
     },
   },
-  runInBackground: {
+  monitor: {
     use: (input) => {
+      const desc = typeof input.description === "string" ? input.description : "";
       const cmd = typeof input.command === "string" ? input.command : JSON.stringify(input);
-      return { header: header("bg", dim(trim(flatten(cmd), 160))) };
+      return { header: header("monitor", dim(trim(flatten(desc || cmd), 160))) };
     },
     result: (result) => {
       if (result.is_error) return errLine(result);
       const text = contentToString(result.content);
       try {
-        const parsed = JSON.parse(text) as { id?: unknown };
-        if (typeof parsed.id === "string") return okLine(`started ${parsed.id}`);
+        const parsed = JSON.parse(text) as { id?: unknown; persistent?: unknown };
+        if (typeof parsed.id === "string") {
+          return okLine(
+            `monitoring ${parsed.id}${parsed.persistent === true ? " · persistent" : ""}`,
+          );
+        }
       } catch {
         // fall through
       }
       return okLine(flatten(trim(text, 80)));
+    },
+  },
+  stopMonitor: {
+    use: (input) => {
+      const id = typeof input.id === "string" ? input.id : "?";
+      return { header: header("monitor", dim(`stop ${id}`)) };
+    },
+    result: (result) => {
+      if (result.is_error) return errLine(result);
+      return okLine(t.render.noOutput);
     },
   },
   createSubAgent: {
@@ -628,10 +656,7 @@ function toolBodyView(body: string, done: boolean, expanded: boolean): string {
  * call once it completes). Shared by {@link renderToolCall} and
  * {@link toolCallToggleLineIndex} so both agree on the gutter body's contents.
  */
-function toolResultStr(
-  use: ToolUseBlock,
-  result: ToolResultBlock,
-): string {
+function toolResultStr(use: ToolUseBlock, result: ToolResultBlock): string {
   const def = tools[use.name];
   return def?.result
     ? def.result(result, use.input as Record<string, unknown> | undefined)
@@ -717,9 +742,7 @@ export function toolBatchSummary(members: BatchMember[]): string {
   if (search > 0) segs.push(t.render.batchSearched(search));
   if (read > 0) segs.push(t.render.batchRead(read));
   if (run > 0) segs.push(t.render.batchRan(run));
-  return segs
-    .map((s, i) => (i === 0 ? s : `${s.charAt(0).toLowerCase()}${s.slice(1)}`))
-    .join(", ");
+  return segs.map((s, i) => (i === 0 ? s : `${s.charAt(0).toLowerCase()}${s.slice(1)}`)).join(", ");
 }
 
 /**
@@ -733,11 +756,7 @@ function batchState(members: BatchMember[]): ToolState {
   return "ok";
 }
 
-function renderToolBatch(
-  members: BatchMember[],
-  collapsed: boolean,
-  width: number,
-): string {
+function renderToolBatch(members: BatchMember[], collapsed: boolean, width: number): string {
   // Disclosure triangle (▸ collapsed / ▾ expanded) signals the row is clickable;
   // its colour mirrors the aggregate state (gray pending / red error / green ok),
   // like a tool marker dot.
@@ -755,9 +774,7 @@ function renderToolBatch(
   // thinking block (elbow on the first row, continuations aligned under it) —
   // rather than a `│` left spine + `╰` closing corner.
   const childWidth = Math.max(1, width - THINKING_INDENT.length);
-  const body = members
-    .map((m) => renderToolCall(m.use, m.result, childWidth))
-    .join("\n");
+  const body = members.map((m) => renderToolCall(m.use, m.result, childWidth)).join("\n");
   return `${title}\n${gutterIndent(body)}`;
 }
 
