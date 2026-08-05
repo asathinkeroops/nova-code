@@ -19,3 +19,22 @@ export function setCursorTarget(next: { row: number; col: number } | null): void
 export function getCursorTarget(): { row: number; col: number } | null {
   return target;
 }
+
+/**
+ * Whether the stdout wrapper is actually parking the real cursor on the target
+ * each frame (TTY + `settings.terminal.cursorFollow`). The InputBox reads this
+ * to decide whether it still needs its own inverse caret cell: when the real
+ * cursor is on the caret, drawing the fake one too leaves the terminal's cursor
+ * block sitting on an inverted (white) cell, which shows through as slivers
+ * above/below wherever the block is shorter than the character cell. Off — no
+ * parking — the fake caret is the only caret there is, so it stays.
+ */
+let parking = false;
+
+export function setCursorParking(enabled: boolean): void {
+  parking = enabled;
+}
+
+export function isCursorParking(): boolean {
+  return parking;
+}

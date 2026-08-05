@@ -3,7 +3,7 @@ import { Box, Text, useInput, useStdout } from "ink";
 import { ACCENT_HEX, BASH_HEX, SELECTION_BG_HEX, sessionBadgeColor } from "../colors.js";
 import { t } from "../i18n/index.js";
 import { normalizeDroppedImagePath, type ClipboardPaste } from "../image-paste.js";
-import { setCursorTarget } from "./cursor-target.js";
+import { isCursorParking, setCursorTarget } from "./cursor-target.js";
 import { setInputMouseController } from "./input-mouse.js";
 import { charDisplayWidth, truncateToWidth, visibleWidth } from "./width.js";
 
@@ -952,8 +952,17 @@ export function InputBox({
     }
   }
 
+  // When the stdout wrapper is parking the real terminal cursor on this box's
+  // caret (above), the terminal draws the caret itself — in the user's cursor
+  // colour and shape. Drawing our inverse cell underneath it too would leave the
+  // inverted (white) cell peeking out around the terminal's cursor block, so we
+  // skip the fake caret and let the real one be the caret. Modal boxes (no
+  // `cursorTracking`), an inactive box, and cursor-follow-off terminals get no
+  // real caret, so they keep the inverse cell.
+  const realCaret = !!cursorTracking && active && isCursorParking();
+
   const renderContentLine = (line: DisplayLine, idx: number): React.ReactElement => {
-    const isCursorLine = idx === cursorRow;
+    const isCursorLine = idx === cursorRow && !realCaret;
     const slice = buildLineWithCursor(line, isCursorLine, cursor);
     const content = mask ? "*".repeat(slice.content.length) : slice.content;
     return (
@@ -1031,7 +1040,7 @@ export function InputBox({
         <Box>
           <Text> </Text>
           <Text color={BASH_HEX}>{PROMPT_TEXT}</Text>
-          <Text inverse> </Text>
+          {realCaret ? <Text> </Text> : <Text inverse> </Text>}
           {placeholderText ? <Text dimColor>{placeholderText}</Text> : null}
         </Box>
       ) : (

@@ -13,7 +13,7 @@ import { type BoxedInputOptions, type SlashCommand } from "./ui/input-box.js";
 import { copyToClipboard } from "./ui/clipboard.js";
 import { attachFilteredStdin } from "./ui/mouse.js";
 import { wrapStdout } from "./ui/sync-output.js";
-import { getCursorTarget } from "./ui/cursor-target.js";
+import { getCursorTarget, setCursorParking } from "./ui/cursor-target.js";
 import { getInputMouseController } from "./ui/input-mouse.js";
 import { hitTestJumpButton } from "./ui/jump-button.js";
 import { extractSelection } from "./ui/selection.js";
@@ -302,11 +302,15 @@ export class Screen {
     // guard above already gates interactive output on isTTY. When both are off
     // there's nothing to add, so pass the raw stream.
     const wrap = this.syncOutput || this.cursorFollow;
+    const parkCursor = this.cursorFollow && process.stdout.isTTY;
+    // Tell the InputBox the real cursor is live on its caret so it drops its own
+    // inverse caret cell (two carets stacked look wrong — see cursor-target.ts).
+    setCursorParking(parkCursor);
     const stdout =
       wrap && process.stdout.isTTY
         ? wrapStdout(process.stdout, {
             sync: this.syncOutput,
-            ...(this.cursorFollow ? { getCursor: getCursorTarget } : {}),
+            ...(parkCursor ? { getCursor: getCursorTarget } : {}),
           })
         : process.stdout;
     this.instance = render(React.createElement(App, { store: this.store }), {
