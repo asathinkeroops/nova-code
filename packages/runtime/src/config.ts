@@ -502,18 +502,23 @@ export const settingsSchema = z.object({
       maxAgeDays: z.number().int().positive().default(30),
     })
     .default({ enabled: true, maxAgeDays: 30 }),
-  // Auto-update: a non-blocking startup check that notifies (never installs) when
-  // a newer version is published to npm, plus the `nova upgrade` command's
-  // installer. `command` is overridable so pnpm/yarn/bun global installs work.
-  // Set enabled:false to silence the startup check.
+  // Auto-update: a non-blocking startup check against npm, plus the `nova
+  // upgrade` command's installer. `command` is overridable so pnpm/yarn/bun
+  // global installs work. Set enabled:false to silence the check entirely.
+  // `autoInstall` (default on) runs `command` in the background as soon as a
+  // newer version is published; the running process keeps its already-loaded
+  // code, so the new version takes effect on the NEXT launch. Set it false to
+  // go back to notify-only.
   update: z
     .object({
       enabled: z.boolean().default(true),
+      autoInstall: z.boolean().default(true),
       notifyIntervalHours: z.number().int().positive().default(6),
       command: z.string().default("npm install -g @asathinkeroops/nova-code@latest"),
     })
     .default({
       enabled: true,
+      autoInstall: true,
       notifyIntervalHours: 6,
       command: "npm install -g @asathinkeroops/nova-code@latest",
     }),

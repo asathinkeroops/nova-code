@@ -5,14 +5,24 @@ import type { Logger } from "pino";
 import { execa } from "execa";
 import type { CliContext } from "./context.js";
 import { bold, dim } from "./colors.js";
+import { t } from "./i18n/index.js";
 import { readCliPackage } from "./version.js";
 
 /**
  * Non-blocking startup update check for the `nova` CLI, plus the `nova upgrade`
- * installer. The check only ever *notifies* — it never installs on its own,
- * since a global npm binary can need elevated permissions and silently mutating
- * it is surprising. Installation happens exclusively via `nova upgrade`, which
- * runs the user-overridable `settings.update.command`.
+ * installer.
+ *
+ * With `settings.update.autoInstall` (default on) the check also *installs*:
+ * when the registry has a newer version it runs `settings.update.command` in
+ * the background, silently (piped stdio — `inherit` would tear through the ink
+ * TUI). It deliberately does NOT try to make the new code live in the running
+ * process: Node already loaded `dist/index.js` into memory, so overwriting it
+ * on disk changes nothing until the next launch. The card therefore reports
+ * "takes effect next launch", never "restart now".
+ *
+ * Set `autoInstall: false` for the old notify-only behavior (installation then
+ * happens exclusively via `nova upgrade`), or `enabled: false` to silence the
+ * whole thing.
  */
 
 /** How long to wait on the npm registry before giving up (ms). */
@@ -23,12 +33,24 @@ export const UPDATE_CACHE_PATH = join(homedir(), ".nova", "update-check.json");
 
 const REGISTRY_BASE = "https://registry.npmjs.org";
 
+/** One background auto-install attempt, persisted so a poll never repeats it. */
+export interface InstallRecord {
+  /** The version the install command was run for. */
+  version: string;
+  /** Epoch ms of the attempt. */
+  at: number;
+  /** Whether the install command exited 0. */
+  ok: boolean;
+}
+
 /** Persisted state gating the reminder (not the fetch — that runs every call). */
 export interface UpdateCache {
   /** The latest version seen at the most recent fetch (fallback if a fetch fails). */
   latestVersion: string | null;
   /** Epoch ms of the last time we actually showed a notice — gates re-notifying. */
   lastNotifiedAt: number;
+  /** The most recent background auto-install attempt, if any. */
+  lastInstall: InstallRecord | null;
 }
 
 interface ParsedVersion {
@@ -126,6 +148,13 @@ export async function fetchLatestVersion(
   }
 }
 
+function parseInstallRecord(value: unknown): InstallRecord | null {
+  if (!value || typeof value !== "object") return null;
+  const rec = value as Partial<InstallRecord>;
+  if (typeof rec.version !== "string" || typeof rec.at !== "number") return null;
+  return { version: rec.version, at: rec.at, ok: rec.ok === true };
+}
+
 async function readCache(path: string): Promise<UpdateCache | null> {
   try {
     const raw = await readFile(path, "utf8");
@@ -133,6 +162,7 @@ async function readCache(path: string): Promise<UpdateCache | null> {
     return {
       latestVersion: typeof parsed.latestVersion === "string" ? parsed.latestVersion : null,
       lastNotifiedAt: typeof parsed.lastNotifiedAt === "number" ? parsed.lastNotifiedAt : 0,
+      lastInstall: parseInstallRecord(parsed.lastInstall),
     };
   } catch {
     return null;
@@ -160,22 +190,61 @@ export interface CheckDeps {
   cachePath?: string;
   fetchImpl?: FetchLike;
   packageName?: string;
+  /** Stand-in for {@link runUpgrade} so tests never shell out to a package manager. */
+  runInstall?: (
+    command: string,
+    logger?: Logger,
+    opts?: { silent?: boolean },
+  ) => Promise<number>;
 }
 
 function notify(ctx: CliContext, latest: string): void {
   ctx.screen.card(
-    `${bold(`nova ${latest}`)} available ${dim(`(you have ${ctx.version})`)}\n` +
-      `run ${bold("nova upgrade")} to update`,
-    { kind: "warn", title: "update available", persist: false },
+    `${bold(`nova ${latest}`)} ${t.update.available} ${dim(t.update.youHave(ctx.version))}\n` +
+      t.update.runUpgrade(bold("nova upgrade")),
+    { kind: "warn", title: t.update.availableTitle, persist: false },
+  );
+}
+
+function notifyInstalled(ctx: CliContext, latest: string): void {
+  ctx.screen.card(
+    `${bold(`nova ${latest}`)} ${t.update.installed} ${dim(t.update.youHave(ctx.version))}\n` +
+      t.update.effectiveNextLaunch,
+    { kind: "info", title: t.update.installedTitle, persist: false },
   );
 }
 
 /**
+ * Whether to run the install command for `latest` now. Skips when this exact
+ * version already installed successfully (it's just waiting for a relaunch) and
+ * backs a failed attempt off by the notify interval so a broken command — a
+ * global-install EACCES, say — isn't retried on every hourly poll.
+ */
+export function shouldAttemptInstall(
+  lastInstall: InstallRecord | null,
+  latest: string,
+  now: number,
+  intervalHours: number,
+): boolean {
+  if (!lastInstall || lastInstall.version !== latest) return true;
+  if (lastInstall.ok) return false;
+  return now - lastInstall.at >= intervalHours * 60 * 60 * 1000;
+}
+
+/**
+ * Guards against a second install starting while one is still running — the
+ * hourly poll can fire while a slow `npm install -g` is mid-flight.
+ */
+let installInFlight = false;
+
+/**
  * Update check. Non-blocking and best-effort: bails when disabled, always fetches
- * the freshest published version, and shows a notice card when a newer version
- * exists — but only if the reminder interval (`settings.update.notifyIntervalHours`)
- * has elapsed since the last notice, so a long-lived session isn't nagged every
- * poll. Any failure is swallowed so it can never disrupt the caller.
+ * the freshest published version, and — when `autoInstall` is on — installs a
+ * newer version in the background before reporting it (the new code goes live on
+ * the next launch, not in this process). Otherwise, or if the install command
+ * fails, it shows the plain "run nova upgrade" notice. Either card is throttled
+ * by `settings.update.notifyIntervalHours` so a long-lived session isn't nagged
+ * every poll. Any failure is swallowed so it can never disrupt the caller.
  */
 export async function checkForUpdate(ctx: CliContext, deps: CheckDeps = {}): Promise<void> {
   try {
@@ -191,17 +260,50 @@ export async function checkForUpdate(ctx: CliContext, deps: CheckDeps = {}): Pro
     const latestVersion = fetched ?? cache?.latestVersion ?? null;
 
     // The interval throttles the *notice*, not the fetch.
+    const intervalHours = ctx.settings.update.notifyIntervalHours;
     let lastNotifiedAt = cache?.lastNotifiedAt ?? 0;
-    if (
-      latestVersion &&
-      isNewerVersion(latestVersion, ctx.version) &&
-      shouldNotify(lastNotifiedAt, now, ctx.settings.update.notifyIntervalHours)
-    ) {
-      notify(ctx, latestVersion);
-      lastNotifiedAt = now;
+    let lastInstall = cache?.lastInstall ?? null;
+
+    if (latestVersion && isNewerVersion(latestVersion, ctx.version)) {
+      const wantsInstall = ctx.settings.update.autoInstall;
+      let justInstalled = false;
+
+      if (
+        wantsInstall &&
+        !installInFlight &&
+        shouldAttemptInstall(lastInstall, latestVersion, now, intervalHours)
+      ) {
+        installInFlight = true;
+        try {
+          const code = await (deps.runInstall ?? runUpgrade)(
+            ctx.settings.update.command,
+            ctx.logger,
+            { silent: true },
+          );
+          lastInstall = { version: latestVersion, at: now, ok: code === 0 };
+          justInstalled = code === 0;
+          if (code !== 0) {
+            ctx.logger.debug({ code }, "background update install failed");
+          }
+        } finally {
+          installInFlight = false;
+        }
+      }
+
+      // A version installed on an earlier poll (or run) is still pending a
+      // relaunch — keep reporting that rather than the "run nova upgrade" nudge.
+      const pending =
+        justInstalled || (lastInstall?.ok === true && lastInstall.version === latestVersion);
+      // A fresh install is a one-shot event (shouldAttemptInstall won't repeat
+      // it for this version), so it always reports — it can't turn into nagging.
+      if (justInstalled || shouldNotify(lastNotifiedAt, now, intervalHours)) {
+        if (pending) notifyInstalled(ctx, latestVersion);
+        else notify(ctx, latestVersion);
+        lastNotifiedAt = now;
+      }
     }
 
-    await writeCache(cachePath, { latestVersion, lastNotifiedAt });
+    await writeCache(cachePath, { latestVersion, lastNotifiedAt, lastInstall });
   } catch (err) {
     ctx.logger.debug({ err }, "update check failed");
   }
@@ -211,8 +313,16 @@ export async function checkForUpdate(ctx: CliContext, deps: CheckDeps = {}): Pro
  * Run the configured install command (e.g. `npm install -g …@latest`),
  * streaming its output to the user. Returns the child's exit code (non-zero on
  * failure). `command` is split on whitespace into argv.
+ *
+ * Pass `silent` for the background auto-install: output is captured instead of
+ * inherited (writing to the real stdout would tear through the ink TUI) and
+ * logged at debug level.
  */
-export async function runUpgrade(command: string, logger?: Logger): Promise<number> {
+export async function runUpgrade(
+  command: string,
+  logger?: Logger,
+  opts: { silent?: boolean } = {},
+): Promise<number> {
   const parts = command.trim().split(/\s+/);
   const [bin, ...args] = parts;
   if (!bin) {
@@ -220,10 +330,20 @@ export async function runUpgrade(command: string, logger?: Logger): Promise<numb
     return 1;
   }
   try {
-    const result = await execa(bin, args, { stdio: "inherit", reject: false });
+    const result = await execa(bin, args, {
+      stdio: opts.silent ? "pipe" : "inherit",
+      reject: false,
+    });
+    if (opts.silent) {
+      logger?.debug(
+        { command, exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr },
+        "background update install finished",
+      );
+    }
     return result.exitCode ?? 0;
   } catch (err) {
-    logger?.error({ err }, "upgrade command failed to launch");
+    if (opts.silent) logger?.debug({ err }, "background update install failed to launch");
+    else logger?.error({ err }, "upgrade command failed to launch");
     return 1;
   }
 }

@@ -83,12 +83,16 @@ describe("checkForUpdate", () => {
   let cachePath: string;
   const cards: Array<{ text: string; title?: string }> = [];
 
-  function makeCtx(overrides: { enabled?: boolean; version?: string } = {}): CliContext {
+  function makeCtx(
+    overrides: { enabled?: boolean; version?: string; autoInstall?: boolean } = {},
+  ): CliContext {
     return {
       version: overrides.version ?? "1.0.0",
       settings: {
         update: {
           enabled: overrides.enabled ?? true,
+          // Default the suite to notify-only; the auto-install tests opt in.
+          autoInstall: overrides.autoInstall ?? false,
           notifyIntervalHours: 24,
           command: "echo upgrade",
         },
@@ -136,7 +140,7 @@ describe("checkForUpdate", () => {
   });
 
   it("fetches every call but does not re-notify within the interval", async () => {
-    const cache: UpdateCache = { latestVersion: "1.5.0", lastNotifiedAt: 5_000 };
+    const cache: UpdateCache = { latestVersion: "1.5.0", lastNotifiedAt: 5_000, lastInstall: null };
     await writeFile(cachePath, JSON.stringify(cache), "utf8");
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ version: "1.5.0" }), { status: 200 }));
     // 1h later — well within the 24h notify interval.
@@ -146,7 +150,7 @@ describe("checkForUpdate", () => {
   });
 
   it("re-notifies once the interval has elapsed", async () => {
-    const cache: UpdateCache = { latestVersion: "1.5.0", lastNotifiedAt: 5_000 };
+    const cache: UpdateCache = { latestVersion: "1.5.0", lastNotifiedAt: 5_000, lastInstall: null };
     await writeFile(cachePath, JSON.stringify(cache), "utf8");
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ version: "1.5.0" }), { status: 200 }));
     const now = 5_000 + 25 * 60 * 60 * 1000; // 25h later, past the 24h interval
@@ -158,7 +162,7 @@ describe("checkForUpdate", () => {
   });
 
   it("falls back to the cached version when the fetch fails", async () => {
-    const cache: UpdateCache = { latestVersion: "1.5.0", lastNotifiedAt: 0 };
+    const cache: UpdateCache = { latestVersion: "1.5.0", lastNotifiedAt: 0, lastInstall: null };
     await writeFile(cachePath, JSON.stringify(cache), "utf8");
     const fetchImpl = vi.fn(async () => {
       throw new Error("network down");
@@ -166,6 +170,109 @@ describe("checkForUpdate", () => {
     await checkForUpdate(makeCtx(), { now: 1_000_000, cachePath, fetchImpl, packageName: "@scope/pkg" });
     expect(cards).toHaveLength(1);
     expect(cards[0]?.text).toContain("1.5.0");
+  });
+
+  it("installs in the background and reports it as pending a relaunch", async () => {
+    const fetchImpl = vi.fn(
+      async () => new Response(JSON.stringify({ version: "1.2.0" }), { status: 200 }),
+    );
+    const runInstall = vi.fn(async () => 0);
+    await checkForUpdate(makeCtx({ autoInstall: true }), {
+      now: 1_000,
+      cachePath,
+      fetchImpl,
+      runInstall,
+      packageName: "@scope/pkg",
+    });
+    expect(runInstall).toHaveBeenCalledWith("echo upgrade", expect.anything(), { silent: true });
+    expect(cards).toHaveLength(1);
+    expect(cards[0]?.title).toBe("update installed");
+    expect(cards[0]?.text).toContain("next time you start nova");
+    const cache = JSON.parse(await readFile(cachePath, "utf8")) as UpdateCache;
+    expect(cache.lastInstall).toEqual({ version: "1.2.0", at: 1_000, ok: true });
+  });
+
+  it("does not reinstall a version it already installed, and keeps reminding", async () => {
+    const cache: UpdateCache = {
+      latestVersion: "1.2.0",
+      lastNotifiedAt: 1_000,
+      lastInstall: { version: "1.2.0", at: 1_000, ok: true },
+    };
+    await writeFile(cachePath, JSON.stringify(cache), "utf8");
+    const fetchImpl = vi.fn(
+      async () => new Response(JSON.stringify({ version: "1.2.0" }), { status: 200 }),
+    );
+    const runInstall = vi.fn(async () => 0);
+    const now = 1_000 + 25 * 60 * 60 * 1000; // past the 24h notify interval
+    await checkForUpdate(makeCtx({ autoInstall: true }), {
+      now,
+      cachePath,
+      fetchImpl,
+      runInstall,
+      packageName: "@scope/pkg",
+    });
+    expect(runInstall).not.toHaveBeenCalled();
+    expect(cards).toHaveLength(1);
+    expect(cards[0]?.title).toBe("update installed");
+  });
+
+  it("falls back to the plain notice when the install command fails", async () => {
+    const fetchImpl = vi.fn(
+      async () => new Response(JSON.stringify({ version: "1.2.0" }), { status: 200 }),
+    );
+    const runInstall = vi.fn(async () => 1);
+    await checkForUpdate(makeCtx({ autoInstall: true }), {
+      now: 1_000,
+      cachePath,
+      fetchImpl,
+      runInstall,
+      packageName: "@scope/pkg",
+    });
+    expect(cards).toHaveLength(1);
+    expect(cards[0]?.title).toBe("update available");
+    const written = JSON.parse(await readFile(cachePath, "utf8")) as UpdateCache;
+    expect(written.lastInstall).toEqual({ version: "1.2.0", at: 1_000, ok: false });
+  });
+
+  it("backs a failed install off by the notify interval before retrying", async () => {
+    const cache: UpdateCache = {
+      latestVersion: "1.2.0",
+      lastNotifiedAt: 1_000,
+      lastInstall: { version: "1.2.0", at: 1_000, ok: false },
+    };
+    await writeFile(cachePath, JSON.stringify(cache), "utf8");
+    const fetchImpl = vi.fn(
+      async () => new Response(JSON.stringify({ version: "1.2.0" }), { status: 200 }),
+    );
+    const runInstall = vi.fn(async () => 0);
+    const deps = { cachePath, fetchImpl, runInstall, packageName: "@scope/pkg" };
+
+    // 1h later — inside the 24h backoff, so no retry.
+    await checkForUpdate(makeCtx({ autoInstall: true }), { ...deps, now: 1_000 + 60 * 60 * 1000 });
+    expect(runInstall).not.toHaveBeenCalled();
+
+    // 25h later — backoff elapsed, retry runs.
+    await checkForUpdate(makeCtx({ autoInstall: true }), {
+      ...deps,
+      now: 1_000 + 25 * 60 * 60 * 1000,
+    });
+    expect(runInstall).toHaveBeenCalledTimes(1);
+  });
+
+  it("never installs when autoInstall is off", async () => {
+    const fetchImpl = vi.fn(
+      async () => new Response(JSON.stringify({ version: "1.2.0" }), { status: 200 }),
+    );
+    const runInstall = vi.fn(async () => 0);
+    await checkForUpdate(makeCtx({ autoInstall: false }), {
+      now: 1_000,
+      cachePath,
+      fetchImpl,
+      runInstall,
+      packageName: "@scope/pkg",
+    });
+    expect(runInstall).not.toHaveBeenCalled();
+    expect(cards[0]?.title).toBe("update available");
   });
 
   it("swallows a fetch failure without throwing", async () => {
