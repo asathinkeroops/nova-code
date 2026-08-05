@@ -106,9 +106,15 @@ function renderBanner(b: BannerProps, width: number): string {
   lines.push("");
   lines.push(dim(t.render.tagline));
   lines.push("");
-  lines.push(`${dim("model:")}     ${formatModel(b)}`);
-  lines.push(`${dim("workspace:")} ${displayCwd(b.cwd, b.home)}`);
-  lines.push(`${dim("session:")}   ${b.sessionId}`);
+  // Labels are translated, so their widths differ per locale (and CJK glyphs
+  // are double-width): pad each to the widest one + 1 so the values still line
+  // up in a column.
+  const labels = [t.render.bannerModel, t.render.bannerWorkspace, t.render.bannerSession];
+  const labelWidth = Math.max(...labels.map(visibleWidth)) + 1;
+  const label = (s: string): string => dim(s) + " ".repeat(labelWidth - visibleWidth(s));
+  lines.push(`${label(t.render.bannerModel)}${formatModel(b)}`);
+  lines.push(`${label(t.render.bannerWorkspace)}${displayCwd(b.cwd, b.home)}`);
+  lines.push(`${label(t.render.bannerSession)}${b.sessionId}`);
   return lines.join("\n");
 }
 

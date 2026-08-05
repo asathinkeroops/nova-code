@@ -1195,7 +1195,7 @@ export async function createContext(
       // notice (persist:false so it isn't re-recorded). Both happen before
       // setMessages so the notice's anchor (-1) puts it above the history.
       ctx.screen.setCards(await loadCards(session.dir));
-      ctx.screen.card(dim(`loaded ${msgs.length} message(s) from disk`), { persist: false });
+      ctx.screen.card(dim(t.resume.loadedMessages(msgs.length)), { persist: false });
       ctx.screen.setMessages(msgs);
       // Restore an active /goal so auto-continuation survives a restart.
       ctx.goal = await loadGoal(session.dir);

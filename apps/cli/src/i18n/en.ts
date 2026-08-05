@@ -102,6 +102,11 @@ export const en = {
     batchRan: (n: number): string => `Ran ${n} shell command${n === 1 ? "" : "s"}`,
     /** "Jump to bottom" button shown above the InputBox while scrolled up. */
     jumpToBottom: " Jump to bottom (ctrl+End) ↓ ",
+    // Banner metadata labels (colon included). The renderer pads them to a
+    // common display width, so translations need not match in length.
+    bannerModel: "model:",
+    bannerWorkspace: "workspace:",
+    bannerSession: "session:",
   },
 
   /** Status line + permission/shell mode indicators (`ui/status-*`). */
@@ -413,6 +418,8 @@ export const en = {
     notFound: (id: string): string => `session ${id} not found.`,
     header: "select session to resume:",
     alreadyOn: "already on that session.",
+    /** Ephemeral card shown above a restored history (`context.ts`). */
+    loadedMessages: (n: number): string => `loaded ${n} message(s) from disk`,
   },
 
   /** The `/skills` list (`commands/skills.ts`). */

@@ -82,6 +82,9 @@ export const zh: DeepPartial<Catalog> = {
     batchRead: (n: number): string => `读取了 ${n} 个文件`,
     batchRan: (n: number): string => `运行了 ${n} 条 shell 命令`,
     jumpToBottom: " 跳到底部 (ctrl+End) ↓ ",
+    bannerModel: "模型：",
+    bannerWorkspace: "工作区：",
+    bannerSession: "会话：",
   },
 
   status: {
@@ -490,6 +493,7 @@ export const zh: DeepPartial<Catalog> = {
     notFound: (id: string): string => `未找到会话 ${id}。`,
     header: "选择要恢复的会话：",
     alreadyOn: "已经在该会话上了。",
+    loadedMessages: (n: number): string => `已从磁盘加载 ${n} 条消息`,
   },
 
   skills: {
