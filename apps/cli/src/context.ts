@@ -24,6 +24,7 @@ import {
   type InterjectFn,
 } from "@nova/tools";
 import {
+  API_KEY_ENV,
   createLogger,
   DEFAULT_CHEAP_TIER,
   loadProjectHooks,
@@ -168,7 +169,7 @@ export async function createContext(
 ): Promise<CliContext> {
   const apiKey = settings.apiKey;
   if (!apiKey) {
-    throw new Error("apiKey is not set in settings");
+    throw new Error(`apiKey is not set in settings (nor in $${API_KEY_ENV})`);
   }
 
   const workspace = cliOpts.cwd ?? process.cwd();
@@ -402,6 +403,13 @@ export async function createContext(
       lspManager,
       settings.cron.enabled ? cronStore : undefined,
       monitorManager,
+      {
+        keys: {
+          brave: settings.websearch.braveApiKey,
+          tavily: settings.websearch.tavilyApiKey,
+          serper: settings.websearch.serperApiKey,
+        },
+      },
     ),
   );
 

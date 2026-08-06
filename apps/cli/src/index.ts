@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { isThinkingLevel, type ThinkingLevel } from "@nova/core";
-import { type Settings } from "@nova/runtime";
+import { API_KEY_ENV, type Settings } from "@nova/runtime";
 import { createContext } from "./context.js";
 import {
   buildDoctorCommand,
@@ -131,7 +131,10 @@ async function runHeadlessMode(
   }
 
   if (!settings.apiKey) {
-    dieHeadless("apiKey is not set in nova.config.json (or equivalent settings file).", 1);
+    dieHeadless(
+      `apiKey is not set in nova.config.json (or equivalent settings file), nor in $${API_KEY_ENV}.`,
+      1,
+    );
   }
 
   const outputFormat = (opts.outputFormat ?? "text") as HeadlessOutputFormat;
@@ -261,7 +264,7 @@ async function run(positional: string[], opts: CliOptions): Promise<void> {
     if (!settings.apiKey) {
       await fatalExit(
         screen,
-        "apiKey is not set in nova.config.json (or equivalent settings file).",
+        `apiKey is not set in nova.config.json (or equivalent settings file), nor in $${API_KEY_ENV}.`,
       );
     }
 

@@ -1,7 +1,8 @@
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { API_KEY_ENV } from "@nova/runtime";
 import {
   buildFixPrompt,
   diagnoseConfig,
@@ -29,6 +30,17 @@ async function writeConfig(contents: string): Promise<string> {
 }
 
 describe("diagnoseConfig", () => {
+  // diagnoseConfig folds $NOVA_API_KEY into settings.apiKey, so a key exported
+  // in the dev's own shell would otherwise change what these tests observe.
+  const priorApiKeyEnv = process.env[API_KEY_ENV];
+  beforeEach(() => {
+    delete process.env[API_KEY_ENV];
+  });
+  afterEach(() => {
+    if (priorApiKeyEnv === undefined) delete process.env[API_KEY_ENV];
+    else process.env[API_KEY_ENV] = priorApiKeyEnv;
+  });
+
   it("treats a missing file as the fresh-install state, not an error", async () => {
     const { report, settings } = await diagnoseConfig({
       configPath: join(tmpdir(), "definitely-missing-nova.json"),
@@ -80,6 +92,22 @@ describe("diagnoseConfig", () => {
     expect(report.valid).toBe(true);
     const warn = report.issues.find((i) => i.title.includes("no apiKey"));
     expect(warn?.level).toBe("warn");
+  });
+
+  it("accepts $NOVA_API_KEY in place of a configured apiKey, and says so", async () => {
+    process.env[API_KEY_ENV] = "sk-from-env";
+    const path = await writeConfig(JSON.stringify({ model: "pro", models: VALID_CONFIG.models }));
+    const { report, settings } = await diagnoseConfig({ configPath: path });
+    expect(settings.apiKey).toBe("sk-from-env");
+    expect(report.issues.some((i) => i.title.includes("no apiKey"))).toBe(false);
+    expect(report.info.some((l) => l.includes(API_KEY_ENV))).toBe(true);
+  });
+
+  it("lets $NOVA_API_KEY override the apiKey in the config file", async () => {
+    process.env[API_KEY_ENV] = "sk-from-env";
+    const path = await writeConfig(JSON.stringify(VALID_CONFIG));
+    const { settings } = await diagnoseConfig({ configPath: path });
+    expect(settings.apiKey).toBe("sk-from-env");
   });
 
   it("warns when an apiKey is set but the models table is empty", async () => {

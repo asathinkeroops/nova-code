@@ -340,6 +340,9 @@ export const pluginSourceSchema = z.union([
 export type PluginSource = z.infer<typeof pluginSourceSchema>;
 
 export const settingsSchema = z.object({
+  // The model API key. Stored in plaintext here, so `$NOVA_API_KEY` is offered
+  // as an alternative and OVERRIDES this value when set — see resolveApiKey,
+  // which folds the two into `settings.apiKey` at load.
   apiKey: z.string().min(1).optional(),
   // The active tier: a KEY into `models` (lite/pro/max), never a bare model id.
   // Enforced by the schema-level refine below — a value that isn't a configured
@@ -911,6 +914,21 @@ export const settingsSchema = z.object({
       maxLineBytes: 2_000,
       autoContinueOnEvent: true,
     }),
+  // Web search (`websearch` tool) provider API keys. The tool needs a key for
+  // exactly ONE of brave / tavily / serper; with `provider: "auto"` (its
+  // default) it picks the first configured one in that order. Each key has an
+  // env twin — braveApiKey ↔ BRAVE_SEARCH_API_KEY, tavilyApiKey ↔
+  // TAVILY_API_KEY, serperApiKey ↔ SERPER_API_KEY — and the ENV WINS, same rule
+  // as the model `apiKey` (see resolveApiKey): the config file is the stored
+  // default, the environment is the per-shell override. Keys sit in plaintext
+  // in nova.config.json; use the env var when that matters.
+  websearch: z
+    .object({
+      braveApiKey: z.string().min(1).optional(),
+      tavilyApiKey: z.string().min(1).optional(),
+      serperApiKey: z.string().min(1).optional(),
+    })
+    .default({}),
   // Queued input handling. Prompts typed while a turn runs pile up in the input
   // queue and are normally drained one-per-turn back at the REPL once the turn
   // ends. When `consumeInLoop` is on, a running turn instead folds the next
@@ -1214,6 +1232,42 @@ export function resolveLanguage(
   return fallback;
 }
 
+/**
+ * Env var carrying the model API key. Deliberately nova-specific rather than
+ * `<PROVIDER>_API_KEY`: a generic name is very likely already exported in the
+ * user's shell for some other tool, and — since env WINS over the config file
+ * (see {@link resolveApiKey}) — such a collision would silently shadow the key
+ * the user actually configured.
+ */
+export const API_KEY_ENV = "NOVA_API_KEY";
+
+/** The API key from the environment, or undefined when unset/blank. */
+export function apiKeyFromEnv(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  return env[API_KEY_ENV]?.trim() || undefined;
+}
+
+/**
+ * The effective model API key: `$NOVA_API_KEY` when set, else the config file's
+ * `apiKey`. Env wins because the config value is what first-run setup writes
+ * (nearly everyone has one), so a config-first rule would make the env var
+ * useless for its actual purposes — CI, and switching accounts per shell.
+ *
+ * Resolved once at load ({@link loadSettings}, and the CLI's `diagnoseConfig`,
+ * which is the path the REPL actually boots through) so every downstream reader
+ * of `settings.apiKey` sees the effective value with no plumbing of its own.
+ *
+ * An env-provided key MUST NOT be written back to disk — that would defeat the
+ * point of keeping it out of the plaintext config. Every `saveSettings` call
+ * site passes a narrow patch, and only first-run setup writes `apiKey` at all
+ * (it skips that field when the env supplies one); keep it that way.
+ */
+export function resolveApiKey(
+  settings: Settings,
+  env: NodeJS.ProcessEnv = process.env,
+): string | undefined {
+  return apiKeyFromEnv(env) ?? settings.apiKey;
+}
+
 const DEFAULT_DENY_BASH = [
   /(^|\s)rm\s+-r\w*\s+\//,
   /:\(\)\s*\{\s*:\|:\s*&\s*\}\s*;\s*:/,
@@ -1239,6 +1293,10 @@ export async function loadSettings(configPath: string = DEFAULT_CONFIG_PATH): Pr
   // downstream read sees a real language tag. Idempotent: a non-"auto" value
   // (already-resolved or user-set) passes through unchanged.
   settings.language = resolveLanguage(settings);
+  // Same idea for the API key: fold `$NOVA_API_KEY` in once, here, so no reader
+  // has to know the key can come from somewhere other than the config file.
+  const apiKey = resolveApiKey(settings);
+  if (apiKey !== undefined) settings.apiKey = apiKey;
   return settings;
 }
 

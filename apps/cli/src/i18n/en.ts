@@ -508,7 +508,10 @@ export const en = {
     invalidSettingTitle: (path: string): string => `invalid setting: ${path}`,
     configFailedValidationTitle: "config failed validation",
     noApiKeyTitle: "no apiKey configured",
-    noApiKeyHint: 'nova will run first-time setup, or add "apiKey" to your config',
+    noApiKeyHint:
+      'nova will run first-time setup, or add "apiKey" to your config / export $NOVA_API_KEY',
+    apiKeyFromEnv: (envVar: string): string =>
+      `apiKey: taken from $${envVar} (overrides the config file)`,
     noModelsTitle: "apiKey is set but no models are configured",
     noModelsHint: (tiers: string): string => `add a "models" table with all tiers (${tiers})`,
     unknownProviderTitle: (provider: string): string =>

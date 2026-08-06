@@ -3,10 +3,13 @@ import { basename } from "node:path";
 import { Command } from "commander";
 import { isProviderId, PROVIDER_IDS } from "@nova/core";
 import {
+  API_KEY_ENV,
+  apiKeyFromEnv,
   DEFAULT_CONFIG_PATH,
   loadProjectHooks,
   parseSettings,
   REQUIRED_MODEL_TIERS,
+  resolveApiKey,
   resolveLanguage,
   type Settings,
 } from "@nova/runtime";
@@ -74,10 +77,13 @@ function zodIssues(err: unknown): ZodLikeIssue[] {
   return [];
 }
 
-/** A guaranteed-valid, all-defaults Settings, with `language` resolved like loadSettings does. */
+/** A guaranteed-valid, all-defaults Settings, normalized like loadSettings does
+ *  (`language` resolved, `$NOVA_API_KEY` folded in). */
 function defaultSettings(): Settings {
   const settings = parseSettings({});
   settings.language = resolveLanguage(settings);
+  const apiKey = resolveApiKey(settings);
+  if (apiKey !== undefined) settings.apiKey = apiKey;
   return settings;
 }
 
@@ -146,6 +152,11 @@ export async function diagnoseConfig(
       try {
         settings = parseSettings(raw);
         settings.language = resolveLanguage(settings);
+        // The REPL boots through this function, not loadSettings, so the same
+        // env-key fold has to happen here or `$NOVA_API_KEY` would be invisible
+        // to everything downstream (see resolveApiKey).
+        const apiKey = resolveApiKey(settings);
+        if (apiKey !== undefined) settings.apiKey = apiKey;
       } catch (err) {
         const zi = zodIssues(err);
         if (zi.length > 0) {
@@ -180,6 +191,10 @@ export async function diagnoseConfig(
         title: t.doctor.noApiKeyTitle,
         hint: t.doctor.noApiKeyHint,
       });
+    } else if (apiKeyFromEnv()) {
+      // Not a problem — but where the key comes from is worth stating, since an
+      // env key overrides (and can differ from) the one in the config file.
+      info.push(t.doctor.apiKeyFromEnv(API_KEY_ENV));
     }
     if (hasApiKey && Object.keys(settings.models).length === 0) {
       issues.push({

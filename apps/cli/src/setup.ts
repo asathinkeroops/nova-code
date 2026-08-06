@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { highlight } from "cli-highlight";
-import { DEFAULT_CONFIG_PATH, saveSettings, type Settings } from "@nova/runtime";
+import { apiKeyFromEnv, DEFAULT_CONFIG_PATH, saveSettings, type Settings } from "@nova/runtime";
 import { accent, dim, rgbFg, BLUE_RGB, PURPLE_HEX } from "./colors.js";
 import { t } from "./i18n/index.js";
 import { PROVIDER_TEMPLATES, type ProviderTemplate } from "./provider-templates.js";
@@ -84,6 +84,12 @@ export async function ensureSettings(
   // provider template supplies baseURL / model / the models table (the schema
   // no longer defaults baseURL or models), so a key alone completes setup.
   if (hasValue(raw, "apiKey")) return settings;
+  // `$NOVA_API_KEY` satisfies the key requirement just as well, but it says
+  // nothing about the endpoint: without a `models` table there is still no
+  // usable config, so fall through and run the picker — minus the key prompt,
+  // and without ever writing the env key to disk (see resolveApiKey).
+  const envKey = apiKeyFromEnv();
+  if (envKey && Object.keys(settings.models).length > 0) return settings;
 
   screen.beginSetup({
     header: {
@@ -138,9 +144,10 @@ export async function ensureSettings(
     if (choice.kind === "other") return exitForManualConfig(screen, configPath);
 
     // A templated provider: its baseURL / model / models all come from the
-    // template's settings, so only the API key is left to ask for.
+    // template's settings, so only the API key is left to ask for — and even
+    // that is skipped when the environment already supplies one.
     const { template } = choice;
-    let value: string | null = null;
+    let value: string | null = envKey ?? null;
     while (value === null) {
       screen.setSetupPrompt({
         label: t.setup.apiKeyLabel,
@@ -157,7 +164,10 @@ export async function ensureSettings(
       value = trimmed;
     }
 
-    const patch: Partial<Settings> = { ...template.settings, apiKey: value };
+    // An env-provided key stays in the env — persist the template only.
+    const patch: Partial<Settings> = envKey
+      ? { ...template.settings }
+      : { ...template.settings, apiKey: value };
     try {
       await saveSettings(patch, configPath);
       Object.assign(settings, patch);

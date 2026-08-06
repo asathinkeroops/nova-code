@@ -546,10 +546,10 @@
           <li><code>baseURL: https://api.deepseek.com/anthropic</code></li>
           <li><code>lite</code>→<code>deepseek-v4-flash</code>，<code>pro</code>/<code>max</code>→<code>deepseek-v4-pro</code>（默认档位 <code>pro</code>；三档靠 per-tier <code>thinking</code> 拉开梯度）</li>
         </ul>
-        <p>按 <span class="kbd">Ctrl+C</span> 可中止向导。<code>apiKey</code> 已存在则跳过向导。要接别的 Anthropic 兼容端点，直接<strong>手动编辑</strong> <code>~/.nova/nova.config.json</code> —— schema 不再为 <code>baseURL</code>/<code>models</code> 提供默认值，需按 <code>lite</code>/<code>pro</code>/<code>max</code> 三档骨架填全（完整字段见 <a class="inline-link" href="#sec-20">§20</a>）。</p>
+        <p>按 <span class="kbd">Ctrl+C</span> 可中止向导。<code>apiKey</code> 已存在则跳过向导；导出了环境变量 <code>NOVA_API_KEY</code> 且配置里已有 <code>models</code> 表时同样跳过（只有环境变量、还没有 <code>models</code> 表时，向导仍会跑，但不再问你 key，也不会把这个 key 写进配置文件）。要接别的 Anthropic 兼容端点，直接<strong>手动编辑</strong> <code>~/.nova/nova.config.json</code> —— schema 不再为 <code>baseURL</code>/<code>models</code> 提供默认值，需按 <code>lite</code>/<code>pro</code>/<code>max</code> 三档骨架填全（完整字段见 <a class="inline-link" href="#sec-20">§20</a>）。</p>
         <div class="callout callout-warn">
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg>
-          <div><div class="callout-title">apiKey 仍为空？</div><p>如果启动时 <code>apiKey</code> 仍为空，Nova 会报错退出并提示去配置文件里补上。</p></div>
+          <div><div class="callout-title">apiKey 仍为空？</div><p>如果启动时 <code>apiKey</code> 仍为空（且没有 <code>NOVA_API_KEY</code>），Nova 会报错退出并提示去配置文件里补上。</p></div>
         </div>
       </section>
 
@@ -789,7 +789,7 @@
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">Web</h3>
         <div class="tbl-wrap"><table class="doc"><thead><tr><th>工具</th><th>权限</th><th>说明</th></tr></thead><tbody>
           <tr><td><code>webfetch</code></td><td><span class="pill pill-ro">只读</span></td><td>取单个 http(s) URL，转成 markdown/text/html；遵守 robots.txt，默认超时 30s</td></tr>
-          <tr><td><code>websearch</code></td><td><span class="pill pill-ap">需 API key</span></td><td>搜公网返回 title+url+snippet；需环境变量 <code>BRAVE_SEARCH_API_KEY</code> / <code>TAVILY_API_KEY</code> / <code>SERPER_API_KEY</code>（按序自动选）</td></tr>
+          <tr><td><code>websearch</code></td><td><span class="pill pill-ap">需 API key</span></td><td>搜公网返回 title+url+snippet；需配置 <code>websearch.braveApiKey</code> / <code>tavilyApiKey</code> / <code>serperApiKey</code>，或对应环境变量 <code>BRAVE_SEARCH_API_KEY</code> / <code>TAVILY_API_KEY</code> / <code>SERPER_API_KEY</code>（按序自动选）</td></tr>
         </tbody></table></div>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">代码智能</h3>
@@ -1170,7 +1170,7 @@
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">顶层与模型</h3>
         <div class="tbl-wrap"><table class="doc"><thead><tr><th>字段</th><th>默认</th><th>说明</th></tr></thead><tbody>
-          <tr><td><code>apiKey</code></td><td>（无）</td><td>provider API key（首次向导会写入）</td></tr>
+          <tr><td><code>apiKey</code></td><td>（无）</td><td>provider API key（首次向导会写入）。<strong>环境变量 <code>NOVA_API_KEY</code> 优先于此项</strong>：设了就用它，配置文件里的值作为兜底。想把 key 留在环境里、不落到明文配置文件时用这个</td></tr>
           <tr><td><code>provider</code></td><td><code>"deepseek"</code></td><td>驱动 thinking 参数、错误翻译、重试的 <strong>provider profile</strong>：<code>deepseek</code>（effort 旋钮 + 错误翻译 + 状态码重试）/ <code>moonshot</code> / <code>other</code>（通用 Anthropic 兼容端点，用 <code>budget_tokens</code>）。未知 id 回退到 <code>other</code></td></tr>
           <tr><td><code>model</code></td><td><code>"pro"</code></td><td>当前<strong>档位</strong>：<code>models</code> 表中的 key（<code>lite</code>/<code>pro</code>/<code>max</code>），<strong>永远不是裸模型 id</strong></td></tr>
           <tr><td><code>models</code></td><td><code>{}</code></td><td>命名的模型档位表，value 为<strong>档位对象</strong>，每档带自己的 <code>id</code>、<code>maxTokens</code>、<code>contextWindowSize</code>、<code>thinking</code>、<code>modalities</code>、<code>pricing</code>、可选 <code>description</code>。非空时<strong>必须含 <code>lite</code>/<code>pro</code>/<code>max</code> 三档</strong>（schema 强制）；首次向导按 provider 模板写入，schema 不再提供默认值</td></tr>
@@ -1244,6 +1244,7 @@
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)"><code>background</code> / <code>queue</code> — 后台命令与输入队列</h3>
         <div class="tbl-wrap"><table class="doc"><thead><tr><th>字段</th><th>默认</th><th>说明</th></tr></thead><tbody>
+          <tr><td><code>websearch.*</code></td><td>无</td><td><code>websearch</code> 工具的搜索商 key：<code>braveApiKey</code> / <code>tavilyApiKey</code> / <code>serperApiKey</code>，配一个即可（按此顺序自动选）；对应环境变量 <code>BRAVE_SEARCH_API_KEY</code> / <code>TAVILY_API_KEY</code> / <code>SERPER_API_KEY</code> <strong>优先于</strong>配置文件里的同名 key（与 <code>apiKey</code> 规则一致）</td></tr>
           <tr><td><code>background.autoContinueOnComplete</code></td><td><code>true</code></td><td>后台命令跑完且 agent 空闲时，自动唤起一轮让它处理结果</td></tr>
           <tr><td><code>queue.consumeInLoop</code></td><td><code>true</code></td><td>回合运行中新键入的普通 prompt 在 loop 边界即时折入（<code>/</code> 与 <code>!</code> 行仍排队）</td></tr>
         </tbody></table></div>
@@ -1310,14 +1311,14 @@
               <span>启动报 apiKey 未设置</span>
               <svg class="w-4 h-4 text-mute transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
             </summary>
-            <p class="px-5 pb-4 pt-0 text-sm m-0 max-w-none">跑一次首启向导填上，或手动编辑 <code>~/.nova/nova.config.json</code> 的 <code>apiKey</code>/<code>baseURL</code>/<code>model</code>。</p>
+            <p class="px-5 pb-4 pt-0 text-sm m-0 max-w-none">跑一次首启向导填上，或手动编辑 <code>~/.nova/nova.config.json</code> 的 <code>apiKey</code>/<code>baseURL</code>/<code>model</code>；也可以只导出环境变量 <code>NOVA_API_KEY</code>（优先于配置文件里的 <code>apiKey</code>，<code>/doctor</code> 会标明当前 key 的来源）。</p>
           </details>
           <details class="group bg-surface border border-line rounded-xl overflow-hidden">
             <summary class="cursor-pointer list-none px-5 py-3.5 flex items-center justify-between gap-3 font-medium select-none" style="color:var(--text)">
               <span><code>websearch</code> 报缺 key</span>
               <svg class="w-4 h-4 text-mute transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
             </summary>
-            <p class="px-5 pb-4 pt-0 text-sm m-0 max-w-none">设置 <code>BRAVE_SEARCH_API_KEY</code> / <code>TAVILY_API_KEY</code> / <code>SERPER_API_KEY</code> 任一环境变量（按此顺序自动选用）。</p>
+            <p class="px-5 pb-4 pt-0 text-sm m-0 max-w-none">在 <code>~/.nova/nova.config.json</code> 的 <code>websearch</code> 下填 <code>braveApiKey</code> / <code>tavilyApiKey</code> / <code>serperApiKey</code> 任一项，或设置对应环境变量 <code>BRAVE_SEARCH_API_KEY</code> / <code>TAVILY_API_KEY</code> / <code>SERPER_API_KEY</code>（按 brave → tavily → serper 顺序自动选用；同一家两处都配时<strong>环境变量优先</strong>，与 <code>apiKey</code> 同一条规则）。</p>
           </details>
           <details class="group bg-surface border border-line rounded-xl overflow-hidden">
             <summary class="cursor-pointer list-none px-5 py-3.5 flex items-center justify-between gap-3 font-medium select-none" style="color:var(--text)">

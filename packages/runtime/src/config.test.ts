@@ -1,8 +1,11 @@
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  API_KEY_ENV,
+  apiKeyFromEnv,
+  resolveApiKey,
   DEFAULT_MAX_TOKENS,
   DEFAULT_CONTEXT_WINDOW_SIZE,
   DEFAULT_SANDBOX_ALLOW_WRITE,
@@ -226,6 +229,17 @@ describe("resolveContextWindowSize", () => {
 });
 
 describe("loadSettings", () => {
+  // The loader folds $NOVA_API_KEY into settings.apiKey, so a key exported in
+  // the dev's own shell would otherwise leak into these expectations.
+  const priorApiKeyEnv = process.env[API_KEY_ENV];
+  beforeEach(() => {
+    delete process.env[API_KEY_ENV];
+  });
+  afterEach(() => {
+    if (priorApiKeyEnv === undefined) delete process.env[API_KEY_ENV];
+    else process.env[API_KEY_ENV] = priorApiKeyEnv;
+  });
+
   it("reads model, baseURL, apiKey, sessionDir from config file", async () => {
     const dir = await mkdtemp(join(tmpdir(), "nova-config-"));
     const path = join(dir, "nova.config.json");
@@ -256,6 +270,20 @@ describe("loadSettings", () => {
     expect(s.sessionDir).toBeUndefined();
   });
 
+  it("folds $NOVA_API_KEY in, overriding the file's apiKey", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "nova-config-"));
+    const path = join(dir, "nova.config.json");
+    await writeFile(path, JSON.stringify({ apiKey: "from-config" }), "utf8");
+    const prior = process.env[API_KEY_ENV];
+    process.env[API_KEY_ENV] = "from-env";
+    try {
+      expect((await loadSettings(path)).apiKey).toBe("from-env");
+    } finally {
+      if (prior === undefined) delete process.env[API_KEY_ENV];
+      else process.env[API_KEY_ENV] = prior;
+    }
+  });
+
   it("accepts per-tier maxTokens in models", async () => {
     const dir = await mkdtemp(join(tmpdir(), "nova-config-"));
     const path = join(dir, "nova.config.json");
@@ -268,6 +296,31 @@ describe("loadSettings", () => {
     );
     const s = await loadSettings(path);
     expect(s.models.pro?.maxTokens).toBe(4096);
+  });
+});
+
+describe("resolveApiKey", () => {
+  const withKey = parseSettings({ apiKey: "from-config" });
+  const keyless = parseSettings({});
+  const env = (value?: string): NodeJS.ProcessEnv =>
+    (value === undefined ? {} : { [API_KEY_ENV]: value }) as NodeJS.ProcessEnv;
+
+  it("prefers the environment over the config file", () => {
+    expect(resolveApiKey(withKey, env("from-env"))).toBe("from-env");
+  });
+
+  it("falls back to the config file when the env var is unset", () => {
+    expect(resolveApiKey(withKey, env())).toBe("from-config");
+  });
+
+  it("treats a blank env var as unset and trims the value", () => {
+    expect(resolveApiKey(withKey, env("   "))).toBe("from-config");
+    expect(resolveApiKey(keyless, env("  from-env  "))).toBe("from-env");
+    expect(apiKeyFromEnv(env(""))).toBeUndefined();
+  });
+
+  it("returns undefined when neither source has a key", () => {
+    expect(resolveApiKey(keyless, env())).toBeUndefined();
   });
 });
 

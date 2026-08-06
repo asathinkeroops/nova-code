@@ -20,7 +20,7 @@ import { createBackgroundCommandTools } from "./builtin/background/index.js";
 import { type MonitorManager } from "./builtin/monitor/manager.js";
 import { createMonitorTools } from "./builtin/monitor/index.js";
 import { webfetchTool } from "./builtin/webfetch.js";
-import { websearchTool } from "./builtin/websearch.js";
+import { createWebsearchTool, websearchTool, type WebsearchOptions } from "./builtin/websearch.js";
 import { writeTool } from "./builtin/write.js";
 
 export { ToolRegistry } from "./registry.js";
@@ -42,8 +42,10 @@ export {
   readTool,
   webfetchTool,
   websearchTool,
+  createWebsearchTool,
   writeTool,
 };
+export type { WebsearchKeys, WebsearchOptions } from "./builtin/websearch.js";
 export {
   createTodoTool,
   getTodoListTool,
@@ -151,6 +153,7 @@ export function builtinTools(
   lspManager?: LspManager,
   cronStore?: CronStore,
   monitorManager?: MonitorManager,
+  websearch?: WebsearchOptions,
 ): ToolHandler[] {
   const tools: ToolHandler[] = [
     // bash owns both the foreground and the background command path — the
@@ -162,7 +165,9 @@ export function builtinTools(
     globTool,
     grepTool,
     webfetchTool,
-    websearchTool,
+    // Provider API keys come from settings.websearch; each falls back to its
+    // env var inside the tool, so the keyless case still works.
+    createWebsearchTool(websearch ?? {}),
     askUserQuestionTool,
     ...createTodoTools(todoStore),
   ];

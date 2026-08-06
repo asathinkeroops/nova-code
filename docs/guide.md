@@ -77,9 +77,9 @@ echo "总结这个 diff" | pnpm dev  # 无 TTY：headless 跑一轮后退出
 - `baseURL: https://api.deepseek.com/anthropic`
 - `lite`→`deepseek-v4-flash`，`pro`/`max`→`deepseek-v4-pro`（默认档位 `pro`；三档靠 per-tier `thinking` 拉开梯度）
 
-按 `Ctrl+C` 可中止向导。`apiKey` 已存在则跳过向导。要接别的 Anthropic 兼容端点，直接**手动编辑** `~/.nova/nova.config.json`——schema 不再为 `baseURL`/`models` 提供默认值，需按 `lite`/`pro`/`max` 三档骨架填全（完整字段见 [§20](#20-配置文件完整参考)）。
+按 `Ctrl+C` 可中止向导。`apiKey` 已存在则跳过向导；导出了环境变量 `NOVA_API_KEY` 且配置里已有 `models` 表时同样跳过（只有环境变量、还没有 `models` 表时，向导仍会跑，但不再问你 key，也不会把这个 key 写进配置文件）。要接别的 Anthropic 兼容端点，直接**手动编辑** `~/.nova/nova.config.json`——schema 不再为 `baseURL`/`models` 提供默认值，需按 `lite`/`pro`/`max` 三档骨架填全（完整字段见 [§20](#20-配置文件完整参考)）。
 
-> 如果启动时 `apiKey` 仍为空，Nova 会报错退出并提示去配置文件里补上。
+> 如果启动时 `apiKey` 仍为空（且没有 `NOVA_API_KEY`），Nova 会报错退出并提示去配置文件里补上。
 
 ---
 
@@ -295,7 +295,7 @@ Nova 把「extended thinking」暴露成五个等级，或一个显式的 token 
 | 工具 | 权限 | 说明 |
 |------|------|------|
 | `webfetch` | 只读 | 取单个 http(s) URL，转成 markdown/text/html；遵守 robots.txt，默认超时 30s |
-| `websearch` | 需 API key | 搜公网返回 title+url+snippet；需环境变量 `BRAVE_SEARCH_API_KEY` / `TAVILY_API_KEY` / `SERPER_API_KEY`（按序自动选） |
+| `websearch` | 需 API key | 搜公网返回 title+url+snippet；需配置 `websearch.braveApiKey` / `tavilyApiKey` / `serperApiKey`，或对应环境变量 `BRAVE_SEARCH_API_KEY` / `TAVILY_API_KEY` / `SERPER_API_KEY`（按序自动选） |
 
 ### 代码智能
 
@@ -707,7 +707,7 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 
 | 字段 | 默认 | 说明 |
 |------|------|------|
-| `apiKey` | （无） | provider API key（首次向导会写入） |
+| `apiKey` | （无） | provider API key（首次向导会写入）。**环境变量 `NOVA_API_KEY` 优先于此项**：设了就用它，配置文件里的值作为兜底。想把 key 留在环境里、不落到明文配置文件时用这个 |
 | `provider` | `"deepseek"` | 驱动 thinking 参数、错误翻译、重试策略的 **provider profile**：`deepseek`（effort 旋钮 + 错误翻译 + 状态码重试）/ `moonshot` / `other`（通用 Anthropic 兼容端点，用 `budget_tokens`、不翻译错误）。未知 id 回退到 `other` |
 | `model` | `"pro"` | 当前**档位**：`models` 表中的 key（`lite`/`pro`/`max`），**永远不是裸模型 id** |
 | `models` | `{}` | 命名的模型档位表，value 为**档位对象**，每档带自己的 `id`、`maxTokens`、`contextWindowSize`、`thinking`、`modalities`、`pricing`、可选 `description`。非空时**必须含 `lite`/`pro`/`max` 三档**（schema 强制）；首次向导按 provider 模板写入，schema 不再提供默认值 |
@@ -806,6 +806,7 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 | `goal.*` | `enabled:true` | `/goal` 目标模式：`evalModel`（判定档位，模板设 `lite`）/`maxContinuations`=25/`maxEvalTurns`=15 |
 | `loop.*` | `maxIterations`=100 | `/loop` 重复任务：`maxIterations` 安全上限、`minIntervalMs`=1000 拒绝过密间隔，见 [§6](#6-slash-命令大全) |
 | `cron.*` | `enabled:true` | 定时调度工具：`maxSchedules`=20、`minIntervalMs`=1000、`maxIterations`=100（`enabled` 只管 agent 工具，`/loop` 不受影响），见 [§9](#9-内置工具一览) |
+| `websearch.*` | 无 | `websearch` 工具的搜索商 key：`braveApiKey` / `tavilyApiKey` / `serperApiKey`，配一个即可（按此顺序自动选）；对应环境变量 `BRAVE_SEARCH_API_KEY` / `TAVILY_API_KEY` / `SERPER_API_KEY` **优先于**配置文件里的同名 key（与 `apiKey` 规则一致） |
 | `background.autoContinueOnComplete` | `true` | 后台命令跑完且 agent 空闲时，自动唤起一轮让它处理结果 |
 | `queue.consumeInLoop` | `true` | 回合运行中新键入的普通 prompt 在 loop 边界即时折入（`/` 与 `!` 行仍排队） |
 | `terminal.syncOutput` / `cursorFollow` | `true` / `true` | 同步输出（防闪烁）/ 光标跟随输入框（IME 定位） |
@@ -939,10 +940,10 @@ A：`language` 管模型回复语言，`locale` 只管 TUI 静态文案。要中
 A：能。`read` 直接吃 `.pdf`（≤30MB），抽取的文本带行号、每页前有 `[Page N]` 标记，`offset`/`limit` 照常翻页。扫描件 / 纯图片 PDF 抽不出文本，工具会明说并建议改用 `ocrmypdf`/`tesseract` 之类先 OCR。
 
 **Q：启动报 apiKey 未设置。**
-A：跑一次首启向导填上，或手动编辑 `~/.nova/nova.config.json` 的 `apiKey`/`baseURL`/`model`。
+A：跑一次首启向导填上，或手动编辑 `~/.nova/nova.config.json` 的 `apiKey`/`baseURL`/`model`；也可以只导出环境变量 `NOVA_API_KEY`（优先于配置文件里的 `apiKey`，`/doctor` 会标明当前 key 的来源）。
 
 **Q：`websearch` 报缺 key。**
-A：设置 `BRAVE_SEARCH_API_KEY` / `TAVILY_API_KEY` / `SERPER_API_KEY` 任一环境变量（按此顺序自动选用）。
+A：在 `~/.nova/nova.config.json` 的 `websearch` 下填 `braveApiKey` / `tavilyApiKey` / `serperApiKey` 任一项，或设置对应环境变量 `BRAVE_SEARCH_API_KEY` / `TAVILY_API_KEY` / `SERPER_API_KEY`（按 brave → tavily → serper 顺序自动选用；同一家两处都配时**环境变量优先**，与 `apiKey` 同一条规则）。
 
 **Q：每次写文件/跑命令都来问我，太烦。**
 A：在审批框选 **Always allow this tool**（本 session 内不再问），或在 `permissions.rules` 里给具体命令/工具加 `allow` 规则（见 [§10](#10-权限与安全)）。

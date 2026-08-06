@@ -12,6 +12,7 @@ import {
   readTool,
   webfetchTool,
   websearchTool,
+  createWebsearchTool,
   writeTool,
 } from "../index.js";
 
@@ -759,5 +760,75 @@ describe("websearchTool", () => {
     const r = await websearchTool.run({ query: "x", provider: "tavily" }, { cwd: dir });
     expect(r.isError).toBe(true);
     expect(String(r.output)).toContain("TAVILY_API_KEY");
+    expect(String(r.output)).toContain("settings.websearch.tavilyApiKey");
+  });
+
+  it("uses a key from settings when no env var is set", async () => {
+    const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toContain("api.search.brave.com");
+      expect((init?.headers as Record<string, string>)["x-subscription-token"]).toBe("from-config");
+      return new Response(JSON.stringify({ web: { results: [] } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetcher);
+
+    const tool = createWebsearchTool({ keys: { brave: "from-config" } });
+    const r = await tool.run({ query: "q" }, { cwd: dir });
+    expect(r.isError).toBeUndefined();
+    expect(String(r.output)).toContain("websearch[brave]");
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+
+  it("prefers the env var over the settings key", async () => {
+    process.env.SERPER_API_KEY = "from-env";
+    const fetcher = vi.fn(async (_url: string, init?: RequestInit) => {
+      expect((init?.headers as Record<string, string>)["x-api-key"]).toBe("from-env");
+      return new Response(JSON.stringify({ organic: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetcher);
+
+    const tool = createWebsearchTool({ keys: { serper: "from-config" } });
+    const r = await tool.run({ query: "q", provider: "serper" }, { cwd: dir });
+    expect(r.isError).toBeUndefined();
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+
+  it("auto-selects in brave → tavily → serper order across settings and env", async () => {
+    process.env.SERPER_API_KEY = "s"; // later in the order, even though it's in env
+    const fetcher = vi.fn(async (url: string) => {
+      expect(url).toBe("https://api.tavily.com/search");
+      return new Response(JSON.stringify({ results: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetcher);
+
+    const tool = createWebsearchTool({ keys: { tavily: "t" } });
+    const r = await tool.run({ query: "q" }, { cwd: dir });
+    expect(r.isError).toBeUndefined();
+    expect(String(r.output)).toContain("websearch[tavily]");
+  });
+
+  it("uses an env key for a provider the settings don't configure", async () => {
+    process.env.BRAVE_SEARCH_API_KEY = "k";
+    const fetcher = vi.fn(async (_url: string, init?: RequestInit) => {
+      expect((init?.headers as Record<string, string>)["x-subscription-token"]).toBe("k");
+      return new Response(JSON.stringify({ web: { results: [] } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetcher);
+
+    const tool = createWebsearchTool({ keys: { tavily: undefined } });
+    const r = await tool.run({ query: "q" }, { cwd: dir });
+    expect(r.isError).toBeUndefined();
+    expect(String(r.output)).toContain("websearch[brave]");
   });
 });
