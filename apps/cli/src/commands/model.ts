@@ -30,7 +30,7 @@ function notice(ctx: CliContext, lines: string[]): Promise<void> {
  * choice survives restarts. Sub-agents read ctx.settings.model lazily, so they
  * follow the switch when nothing more specific is set.
  */
-async function applyModel(ctx: CliContext, name: string): Promise<void> {
+function applyModel(ctx: CliContext, name: string): void {
   ctx.settings.model = name;
   ctx.model = ctx.buildModel(name);
   ctx.predictModel = ctx.buildModel(name, false);
@@ -49,13 +49,14 @@ async function applyModel(ctx: CliContext, name: string): Promise<void> {
   refreshBanner(ctx);
   const resolved = resolveModelId(ctx.settings, name);
   const suffix = resolved === name ? "" : dim(` (${resolved})`);
-  // A save failure surfaces in its own overlay (openModal cancels whatever
-  // modal is showing) — it's async and fire-and-forget, so don't await it.
+  // Confirmation goes to the feed as a card, not a modal: picking a tier already
+  // closed the picker, so an overlay would only add a keypress to dismiss.
+  // A save failure lands the same way (it's async — don't await it).
   saveSettings({ model: name }).catch((err) => {
     const msg = err instanceof Error ? err.message : String(err);
-    void notice(ctx, [t.model.saveFailed(msg)]);
+    ctx.screen.card(t.model.saveFailed(msg), { kind: "error", title: TITLE });
   });
-  await notice(ctx, [`${dim(t.model.setTo)} ${name}${suffix}`]);
+  ctx.screen.card(`${dim(t.model.setTo)} ${name}${suffix}`, { title: TITLE });
 }
 
 export async function handleModel(ctx: CliContext, arg: string): Promise<void> {
@@ -72,7 +73,7 @@ export async function handleModel(ctx: CliContext, arg: string): Promise<void> {
       ]);
       return;
     }
-    await applyModel(ctx, arg);
+    applyModel(ctx, arg);
     return;
   }
 
@@ -110,5 +111,5 @@ export async function handleModel(ctx: CliContext, arg: string): Promise<void> {
     },
   });
   if (!pick) return; // esc — leave the feed quiet
-  await applyModel(ctx, pick);
+  applyModel(ctx, pick);
 }
