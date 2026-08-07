@@ -100,9 +100,9 @@ export const zh: DeepPartial<Catalog> = {
   status: {
     modeHint: "(shift+tab 切换)",
     shellMode: "! 进入 shell 模式",
-    manualMode: "⏸ 手动模式已开启",
+    manualMode: "○ 手动模式已开启",
     acceptEdits: "⏵⏵ 接受编辑已开启",
-    autoMode: "⏵⏵ 自动模式已开启",
+    autoMode: "✦ 自动模式已开启",
     planMode: "⏸ 计划模式已开启",
     bypass: "⚠ 跳过权限已开启",
     usageBalance: "余额",

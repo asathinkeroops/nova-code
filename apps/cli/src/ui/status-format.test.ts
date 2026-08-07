@@ -12,7 +12,15 @@ import {
   shellModeIndicator,
   type StatusSegment,
 } from "./status-format.js";
-import { BASH_HEX, GRAY_HEX } from "../colors.js";
+import {
+  BASH_HEX,
+  MODE_ACCEPT_HEX,
+  MODE_AUTO_HEX,
+  MODE_BYPASS_HEX,
+  MODE_MANUAL_HEX,
+  MODE_PLAN_HEX,
+} from "../colors.js";
+import type { PermissionMode } from "../permissions.js";
 
 describe("formatDuration", () => {
   it("shows hours/minutes/seconds for long spans", () => {
@@ -149,22 +157,35 @@ describe("fitSegments", () => {
 describe("permissionModeIndicator", () => {
   it("labels default mode as manual, in light grey", () => {
     expect(permissionModeIndicator("default")).toEqual({
-      label: "⏸ manual mode on",
-      color: GRAY_HEX,
+      label: "○ manual mode on",
+      color: MODE_MANUAL_HEX,
     });
   });
 
   it("labels accept-edits, auto, plan, and bypass in distinct colors (hint appended dim by the renderer)", () => {
     expect(permissionModeIndicator("acceptEdits")).toEqual({
       label: "⏵⏵ accept edits on",
-      color: "green",
+      color: MODE_ACCEPT_HEX,
     });
-    expect(permissionModeIndicator("auto")).toEqual({ label: "⏵⏵ auto mode on", color: "yellow" });
-    expect(permissionModeIndicator("plan")).toEqual({ label: "⏸ plan mode on", color: "cyan" });
+    expect(permissionModeIndicator("auto")).toEqual({
+      label: "✦ auto mode on",
+      color: MODE_AUTO_HEX,
+    });
+    expect(permissionModeIndicator("plan")).toEqual({
+      label: "⏸ plan mode on",
+      color: MODE_PLAN_HEX,
+    });
     expect(permissionModeIndicator("bypassPermissions")).toEqual({
       label: "⚠ bypass permissions on",
-      color: "red",
+      color: MODE_BYPASS_HEX,
     });
+  });
+
+  it("gives every mode a distinct color and a distinct leading glyph", () => {
+    const modes: PermissionMode[] = ["default", "acceptEdits", "auto", "plan", "bypassPermissions"];
+    const indicators = modes.map((m) => permissionModeIndicator(m));
+    expect(new Set(indicators.map((i) => i.color)).size).toBe(modes.length);
+    expect(new Set(indicators.map((i) => i.label.split(" ")[0])).size).toBe(modes.length);
   });
 });
 

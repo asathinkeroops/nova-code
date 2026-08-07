@@ -412,10 +412,10 @@ Output: … — read or grep it if you need the command's output.</background-no
 
 | 模式 | 状态行 | 行为 |
 |------|--------|------|
-| `default` | ⏸ manual mode on（浅灰） | 不改变任何裁决，`write`/`edit`/`bash` 照常落到引擎的 `ask` |
-| `acceptEdits` | ⏵⏵ accept edits on | **工作区内**的 `write`/`edit` 自动放行；`bash` 与工作区外的写仍然询问 |
-| `auto`（启动默认） | ⏵⏵ auto mode on | **自主模式**：在 `acceptEdits` 基础上，命令工具（`bash`，含 `run_in_background`）也自动放行、无人值守运行（先过一层风险分类器）。比 `acceptEdits` 更宽，但仍窄于 `bypassPermissions`——工作区外的写和用户 `deny` 规则不被绕过 |
-| `plan` | ⏸ plan mode on | **只读**：`write`/`edit`/`bash` 一律拒绝，逼模型先调查、给出分步计划——与只读 `/plan` 子 agent 同源 |
+| `default` | ○ manual mode on（浅灰） | 不改变任何裁决，`write`/`edit`/`bash` 照常落到引擎的 `ask` |
+| `acceptEdits` | ⏵⏵ accept edits on（绿） | **工作区内**的 `write`/`edit` 自动放行；`bash` 与工作区外的写仍然询问 |
+| `auto`（启动默认） | ✦ auto mode on（琥珀） | **自主模式**：在 `acceptEdits` 基础上，命令工具（`bash`，含 `run_in_background`）也自动放行、无人值守运行（先过一层风险分类器）。比 `acceptEdits` 更宽，但仍窄于 `bypassPermissions`——工作区外的写和用户 `deny` 规则不被绕过 |
+| `plan` | ⏸ plan mode on（青） | **只读**：`write`/`edit`/`bash` 一律拒绝，逼模型先调查、给出分步计划——与只读 `/plan` 子 agent 同源 |
 
 `plan` 这一档模型自己也能进：`enterPlanMode` 让它在动手前先切成只读（只收权，不问你）。整套由 `planMode.agentTools` 控制，默认开；见 [§9](#9-内置工具一览)。模式无论谁切的，都会在下一次请求时以一条 `<plan-mode>` 提示告诉模型，行为完全一致。
 

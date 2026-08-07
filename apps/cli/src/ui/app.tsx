@@ -297,7 +297,7 @@ export function App({ store }: AppProps): React.ReactElement {
             <StatusLine store={store} shellMode={shellMode} />
             {modeIndicator ? (
               <Box>
-                <Text color={modeIndicator.color}>{` ${modeIndicator.label}`}</Text>
+                <Text bold color={modeIndicator.color}>{` ${modeIndicator.label}`}</Text>
                 <Text dimColor>{` ${permissionModeHint()}`}</Text>
               </Box>
             ) : null}

@@ -128,9 +128,9 @@ export const en = {
   status: {
     modeHint: "(shift+tab to cycle)",
     shellMode: "! for shell mode",
-    manualMode: "⏸ manual mode on",
+    manualMode: "○ manual mode on",
     acceptEdits: "⏵⏵ accept edits on",
-    autoMode: "⏵⏵ auto mode on",
+    autoMode: "✦ auto mode on",
     planMode: "⏸ plan mode on",
     bypass: "⚠ bypass permissions on",
     // Trailing labels on the cumulative-usage row (follow a number/amount).

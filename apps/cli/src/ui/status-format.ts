@@ -1,4 +1,11 @@
-import { BASH_HEX, GRAY_HEX } from "../colors.js";
+import {
+  BASH_HEX,
+  MODE_ACCEPT_HEX,
+  MODE_AUTO_HEX,
+  MODE_BYPASS_HEX,
+  MODE_MANUAL_HEX,
+  MODE_PLAN_HEX,
+} from "../colors.js";
 import { t } from "../i18n/index.js";
 import { visibleWidth } from "./width.js";
 import type { PermissionMode } from "../permissions.js";
@@ -33,24 +40,28 @@ export function shellModeIndicator(): PermissionModeIndicator {
  * Colored label shown below the StatusLine for the current permission mode.
  * Every mode has a label — `default` included, since `auto` is now the startup
  * mode and "no row at all" would read as "no mode" rather than "gating is on".
- * Each mode gets a distinct color for at-a-glance distinction — light grey for
- * default/manual (every write asks), green for accept-edits (writes flowing),
- * yellow for auto (writes plus unattended commands), cyan for plan (read-only),
- * red for the dangerous bypass. The PERMISSION_MODE_HINT is rendered after it
- * in the StatusLine's dim color. Cycled with shift+tab.
+ *
+ * Each mode carries both a distinct hue and a distinct glyph (the glyph is part
+ * of the i18n label), so the row stays unambiguous even where colours wash out:
+ * `○` grey for default/manual (every write asks), `⏵⏵` green for accept-edits
+ * (writes flowing), `✦` amber for auto (writes plus unattended commands), `⏸`
+ * cyan for plan (read-only), `⚠` red for the dangerous bypass. The colours are
+ * saturated hexes, not the base ANSI names, which render too dim to read on most
+ * terminal themes; the renderer draws the label bold. The PERMISSION_MODE_HINT
+ * is rendered after it in the StatusLine's dim color. Cycled with shift+tab.
  */
 export function permissionModeIndicator(mode: PermissionMode): PermissionModeIndicator {
   switch (mode) {
     case "acceptEdits":
-      return { label: t.status.acceptEdits, color: "green" };
+      return { label: t.status.acceptEdits, color: MODE_ACCEPT_HEX };
     case "auto":
-      return { label: t.status.autoMode, color: "yellow" };
+      return { label: t.status.autoMode, color: MODE_AUTO_HEX };
     case "plan":
-      return { label: t.status.planMode, color: "cyan" };
+      return { label: t.status.planMode, color: MODE_PLAN_HEX };
     case "bypassPermissions":
-      return { label: t.status.bypass, color: "red" };
+      return { label: t.status.bypass, color: MODE_BYPASS_HEX };
     default:
-      return { label: t.status.manualMode, color: GRAY_HEX };
+      return { label: t.status.manualMode, color: MODE_MANUAL_HEX };
   }
 }
 

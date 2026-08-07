@@ -52,12 +52,23 @@ export const BLUE_RGB: Rgb = [37, 99, 235];
  */
 export const BASH_HEX = "#7fd99a";
 
-/**
- * Light grey for the `default` ("manual") permission-mode label below the
- * StatusLine — present but visually recessive next to the coloured labels of
- * the modes that actually relax gating (green/yellow/cyan/red).
- */
-export const GRAY_HEX = "#9ca3af";
+// Permission-mode label colours (see `ui/status-format.ts`). Saturated hexes
+// rather than the base ANSI names — the 16-colour `green`/`yellow`/`cyan`/`red`
+// render washed out on most terminal themes, and this row is the one piece of
+// chrome that must stay readable at a glance. Each mode gets its own hue *and*
+// its own glyph (the glyph lives in the i18n label), so the row stays legible
+// without relying on colour alone.
+
+/** Manual/default — a light grey: recessive next to the other modes, but still readable. */
+export const MODE_MANUAL_HEX = "#b8c1cf";
+/** Accept-edits — bright green (writes flow, commands still ask). */
+export const MODE_ACCEPT_HEX = "#3ddc84";
+/** Auto — amber (writes plus unattended commands). */
+export const MODE_AUTO_HEX = "#ffb454";
+/** Plan — bright cyan (read-only). */
+export const MODE_PLAN_HEX = "#22d3ee";
+/** Bypass — hot red (all gating off). */
+export const MODE_BYPASS_HEX = "#ff5f56";
 
 /**
  * Candidate backgrounds for the session-name badge (`/rename`). A session name
