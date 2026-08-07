@@ -47,7 +47,9 @@ import {
   builtinTools,
   createDispatcher,
   createInvariants,
+  createPlanModeTools,
   getSkillList,
+  PLAN_MODE_TOOL_NAMES,
   type SkillsOptions,
 } from "@nova/tools";
 import { CronScheduler } from "./cron-scheduler.js";
@@ -64,6 +66,7 @@ import {
 } from "./permissions.js";
 import { classifyCommandRisk } from "./auto-classify.js";
 import { makePlanModeReminder } from "./plan-mode-reminder.js";
+import { askPlanApproval } from "./plan-approval.js";
 import { loadAgents } from "./agents.js";
 import { loadPlugins } from "./plugins/loader.js";
 import { DEFAULT_PLUGIN_CACHE_DIR } from "./plugins/install.js";
@@ -613,6 +616,8 @@ export async function createContext(
     taskAutoClearTimer: null,
     taskStartedAt: null,
     nextPlaceholder: "",
+    planGateArmed: false,
+    planApprovalAskedThisTurn: false,
     pendingAutoCompactNotice: null,
     apiKey,
     workspace,
@@ -833,6 +838,7 @@ export async function createContext(
       tool,
       PATH_INPUT_TOOLS.has(tool) ? (evalInput.path as string) : undefined,
       allowedRoots,
+      { canSelfExit: settings.planMode.agentTools },
     );
     if (modeDecision) return modeDecision;
     // `auto` mode runs commands unattended, but only after a risk classifier
@@ -992,7 +998,13 @@ export async function createContext(
         skillsBlock,
         getAgentRegistry: () => ctx.agents,
         getModel: getSubagentModel,
-        getToolDefinitions: () => ctx.tools.definitions(),
+        // Minus the plan-mode pair: a sub-agent runs inside the parent session,
+        // so letting it flip the PARENT's permission mode (or ask the user to
+        // leave plan mode on its behalf) is never right. Withholding the
+        // definitions also arms the sub-agent's own defense-in-depth permission
+        // check, which denies anything outside the tool set it was given.
+        getToolDefinitions: () =>
+          ctx.tools.definitions().filter((d) => !PLAN_MODE_TOOL_NAMES.has(d.name)),
         dispatch: (use, c) => ctx.dispatch(use, c),
         checkPermission: (tool, input) => ctx.checkPermission(tool, input),
         compactor: (messages) => ctx.compactor(messages),
@@ -1027,6 +1039,32 @@ export async function createContext(
           toolConcurrency: ctx.settings.toolConcurrency,
           modelModalities: resolveModelModalities(ctx.settings, ctx.settings.model),
         }),
+      }),
+    );
+  }
+
+  // Agent-driven plan mode: let the model put itself into the read-only `plan`
+  // permission mode and ask to leave it once the plan is ready. The mode itself
+  // stays the screen's (same source of truth shift+tab writes and
+  // `checkPermission` reads), so the status-line indicator, the permission gate,
+  // and the `pre_request` plan-mode reminder all follow an agent-driven flip
+  // exactly as they follow a human one.
+  if (settings.planMode.agentTools) {
+    ctx.tools.registerAll(
+      createPlanModeTools({
+        isActive: () => ctx.screen.getPermissionMode() === "plan",
+        // The mode to restore afterwards is recorded by the store on the way in
+        // (`modeBeforePlan`), so shift+tab and this tool are remembered alike.
+        enter: () => ctx.screen.setPermissionMode("plan"),
+        // The plan is NOT drawn here: the transcript already renders this
+        // call's `plan` argument as prose in place of its (hidden) tool row —
+        // see planToRender — so a card would be a second copy of it.
+        requestExit: async () => {
+          // Tell the REPL's end-of-turn gate that this turn already asked, so
+          // a rejection here is not immediately followed by the same prompt.
+          ctx.planApprovalAskedThisTurn = true;
+          return await askPlanApproval(askUser, ctx.screen);
+        },
       }),
     );
   }
@@ -1068,14 +1106,18 @@ export async function createContext(
   registerInterject(ctx.agent, makeTaskReminder(taskStore));
   ctx.agent.on("pre_request", makeBackgroundNotifier(backgroundManager));
   ctx.agent.on("pre_request", makeMonitorNotifier(monitorManager));
-  // Announce plan-mode enter/leave on the next real request (lazy, trigger-
-  // agnostic). Registered AFTER the background notifier so that on the rare turn
-  // where both want to inject, the notifier wins the first-non-undefined-wins
-  // race and this reminder self-heals by deferring to the next request (its
-  // `announced` flag isn't advanced because the hook never runs).
+  // Keep the model's view honest about plan mode on the next real request
+  // (lazy, trigger-agnostic: shift+tab and the agent's own enterPlanMode /
+  // exitPlanMode are announced identically). Registered AFTER the background
+  // notifier so that on the rare turn where both want to inject, the notifier
+  // wins the first-non-undefined-wins race; the reminder compares against the
+  // visible history rather than a latch, so losing that race just defers it to
+  // the next request.
   ctx.agent.on(
     "pre_request",
-    makePlanModeReminder(() => ctx.screen.getPermissionMode()),
+    makePlanModeReminder(() => ctx.screen.getPermissionMode(), {
+      canSelfExit: settings.planMode.agentTools,
+    }),
   );
 
   // Push completion: when a background command finishes while the agent is idle,

@@ -154,6 +154,7 @@ nova upgrade                       # 更新到最新版本（启动时也会自�
 | `createTodo` / `updateTodo` / `getTodoList` / `clearTodoList` | 会话内多步清单 |
 | `createTask` / `updateTask` / `getTaskList` / `clearTaskList` | 跨会话任务计划，支持依赖 |
 | `askUserQuestion` | 向用户提多选问题并等待作答 |
+| `enterPlanMode` / `exitPlanMode` | 模型自己进入只读的 plan 模式先出方案；方案写好后请用户确认才退出并动手。就算模型忘了调 `exitPlanMode`，一轮结束时 nova 也会自己弹确认框，同意即恢复原权限档并接着实现 |
 | `cronCreate` / `cronList` / `cronDelete` | 按间隔或 cron 表达式定时跑 prompt 或 `/命令`；会话内生效，`/resume` 后自动重挂 |
 | `loadSkill` | 按需加载 skill |
 
@@ -186,7 +187,7 @@ nova upgrade                       # 更新到最新版本（启动时也会自�
 | 特性 | 能力 |
 | --- | --- |
 | 🧠 子 agent | 带全新上下文、独立工具集干活：`explore` 只读检索、`plan` 只读规划、`general-purpose` 全权限、`nova-code-guide` 答疑，可自定义；每个 agent 可经 `subagent.model` 单独指定模型档位 |
-| 🛡️ 权限与沙箱 | <kbd>shift</kbd>+<kbd>tab</kbd> 切换 `default` / `acceptEdits` / `auto` / `plan`；OS 级沙箱把子进程写入隔离在工作区（macOS Seatbelt / Linux bubblewrap），默认关闭、可一键开启 |
+| 🛡️ 权限与沙箱 | <kbd>shift</kbd>+<kbd>tab</kbd> 切换 `default` / `acceptEdits` / `auto` / `plan`（模型也能自己进 plan 模式；退出必须经你确认，且这道确认由 nova 在回合结束时主动弹，不靠模型自觉）；OS 级沙箱把子进程写入隔离在工作区（macOS Seatbelt / Linux bubblewrap），默认关闭、可一键开启 |
 | 📄 文件防护 | 改文件前强制先读、检测外部改动，避免误覆盖 |
 | 🔌 MCP | 接入外部 MCP 服务器（`stdio` / `http` / `sse`），把它们的工具当内置工具用，同样受权限管控 |
 | 📚 Skills | 把可复用操作手册写成 `SKILL.md`，模型按需加载，省 token 又能随仓库分发 |

@@ -541,6 +541,14 @@ const tools: Record<string, ToolStr> = {
       return okLine(`${count} result(s) · ${provider}`);
     },
   },
+  // enterPlanMode takes no arguments, so there is nothing to summarize — the
+  // row exists to mark WHERE in the feed the session went read-only. Its
+  // sibling exitPlanMode has no entry here: that row is replaced by the plan
+  // itself (see planToRender in render-item.ts).
+  enterPlanMode: {
+    use: () => ({ header: header("plan", dim("read-only")) }),
+    result: (result) => (result.is_error ? errLine(result) : okLine("plan mode on")),
+  },
   loadSkill: {
     use: (input) => {
       const name = typeof input.name === "string" ? input.name : "?";

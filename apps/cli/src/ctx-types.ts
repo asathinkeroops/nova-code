@@ -126,6 +126,16 @@ export interface CliContext {
   taskStartedAt: number | null;
   nextPlaceholder: string;
   /**
+   * Plan-mode approval gate state, both reset/armed by `runTurn` in repl.ts.
+   *
+   * `planGateArmed` — a turn finished while plan mode was still on, so the REPL
+   * should ask for approval before parking for input. `planApprovalAskedThisTurn`
+   * — the `exitPlanMode` tool already asked during that turn, which suppresses
+   * the gate so a rejection is not immediately re-asked by the host.
+   */
+  planGateArmed: boolean;
+  planApprovalAskedThisTurn: boolean;
+  /**
    * Carrier for the auto-compact summary card across the compactor →
    * post_compact window. The compactor's onAutoCompact callback stashes the
    * info here; the post_compact UI hook reads it back and pushes the card, so

@@ -138,6 +138,49 @@ describe("buildRenderItems block ordering", () => {
     const items = render([{ type: "text", text: "" }, bash("t1")]);
     expect(items.map((i) => i.kind)).toEqual(["spacer", "tool-call"]);
   });
+
+  it("renders exitPlanMode's plan as prose instead of a tool row", () => {
+    // The regression: the model put a 2000-char plan in the tool argument and
+    // only "整理方案如下。" in the text, so hiding the row showed the user a
+    // lead-in and nothing to approve.
+    const items = render([
+      { type: "text", text: "调研完成，整理方案如下。" },
+      { type: "tool_use", id: "p1", name: "exitPlanMode", input: { plan: "### 1. 改 config" } },
+    ]);
+    expect(items.map((i) => i.kind)).toEqual([
+      "spacer",
+      "assistant-text",
+      "spacer",
+      "assistant-text",
+    ]);
+    const texts = items.flatMap((i) => (i.kind === "assistant-text" ? [i.text] : []));
+    expect(texts[1]).toBe("### 1. 改 config");
+  });
+
+  it("does not print the plan twice when the prose already carries it", () => {
+    const plan = "### 1. 改 config\n### 2. 跑测试";
+    const items = render([
+      { type: "text", text: `方案如下：\n\n${plan}` },
+      { type: "tool_use", id: "p1", name: "exitPlanMode", input: { plan } },
+    ]);
+    expect(items.map((i) => i.kind)).toEqual(["spacer", "assistant-text"]);
+  });
+
+  it("draws nothing for an exitPlanMode call with no usable plan", () => {
+    const items = render([
+      { type: "text", text: "算了" },
+      { type: "tool_use", id: "p1", name: "exitPlanMode", input: { plan: "   " } },
+    ]);
+    expect(items.map((i) => i.kind)).toEqual(["spacer", "assistant-text"]);
+  });
+
+  it("keeps enterPlanMode as its own row, marking where the session went read-only", () => {
+    const items = render([
+      { type: "tool_use", id: "p0", name: "enterPlanMode", input: {} },
+      bash("t1"),
+    ]);
+    expect(items.map((i) => i.kind)).toEqual(["spacer", "tool-call", "spacer", "tool-call"]);
+  });
 });
 
 describe("buildRenderItems hides system-injected user messages", () => {
@@ -488,6 +531,40 @@ describe("renderItemToString thinking expand", () => {
     const out = thinking(sixLines, false);
     expect(out).not.toContain("line 4");
     expect(out).toContain("+3 lines");
+  });
+});
+
+describe("renderItemToString enterPlanMode row", () => {
+  const row = (result?: unknown): string =>
+    renderItemToString(
+      {
+        kind: "tool-call",
+        key: "tc#p",
+        use: { type: "tool_use", id: "p0", name: "enterPlanMode", input: {} },
+        ...(result !== undefined ? { result } : {}),
+      } as RenderItem,
+      80,
+    );
+
+  it("labels the row `plan`, not the raw tool name", () => {
+    const out = stripAnsi(row());
+    expect(out).toContain("plan");
+    expect(out).not.toContain("enterPlanMode");
+    // No arguments to summarize, so the header must not fall back to `{}`.
+    expect(out).not.toContain("{}");
+  });
+
+  it("summarizes the result instead of echoing the tool's paragraph", () => {
+    const out = stripAnsi(
+      row({
+        type: "tool_result",
+        tool_use_id: "p0",
+        content:
+          "Plan mode is ON (read-only): calls to write, edit, bash, and monitor will be denied…",
+      }),
+    );
+    expect(out).toContain("plan mode on");
+    expect(out).not.toContain("will be denied");
   });
 });
 

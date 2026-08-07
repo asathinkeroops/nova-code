@@ -173,6 +173,43 @@ describe("permission mode", () => {
   });
 });
 
+describe("modeBeforePlan (where approving a plan returns you to)", () => {
+  it("is null until plan mode is entered", () => {
+    expect(createAppStore().getState().modeBeforePlan).toBeNull();
+  });
+
+  it("records the previous mode on both ways into plan mode", () => {
+    // shift+tab, from the auto start.
+    const cycled = createAppStore();
+    cycled.getState().cyclePermissionMode();
+    expect(cycled.getState().modeBeforePlan).toBe("auto");
+
+    // enterPlanMode / --permission-mode plan, from a mode the user picked.
+    const set = createAppStore();
+    set.getState().setPermissionMode("acceptEdits");
+    set.getState().setPermissionMode("plan");
+    expect(set.getState().modeBeforePlan).toBe("acceptEdits");
+  });
+
+  it("clears on the way out so a stale mode can never be restored", () => {
+    const store = createAppStore();
+    store.getState().setPermissionMode("plan");
+    store.getState().setPermissionMode("auto");
+    expect(store.getState().modeBeforePlan).toBeNull();
+    // …and cycling on past plan clears it too.
+    store.getState().cyclePermissionMode(); // auto → plan
+    expect(store.getState().modeBeforePlan).toBe("auto");
+    store.getState().cyclePermissionMode(); // plan → default
+    expect(store.getState().modeBeforePlan).toBeNull();
+  });
+
+  it("is not disturbed by a mode change that never touches plan", () => {
+    const store = createAppStore();
+    store.getState().setPermissionMode("acceptEdits");
+    expect(store.getState().modeBeforePlan).toBeNull();
+  });
+});
+
 describe("bypass permissions mode", () => {
   it("is not armed by default and stays out of the cycle", () => {
     const store = createAppStore();

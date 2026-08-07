@@ -75,6 +75,20 @@ export const en = {
     alwaysAllow: "Always allow this tool",
   },
 
+  /**
+   * Agent-driven plan mode (`enterPlanMode` / `exitPlanMode`, wired in
+   * `context.ts`): the approval question asked before leaving plan mode. The
+   * plan itself is not re-rendered — the tool-call row already shows it.
+   */
+  planMode: {
+    question: "Exit plan mode and start implementing this plan?",
+    header: "Plan",
+    approve: "Yes, implement it",
+    approveHint: "Turns plan mode off; write/edit/bash are enabled again.",
+    reject: "No, keep planning",
+    rejectHint: "Stays read-only. Pick “Other” to say what to change.",
+  },
+
   /** Shared tool-call rendering fragments (`ui/render-strings.ts`, approval). */
   tool: {
     /** Standalone "truncated" notice; callers add any leading space/indent. */

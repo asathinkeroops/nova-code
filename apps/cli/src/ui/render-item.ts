@@ -5,7 +5,7 @@ import {
   type ToolResultBlock,
   type ToolUseBlock,
 } from "@nova/core";
-import { aliasedPath } from "@nova/tools";
+import { aliasedPath, EXIT_PLAN_MODE_TOOL } from "@nova/tools";
 import type { SubAgentDetail } from "@nova/subagent";
 import { readExisting } from "./diff.js";
 import type { Card } from "./store.js";
@@ -97,6 +97,16 @@ export type RenderItem =
  */
 const BATCHABLE_TOOLS = new Set(["grep", "glob", "read", "bash"]);
 
+/**
+ * Tools whose call rows are dropped from the transcript because the UI already
+ * shows their effect somewhere better — the todo and task lists each render as
+ * their own footer. Skipping the `tool_use` skips its result too: results are
+ * only ever drawn as part of the call that produced them.
+ *
+ * Neither plan-mode tool is listed. `enterPlanMode` renders as a short `plan`
+ * row (render-strings.ts) marking where the session went read-only, and
+ * `exitPlanMode` is replaced by the plan it carries (see {@link planToRender}).
+ */
 const HIDDEN_TOOLS = new Set([
   "createTodo",
   "updateTodo",
@@ -107,6 +117,27 @@ const HIDDEN_TOOLS = new Set([
   "getTaskList",
   "clearTaskList",
 ]);
+
+/**
+ * The plan to draw in place of a hidden `exitPlanMode` row, or null to draw
+ * nothing at all.
+ *
+ * Null when the same message already spells the plan out as prose: a turn that
+ * narrates the plan and *also* passes a copy to the tool would otherwise print
+ * it twice, which is the duplication hiding the row was meant to end. The check
+ * is verbatim containment, so it can only fire on an actual copy — a short
+ * lead-in like "方案如下" does not contain the plan and the plan still renders.
+ */
+function planToRender(block: ToolUseBlock, blocks: readonly ContentBlock[]): string | null {
+  const plan = (block.input as { plan?: unknown } | null | undefined)?.plan;
+  if (typeof plan !== "string") return null;
+  const trimmed = plan.trim();
+  if (trimmed.length === 0) return null;
+  for (const b of blocks) {
+    if (b.type === "text" && b.text.includes(trimmed)) return null;
+  }
+  return trimmed;
+}
 
 // ─── item interning ─────────────────────────────────────────────────────────
 
@@ -500,6 +531,19 @@ function appendAssistantItems(
         })),
       );
     } else if (block.type === "tool_use") {
+      // exitPlanMode's row is hidden like the rest, but its `plan` argument is
+      // the one thing in this turn the user actually has to read — they are
+      // about to approve or reject it. So render the plan itself as prose in
+      // the row's place, rather than dropping the turn's whole payload.
+      if (block.name === EXIT_PLAN_MODE_TOOL) {
+        const plan = planToRender(block, blocks);
+        if (plan === null) continue;
+        const key = `plan:${mi}:${i}`;
+        push(
+          intern(ctx, key, [block], () => ({ kind: "assistant-text", key, text: plan })),
+        );
+        continue;
+      }
       if (HIDDEN_TOOLS.has(block.name)) continue;
 
       const details = ctx.toolDetails?.[block.id];

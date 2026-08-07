@@ -67,6 +67,15 @@ export const zh: DeepPartial<Catalog> = {
     alwaysAllow: "始终允许该工具",
   },
 
+  planMode: {
+    question: "退出 plan 模式，按这个计划开始动手吗？",
+    header: "计划",
+    approve: "可以，开始实现",
+    approveHint: "关闭 plan 模式，重新启用 write/edit/bash。",
+    reject: "先别，继续规划",
+    rejectHint: "保持只读。选“Other”可以说明要改什么。",
+  },
+
   tool: {
     truncatedNotice: "…（已截断）",
   },

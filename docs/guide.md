@@ -308,6 +308,13 @@ Nova 把「extended thinking」暴露成五个等级，或一个显式的 token 
 | 工具 | 权限 | 说明 |
 |------|------|------|
 | `askUserQuestion` | 只读 | 一次提 1–4 个选择题（每题 2–4 个选项，可多选）；运行时自动补一个「Other」让你自由作答 |
+| `enterPlanMode` | 默认放行 | 模型把**当前会话**切进只读的 `plan` 权限模式（与 <kbd>Shift+Tab</kbd> 切到的那一档是同一个开关）。只会收权，所以不问你；界面上显示为一行 `plan  read-only`，标出会话是从哪里开始只读的 |
+| `exitPlanMode` | 默认放行 | 带上完整方案（markdown）请你拍板，直接弹一个「按这个计划动手吗？」的选择框。它的调用行**不显示**，取而代之的是 `plan` 参数**当作模型正文渲染出来**——那正是要你拍板的东西（模型若已在正文里写过同一份方案，则不重复渲染）。**只有你明确同意**才关掉 plan 模式（回到进入前的那个模式，没记录则回 `default`）；选「Other」写的意见会作为反馈回给模型，plan 模式保持开着 |
+
+模型自己进出 plan 模式这套由 `planMode.agentTools` 控制（默认开）。关掉后这两个工具不再注册，plan 模式就只能靠 <kbd>Shift+Tab</kbd> 或 `--permission-mode plan` 手动进。子 agent 永远拿不到这两个工具——它跑在主会话里，不该去改主会话的权限模式。
+
+**不过退出 plan 模式并不依赖模型调 `exitPlanMode`**：只要一轮结束时还在 plan 模式，nova 自己就会弹那个确认框（`planMode.approvalGate`，默认开），见 [§10](#10-权限与安全)。
+
 
 ### 计划管理：Todo（会话内，内存态）
 
@@ -394,7 +401,7 @@ Output: … — read or grep it if you need the command's output.</background-no
 
 ### 默认放行 vs 默认询问
 
-- **默认放行（只读或仅登记元数据的）**：`read`/`glob`/`grep`（限定在工作区内，见下）、`webfetch`、`websearch`、`askUserQuestion`、`lsp`、`loadSkill`、`createSubAgent`、`killBackground`、**todo 全套**、**task 全套**（含写操作 create/update/clear）、**cron 全套**（`cronCreate`/`cronList`/`cronDelete`）。task/cron 的写只改自己的清单/排程，payload 真正动手时仍走权限门，所以放行它们不越权。
+- **默认放行（只读或仅登记元数据的）**：`read`/`glob`/`grep`（限定在工作区内，见下）、`webfetch`、`websearch`、`askUserQuestion`、`lsp`、`loadSkill`、`createSubAgent`、`killBackground`、**todo 全套**、**task 全套**（含写操作 create/update/clear）、**cron 全套**（`cronCreate`/`cronList`/`cronDelete`）、`enterPlanMode`/`exitPlanMode`。task/cron 的写只改自己的清单/排程，payload 真正动手时仍走权限门，所以放行它们不越权；plan 两件套同理——进只收权，出自带一道确认。
 - **默认询问（会改文件 / 跑命令的）**：`write`、`edit`、`bash`（前台和 `run_in_background` 一视同仁）——落到 `defaultEffect`（默认 `ask`）。
 
 > `permissions.deny`（裸工具名数组）是更强的一档：列进去的工具会在启动时从注册表**摘除**，模型根本看不到、也调不了（区别于 `rules` 里 `effect: "deny"`——后者仍把工具报给模型、只在调用时拒）。
@@ -409,6 +416,16 @@ Output: … — read or grep it if you need the command's output.</background-no
 | `acceptEdits` | ⏵⏵ accept edits on | **工作区内**的 `write`/`edit` 自动放行；`bash` 与工作区外的写仍然询问 |
 | `auto`（启动默认） | ⏵⏵ auto mode on | **自主模式**：在 `acceptEdits` 基础上，命令工具（`bash`，含 `run_in_background`）也自动放行、无人值守运行（先过一层风险分类器）。比 `acceptEdits` 更宽，但仍窄于 `bypassPermissions`——工作区外的写和用户 `deny` 规则不被绕过 |
 | `plan` | ⏸ plan mode on | **只读**：`write`/`edit`/`bash` 一律拒绝，逼模型先调查、给出分步计划——与只读 `/plan` 子 agent 同源 |
+
+`plan` 这一档模型自己也能进：`enterPlanMode` 让它在动手前先切成只读（只收权，不问你）。整套由 `planMode.agentTools` 控制，默认开；见 [§9](#9-内置工具一览)。模式无论谁切的，都会在下一次请求时以一条 `<plan-mode>` 提示告诉模型，行为完全一致。
+
+**退出则不靠模型自觉。** 只要一轮结束时会话还停在 plan 模式，nova 在回到输入框之前会自己弹确认框：
+
+- 选**同意** → 权限模式立刻回到**进入 plan 之前的那一档**（shift+tab 进的也记得，例如从 `auto` 进就回 `auto`），并立刻续跑一轮开始实现，你不用再输入任何东西
+- 选**不同意** → 留在 plan 模式；你在「Other」里写的意见直接作为下一轮输入回给模型
+- **ESC 关掉** → 什么也不做，回到输入框（shift+tab 和直接打字都照常）
+
+模型主动调 `exitPlanMode` 弹的是同一个框、同一套恢复逻辑；那一轮里已经问过，闸门就不会再问第二遍。这一层由 `planMode.approvalGate` 控制（默认开），关掉则退出 plan 模式回到只靠 `exitPlanMode` 或 <kbd>Shift+Tab</kbd>。
 
 不指定时启动即为 `auto`；用 `--permission-mode` 可指定别的初始档位，`--dangerously-skip-permissions` 直接进入 `bypassPermissions`（每次审批自动放行，适合 CI/无人值守）。
 
@@ -732,6 +749,13 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 | `autoMode.llmClassifier` | `true` | `auto` 模式下把规则判不定的命令交给 LLM 风险分类器；关掉则一律弹确认 |
 | `autoMode.model` | （无→ 便宜档） | 分类器用的模型（裸 id 或档位名），独立于 `/model` |
 | `autoMode.classifierTimeoutMs` | `8000` | 分类器超时；超时按「有风险」处理（弹确认，不静默执行） |
+
+### `planMode`（plan 模式的进出）
+
+| 字段 | 默认 | 说明 |
+|------|------|------|
+| `agentTools` | `true` | 注册 `enterPlanMode` / `exitPlanMode`，让模型自己切进只读 plan 模式、方案获批后再退出；关掉则 plan 模式只能手动进（<kbd>Shift+Tab</kbd> / `--permission-mode plan`），见 [§10](#10-权限与安全) |
+| `approvalGate` | `true` | 一轮结束时若仍在 plan 模式，由 nova 自己弹确认框：同意就恢复进入前的权限档并立刻续跑实现。不依赖模型调 `exitPlanMode`；关掉则退出全靠模型自觉或你手动 <kbd>Shift+Tab</kbd> |
 
 ### `trust`（工作区信任）
 

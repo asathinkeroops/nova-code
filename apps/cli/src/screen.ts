@@ -540,6 +540,15 @@ export class Screen {
     return this.store.getState().permissionMode;
   }
 
+  /**
+   * The mode in effect just before plan mode was entered, or null when plan
+   * mode is off. Approving a plan restores this rather than a fixed default, so
+   * a user who was in `auto` lands back in `auto`.
+   */
+  getModeBeforePlan(): PermissionMode | null {
+    return this.store.getState().modeBeforePlan;
+  }
+
   /** Advance to the next permission mode; returns the new one. */
   cyclePermissionMode(): PermissionMode {
     return this.store.getState().cyclePermissionMode();

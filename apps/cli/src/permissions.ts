@@ -54,6 +54,10 @@ export function resolveModeDecision(
   tool: string,
   canonicalPath: string | undefined,
   roots: readonly string[],
+  // Mirrors `settings.planMode.agentTools` — whether exitPlanMode is registered,
+  // and so whether the denial can tell the model to call it. Defaults off:
+  // pointing at a tool the host never registered just buys a failed call.
+  { canSelfExit = false }: { canSelfExit?: boolean } = {},
 ): { granted: boolean; reason?: string } | null {
   if (mode === "plan" && MODE_MUTATING_TOOLS.has(tool)) {
     return {
@@ -61,7 +65,12 @@ export function resolveModeDecision(
       reason:
         "Plan mode is on (read-only): the write, edit, bash, and monitor tools are disabled. " +
         "Investigate the relevant code and present a concrete step-by-step plan instead " +
-        "of changing anything; the user can turn off plan mode (shift+tab) to apply it.",
+        "of changing anything; " +
+        (canSelfExit
+          ? "plan mode is lifted only by calling exitPlanMode and having the user approve " +
+            "the plan — do that before retrying this call, and note that a user telling you " +
+            "to go ahead does not turn plan mode off by itself."
+          : "the user can turn off plan mode (shift+tab) to apply it."),
     };
   }
   // In-workspace write/edit auto-grant, shared by `acceptEdits` and `auto`.
@@ -108,6 +117,13 @@ export const DEFAULT_PERMISSION_RULES: readonly PermissionRule[] = [
   { tool: "cronList", effect: "allow" },
   { tool: "cronDelete", effect: "allow" },
   { tool: "loadSkill", effect: "allow" },
+  // Plan-mode self-service. `enterPlanMode` only ever removes capability (it
+  // puts this session into read-only plan mode), and `exitPlanMode` runs its own
+  // user confirmation before lifting the restriction — so neither needs a
+  // permission prompt on top. Note they are deliberately absent from
+  // MODE_MUTATING_TOOLS above: exitPlanMode must stay callable IN plan mode.
+  { tool: "enterPlanMode", effect: "allow" },
+  { tool: "exitPlanMode", effect: "allow" },
   // The lsp tool is read-only (queries language servers; never mutates files).
   { tool: "lsp", effect: "allow" },
   // Killing a command we already launched is safe to auto-allow: it only ever

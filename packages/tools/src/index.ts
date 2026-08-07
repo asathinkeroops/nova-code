@@ -136,6 +136,14 @@ export {
 } from "./builtin/skills.js";
 export { createLoadSkillTool, type GetSkillFn } from "./builtin/load-skill.js";
 export { createLspTool } from "./builtin/lsp.js";
+export {
+  createPlanModeTools,
+  ENTER_PLAN_MODE_TOOL,
+  EXIT_PLAN_MODE_TOOL,
+  PLAN_MODE_TOOL_NAMES,
+  type PlanExitDecision,
+  type PlanModeDeps,
+} from "./builtin/plan-mode.js";
 
 /**
  * Build the default set of builtin tools.

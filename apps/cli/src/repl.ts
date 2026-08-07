@@ -12,6 +12,11 @@ import { evaluateGoalWithAgent } from "./goal-eval.js";
 import { clearGoal, saveGoal } from "./goal.js";
 import { listWorkspaceFiles } from "./file-index.js";
 import { formatDuration } from "@nova/tools";
+import {
+  askPlanApproval,
+  shouldGatePlanApproval,
+  PLAN_APPROVED_PROMPT,
+} from "./plan-approval.js";
 import { predictNextInput } from "./predict.js";
 import { toUiSlashCommands } from "./slash.js";
 import { checkForUpdate } from "./update.js";
@@ -175,11 +180,21 @@ async function dispatchLine(ctx: CliContext, line: string): Promise<DispatchActi
  * Drive one user turn through the agent. The agent owns transcript/persist/
  * lifecycle; the REPL just binds the ESC key to its abort method and reports
  * the post-turn state.
+ *
+ * Every turn the REPL runs — typed, cron, background continuation, goal — comes
+ * through here, which is why the plan-approval gate is armed here rather than at
+ * each call site. A turn that ends with plan mode still on is the signal that
+ * the model has said its piece and the user should be asked whether to
+ * implement it. Aborted turns (ESC) arm nothing: the user interrupting is not a
+ * finished plan.
  */
 async function runTurn(ctx: CliContext, input: string, meta?: MessageMeta): Promise<boolean> {
   ctx.screen.setEscHandler(() => ctx.agent.abort(new Error("interrupted by user")));
+  ctx.planApprovalAskedThisTurn = false;
   try {
     const result = await ctx.agent.runTurn(input, meta ? { meta } : {});
+    ctx.planGateArmed =
+      result.ok && ctx.screen.getPermissionMode() === "plan" && !ctx.planApprovalAskedThisTurn;
     return result.ok;
   } finally {
     ctx.screen.setEscHandler(null);
@@ -226,6 +241,47 @@ function shouldAutoContinue(ctx: CliContext): boolean {
  */
 function shouldRunCron(ctx: CliContext): boolean {
   return ctx.cronScheduler.dueEntries().length > 0 && !ctx.agent.currentSignal();
+}
+
+/** True when a turn has ended with plan mode still on and nobody has asked yet. */
+function shouldGatePlan(ctx: CliContext): boolean {
+  return shouldGatePlanApproval({
+    enabled: ctx.settings.planMode.approvalGate,
+    mode: ctx.screen.getPermissionMode(),
+    armed: ctx.planGateArmed,
+    askedThisTurn: ctx.planApprovalAskedThisTurn,
+    busy: Boolean(ctx.agent.currentSignal()),
+  });
+}
+
+/**
+ * Ask whether to implement the plan, and act on the answer — the deterministic
+ * exit from plan mode.
+ *
+ * Approving is the whole point: `askPlanApproval` restores the pre-plan mode,
+ * and the implementation turn starts right here, so the user never has to type
+ * "go ahead" a second time and the model never has to notice that they did.
+ * Feedback typed instead of approving becomes the next turn verbatim (still
+ * read-only); a plain decline or a dismissed prompt just returns to the input
+ * box, where shift+tab and a typed message both still work.
+ */
+async function runPlanGate(ctx: CliContext): Promise<void> {
+  ctx.planGateArmed = false;
+  const decision = await askPlanApproval((req) => ctx.screen.askUser(req), ctx.screen);
+  if (decision.approved) {
+    const ok = await runTurnWithStopHooks(ctx, PLAN_APPROVED_PROMPT, {
+      synthetic: true,
+      kind: "plan-approved",
+    });
+    if (ok) await refreshPrediction(ctx);
+  } else if (decision.feedback) {
+    const ok = await runTurnWithStopHooks(ctx, decision.feedback);
+    if (ok) await refreshPrediction(ctx);
+  } else {
+    return;
+  }
+  void refreshMentionFiles(ctx);
+  void refreshBalance(ctx);
 }
 
 /**
@@ -383,8 +439,12 @@ async function maybeContinueForGoal(ctx: CliContext): Promise<string | null> {
  * independently capped so neither can loop forever. Aborted turns are not
  * continued (`ok` is false).
  */
-async function runTurnWithStopHooks(ctx: CliContext, prompt: string): Promise<boolean> {
-  let ok = await runTurn(ctx, prompt);
+async function runTurnWithStopHooks(
+  ctx: CliContext,
+  prompt: string,
+  meta?: MessageMeta,
+): Promise<boolean> {
+  let ok = await runTurn(ctx, prompt, meta);
   let stopContinuations = 0;
   while (ok) {
     const decision = await ctx.userHooks.runStop({ stop_continuation: stopContinuations });
@@ -498,6 +558,14 @@ export async function runRepl(ctx: CliContext, initialPrompt: string): Promise<v
     // run the iteration inline before parking for input.
     if (shouldRunCron(ctx)) {
       await runDueCron(ctx);
+      continue;
+    }
+
+    // A turn ended with plan mode still on: ask whether to implement the plan
+    // before parking for input, rather than waiting for the model to think of
+    // it. Approving continues straight into the implementation turn.
+    if (shouldGatePlan(ctx)) {
+      await runPlanGate(ctx);
       continue;
     }
 

@@ -11,6 +11,12 @@ describe("HeadlessScreen", () => {
     );
   });
 
+  it("honors a programmatic mode switch (the agent's own enterPlanMode)", () => {
+    const screen = new HeadlessScreen({ permissionMode: "auto" });
+    screen.setPermissionMode("plan");
+    expect(screen.getPermissionMode()).toBe("plan");
+  });
+
   it("reports itself as non-interactive (a headless 'no' is policy, not a human deny)", () => {
     expect(new HeadlessScreen().interactive).toBe(false);
   });

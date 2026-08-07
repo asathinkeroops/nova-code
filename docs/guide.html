@@ -800,7 +800,11 @@
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">与用户交互</h3>
         <div class="tbl-wrap"><table class="doc"><thead><tr><th>工具</th><th>权限</th><th>说明</th></tr></thead><tbody>
           <tr><td><code>askUserQuestion</code></td><td><span class="pill pill-ro">只读</span></td><td>一次提 1–4 个选择题（每题 2–4 个选项，可多选）；运行时自动补一个「Other」让你自由作答</td></tr>
+          <tr><td><code>enterPlanMode</code></td><td><span class="pill pill-ro">默认放行</span></td><td>模型把<strong>当前会话</strong>切进只读的 <code>plan</code> 权限模式（与 <span class="kbd">Shift+Tab</span> 切到的那一档是同一个开关）。只会收权，所以不问你；界面上显示为一行 <code>plan  read-only</code>，标出会话是从哪里开始只读的</td></tr>
+          <tr><td><code>exitPlanMode</code></td><td><span class="pill pill-ro">默认放行</span></td><td>带上完整方案（markdown）请你拍板，直接弹一个「按这个计划动手吗？」的选择框。它的调用行<strong>不显示</strong>，取而代之的是 <code>plan</code> 参数<strong>当作模型正文渲染出来</strong> —— 那正是要你拍板的东西（模型若已在正文里写过同一份方案，则不重复渲染）。<strong>只有你明确同意</strong>才关掉 plan 模式（回到进入前的那个模式，没记录则回 <code>default</code>）；选「Other」写的意见会作为反馈回给模型，plan 模式保持开着</td></tr>
         </tbody></table></div>
+        <p>模型自己进出 plan 模式这套由 <code>planMode.agentTools</code> 控制（默认开）。关掉后这两个工具不再注册，plan 模式就只能靠 <span class="kbd">Shift+Tab</span> 或 <code>--permission-mode plan</code> 手动进。子 agent 永远拿不到这两个工具 —— 它跑在主会话里，不该去改主会话的权限模式。</p>
+        <p><strong>不过退出 plan 模式并不依赖模型调 <code>exitPlanMode</code></strong>：只要一轮结束时还在 plan 模式，nova 自己就会弹那个确认框（<code>planMode.approvalGate</code>，默认开），见 <a class="inline-link" href="#sec-10">§10</a>。</p>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">计划管理：Todo（会话内，内存态）</h3>
         <p><code>createTodo</code> / <code>updateTodo</code> / <code>getTodoList</code> / <code>clearTodoList</code> —— 把多步计划外化成一张清单，<strong>只存内存</strong>，进程退出即丢。任一时刻最多一个 todo 处于 <code>in_progress</code>。全部完成后清单会在 <code>todo.autoClearDelayMs</code>（默认 2.5s，留一拍让你看到那排 ✓）后自动清空，不指望模型自己去调 <code>clearTodoList</code>。</p>
@@ -870,12 +874,20 @@
         </tbody></table></div>
         <div class="callout callout-info">
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
-          <div><p>权限模式只是「在引擎之前」加一层偏置：<code>acceptEdits</code>/<code>auto</code> 放宽写类（以及 <code>auto</code> 的命令）工具、<code>plan</code> 只收紧写类工具，其余裁决（危险 bash 拒绝、配置规则、读工具放行等）一律不变。想退出 plan 模式动手改动，再按 <span class="kbd">Shift+Tab</span> 切回即可。</p></div>
+          <div><p>权限模式只是「在引擎之前」加一层偏置：<code>acceptEdits</code>/<code>auto</code> 放宽写类（以及 <code>auto</code> 的命令）工具、<code>plan</code> 只收紧写类工具，其余裁决（危险 bash 拒绝、配置规则、读工具放行等）一律不变。想退出 plan 模式动手改动，再按 <span class="kbd">Shift+Tab</span> 切回即可。</p>
+          <p><code>plan</code> 这一档模型自己也能进：<code>enterPlanMode</code> 让它在动手前先切成只读（只收权，不问你）。整套由 <code>planMode.agentTools</code> 控制，默认开；见 <a class="inline-link" href="#sec-9">§9</a>。模式无论谁切的，都会在下一次请求时以一条 <code>&lt;plan-mode&gt;</code> 提示告诉模型，行为完全一致。</p>
+          <p><strong>退出则不靠模型自觉。</strong> 只要一轮结束时会话还停在 plan 模式，nova 在回到输入框之前会自己弹确认框：</p>
+          <ul class="list-disc pl-6 space-y-1">
+            <li>选<strong>同意</strong> → 权限模式立刻回到<strong>进入 plan 之前的那一档</strong>（shift+tab 进的也记得，例如从 <code>auto</code> 进就回 <code>auto</code>），并立刻续跑一轮开始实现，你不用再输入任何东西</li>
+            <li>选<strong>不同意</strong> → 留在 plan 模式；你在「Other」里写的意见直接作为下一轮输入回给模型</li>
+            <li><strong>ESC 关掉</strong> → 什么也不做，回到输入框（shift+tab 和直接打字都照常）</li>
+          </ul>
+          <p>模型主动调 <code>exitPlanMode</code> 弹的是同一个框、同一套恢复逻辑；那一轮里已经问过，闸门就不会再问第二遍。这一层由 <code>planMode.approvalGate</code> 控制（默认开），关掉则退出 plan 模式回到只靠 <code>exitPlanMode</code> 或 <span class="kbd">Shift+Tab</span>。</p></div>
         </div>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">默认放行 vs 默认询问</h3>
         <ul class="space-y-2">
-          <li><strong>默认放行（只读或仅登记元数据的）</strong>：<code>read</code>/<code>glob</code>/<code>grep</code>（限定在工作区内）、<code>webfetch</code>、<code>websearch</code>、<code>askUserQuestion</code>、<code>lsp</code>、<code>loadSkill</code>、<code>createSubAgent</code>、<code>killBackground</code>、<strong>todo 全套</strong>、<strong>task 全套</strong>（含写操作）、<strong>cron 全套</strong>（<code>cronCreate</code>/<code>cronList</code>/<code>cronDelete</code>）。task/cron 的写只改自己的清单 / 排程，payload 真正动手时仍走权限门。</li>
+          <li><strong>默认放行（只读或仅登记元数据的）</strong>：<code>read</code>/<code>glob</code>/<code>grep</code>（限定在工作区内）、<code>webfetch</code>、<code>websearch</code>、<code>askUserQuestion</code>、<code>lsp</code>、<code>loadSkill</code>、<code>createSubAgent</code>、<code>killBackground</code>、<strong>todo 全套</strong>、<strong>task 全套</strong>（含写操作）、<strong>cron 全套</strong>（<code>cronCreate</code>/<code>cronList</code>/<code>cronDelete</code>）、<code>enterPlanMode</code>/<code>exitPlanMode</code>。task/cron 的写只改自己的清单 / 排程，payload 真正动手时仍走权限门；plan 两件套同理 —— 进只收权，出自带一道确认。</li>
           <li><strong>默认询问（会改文件 / 跑命令的）</strong>：<code>write</code>、<code>edit</code>、<code>bash</code>（前台和 <code>run_in_background</code> 一视同仁） —— 落到 <code>defaultEffect</code>（默认 <code>ask</code>）。</li>
           <li><strong><code>permissions.deny</code></strong>（裸工具名数组）更硬一档：列进去的工具启动时从注册表<strong>摘除</strong>，模型看不到也调不了（区别于 <code>rules</code> 里 <code>effect: "deny"</code> —— 后者仍把工具报给模型、只在调用时拒）。</li>
         </ul>
@@ -1196,6 +1208,12 @@
           <tr><td><code>autoMode.llmClassifier</code></td><td><code>true</code></td><td><code>auto</code> 模式下把规则判不定的命令交给 LLM 风险分类器；关掉则一律弹确认</td></tr>
           <tr><td><code>autoMode.model</code></td><td>（无→便宜档）</td><td>分类器用的模型（裸 id 或档位名），独立于 <code>/model</code></td></tr>
           <tr><td><code>autoMode.classifierTimeoutMs</code></td><td><code>8000</code></td><td>分类器超时；超时按「有风险」处理（弹确认，不静默执行）</td></tr>
+        </tbody></table></div>
+
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)"><code>planMode</code>（plan 模式的进出）</h3>
+        <div class="tbl-wrap"><table class="doc"><thead><tr><th>字段</th><th>默认</th><th>说明</th></tr></thead><tbody>
+          <tr><td><code>agentTools</code></td><td><code>true</code></td><td>注册 <code>enterPlanMode</code> / <code>exitPlanMode</code>，让模型自己切进只读 plan 模式、方案获批后再退出；关掉则 plan 模式只能手动进（<span class="kbd">Shift+Tab</span> / <code>--permission-mode plan</code>），见 <a class="inline-link" href="#sec-10">§10</a></td></tr>
+          <tr><td><code>approvalGate</code></td><td><code>true</code></td><td>一轮结束时若仍在 plan 模式，由 nova 自己弹确认框：同意就恢复进入前的权限档并立刻续跑实现。不依赖模型调 <code>exitPlanMode</code>；关掉则退出全靠模型自觉或你手动 <span class="kbd">Shift+Tab</span></td></tr>
         </tbody></table></div>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)"><code>trust</code>（工作区信任）</h3>

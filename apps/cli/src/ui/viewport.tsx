@@ -426,7 +426,13 @@ function InStreamModal({
         />
       );
     case "ask":
-      return <AskPanel req={modal.req} onResolve={(value) => resolveModal(value)} />;
+      return (
+        <AskPanel
+          req={modal.req}
+          onResolve={(value) => resolveModal(value)}
+          panelWidth={width}
+        />
+      );
     case "pick":
       return (
         <PickList

@@ -377,6 +377,16 @@ export interface AppState {
    * "bypassPermissions"`.
    */
   bypassAllowed: boolean;
+  /**
+   * The mode in effect immediately before the current run of plan mode, so
+   * approving a plan returns the user to where they were rather than to a
+   * hardcoded default. Recorded on every transition INTO `plan` — shift+tab,
+   * `--permission-mode plan`, and the agent's own `enterPlanMode` all land in
+   * the two actions below — and cleared on the way out, so it is null whenever
+   * plan mode is off. `--permission-mode plan` seeds it from the startup
+   * default (`auto`), which is where that session should return to.
+   */
+  modeBeforePlan: PermissionMode | null;
 }
 
 export interface SelectionRect {
@@ -570,6 +580,16 @@ export const CONTINUE_SENTINEL = "\x00__nova_continue__";
  * the checklist is untouched. Every other setter in this store already guards
  * the no-op path; these two did not.
  */
+/**
+ * The next value of `modeBeforePlan` for a mode transition. Entering plan mode
+ * remembers where we came from; every other transition clears it, since the
+ * value is only meaningful while plan mode is on. Both mode-changing actions
+ * route through this so no entry path can forget to record it.
+ */
+function planReturnTo(from: PermissionMode, to: PermissionMode): PermissionMode | null {
+  return to === "plan" && from !== "plan" ? from : null;
+}
+
 function sameTodos(a: readonly Todo[], b: readonly Todo[]): boolean {
   if (a === b) return true;
   if (a.length !== b.length) return false;
@@ -703,6 +723,7 @@ export function createAppStore(opts: AppStoreOptions = {}): AppStoreApi {
       toolDetails: {},
       permissionMode: "auto",
       bypassAllowed: false,
+      modeBeforePlan: null,
 
       // ===== Actions =====
       pushCard(text, opts = {}) {
@@ -1211,17 +1232,19 @@ export function createAppStore(opts: AppStoreOptions = {}): AppStoreApi {
         const cur = get().permissionMode;
         const idx = order.indexOf(cur);
         const next = order[(idx + 1) % order.length] ?? "default";
-        set({ permissionMode: next });
+        set({ permissionMode: next, modeBeforePlan: planReturnTo(cur, next) });
         return next;
       },
 
       setPermissionMode(mode) {
-        if (get().permissionMode === mode) return;
+        const cur = get().permissionMode;
+        if (cur === mode) return;
+        const modeBeforePlan = planReturnTo(cur, mode);
         // Seeding bypass directly (e.g. --permission-mode) also unlocks it in the cycle.
         set(
           mode === "bypassPermissions"
-            ? { permissionMode: mode, bypassAllowed: true }
-            : { permissionMode: mode },
+            ? { permissionMode: mode, bypassAllowed: true, modeBeforePlan }
+            : { permissionMode: mode, modeBeforePlan },
         );
       },
 

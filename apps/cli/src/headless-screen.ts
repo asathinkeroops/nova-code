@@ -27,7 +27,7 @@ export interface HeadlessScreenOptions {
  * (headless) mode: same hooks, same permission engine, same tool dispatch.
  */
 export class HeadlessScreen extends Screen {
-  private readonly mode: PermissionMode;
+  private mode: PermissionMode;
   private readonly approvalPolicy: HeadlessApprovalPolicy;
 
   constructor(opts: HeadlessScreenOptions = {}) {
@@ -58,6 +58,18 @@ export class HeadlessScreen extends Screen {
 
   override getPermissionMode(): PermissionMode {
     return this.mode;
+  }
+
+  /**
+   * Headless reads the mode off this field rather than the store, so a
+   * programmatic switch (the agent's own `enterPlanMode`) has to update it too —
+   * otherwise the flip would be silently ignored here while working in the TUI.
+   * Still one-way in practice: leaving plan mode goes through `askUser`, which
+   * headless always cancels.
+   */
+  override setPermissionMode(mode: PermissionMode): void {
+    this.mode = mode;
+    super.setPermissionMode(mode);
   }
 
   override async promptApproval(): Promise<"yes" | "no" | "always-allow"> {

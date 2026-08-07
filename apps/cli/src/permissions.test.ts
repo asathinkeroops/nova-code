@@ -52,6 +52,8 @@ describe("resolvePermissionRules", () => {
         "cronCreate",
         "cronDelete",
         "cronList",
+        "enterPlanMode",
+        "exitPlanMode",
         "getTaskList",
         "getTodoList",
         "killBackground",
@@ -291,9 +293,29 @@ describe("resolveModeDecision", () => {
     }
   });
 
+  it("points the denial at exitPlanMode only when the agent can call it", () => {
+    const withTools = resolveModeDecision("plan", "edit", `${CWD}/x`, roots, { canSelfExit: true });
+    expect(withTools?.reason).toContain("exitPlanMode");
+    // The user saying "go ahead" is what made the model skip the tool and edit
+    // straight away, so the denial has to name that case explicitly.
+    expect(withTools?.reason).toMatch(/does not turn plan mode off by itself/i);
+
+    // Tools not registered (planMode.agentTools off, and the default): the only
+    // honest exit to name is the user's.
+    const withoutTools = resolveModeDecision("plan", "edit", `${CWD}/x`, roots);
+    expect(withoutTools?.reason).not.toContain("exitPlanMode");
+    expect(withoutTools?.reason).toContain("shift+tab");
+  });
+
   it("plan mode leaves read-only tools to the engine", () => {
     for (const tool of ["read", "glob", "grep", "lsp"]) {
       expect(resolveModeDecision("plan", tool, `${CWD}/x`, roots)).toBeNull();
+    }
+  });
+
+  it("plan mode leaves the plan-mode tools callable (exiting must work from inside)", () => {
+    for (const tool of ["enterPlanMode", "exitPlanMode"]) {
+      expect(resolveModeDecision("plan", tool, undefined, roots)).toBeNull();
     }
   });
 

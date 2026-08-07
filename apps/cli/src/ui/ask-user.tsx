@@ -1,14 +1,15 @@
 import React, { useState } from "react";
-import { Box, Text, useInput } from "ink";
+import { Box, Text, useInput, useStdout } from "ink";
 import type {
   AskUserAnswer,
   AskUserQuestionSpec,
   AskUserRequest,
   AskUserResponse,
 } from "@nova/core";
-import { ACCENT_HEX } from "../colors.js";
+import { ACCENT_HEX, PURPLE_HEX } from "../colors.js";
 import { t } from "../i18n/index.js";
 import { countWrappedLines } from "./measure.js";
+import { overlayBorderProps } from "./picker.js";
 import { visibleWidth } from "./width.js";
 
 interface QState {
@@ -82,11 +83,13 @@ function buildResponse(states: QState[]): AskUserResponse {
  * one tab at a time but the user can switch freely, so we reserve the tallest
  * tab (each question + the confirm tab). Mirrors `approvalRows`/`pickListRows`.
  *
- * Box chrome: round border (top+bottom = 2) + padding={1} (top+bottom = 2) +
- * marginTop/marginBottom (2) = 6 rows; border+paddingX eat 4 columns.
+ * Box chrome: the same top-rule overlay the picker draws (see
+ * `overlayBorderProps`) — one rule row + marginTop/marginBottom (2) = 3 rows,
+ * and no side border or padding, so the full width is content. Matches the
+ * `opts.topRuleColor ? 3 : …` arm of pickListRows/viewerRows.
  */
 export function askRows(req: AskUserRequest, cols: number): number {
-  const inner = Math.max(1, cols - 4);
+  const inner = Math.max(1, cols);
   const states = buildState(req); // options here include any auto-added "Other"
 
   // The tab strip is one logical line: `[ ● header ] … [ → Confirm ]`. Build a
@@ -132,21 +135,26 @@ export function askRows(req: AskUserRequest, cols: number): number {
   const confirmBody = confirmPrompt + tabRows + 1 + summaryRows + 1 + buttonRows + hintRows;
   maxBody = Math.max(maxBody, confirmBody);
 
-  return 6 + maxBody;
+  return 3 + maxBody;
 }
 
 export interface AskPanelProps {
   req: AskUserRequest;
   onResolve: (value: AskUserResponse) => void;
+  /** Viewport inner width, threaded like PickList's so the rule spans it. */
+  panelWidth?: number;
 }
 
-export function AskPanel({ req, onResolve }: AskPanelProps): React.ReactElement | null {
+export function AskPanel({ req, onResolve, panelWidth }: AskPanelProps): React.ReactElement | null {
   const [states, setStates] = useState<QState[]>(() => buildState(req));
   const [tab, setTab] = useState(0);
   const [optIndex, setOptIndex] = useState(0);
   const [phase, setPhase] = useState<Phase>("options");
   const [freeformBuffer, setFreeformBuffer] = useState("");
   const [confirmIndex, setConfirmIndex] = useState(CONFIRM_SUBMIT);
+  // Same fallback chain PickList uses for its full-width top rule.
+  const { stdout } = useStdout();
+  const cols = panelWidth ?? stdout?.columns ?? 80;
 
   const total = states.length;
   const confirmTab = total; // confirm tab index
@@ -352,7 +360,13 @@ export function AskPanel({ req, onResolve }: AskPanelProps): React.ReactElement 
   const everyAnswered = allAnswered(states);
 
   return (
-    <Box flexDirection="column" padding={1} marginTop={1} marginBottom={1} borderStyle={'round'}>
+    <Box
+      flexDirection="column"
+      marginTop={1}
+      marginBottom={1}
+      width={cols}
+      {...overlayBorderProps(false, PURPLE_HEX)}
+    >
       <Text>
         <Text bold color={ACCENT_HEX}>
           ?

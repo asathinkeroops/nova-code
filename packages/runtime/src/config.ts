@@ -463,6 +463,24 @@ export const settingsSchema = z.object({
       additionalDirectories: [],
       autoMode: { llmClassifier: true, classifierTimeoutMs: 8000 },
     }),
+  // Agent-driven plan mode. When `agentTools` is on, the CLI registers the
+  // enterPlanMode / exitPlanMode tools, letting the model put ITSELF into the
+  // read-only `plan` permission mode (shift+tab's plan position) and ask to
+  // leave it once the plan is ready. Safe by construction: entering only ever
+  // removes capability, and leaving always goes through a user confirmation —
+  // the model cannot grant itself write access. Off → the mode is reachable
+  // only by hand (shift+tab, or `--permission-mode plan`).
+  // `approvalGate` is the deterministic half: whenever a turn ends with the
+  // session still in plan mode, the CLI itself asks whether to implement the
+  // plan, restores the pre-plan mode on approval, and continues. Without it,
+  // leaving plan mode depends on the model remembering to call exitPlanMode —
+  // which it does not reliably do when the user simply says "go ahead".
+  planMode: z
+    .object({
+      agentTools: z.boolean().default(true),
+      approvalGate: z.boolean().default(true),
+    })
+    .default({ agentTools: true, approvalGate: true }),
   // Workspace trust. On startup nova checks whether the workspace it was
   // launched in has been granted file access; an untrusted workspace prompts
   // the user to confirm, and declining exits. Trust is recorded HERE (in the

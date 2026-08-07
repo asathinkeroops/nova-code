@@ -154,6 +154,7 @@ Tools the model can call — covering read/write, search, execution, code intell
 | `createTodo` / `updateTodo` / `getTodoList` / `clearTodoList` | In-session multi-step checklist |
 | `createTask` / `updateTask` / `getTaskList` / `clearTaskList` | Cross-session task plan with dependencies |
 | `askUserQuestion` | Ask the user multiple-choice questions and wait for answers |
+| `enterPlanMode` / `exitPlanMode` | The model puts itself into read-only plan mode to work out an approach, then asks you to approve the plan before it leaves and starts implementing. Even when it forgets to call `exitPlanMode`, nova raises the prompt itself once the turn ends — approving restores your previous mode and continues straight into the work |
 | `cronCreate` / `cronList` / `cronDelete` | Schedule a prompt or `/command` on an interval or cron expression; live within a session and re-arm on `/resume` |
 | `loadSkill` | Load a skill on demand |
 
@@ -186,7 +187,7 @@ Tools the model can call — covering read/write, search, execution, code intell
 | Capability | What it gives you |
 | --- | --- |
 | 🧠 Sub-agents | Work with fresh context and their own tool set: `explore` (read-only retrieval), `plan` (read-only planning), `general-purpose` (full access), `nova-code-guide` (Q&A about Nova), plus custom types; each agent can run on its own model tier via `subagent.model` |
-| 🛡️ Permissions & sandbox | <kbd>shift</kbd>+<kbd>tab</kbd> cycles `default` / `acceptEdits` / `auto` / `plan`; an OS-level sandbox confines subprocess writes to the workspace (macOS Seatbelt / Linux bubblewrap), off by default and one flag to enable |
+| 🛡️ Permissions & sandbox | <kbd>shift</kbd>+<kbd>tab</kbd> cycles `default` / `acceptEdits` / `auto` / `plan` (the model can also enter plan mode itself; leaving it always needs your approval, and nova raises that prompt itself when a turn ends rather than relying on the model to ask); an OS-level sandbox confines subprocess writes to the workspace (macOS Seatbelt / Linux bubblewrap), off by default and one flag to enable |
 | 📄 File guarding | Files must be read before they're edited, and external changes are detected — no accidental clobbering |
 | 🔌 MCP | Connect external MCP servers (`stdio` / `http` / `sse`) and use their tools like built-ins, under the same permission gating |
 | 📚 Skills | Write reusable playbooks as `SKILL.md`, loaded on demand by the model — token-cheap and distributable with the repo |
