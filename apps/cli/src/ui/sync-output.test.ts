@@ -68,6 +68,29 @@ describe("wrapStdout", () => {
     expect(base.writes[1]).toContain("\x1b[2;5H");
   });
 
+  it("reports the target each written frame parked on via onPark", () => {
+    const base = fakeStream();
+    const parked: ({ row: number; col: number } | null)[] = [];
+    let target: { row: number; col: number } | null = { row: 3, col: 4 };
+    const out = wrapStdout(base, {
+      sync: false,
+      getCursor: () => target,
+      onPark: (t) => parked.push(t),
+    });
+    out.write("A");
+    target = null;
+    out.write("B");
+    expect(parked).toEqual([{ row: 3, col: 4 }, null]);
+  });
+
+  it("does not call onPark when cursor tracking is off", () => {
+    const base = fakeStream();
+    const parked: unknown[] = [];
+    const out = wrapStdout(base, { sync: true, onPark: (t) => parked.push(t) });
+    out.write("FRAME");
+    expect(parked).toEqual([]);
+  });
+
   it("passes non-string chunks through untouched", () => {
     const base = fakeStream();
     const out = wrapStdout(base, { sync: true, getCursor: () => ({ row: 1, col: 1 }) });

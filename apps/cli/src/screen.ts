@@ -13,7 +13,13 @@ import { type BoxedInputOptions, type SlashCommand } from "./ui/input-box.js";
 import { copyToClipboard } from "./ui/clipboard.js";
 import { attachFilteredStdin } from "./ui/mouse.js";
 import { wrapStdout } from "./ui/sync-output.js";
-import { getCursorTarget, setCursorParking } from "./ui/cursor-target.js";
+import {
+  getCursorTarget,
+  markCursorPainted,
+  setCursorParking,
+  setCursorTarget,
+  setCursorWriter,
+} from "./ui/cursor-target.js";
 import { getInputMouseController } from "./ui/input-mouse.js";
 import { hitTestJumpButton } from "./ui/jump-button.js";
 import { extractSelection } from "./ui/selection.js";
@@ -306,11 +312,17 @@ export class Screen {
     // Tell the InputBox the real cursor is live on its caret so it drops its own
     // inverse caret cell (two carets stacked look wrong — see cursor-target.ts).
     setCursorParking(parkCursor);
+    // A caret-only move (←/→, Ctrl+A/E, a click) leaves the frame byte-identical,
+    // so Ink writes nothing and the frame below never runs — the cursor would be
+    // stranded at its old column. Hand cursor-target.ts the RAW stdout (never the
+    // wrapper, which would treat the escape as a frame) so it can park the cursor
+    // itself in that case, and `onPark` so it stays quiet when a frame did it.
+    setCursorWriter(parkCursor ? (seq: string): void => void process.stdout.write(seq) : null);
     const stdout =
       wrap && process.stdout.isTTY
         ? wrapStdout(process.stdout, {
             sync: this.syncOutput,
-            ...(parkCursor ? { getCursor: getCursorTarget } : {}),
+            ...(parkCursor ? { getCursor: getCursorTarget, onPark: markCursorPainted } : {}),
           })
         : process.stdout;
     this.instance = render(React.createElement(App, { store: this.store }), {
@@ -353,6 +365,10 @@ export class Screen {
       this.detachResize();
       this.detachResize = null;
     }
+    // Stop out-of-band cursor parking before Ink shuts down, so a caret target
+    // left over from the unmounting tree can't write to the terminal afterwards.
+    setCursorWriter(null);
+    setCursorTarget(null);
     // Ink's `unmount()` synchronously calls `this.resolveExitPromise()`, which
     // is only created lazily on the first `waitUntilExit()` call. If we call
     // `unmount()` first, that resolver is undefined and Ink throws — leaving

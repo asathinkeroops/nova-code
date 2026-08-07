@@ -52,6 +52,14 @@ export interface WrapStdoutOptions {
    * Omit to leave the cursor entirely to Ink (no DECSC/DECRC bracketing).
    */
   getCursor?: () => { row: number; col: number } | null;
+  /**
+   * Called with the target this frame just parked the cursor on (null = hidden),
+   * so the caller can tell "the frame carried the caret" from "no frame was
+   * written" — Ink skips identical frames, and a caret-only move produces one.
+   * See `cursor-target.ts`, which uses this to suppress its out-of-band park.
+   * Only invoked when `getCursor` is set.
+   */
+  onPark?: (target: { row: number; col: number } | null) => void;
 }
 
 /**
@@ -78,6 +86,7 @@ export function wrapStdout(
     if (track) {
       out += SAVE; // remember Ink's new end-of-frame position for next restore
       out += target ? `\x1b[${target.row};${target.col}H${SHOW}` : HIDE;
+      opts.onPark?.(target);
     }
     if (opts.sync) out += ESU;
     return out;
