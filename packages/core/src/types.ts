@@ -72,6 +72,7 @@ export const syntheticKindSchema = z.enum([
   "background-notification",
   "monitor-notification",
   "plan-mode",
+  "plan-approved",
   "interrupted",
   "goal-eval",
   "compacted",

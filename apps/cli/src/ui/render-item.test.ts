@@ -205,6 +205,7 @@ describe("buildRenderItems hides system-injected user messages", () => {
       "background-notification",
       '<background-notification id="1" status="done">x</background-notification>',
     ],
+    ["plan-approved", "<plan-approved>The user approved your plan.</plan-approved>"],
     ["interrupted", "<interrupted></interrupted>"],
     ["goal-eval", "<goal-eval>\nEvaluation: tests fail\n</goal-eval>"],
     ["compacted", "<compacted>\n[Conversation compacted [compacted].]\n\nSUMMARY\n</compacted>"],
