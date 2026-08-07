@@ -6,10 +6,9 @@ import type {
   AskUserRequest,
   AskUserResponse,
 } from "@nova/core";
-import { ACCENT_HEX, PURPLE_HEX } from "../colors.js";
+import { PURPLE_HEX } from "../colors.js";
 import { t } from "../i18n/index.js";
 import { countWrappedLines } from "./measure.js";
-import { overlayBorderProps } from "./picker.js";
 import { visibleWidth } from "./width.js";
 
 interface QState {
@@ -21,10 +20,27 @@ interface QState {
 
 type Phase = "options" | "freeform";
 
-// The confirm tab always lives at index === states.length (one past the last
-// question). It carries no QState; it renders a summary plus Submit/Cancel.
+// Row indices of the Confirm tab's two buttons.
 const CONFIRM_SUBMIT = 0;
 const CONFIRM_CANCEL = 1;
+
+/**
+ * Gutter in front of an option's description, aligning it under the label:
+ * `❯ ` (cursor) + `N. ` (number) = 5 columns. Double-digit lists would drift by
+ * one, which is fine — a question with 10+ options is already past the point
+ * where the alignment carries meaning.
+ */
+const DESC_INDENT = "     ";
+
+/**
+ * One tab of the question strip. The leading/trailing spaces are the chip's
+ * padding: the active tab paints them with a background colour, so they have to
+ * be part of the text rather than Box padding (Ink only fills a `<Text>`'s own
+ * cells).
+ */
+function tabChip(header: string, status: string): string {
+  return ` ${status} ${header} `;
+}
 
 function buildState(req: AskUserRequest): QState[] {
   return req.questions.map((spec) => {
@@ -55,14 +71,22 @@ function cloneStates(states: QState[]): QState[] {
   }));
 }
 
+/** The answer as shown on the Confirm tab: picked labels, with "Other" replaced by its text. */
 function answerLabels(q: QState): string[] {
-  return [...q.selected].sort((a, b) => a - b).map((i) => {
-    const opt = q.options[i];
-    if (opt && opt.label === t.ask.other && q.freeform.trim().length > 0) {
-      return q.freeform.trim();
-    }
-    return opt?.label ?? "";
-  });
+  return [...q.selected]
+    .sort((a, b) => a - b)
+    .map((i) => {
+      const opt = q.options[i];
+      if (opt && opt.label === t.ask.other && q.freeform.trim().length > 0) {
+        return q.freeform.trim();
+      }
+      return opt?.label ?? "";
+    });
+}
+
+/** Right-pad a summary header so the answer column lines up across questions. */
+function padHeader(header: string, width: number): string {
+  return header + " ".repeat(Math.max(0, width - visibleWidth(header)));
 }
 
 function buildResponse(states: QState[]): AskUserResponse {
@@ -77,71 +101,75 @@ function buildResponse(states: QState[]): AskUserResponse {
   return { answers };
 }
 
+/** Wrappable width inside the panel's round border + paddingX (mirrors `approvalInnerWidth`). */
+export function askInnerWidth(cols: number): number {
+  return Math.max(1, cols - 4);
+}
+
 /**
  * Exact render height of the AskPanel below, so the viewport reserves the right
  * number of rows and the message region never paints over it. The panel shows
- * one tab at a time but the user can switch freely, so we reserve the tallest
- * tab (each question + the confirm tab). Mirrors `approvalRows`/`pickListRows`.
+ * one question at a time but the user can move between them freely, so we
+ * reserve the tallest one. Mirrors `approvalRows`/`pickListRows`.
  *
- * Box chrome: the same top-rule overlay the picker draws (see
- * `overlayBorderProps`) — one rule row + marginTop/marginBottom (2) = 3 rows,
- * and no side border or padding, so the full width is content. Matches the
- * `opts.topRuleColor ? 3 : …` arm of pickListRows/viewerRows.
+ * Box chrome: round border (2 rows) + outer marginTop/marginBottom (2) + the
+ * hint line that sits below the box (1) = 5 rows.
  */
 export function askRows(req: AskUserRequest, cols: number): number {
-  const inner = Math.max(1, cols);
+  const inner = askInnerWidth(cols);
   const states = buildState(req); // options here include any auto-added "Other"
 
-  // The tab strip is one logical line: `[ ● header ] … [ → Confirm ]`. Build a
-  // representative string so a long set of headers that wraps is reserved for.
-  const tabStrip =
-    states.map((s) => `[ ● ${s.spec.header} ]`).join(" ") + ` [ → ${t.ask.confirm} ]`;
-  const tabRows = countWrappedLines(tabStrip, inner);
-  const hintRows = 2; // blank line + footer hint line (always present)
+  // The tab strip is one logical line of chips — ` ● header  → Confirm ` — that
+  // can wrap when a multi-question ask carries long headers.
+  const tabRows =
+    countWrappedLines(
+      [...states.map((s) => tabChip(s.spec.header, "●")), tabChip(t.ask.confirm, "→")].join(" "),
+      inner,
+    ) + 1; // + the blank line under the strip
 
   let maxBody = 0;
-
-  // Each question tab: question text + tab strip + blank + option rows
-  // (+ the freeform input rows that appear when "Other" is chosen).
   for (const s of states) {
-    const questionRows = countWrappedLines(`? ${s.spec.question}`, inner);
+    const questionRows = countWrappedLines(s.spec.question, inner);
+    // Multi-select rows carry a `[x] ` checkbox, which both indents the label
+    // and pushes the description gutter out by the same 4 columns.
+    const box = s.spec.multiSelect ? "[x] " : "";
     let optionRows = 0;
-    for (const o of s.options) {
-      optionRows += countWrappedLines(
-        `    ● ${o.label}${o.description ? `  ${o.description}` : ""}`,
-        inner,
-      );
+    for (const [i, o] of s.options.entries()) {
+      optionRows += countWrappedLines(`❯ ${i + 1}. ${box}${o.label}`, inner);
+      if (o.description) {
+        optionRows += countWrappedLines(`${DESC_INDENT}${box}${o.description}`, inner);
+      }
     }
     const hasOther = s.options.some((o) => o.label === t.ask.other);
     const freeformRows = hasOther ? 2 : 0; // blank + input line, when active
-    maxBody = Math.max(maxBody, questionRows + tabRows + 1 + optionRows + freeformRows + hintRows);
+    maxBody = Math.max(maxBody, tabRows + questionRows + 1 + optionRows + freeformRows);
   }
 
-  // Confirm tab: prompt + tab strip + blank + per-question summary + blank +
-  // Submit/Cancel buttons.
-  const confirmPrompt = countWrappedLines(`? ${t.ask.reviewSubmit}`, inner);
+  // Confirm tab: prompt + blank + one summary row per question + blank + the
+  // two buttons. Worst-case answer value: every label joined (multiSelect) or
+  // the longest single one. Freeform text is unbounded and not modeled.
   let summaryRows = 0;
   for (const s of states) {
-    // Worst-case answer value: every option label joined (multiSelect) or the
-    // longest single label. Freeform custom text is unbounded and not modeled.
     const value = s.spec.multiSelect
       ? s.spec.options.map((o) => o.label).join(", ")
       : s.spec.options.reduce((a, o) => (o.label.length > a.length ? o.label : a), "");
-    summaryRows += countWrappedLines(`  ${s.spec.header}: ${value}`, inner);
+    summaryRows += countWrappedLines(`    ${s.spec.header}  ${value}`, inner);
   }
   const buttonRows =
-    countWrappedLines(`    ${t.ask.submit}${t.ask.answerAllFirst}`, inner) +
-    countWrappedLines(`    ${t.ask.cancel}`, inner);
-  const confirmBody = confirmPrompt + tabRows + 1 + summaryRows + 1 + buttonRows + hintRows;
-  maxBody = Math.max(maxBody, confirmBody);
+    countWrappedLines(`❯ 1. ${t.ask.submit}${t.ask.answerAllFirst}`, inner) +
+    countWrappedLines(`  2. ${t.ask.cancel}`, inner);
+  maxBody = Math.max(
+    maxBody,
+    tabRows + countWrappedLines(t.ask.reviewSubmit, inner) + 1 + summaryRows + 1 + buttonRows,
+  );
 
-  return 3 + maxBody;
+  return 5 + maxBody;
 }
 
 export interface AskPanelProps {
   req: AskUserRequest;
   onResolve: (value: AskUserResponse) => void;
-  /** Viewport inner width, threaded like PickList's so the rule spans it. */
+  /** Viewport inner width, threaded like the approval modal's so wrapping agrees. */
   panelWidth?: number;
 }
 
@@ -152,18 +180,29 @@ export function AskPanel({ req, onResolve, panelWidth }: AskPanelProps): React.R
   const [phase, setPhase] = useState<Phase>("options");
   const [freeformBuffer, setFreeformBuffer] = useState("");
   const [confirmIndex, setConfirmIndex] = useState(CONFIRM_SUBMIT);
-  // Same fallback chain PickList uses for its full-width top rule.
   const { stdout } = useStdout();
   const cols = panelWidth ?? stdout?.columns ?? 80;
 
   const total = states.length;
-  const confirmTab = total; // confirm tab index
-  const tabCount = total + 1; // questions + confirm
+  const confirmTab = total; // the Confirm tab always sits one past the last question
+  const tabCount = total + 1;
   const isConfirm = tab === confirmTab;
-
   const q = states[tab];
   if (!isConfirm && !q) return null;
   const otherIdx = q ? q.options.findIndex((o) => o.label === t.ask.other) : -1;
+  const everyAnswered = states.every(isAnswered);
+  const headerWidth = Math.max(...states.map((s) => visibleWidth(s.spec.header)));
+
+  const cancel = (): void => onResolve({ answers: [], cancelled: true });
+
+  /** Move to question `idx`, parking the cursor on whatever it already answered. */
+  const goToQuestion = (next: QState[], idx: number): void => {
+    setTab(idx);
+    const target = next[idx];
+    const first = target ? [...target.selected].sort((a, b) => a - b)[0] : undefined;
+    setOptIndex(first ?? 0);
+    setPhase("options");
+  };
 
   const updateCurrent = (mut: (q: QState) => QState): void => {
     setStates((prev) => {
@@ -174,20 +213,17 @@ export function AskPanel({ req, onResolve, panelWidth }: AskPanelProps): React.R
     });
   };
 
-  const allAnswered = (next: QState[]): boolean => next.every(isAnswered);
-
-  const firstUnanswered = (next: QState[]): number => next.findIndex((nq) => !isAnswered(nq));
-
-  // After answering a question, move to the next unanswered one; when every
-  // question is answered, land on the confirm tab rather than auto-submitting.
+  /**
+   * After answering, move to the next still-unanswered question; once every
+   * question has an answer, land on the Confirm tab rather than submitting —
+   * the response only goes out when the user activates Submit there.
+   */
   const advanceOrConfirm = (next: QState[]): void => {
     for (let step = 1; step <= next.length; step++) {
       const idx = (tab + step) % next.length;
       const nq = next[idx];
       if (nq && !isAnswered(nq)) {
-        setTab(idx);
-        setOptIndex(0);
-        setPhase("options");
+        goToQuestion(next, idx);
         return;
       }
     }
@@ -196,18 +232,14 @@ export function AskPanel({ req, onResolve, panelWidth }: AskPanelProps): React.R
     setPhase("options");
   };
 
+  /** Submit, unless a question is still open — then jump to it instead. */
   const submit = (next: QState[]): void => {
-    if (allAnswered(next)) {
+    if (next.every(isAnswered)) {
       onResolve(buildResponse(next));
       return;
     }
-    // Refuse to submit while questions remain; jump to the first unanswered.
-    const idx = firstUnanswered(next);
-    if (idx >= 0) {
-      setTab(idx);
-      setOptIndex(0);
-      setPhase("options");
-    }
+    const idx = next.findIndex((nq) => !isAnswered(nq));
+    if (idx >= 0) goToQuestion(next, idx);
   };
 
   const commitFreeform = (): void => {
@@ -242,9 +274,38 @@ export function AskPanel({ req, onResolve, panelWidth }: AskPanelProps): React.R
     });
   };
 
+  /** Choose option `idx`: single-select commits and moves on, multi toggles. */
+  const choose = (idx: number): void => {
+    if (!q) return;
+    if (idx === otherIdx) {
+      setOptIndex(idx);
+      setFreeformBuffer(q.freeform);
+      setPhase("freeform");
+      return;
+    }
+    setOptIndex(idx);
+    if (q.spec.multiSelect) {
+      updateCurrent((cur) => {
+        const sel = new Set(cur.selected);
+        if (sel.has(idx)) sel.delete(idx);
+        else sel.add(idx);
+        return { ...cur, selected: sel };
+      });
+      return;
+    }
+    setStates((prev) => {
+      const next = cloneStates(prev);
+      const cur = next[tab];
+      if (!cur) return prev;
+      cur.selected = new Set([idx]);
+      setTimeout(() => advanceOrConfirm(next), 0);
+      return next;
+    });
+  };
+
   useInput((input, key) => {
     if (key.ctrl && input === "c") {
-      onResolve({ answers: [], cancelled: true });
+      cancel();
       return;
     }
 
@@ -271,32 +332,47 @@ export function AskPanel({ req, onResolve, panelWidth }: AskPanelProps): React.R
       return;
     }
 
+    if (key.escape) {
+      cancel();
+      return;
+    }
+
+    // Paging between tabs (questions + Confirm) stays available so answers can
+    // be revised; it just isn't the primary flow — answering advances for you.
+    const goToTab = (idx: number): void => {
+      if (idx === confirmTab) {
+        setTab(confirmTab);
+        setConfirmIndex(CONFIRM_SUBMIT);
+        setPhase("options");
+        return;
+      }
+      goToQuestion(states, idx);
+    };
     if (key.leftArrow || (key.shift && key.tab)) {
-      setTab((t) => (t - 1 + tabCount) % tabCount);
-      setOptIndex(0);
-      setConfirmIndex(CONFIRM_SUBMIT);
+      goToTab((tab - 1 + tabCount) % tabCount);
       return;
     }
     if (key.rightArrow || (key.tab && !key.shift)) {
-      setTab((t) => (t + 1) % tabCount);
-      setOptIndex(0);
-      setConfirmIndex(CONFIRM_SUBMIT);
+      goToTab((tab + 1) % tabCount);
       return;
     }
 
     if (isConfirm) {
+      const activate = (idx: number): void => {
+        if (idx === CONFIRM_CANCEL) cancel();
+        else submit(states);
+      };
       if (key.upArrow || key.downArrow) {
         setConfirmIndex((i) => (i === CONFIRM_SUBMIT ? CONFIRM_CANCEL : CONFIRM_SUBMIT));
         return;
       }
-      if (key.return) {
-        if (confirmIndex === CONFIRM_CANCEL) {
-          onResolve({ answers: [], cancelled: true });
-          return;
-        }
-        submit(states);
+      if (input === "1" || input === "2") {
+        const idx = Number(input) - 1;
+        setConfirmIndex(idx);
+        activate(idx);
         return;
       }
+      if (key.return) activate(confirmIndex);
       return;
     }
 
@@ -309,179 +385,152 @@ export function AskPanel({ req, onResolve, panelWidth }: AskPanelProps): React.R
       setOptIndex((i) => (i + 1) % q.options.length);
       return;
     }
+    // Number keys pick an option directly, matching the `N.` prefix on each row.
+    if (input.length === 1 && input >= "1" && input <= "9") {
+      const idx = Number(input) - 1;
+      if (idx < q.options.length) choose(idx);
+      return;
+    }
     if (input === " " && q.spec.multiSelect) {
-      if (optIndex === otherIdx) {
-        setFreeformBuffer(q.freeform);
-        setPhase("freeform");
-        return;
-      }
-      updateCurrent((cur) => {
-        const sel = new Set(cur.selected);
-        if (sel.has(optIndex)) sel.delete(optIndex);
-        else sel.add(optIndex);
-        return { ...cur, selected: sel };
-      });
+      choose(optIndex);
       return;
     }
     if (key.return) {
-      if (optIndex === otherIdx) {
-        setFreeformBuffer(q.freeform);
-        setPhase("freeform");
+      // Multi-select confirms the toggled set (falling back to the row under
+      // the cursor when nothing is ticked yet); single-select picks the row.
+      if (q.spec.multiSelect && q.selected.size > 0) {
+        advanceOrConfirm(states);
         return;
       }
-      if (q.spec.multiSelect) {
-        setStates((prev) => {
-          const next = cloneStates(prev);
-          const cur = next[tab];
-          if (!cur) return prev;
-          if (cur.selected.size === 0) {
-            cur.selected.add(optIndex);
-          }
-          if (isAnswered(cur)) {
-            setTimeout(() => advanceOrConfirm(next), 0);
-          }
-          return next;
-        });
-        return;
-      }
-      setStates((prev) => {
-        const next = cloneStates(prev);
-        const cur = next[tab];
-        if (!cur) return prev;
-        cur.selected = new Set([optIndex]);
-        setTimeout(() => advanceOrConfirm(next), 0);
-        return next;
-      });
+      choose(optIndex);
       return;
     }
   });
 
-  const labelWidth = q ? Math.max(...q.options.map((o) => visibleWidth(o.label))) : 0;
-  const everyAnswered = allAnswered(states);
+  const hints = isConfirm
+    ? [t.ask.navButton, t.ask.navPick(2), t.ask.navQuestion, t.ask.navActivate, t.ask.navCancel]
+    : [
+        t.ask.navOption,
+        t.ask.navPick(q?.options.length ?? 0),
+        q?.spec.multiSelect ? t.ask.navToggle : "",
+        t.ask.navQuestion,
+        t.ask.navNext,
+        t.ask.navCancel,
+      ];
 
   return (
-    <Box
-      flexDirection="column"
-      marginTop={1}
-      marginBottom={1}
-      width={cols}
-      {...overlayBorderProps(false, PURPLE_HEX)}
-    >
-      <Text>
-        <Text bold color={ACCENT_HEX}>
-          ?
-        </Text>{" "}
-        {isConfirm ? t.ask.reviewSubmit : q?.spec.question}
-      </Text>
-      <Box>
-        {states.map((s, i) => {
-          const status = isAnswered(s) ? "✓" : i === tab ? "●" : "○";
-          const text = ` ${status} ${s.spec.header} `;
-          return (
-            <Text key={i} color={i === tab ? ACCENT_HEX : undefined} dimColor={i !== tab}>
-              {i > 0 ? " " : ""}
-              [{text}]
-            </Text>
-          );
-        })}
-        <Text
-          color={isConfirm ? ACCENT_HEX : everyAnswered ? "green" : undefined}
-          dimColor={!isConfirm}
-        >
-          {" "}
-          [ {everyAnswered ? "✓" : "→"} {t.ask.confirm} ]
-        </Text>
-      </Box>
-      <Text> </Text>
-      {isConfirm ? (
-        <>
-          {states.map((s, i) => {
-            const labels = answerLabels(s);
-            const val = labels.length > 0 ? labels.join(", ") : t.ask.noAnswer;
-            return (
-              <Text key={i}>
-                {"  "}
-                <Text dimColor>{s.spec.header}:</Text>{" "}
-                <Text color={labels.length > 0 ? undefined : "yellow"}>{val}</Text>
+    <Box flexDirection="column" marginTop={1} marginBottom={1} width={cols}>
+      <Box flexDirection="column" paddingX={1} borderStyle="round" borderColor="gray">
+        <Box>
+          {[
+            ...states.map((s, i) => ({
+              key: s.spec.header,
+              label: s.spec.header,
+              status: isAnswered(s) ? "✓" : i === tab ? "●" : "○",
+              isCur: i === tab,
+            })),
+            {
+              key: "__confirm",
+              label: t.ask.confirm,
+              status: everyAnswered ? "✓" : "→",
+              isCur: isConfirm,
+            },
+          ].map((chip, i) => (
+            <React.Fragment key={chip.key}>
+              {i > 0 ? <Text> </Text> : null}
+              <Text
+                bold={chip.isCur}
+                color={chip.isCur ? "white" : undefined}
+                dimColor={!chip.isCur}
+                {...(chip.isCur ? { backgroundColor: PURPLE_HEX } : {})}
+              >
+                {tabChip(chip.label, chip.status)}
               </Text>
-            );
-          })}
-          <Text> </Text>
-          {([
-            { idx: CONFIRM_SUBMIT, label: t.ask.submit, color: "green" as const },
-            { idx: CONFIRM_CANCEL, label: t.ask.cancel, color: "red" as const },
-          ]).map((b) => {
-            const isCur = confirmIndex === b.idx;
-            const disabled = b.idx === CONFIRM_SUBMIT && !everyAnswered;
-            return (
-              <Text key={b.idx}>
-                {"  "}
-                <Text color={isCur ? ACCENT_HEX : undefined}>{isCur ? "❯" : " "}</Text>{" "}
-                <Text color={isCur ? b.color : undefined} dimColor={disabled && !isCur}>
-                  {b.label}
+            </React.Fragment>
+          ))}
+        </Box>
+        <Text> </Text>
+        <Text>{isConfirm ? t.ask.reviewSubmit : q?.spec.question}</Text>
+        <Text> </Text>
+        {isConfirm ? (
+          <>
+            {states.map((s, i) => {
+              const labels = answerLabels(s);
+              return (
+                <Text key={i}>
+                  {"    "}
+                  <Text dimColor>{padHeader(s.spec.header, headerWidth)}</Text>
+                  {"  "}
+                  <Text color={labels.length > 0 ? undefined : "yellow"}>
+                    {labels.length > 0 ? labels.join(", ") : t.ask.noAnswer}
+                  </Text>
                 </Text>
-                {disabled ? <Text dimColor>{t.ask.answerAllFirst}</Text> : null}
-              </Text>
-            );
-          })}
-        </>
-      ) : (
-        q?.options.map((o, i) => {
+              );
+            })}
+            <Text> </Text>
+            {[
+              { idx: CONFIRM_SUBMIT, label: t.ask.submit, color: "green" as const },
+              { idx: CONFIRM_CANCEL, label: t.ask.cancel, color: "red" as const },
+            ].map((b) => {
+              const isCur = confirmIndex === b.idx;
+              const disabled = b.idx === CONFIRM_SUBMIT && !everyAnswered;
+              return (
+                <Text key={b.idx} color={isCur ? PURPLE_HEX : undefined}>
+                  {isCur ? "❯ " : "  "}
+                  <Text dimColor={!isCur}>{b.idx + 1}.</Text>{" "}
+                  <Text color={isCur ? b.color : undefined} dimColor={disabled && !isCur}>
+                    {b.label}
+                  </Text>
+                  {disabled ? <Text dimColor>{t.ask.answerAllFirst}</Text> : null}
+                </Text>
+              );
+            })}
+          </>
+        ) : (
+          q?.options.map((o, i) => {
           const isCur = i === optIndex;
           const isSelected = q.selected.has(i);
-          const marker = q.spec.multiSelect ? (isSelected ? "[x]" : "[ ]") : isSelected ? "●" : "○";
-          const cur = isCur ? "❯" : " ";
-          const pad = " ".repeat(Math.max(0, labelWidth - visibleWidth(o.label)));
+          const label =
+            i === otherIdx && q.freeform.trim().length > 0 ? `${o.label}: ${q.freeform}` : o.label;
           return (
-            <Text key={i}>
-              {"  "}
-              <Text color={isCur ? ACCENT_HEX : undefined}>{cur}</Text>
-              {" "}
-              {marker}
-              {" "}
-              <Text color={isCur ? ACCENT_HEX : undefined}>{o.label}</Text>
-              {pad}
-              {o.description ? (
-                <>
-                  {"  "}
-                  <Text dimColor>{o.description}</Text>
-                </>
-              ) : null}
-            </Text>
-          );
-        })
-      )}
-      {phase === "freeform" ? (
-        <>
-          <Text> </Text>
-          <Box>
-            <Text color={ACCENT_HEX}>{"  › "}</Text>
-            <Text>{freeformBuffer}</Text>
-            <Text inverse> </Text>
-            {freeformBuffer.length === 0 ? (
-              <Text dimColor>
-                {"  "}
-                {t.ask.freeformHint}
+            <React.Fragment key={i}>
+              <Text color={isCur ? PURPLE_HEX : undefined}>
+                {isCur ? "❯ " : "  "}
+                <Text dimColor={!isCur}>{i + 1}.</Text>{" "}
+                {q.spec.multiSelect ? `${isSelected ? "[x]" : "[ ]"} ` : ""}
+                {label}
               </Text>
-            ) : null}
-          </Box>
-        </>
-      ) : null}
-      <Text> </Text>
+              {o.description ? (
+                <Text dimColor>
+                  {DESC_INDENT}
+                  {q.spec.multiSelect ? "    " : ""}
+                  {o.description}
+                </Text>
+                ) : null}
+              </React.Fragment>
+            );
+          })
+        )}
+        {phase === "freeform" ? (
+          <>
+            <Text> </Text>
+            <Box>
+              <Text color={PURPLE_HEX}>{"  › "}</Text>
+              <Text>{freeformBuffer}</Text>
+              <Text inverse> </Text>
+              {freeformBuffer.length === 0 ? (
+                <Text dimColor>
+                  {"  "}
+                  {t.ask.freeformHint}
+                </Text>
+              ) : null}
+            </Box>
+          </>
+        ) : null}
+      </Box>
       <Text dimColor>
-        {[
-          t.ask.navTab,
-          isConfirm ? t.ask.navButton : t.ask.navOption,
-          !isConfirm && q?.spec.multiSelect ? t.ask.navToggle : "",
-          phase === "freeform"
-            ? t.ask.navFreeform
-            : isConfirm
-              ? t.ask.navActivate
-              : t.ask.navNext,
-          t.ask.navCancel,
-        ]
-          .filter((x) => x.length > 0)
-          .join(" · ")}
+        {"  "}
+        {(phase === "freeform" ? [t.ask.navFreeform] : hints).filter((x) => x.length > 0).join(" · ")}
       </Text>
     </Box>
   );
