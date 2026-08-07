@@ -2,14 +2,15 @@ import { highlight, supportsLanguage } from "cli-highlight";
 import stringWidth from "string-width";
 import wrapAnsi from "wrap-ansi";
 import {
+  blue,
   bold,
   cyan,
   dim,
+  headingColor,
   italic,
-  magenta,
   strike,
   underline,
-  yellow,
+  violet,
 } from "../colors.js";
 
 const HR_WIDTH = 60;
@@ -151,11 +152,11 @@ function highlightInlineSource(text: string): string {
 
   let s = text;
 
-  s = s.replace(/`([^`\n]+)`/g, (_m, code: string) => stash(yellow(`\`${code}\``)));
+  s = s.replace(/`([^`\n]+)`/g, (_m, code: string) => stash(violet(`\`${code}\``)));
 
   s = s.replace(
     /\[([^\]]+)\]\(([^)]+)\)/g,
-    (_m, label: string, url: string) => stash(`${cyan(`[${label}]`)}${dim(`(${url})`)}`),
+    (_m, label: string, url: string) => stash(`${blue(`[${label}]`)}${dim(`(${url})`)}`),
   );
 
   s = s.replace(/\*\*([^*\n]+)\*\*/g, (_m, t: string) => stash(bold(`**${t}**`)));
@@ -184,11 +185,7 @@ function highlightMarkdownLine(line: string): string {
     const indent = atx[1] ?? "";
     const hashes = atx[2] ?? "";
     const rest = atx[3] ?? "";
-    const level = hashes.length;
-    const body = `${hashes}${rest}`;
-    if (level === 1) return `${indent}${bold(magenta(body))}`;
-    if (level === 2) return `${indent}${bold(cyan(body))}`;
-    return `${indent}${bold(body)}`;
+    return `${indent}${bold(headingColor(hashes.length, `${hashes}${rest}`))}`;
   }
 
   if (/^\s{0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/.test(line)) return dim(line);
@@ -262,7 +259,7 @@ function renderInline(text: string): string {
 
   let s = text;
 
-  s = s.replace(/`([^`\n]+)`/g, (_m, code: string) => stash(yellow(code)));
+  s = s.replace(/`([^`\n]+)`/g, (_m, code: string) => stash(violet(code)));
 
   s = s.replace(
     /!\[([^\]]*)\]\(([^)]+)\)/g,
@@ -271,7 +268,7 @@ function renderInline(text: string): string {
 
   s = s.replace(
     /\[([^\]]+)\]\(([^)]+)\)/g,
-    (_m, label: string, url: string) => stash(`${underline(cyan(label))} ${dim(`(${url})`)}`),
+    (_m, label: string, url: string) => stash(`${underline(blue(label))} ${dim(`(${url})`)}`),
   );
 
   s = s.replace(/\*\*([^*\n]+)\*\*/g, (_m, t: string) => bold(t));
@@ -288,11 +285,7 @@ function renderInline(text: string): string {
 }
 
 function renderHeader(level: number, text: string): string {
-  const inner = renderInline(text);
-  if (level === 1) return bold(magenta(`# ${inner}`));
-  if (level === 2) return bold(cyan(`## ${inner}`));
-  if (level === 3) return bold(`### ${inner}`);
-  return bold(dim(`${"#".repeat(level)} ${inner}`));
+  return bold(headingColor(level, `${"#".repeat(level)} ${renderInline(text)}`));
 }
 
 /**

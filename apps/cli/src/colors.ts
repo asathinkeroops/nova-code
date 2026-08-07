@@ -26,9 +26,26 @@ export const useTruecolor = detectTruecolor();
 
 export type Rgb = readonly [number, number, number];
 
+/**
+ * Re-open `openSeq` after every nested `closeSeq` already inside `text`.
+ *
+ * ANSI closers are SHARED, not per-attribute: bold(1) and dim(2) both end with
+ * `22` ("normal intensity"), and every foreground colour ends with `39`. So a
+ * nested span that ends mid-string silently turns the OUTER attribute off for
+ * everything after it — `dim("a" + bold("b") + "c")` rendered "c" at normal
+ * intensity, an H4-H6 heading lost both bold and dim after an inline `**`, and a
+ * table header cell containing `**` stopped being bold partway through. Splicing
+ * our own opener back in after each inner close makes the outer attribute
+ * survive to the real end, which is what the nesting reads as.
+ */
+function reopen(text: string, closeSeq: string, openSeq: string): string {
+  return text.includes(closeSeq) ? text.split(closeSeq).join(closeSeq + openSeq) : text;
+}
+
 export function rgbFg([r, g, b]: Rgb, text: string): string {
   if (!useColor) return text;
-  return `\x1b[38;2;${r};${g};${b}m${text}\x1b[39m`;
+  const open = `\x1b[38;2;${r};${g};${b}m`;
+  return `${open}${reopen(text, "\x1b[39m", open)}\x1b[39m`;
 }
 
 // The primary UI accent — the banner logo's bottom gradient stop, a hot
@@ -140,7 +157,9 @@ export function diffSign(kind: "add" | "del"): string {
 
 function wrap(open: number, close: number, text: string): string {
   if (!useColor) return text;
-  return `\x1b[${open}m${text}\x1b[${close}m`;
+  const openSeq = `\x1b[${open}m`;
+  const closeSeq = `\x1b[${close}m`;
+  return `${openSeq}${reopen(text, closeSeq, openSeq)}${closeSeq}`;
 }
 
 export const green = (s: string): string => wrap(32, 39, s);
@@ -169,6 +188,62 @@ export const purple = (s: string): string => {
   if (useTruecolor) return rgbFg([124, 58, 237], s);
   return wrap(35, 39, s);
 };
+// Inline-code violet (#a78bfa) — a blue-leaning purple, not the pink-leaning
+// kind. Distinct from `purple` (#7c3aed) above, which is chrome (thinking
+// labels, panel top rules): this one is body-sized text that recurs many times
+// per paragraph next to plain white prose, so it is pulled up to ~7.3:1 on a
+// near-black background where #7c3aed sits at ~2.5:1 and goes muddy at small
+// monospace sizes. Picked by eye against a real transcript — darker (#8b5cf6,
+// 4.7:1) and desaturated grey-violets both lost the code spans in the prose.
+//
+// The 16-colour fallback is blue(34), NOT the nearer magenta(35): headings are
+// magenta, so falling back there made inline code and an H1 the same colour with
+// only bold telling them apart. Blue is one hue off but keeps the two roles
+// separate, which matters more at 16 colours than hue fidelity does.
+export const violet = (s: string): string => {
+  if (!useColor) return s;
+  if (useTruecolor) return rgbFg([167, 139, 250], s);
+  return wrap(34, 39, s);
+};
+/**
+ * Heading ramp: ONE hue, descending brightness, index 0 = H1.
+ *
+ * Depth used to be signalled three different ways at once — hue for H1/H2
+ * (magenta, then cyan), plain weight for H3, weight+dim for H4-H6 — which was
+ * not even monotonic: nothing made cyan read as "below" magenta, so H1 and H2
+ * looked like two unrelated kinds of heading rather than two levels of one.
+ * A single luminance scale carries depth on its own, and every level is drawn
+ * bold on top of it, so the ramp never has to double as emphasis.
+ *
+ * The magenta family is deliberate: it is the one hue left free after cyan went
+ * to list markers, blue to links, and violet to inline code — so a heading never
+ * competes with the spans inside it.
+ *
+ * H4-H6 share the floor rather than continuing to darken. Below roughly 4:1 a
+ * bold heading starts reading as disabled text, and levels that deep are rare
+ * enough that legibility beats one more step of contrast.
+ */
+const HEADING_RAMP: readonly Rgb[] = [
+  [232, 168, 232], // H1  ~10:1 on near-black
+  [206, 142, 206], // H2  ~7:1
+  [182, 118, 182], // H3  ~5:1
+  [158, 98, 158], // H4  ~4:1
+  [158, 98, 158], // H5
+  [158, 98, 158], // H6
+];
+
+/**
+ * Colour a heading body for `level` (1-6, clamped). Truecolor only; 16-colour
+ * terminals collapse the whole ramp onto magenta(35). That is safe precisely
+ * because the renderer keeps the literal `#` markers in its output — the level
+ * is legible from the text itself, so colour only ever has to reinforce it.
+ */
+export function headingColor(level: number, s: string): string {
+  if (!useColor) return s;
+  if (!useTruecolor) return wrap(35, 39, s);
+  const idx = Math.min(Math.max(Math.trunc(level), 1), HEADING_RAMP.length) - 1;
+  return rgbFg(HEADING_RAMP[idx]!, s);
+}
 export const bold = (s: string): string => wrap(1, 22, s);
 export const italic = (s: string): string => wrap(3, 23, s);
 export const underline = (s: string): string => wrap(4, 24, s);
