@@ -104,18 +104,47 @@ describe("formatPercent", () => {
 });
 
 describe("contextBar", () => {
-  it("renders an empty bar below one cell's worth", () => {
-    expect(contextBar(9)).toBe("░░░░░░░░░░");
+  it("shows sub-cell progress below one cell's worth", () => {
+    // Whole-cell flooring left this blank until 10%, so the meter read empty
+    // through the whole first tenth of the window.
+    expect(contextBar(9)).toBe("▓░░░░░░░░░");
+    expect(contextBar(5)).toBe("▒░░░░░░░░░");
+  });
+  it("lights the faintest rung for any non-zero usage", () => {
+    expect(contextBar(0.1)).toBe("▒░░░░░░░░░");
+    expect(contextBar(0)).toBe("░░░░░░░░░░");
   });
   it("renders a full bar at 100%", () => {
     expect(contextBar(100)).toBe("██████████");
   });
-  it("floors partial fills", () => {
-    expect(contextBar(35)).toBe("███░░░░░░░");
+  it("renders whole cells plus a shaded remainder", () => {
+    expect(contextBar(35)).toBe("███▒░░░░░░");
+    expect(contextBar(30)).toBe("███░░░░░░░");
   });
   it("clamps out-of-range input", () => {
     expect(contextBar(250)).toBe("██████████");
     expect(contextBar(-5)).toBe("░░░░░░░░░░");
+  });
+  it("always occupies exactly `width` cells", () => {
+    for (const w of [10, 28]) {
+      for (let p = 0; p <= 100; p += 0.5) {
+        expect([...contextBar(p, w)]).toHaveLength(w);
+      }
+    }
+  });
+  it("never leaves part of a cell unpainted", () => {
+    // Left-aligned part-blocks (▏▎▍▌▋▊▉) ink only their own sliver and leave
+    // the rest of the cell in the terminal background, which beside the dotted
+    // track reads as the bar being cut in half at the fill boundary. Every
+    // glyph the meter emits must cover its whole cell.
+    const inked = new Set(["█", "▓", "▒", "░"]);
+    for (const w of [10, 28]) {
+      for (let p = 0; p <= 100; p += 0.25) {
+        for (const ch of contextBar(p, w)) {
+          expect(inked.has(ch)).toBe(true);
+        }
+      }
+    }
   });
 });
 

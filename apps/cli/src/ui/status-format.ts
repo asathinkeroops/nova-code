@@ -123,11 +123,43 @@ export function formatPercent(ratio: number): string {
   return `${Math.round(clamped * 100)}%`;
 }
 
-/** A `width`-cell meter, e.g. 9% over 10 cells → "░░░░░░░░░░". */
+/** Empty track cell; also the zero rung of {@link PARTIAL}. */
+const TRACK = "░";
+/**
+ * Intermediate fill levels for the leading cell, by thirds. Shades rather than
+ * left-aligned part-blocks (`▏▎▍…`) on purpose: a part-block paints only its
+ * own sliver and leaves the rest of the cell in the *background* colour, which
+ * next to the dotted track reads as a hole punched in the bar — the meter looks
+ * severed at the fill boundary. Every rung here inks the whole cell, so the bar
+ * stays continuous and just loses density toward its leading edge.
+ */
+const PARTIAL = ["", "▒", "▓"] as const;
+/** Fill rungs available per cell: the two shades above plus a solid block. */
+const STEPS_PER_CELL = PARTIAL.length;
+
+/**
+ * A `width`-cell meter, e.g. 9% over 10 cells → "▓░░░░░░░░░".
+ *
+ * Fills at a third of a cell rather than whole cells. Flooring to whole cells
+ * meant the default 10-cell bar showed nothing at all until usage crossed 10% —
+ * it read "empty" through the entire first tenth of the window, exactly the
+ * range where someone is watching it start to move. Thirds give ~3.3%
+ * granularity at that width.
+ *
+ * Any non-zero usage lights at least the faintest rung: over-stating by a
+ * fraction of a cell beats a bar that looks untouched while the window fills.
+ *
+ * The result is always exactly `width` display cells — a partial cell replaces
+ * a track cell rather than adding to the total.
+ */
 export function contextBar(percent: number, width = 10): string {
   const clamped = Math.max(0, Math.min(100, percent));
-  const filled = Math.floor((clamped / 100) * width);
-  return "█".repeat(filled) + "░".repeat(Math.max(0, width - filled));
+  const rungs = (clamped / 100) * width * STEPS_PER_CELL;
+  const steps = clamped > 0 ? Math.max(1, Math.floor(rungs)) : 0;
+  const full = Math.floor(steps / STEPS_PER_CELL);
+  const partial = steps % STEPS_PER_CELL;
+  const head = "█".repeat(full) + (partial > 0 ? PARTIAL[partial] : "");
+  return head + TRACK.repeat(Math.max(0, width - full - (partial > 0 ? 1 : 0)));
 }
 
 /** Replace a leading `home` path with `~`. */
