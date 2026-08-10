@@ -55,3 +55,11 @@ export {
 } from "./model.js";
 export { agentLoop, LoopTerminatedError, type AgentLoopOptions, type LoopResult } from "./loop.js";
 export { xmlEscape, xmlAttr } from "./xml.js";
+export {
+  parseFrontMatter,
+  splitFrontMatter,
+  frontMatterText,
+  frontMatterBool,
+  frontMatterList,
+  type YamlValue,
+} from "./front-matter.js";
