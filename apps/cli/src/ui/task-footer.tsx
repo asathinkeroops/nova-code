@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Box, Text } from "ink";
 import type { Task, TaskStatus } from "@nova/tools";
-import { ACCENT_HEX, ACCENT_RGB, accent } from "../colors.js";
+import { ACCENT_HEX, accent } from "../colors.js";
 import { t } from "../i18n/index.js";
 import { Spinner } from "./spinner.js";
 import type { SpinnerSpec } from "./store.js";
@@ -140,7 +140,6 @@ export function TaskFooter({ tasks }: TaskFooterProps): React.ReactElement | nul
         id: -2,
         label: {
           words: [`${t.footer.taskLabel} ${spinnerTask.description}`],
-          tint: ACCENT_RGB,
           colorize: accent,
         },
         startedAt,

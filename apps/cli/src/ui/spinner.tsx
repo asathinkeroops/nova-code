@@ -2,22 +2,65 @@ import React, { useEffect, useState } from "react";
 import { Box, Text } from "ink";
 import { bold, type Rgb, useTruecolor } from "../colors.js";
 import { UI_FRAME_MS } from "./frame.js";
+import { LOGO_GRADIENT } from "./logo.js";
 import { formatElapsed, formatTokenCount } from "./status-format.js";
 import type { SpinnerSpec } from "./store.js";
 
 // A twinkling nova instead of the stock braille spinner: the star flares open
 // from a dim point to a full burst and settles back, looping seamlessly (the
-// last frame ✦ folds straight into the leading ·). Paired with the color
-// shimmer below, the head reads as a pulsing star — the same supernova motif
-// as the wordmark (see ui/logo.ts). All glyphs are single terminal cells.
-const FRAMES = ["·", "✦", "✧", "✶", "✸", "✺", "✸", "✶", "✧", "✦"];
+// trailing ⁺ folds straight into the leading ·).
+//
+// The glyphs are exactly the wordmark's own starfield vocabulary — `· ⁺ ⋆ ✧ ✦`
+// are the five sparkle characters LOGO is drawn with (see ui/logo.ts), ordered
+// here by visual weight. The previous set (✶ ✸ ✺) appeared nowhere in the
+// wordmark: a second, unrelated family of star shapes. All are single cells.
+const FRAMES = ["·", "⁺", "⋆", "✧", "✦", "✦", "✧", "⋆", "⁺"];
 
 // The animation runs at 1/ANIM_SLOWDOWN of the repaint cadence, so each star
 // frame holds for ANIM_SLOWDOWN ticks (2 × UI_FRAME_MS = 160ms) — a calm
 // twinkle rather than a fast flicker.
 const ANIM_SLOWDOWN = 2;
 
-function shimmer(text: string, frame: number, [r, g, b]: Rgb): string {
+// How far the colour sweep advances per animation frame, and how much it lags
+// per character. One full out-and-back traverse of the arc is 2.0 units, so
+// 0.052 puts the colour cycle at ~38.5 frames (6.2s) against the star's 9-frame
+// (1.44s) pulse. The ratio (4.27) is deliberately not a whole number: at 0.055
+// it lands on 4.04, close enough that every fourth pulse repeats the same
+// colours and the whole thing visibly loops.
+const ARC_SPEED = 0.052;
+const ARC_SPREAD = 0.1;
+
+/**
+ * Sample the wordmark's cyan→magenta arc at `t`, ping-ponged (0→1→0 over two
+ * units) rather than wrapped.
+ *
+ * Ping-pong matters: the arc's ends are light cyan and light pink, so a
+ * sawetooth wrap snaps ~160/441 of the RGB cube in a single step — visible as a
+ * hard seam sliding through the word. Reflecting instead keeps the sweep
+ * continuous at every crossing.
+ */
+function arcAt(t: number): Rgb {
+  const n = LOGO_GRADIENT.length - 1;
+  const m = ((t % 2) + 2) % 2;
+  const x = (1 - Math.abs(m - 1)) * n;
+  const i = Math.min(Math.floor(x), n - 1);
+  const f = x - i;
+  const a = LOGO_GRADIENT[i] as Rgb;
+  const b = LOGO_GRADIENT[i + 1] as Rgb;
+  return [
+    Math.round(a[0] + (b[0] - a[0]) * f),
+    Math.round(a[1] + (b[1] - a[1]) * f),
+    Math.round(a[2] + (b[2] - a[2]) * f),
+  ];
+}
+
+/**
+ * Paint `text` with the arc travelling outward along it — later characters lag,
+ * so the light reads as radiating from the star rather than the whole line
+ * changing colour at once. That is the wordmark's motif (a burst throwing
+ * ejecta) rather than a generic loading throb.
+ */
+function shimmer(text: string, frame: number): string {
   let out = "\x1b[1m";
   for (let i = 0; i < text.length; i++) {
     const ch = text[i] ?? "";
@@ -25,10 +68,8 @@ function shimmer(text: string, frame: number, [r, g, b]: Rgb): string {
       out += ch;
       continue;
     }
-    const t = frame * 0.18 - i * 0.32;
-    const wave = (Math.sin(t) + 1) / 2;
-    const k = 0.45 + 0.55 * wave;
-    out += `\x1b[38;2;${Math.round(r * k)};${Math.round(g * k)};${Math.round(b * k)}m${ch}`;
+    const [r, g, b] = arcAt(frame * ARC_SPEED - i * ARC_SPREAD);
+    out += `\x1b[38;2;${r};${g};${b}m${ch}`;
   }
   return out + "\x1b[39m\x1b[22m";
 }
@@ -42,9 +83,11 @@ export function Spinner({ spec }: SpinnerProps): React.ReactElement {
 
   const label = spec.label;
   const isStatic = typeof label === "string";
-  const tint = isStatic ? undefined : label.tint;
   const colorize = !isStatic && label.colorize ? label.colorize : (s: string): string => s;
-  const canShimmer = !!tint && useTruecolor;
+  // Every animated spinner rides the one brand arc; what distinguishes them is
+  // the word ("Working" vs "Running shell"), not a hue. The per-call-site tints
+  // this used to take were both pinks a terminal renders near-identically.
+  const canShimmer = !isStatic && useTruecolor;
   // One shared cadence with the live-draft flush so the two full-frame repaint
   // drivers stay in phase and coalesce instead of interleaving (see frame.ts).
   const tickMs = UI_FRAME_MS;
@@ -72,9 +115,9 @@ export function Spinner({ spec }: SpinnerProps): React.ReactElement {
   const hintStr = spec.hint ? ` · ${spec.hint}` : "";
 
   let line: string;
-  if (canShimmer && tint) {
-    const head = shimmer(frameChar, phase + 1, tint);
-    const word = shimmer(spec.activeWord, phase, tint);
+  if (canShimmer) {
+    const head = shimmer(frameChar, phase + 1);
+    const word = shimmer(spec.activeWord, phase);
     line = `${head} ${word} · ${elapsed}${tokenStr}${hintStr}`;
   } else {
     const renderedFrame = isStatic ? frameChar : bold(colorize(frameChar));

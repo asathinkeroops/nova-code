@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
 import { resolveBudget, resolveProfile } from "@nova/core";
 import { resolveContextWindowSize, resolveModelId } from "@nova/runtime";
-import { ACCENT_RGB, accent } from "./colors.js";
+import { accent } from "./colors.js";
 import { TOOL_SPINNER_DELAY_MS } from "./constants.js";
 import { t } from "./i18n/index.js";
 import { resolveSessionRates } from "./commands/usage.js";
@@ -148,7 +148,7 @@ export function armToolSpinner(ctx: CliContext): void {
   ctx.toolSpinnerTimer = setTimeout(() => {
     ctx.toolSpinnerTimer = null;
     ctx.spinner = ctx.screen.startSpinner(
-      { words: t.spinner.workingWords, tint: ACCENT_RGB, colorize: accent },
+      { words: t.spinner.workingWords, colorize: accent },
       t.spinner.interruptHint,
       ctx.taskStartedAt ?? undefined,
     );

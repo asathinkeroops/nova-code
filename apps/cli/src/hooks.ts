@@ -1,4 +1,4 @@
-import { MAGENTA_RGB, magenta } from "./colors.js";
+import { magenta } from "./colors.js";
 import { t } from "./i18n/index.js";
 import {
   armToolSpinner,
@@ -51,7 +51,7 @@ export function registerUiHooks(ctx: CliContext): void {
     // counts total task time rather than resetting each model-call / tool phase.
     const startedAt = (ctx.taskStartedAt ??= Date.now());
     ctx.spinner = ctx.screen.startSpinner(
-      { words: t.spinner.workingWords, tint: MAGENTA_RGB, colorize: magenta },
+      { words: t.spinner.workingWords, colorize: magenta },
       t.spinner.interruptHint,
       startedAt,
     );

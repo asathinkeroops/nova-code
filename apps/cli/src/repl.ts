@@ -3,7 +3,7 @@ import type { MessageMeta } from "@nova/core";
 import { sliceFromLastCompacted } from "@nova/context";
 import { bashTool } from "@nova/tools";
 import { resolveModelModalities } from "@nova/runtime";
-import { ACCENT_RGB, accent, dim, green } from "./colors.js";
+import { accent, dim, green } from "./colors.js";
 import { t } from "./i18n/index.js";
 import { refreshBalance, stopSpinner, type CliContext } from "./context.js";
 import { appendUserOverride } from "./display-sidecar.js";
@@ -45,7 +45,6 @@ async function refreshPrediction(ctx: CliContext): Promise<void> {
   if (messages.length === 0) return;
   ctx.spinner = ctx.screen.startSpinner({
     words: [t.spinner.thinkingAhead],
-    tint: ACCENT_RGB,
     colorize: accent,
   });
   const t0 = Date.now();
@@ -92,7 +91,7 @@ async function runBang(ctx: CliContext, command: string): Promise<void> {
   const controller = new AbortController();
   const bridge = ctx.sandbox?.bridge;
   ctx.spinner = ctx.screen.startSpinner(
-    { words: [t.spinner.runningShell], tint: ACCENT_RGB, colorize: accent },
+    { words: [t.spinner.runningShell], colorize: accent },
     t.spinner.interruptHint,
   );
   ctx.screen.setEscHandler(() => controller.abort());
@@ -365,7 +364,7 @@ async function maybeContinueForGoal(ctx: CliContext): Promise<string | null> {
 
   const controller = new AbortController();
   ctx.spinner = ctx.screen.startSpinner(
-    { words: [t.spinner.verifyingGoal], tint: ACCENT_RGB, colorize: accent },
+    { words: [t.spinner.verifyingGoal], colorize: accent },
     t.spinner.skipHint,
   );
   ctx.screen.setEscHandler(() => controller.abort());

@@ -1,5 +1,4 @@
 import { create, type StoreApi, type UseBoundStore } from "zustand";
-import type { Rgb } from "../colors.js";
 import type { AccountBalance, AskUserRequest, AskUserResponse, MessageParam } from "@nova/core";
 import type { Task, Todo } from "@nova/tools";
 import type { ModelRates } from "@nova/observability";
@@ -19,7 +18,11 @@ export type SpinnerLabel =
   | string
   | {
       words: string[];
-      tint?: Rgb;
+      /**
+       * 16-colour fallback painter, used only where the terminal lacks
+       * truecolor. With truecolor the spinner paints itself from the wordmark's
+       * gradient (see ui/spinner.tsx) — there is no per-spinner hue.
+       */
       colorize?: (word: string) => string;
     };
 
