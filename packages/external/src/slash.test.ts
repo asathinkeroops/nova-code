@@ -186,6 +186,47 @@ describe("expandCommandBody — Claude Code syntax", () => {
     expect(r).toEqual({ ok: "echo $HOME and v" });
   });
 
+  it("substitutes the 0-indexed $ARGUMENTS[n] form", async () => {
+    const r = await expandCommandBody("[$ARGUMENTS[0]][$ARGUMENTS[1]]", [], "a b", { cwd });
+    expect(r).toEqual({ ok: "[a][b]" });
+  });
+
+  it("substitutes $name from the same values the {{name}} layer resolved", async () => {
+    const args = [{ name: "target" }];
+    const r = await expandCommandBody("{{target}} == $target", args, "src/app.ts", { cwd });
+    expect(r).toEqual({ ok: "src/app.ts == src/app.ts" });
+  });
+
+  it("honours \\$ escaping", async () => {
+    const r = await expandCommandBody("literal \\$1 vs real $1", [], "v", { cwd });
+    expect(r).toEqual({ ok: "literal $1 vs real v" });
+  });
+
+  it("appends an ARGUMENTS line when nothing consumed the typed args", async () => {
+    const r = await expandCommandBody("just do it", [], "with feeling", { cwd });
+    expect(r).toEqual({ ok: "just do it\n\nARGUMENTS: with feeling" });
+  });
+
+  it("does not append when a $ placeholder consumed the args", async () => {
+    const r = await expandCommandBody("do $1", [], "it", { cwd });
+    expect(r).toEqual({ ok: "do it" });
+  });
+
+  it("does not append when a {{}} placeholder consumed the args", async () => {
+    const r = await expandCommandBody("do {{args}}", [], "it", { cwd });
+    expect(r).toEqual({ ok: "do it" });
+  });
+
+  it("does not append when no args were typed", async () => {
+    const r = await expandCommandBody("just do it", [], "", { cwd });
+    expect(r).toEqual({ ok: "just do it" });
+  });
+
+  it("appends when the only dollar reference was escaped", async () => {
+    const r = await expandCommandBody("print \\$1", [], "v", { cwd });
+    expect(r).toEqual({ ok: "print $1\n\nARGUMENTS: v" });
+  });
+
   it("interpolates !`cmd` via the injected runCommand", async () => {
     const r = await expandCommandBody("status:\n!`git status`", [], "", {
       cwd,

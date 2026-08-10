@@ -19,6 +19,7 @@ import {
   parseSettings,
   resolveAutoMemoryDir,
   resolveContextWindowSize,
+  resolveSkillsIndexBudget,
   resolveLanguage,
   resolveMaxTokens,
   resolveModelId,
@@ -225,6 +226,42 @@ describe("resolveContextWindowSize", () => {
   it("falls back for an unknown name with no matching tier", () => {
     const s = base({ pro: { id: "deepseek-v4-pro", contextWindowSize: 800_000 } });
     expect(resolveContextWindowSize(s, "claude-sonnet-4-5")).toBe(DEFAULT_CONTEXT_WINDOW_SIZE);
+  });
+});
+
+describe("resolveSkillsIndexBudget", () => {
+  it("scales with the tier's context window at 4 bytes/token", () => {
+    const s = parseSettings({ models: tiers({ pro: { id: "x", contextWindowSize: 1_000_000 } }) });
+    expect(resolveSkillsIndexBudget(s, "pro")).toBe(40_000);
+  });
+
+  it("defaults to ~8000 bytes on a 200k window, matching the previous fixed budget", () => {
+    const s = parseSettings({ models: tiers({ pro: { id: "x", contextWindowSize: 200_000 } }) });
+    expect(resolveSkillsIndexBudget(s, "pro")).toBe(8_000);
+  });
+
+  it("honours an explicit maxIndexBytes over the fraction", () => {
+    const s = parseSettings({
+      models: tiers({ pro: { id: "x", contextWindowSize: 1_000_000 } }),
+      skills: { maxIndexBytes: 4_096 },
+    });
+    expect(resolveSkillsIndexBudget(s, "pro")).toBe(4_096);
+  });
+
+  it("honours a custom indexBudgetFraction", () => {
+    const s = parseSettings({
+      models: tiers({ pro: { id: "x", contextWindowSize: 200_000 } }),
+      skills: { indexBudgetFraction: 0.05 },
+    });
+    expect(resolveSkillsIndexBudget(s, "pro")).toBe(40_000);
+  });
+
+  it("never returns a budget below 1", () => {
+    const s = parseSettings({
+      models: tiers({ pro: { id: "x", contextWindowSize: 1 } }),
+      skills: { indexBudgetFraction: 0.0000001 },
+    });
+    expect(resolveSkillsIndexBudget(s, "pro")).toBe(1);
   });
 });
 

@@ -43,6 +43,12 @@ export interface AgentSettingsSlice {
   /** The active model's input modalities. Forwarded to ToolContext for tools that need it. */
   modelModalities?: { input: readonly ("text" | "image")[] };
   /**
+   * Current reasoning-effort level. Forwarded to ToolContext so authored
+   * content can reference it; read per turn because `/effort` changes it
+   * in-session.
+   */
+  effort?: string;
+  /**
    * Resolved UI/response language tag (e.g. "en", "zh-CN") the model is told to
    * reply in. "auto" is resolved to the system locale before it reaches here
    * (see resolveLanguage). Forwarded to `buildSystemPrompt`; omit to default to
@@ -294,6 +300,8 @@ export function createAgent(deps: AgentDeps): Agent {
           fileLedger: deps.fileLedger,
           askUser: deps.askUser,
           modelModalities: settings.modelModalities,
+          sessionId: deps.getSessionId(),
+          ...(settings.effort !== undefined ? { effort: settings.effort } : {}),
         },
         hooks,
         ...(budget > 0 ? { thinkingBudgetTokens: budget } : {}),

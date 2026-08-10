@@ -264,6 +264,18 @@ export interface ToolContext {
    * files fall back to the text reader (current behavior).
    */
   modelModalities?: { input: readonly ("text" | "image")[] };
+  /**
+   * Id of the session this call belongs to. Surfaced to authored content that
+   * needs to name the run — e.g. `${CLAUDE_SESSION_ID}` in a SKILL.md. Optional
+   * because library consumers may drive tools without a session.
+   */
+  sessionId?: string;
+  /**
+   * Current reasoning-effort level (nova's thinking level: off/low/medium/
+   * high/max). Surfaced to authored content as `${CLAUDE_EFFORT}`; changes
+   * within a session via `/effort`, so it is read per call, never captured.
+   */
+  effort?: string;
 }
 
 export interface ToolHandler {

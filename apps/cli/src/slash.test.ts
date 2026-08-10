@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SlashRegistry } from "@nova/external";
@@ -17,45 +17,96 @@ function settings(): Settings {
   return settingsSchema.parse({});
 }
 
-function workspaceWithSkill(name: string, description = "a skill"): string {
+function workspaceWithSkill(name: string, description = "a skill", body = "Do the thing."): string {
   const dir = mkdtempSync(join(tmpdir(), "nova-slash-skill-"));
   const skillDir = join(dir, ".nova", "skills", name);
   mkdirSync(skillDir, { recursive: true });
   writeFileSync(
     join(skillDir, "SKILL.md"),
-    `---\nname: ${name}\ndescription: ${description}\n---\nDo the thing.\n`,
+    `---\nname: ${name}\ndescription: ${description}\n---\n${body}\n`,
     "utf8",
   );
   return dir;
 }
 
+/** Invoke a registered slash command and return its prompt text. */
+async function invoke(registry: SlashRegistry, cwd: string, line: string): Promise<string> {
+  const hit = registry.resolve(line);
+  expect(hit).not.toBeNull();
+  const outcome = await (hit as NonNullable<typeof hit>).cmd.run({ cwd }, hit!.args);
+  expect(outcome).toMatchObject({ kind: "prompt" });
+  return (outcome as { kind: "prompt"; text: string }).text;
+}
+
 describe("loadSkillCommandsInto", () => {
-  it("registers each skill as a slash command that emits a prompt with args", () => {
+  it("inlines the SKILL.md body rather than telling the model to call loadSkill", async () => {
     const cwd = workspaceWithSkill("say-hello");
     const registry = new SlashRegistry();
 
     const { added } = loadSkillCommandsInto(registry, { cwd, settings: settings(), logger });
     expect(added).toBe(1);
+    expect(registry.resolve("/say-hello")?.cmd.source.kind).toBe("skill");
 
-    const hit = registry.resolve("/say-hello Alice");
-    expect(hit).not.toBeNull();
-    expect(hit?.cmd.source.kind).toBe("skill");
-    const outcome = hit?.cmd.run({ cwd }, hit.args);
-    expect(outcome).toMatchObject({ kind: "prompt" });
-    const text = (outcome as { kind: "prompt"; text: string }).text;
-    expect(text).toContain('loadSkill');
-    expect(text).toContain("say-hello");
-    expect(text).toContain("Arguments: Alice");
+    const text = await invoke(registry, cwd, "/say-hello Alice");
+    // One hop: the body itself is injected, wrapped in the same envelope the
+    // loadSkill tool returns, so the model sees identical text either way.
+    expect(text).toContain('<skill name="say-hello"');
+    expect(text).toContain("Do the thing.");
+    expect(text).not.toContain("call the `loadSkill` tool");
   });
 
-  it("omits the Arguments line when invoked with no args", () => {
-    const cwd = workspaceWithSkill("say-hello");
+  it("binds typed arguments into the body", async () => {
+    const cwd = workspaceWithSkill("greet", "a skill", "Greet $1 warmly. All args: $ARGUMENTS");
     const registry = new SlashRegistry();
     loadSkillCommandsInto(registry, { cwd, settings: settings(), logger });
 
-    const hit = registry.resolve("/say-hello");
-    const outcome = hit?.cmd.run({ cwd }, hit.args) as { kind: "prompt"; text: string };
-    expect(outcome.text).not.toContain("Arguments:");
+    const text = await invoke(registry, cwd, "/greet Alice Bob");
+    expect(text).toContain("Greet Alice warmly.");
+    expect(text).toContain("All args: Alice Bob");
+  });
+
+  it("blanks argument placeholders when invoked with no args", async () => {
+    const cwd = workspaceWithSkill("greet", "a skill", "Greet [$1] done");
+    const registry = new SlashRegistry();
+    loadSkillCommandsInto(registry, { cwd, settings: settings(), logger });
+
+    expect(await invoke(registry, cwd, "/greet")).toContain("Greet [] done");
+  });
+
+  it("expands the skill-dir variable in the inlined body", async () => {
+    const cwd = workspaceWithSkill("scripted", "a skill", "run ${CLAUDE_SKILL_DIR}/go.sh");
+    const registry = new SlashRegistry();
+    loadSkillCommandsInto(registry, { cwd, settings: settings(), logger });
+
+    const text = await invoke(registry, cwd, "/scripted");
+    expect(text).toContain(`run ${join(cwd, ".nova", "skills", "scripted")}/go.sh`);
+    expect(text).not.toContain("${CLAUDE_SKILL_DIR}");
+  });
+
+  it("rereads the body on each invocation so edits land without a reload", async () => {
+    const cwd = workspaceWithSkill("edit-me", "a skill", "FIRST");
+    const registry = new SlashRegistry();
+    loadSkillCommandsInto(registry, { cwd, settings: settings(), logger });
+    expect(await invoke(registry, cwd, "/edit-me")).toContain("FIRST");
+
+    writeFileSync(
+      join(cwd, ".nova", "skills", "edit-me", "SKILL.md"),
+      `---\nname: edit-me\ndescription: a skill\n---\nSECOND\n`,
+      "utf8",
+    );
+    expect(await invoke(registry, cwd, "/edit-me")).toContain("SECOND");
+  });
+
+  it("errors instead of injecting a stale body when the file becomes unreadable", async () => {
+    const cwd = workspaceWithSkill("vanishing");
+    const registry = new SlashRegistry();
+    loadSkillCommandsInto(registry, { cwd, settings: settings(), logger });
+
+    rmSync(join(cwd, ".nova", "skills", "vanishing", "SKILL.md"));
+    const hit = registry.resolve("/vanishing");
+    const outcome = await hit!.cmd.run({ cwd }, hit!.args);
+    expect(outcome.kind).toBe("error");
+    expect((outcome as { kind: "error"; message: string }).message).toContain("/commands reload");
   });
 
   it("lets an existing builtin shadow a same-named skill", () => {

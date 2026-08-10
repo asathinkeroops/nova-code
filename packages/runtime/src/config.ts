@@ -690,10 +690,41 @@ export const settingsSchema = z.object({
       projectDirs: z.array(z.string().min(1)).optional(),
       userPaths: z.array(z.string().min(1)).optional(),
       extraDirs: z.array(z.string().min(1)).optional(),
-      maxIndexBytes: z.number().int().positive().default(8_192),
+      // Absolute byte budget for the `<available-skills>` block. Optional: when
+      // unset the budget is derived from the active model's context window via
+      // `indexBudgetFraction`, so a 1M-context model gets a proportionally
+      // larger index instead of the same fixed slice. Set it to pin an exact
+      // size regardless of model (it wins over the fraction).
+      maxIndexBytes: z.number().int().positive().optional(),
+      // Share of the context window the skill index may occupy, converted to
+      // bytes at 4 bytes/token. 0.01 of a 200k window is ~8000 bytes, matching
+      // both Claude Code's default and nova's previous fixed 8192.
+      indexBudgetFraction: z.number().positive().max(1).default(0.01),
+      // Turn off inline `` !`cmd` `` execution inside SKILL.md bodies. A skill
+      // body is authored content that expands without a per-command permission
+      // prompt, so a deployment that doesn't want that needs a wholesale
+      // switch. Mirrors Claude Code's `disableSkillShellExecution`. When set,
+      // those segments are replaced with a visible notice.
+      disableShellExecution: z.boolean().default(false),
+      // Per-entry cap on a skill's description inside the index. The full text
+      // is kept on the SkillListItem (and `/skills` shows it); this only bounds
+      // what one entry can cost the system prompt. Matches Claude Code's
+      // skillListingMaxDescChars default.
+      maxDescriptionBytes: z.number().int().positive().default(1_536),
       maxResponseBytes: z.number().int().positive().default(16_384),
+      // On-disk cap for a single SKILL.md. Checked with stat before the read,
+      // so an oversized file is skipped (with a warn) instead of being loaded
+      // into memory during the startup scan. 1 MiB matches Claude Code.
+      maxFileBytes: z.number().int().positive().default(1_048_576),
     })
-    .default({ enabled: true, maxIndexBytes: 8_192, maxResponseBytes: 16_384 }),
+    .default({
+      enabled: true,
+      indexBudgetFraction: 0.01,
+      disableShellExecution: false,
+      maxDescriptionBytes: 1_536,
+      maxResponseBytes: 16_384,
+      maxFileBytes: 1_048_576,
+    }),
   // Sub-agents spawned via the createSubAgent tool. They run in-process with a
   // fresh context and the parent's tool set (minus createSubAgent itself, to
   // prevent unbounded recursion). `model` defaults to the parent's model.
@@ -1160,6 +1191,24 @@ export function resolveModelId(settings: Settings, name: string): string {
  */
 export function resolveContextWindowSize(settings: Settings, name: string): number {
   return settings.models[name]?.contextWindowSize ?? DEFAULT_CONTEXT_WINDOW_SIZE;
+}
+
+/** Bytes per token used when converting a context-window budget into a byte budget. */
+const BYTES_PER_TOKEN = 4;
+
+/**
+ * Byte budget for the `<available-skills>` block. An explicit
+ * `skills.maxIndexBytes` pins the size; otherwise the budget scales with the
+ * active model's context window, so switching to a 1M-context tier widens the
+ * index instead of leaving it at a fixed slice sized for 200k.
+ *
+ * Call this at each render site rather than caching it — `/model` changes the
+ * tier, and the block is rebuilt on the session boundary that follows.
+ */
+export function resolveSkillsIndexBudget(settings: Settings, modelName: string): number {
+  if (settings.skills.maxIndexBytes !== undefined) return settings.skills.maxIndexBytes;
+  const window = resolveContextWindowSize(settings, modelName);
+  return Math.max(1, Math.floor(window * BYTES_PER_TOKEN * settings.skills.indexBudgetFraction));
 }
 
 /**

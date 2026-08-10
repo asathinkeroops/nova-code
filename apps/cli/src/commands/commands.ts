@@ -28,6 +28,9 @@ export async function handleCommands(ctx: CliContext, arg: string): Promise<void
       cwd: ctx.workspace,
       settings: ctx.settings,
       logger: ctx.logger,
+      plugins: ctx.plugins,
+      getSessionId: () => ctx.session.id,
+      getEffort: () => ctx.thinkingLevel,
     });
     const ms = Date.now() - t0;
     const tail = errors > 0 ? t.cmdList.reloadErrors(errors) : "";

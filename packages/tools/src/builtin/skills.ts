@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { frontMatterBool, frontMatterText, splitFrontMatter } from "@nova/core";
 
 export interface SkillListItem {
   name: string;
@@ -24,6 +25,13 @@ export interface SkillListItem {
   userInvocable: boolean;
   /** Absolute path to the skill's directory (the parent of its SKILL.md). */
   location: string;
+  /**
+   * Root directory of the plugin that shipped this skill, when it came from
+   * one. Plugin skills reach the scanner through `extraDirs` like any other
+   * path, which loses the association — `pluginRoots` restores it so a plugin
+   * skill's body can resolve `${CLAUDE_PLUGIN_ROOT}`.
+   */
+  pluginRoot?: string;
 }
 
 export interface SkillsLogger {
@@ -49,14 +57,33 @@ export interface SkillsOptions {
    * rescan. Default 16384.
    */
   maxResponseBytes?: number;
+  /**
+   * Byte cap for a single `SKILL.md` on disk. A file over the cap is skipped
+   * with a warn rather than read, so a runaway or accidentally-huge file can't
+   * be pulled into memory during the startup scan. Unlike `maxResponseBytes`
+   * this *is* part of the scan cache key, because it changes which skills
+   * exist. Default 1048576 (1 MiB), matching Claude Code.
+   */
+  maxFileBytes?: number;
+  /**
+   * Disable inline `` !`cmd` `` execution in SKILL.md bodies. Like
+   * `maxResponseBytes`, consumed by `builtinTools` when it builds the loadSkill
+   * tool; the scan functions ignore it, so it is not part of the cache key.
+   */
+  disableShellExecution?: boolean;
+  /**
+   * Maps a scanned directory (as passed in `extraDirs`) to the plugin root that
+   * owns it, so skills found there carry a `pluginRoot`. Plain data rather than
+   * a lookup function because it takes part in the scan cache key.
+   */
+  pluginRoots?: Readonly<Record<string, string>>;
 }
 
 const DEFAULT_PROJECT_DIRS = [".nova/skills", ".claude/skills"] as const;
 const DEFAULT_USER_DIRS = ["~/.nova/skills", "~/.claude/skills"] as const;
+const DEFAULT_MAX_FILE_BYTES = 1_048_576;
 
 const NAME_RE = /^[a-z][a-z0-9-]*$/;
-const DESCRIPTION_MAX = 200;
-const FRONT_MATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
 
 interface CacheEntry {
   list: SkillListItem[];
@@ -68,6 +95,8 @@ interface ResolvedOpts {
   projectDirs: readonly string[];
   userPaths: readonly string[];
   extraDirs: readonly string[];
+  maxFileBytes: number;
+  pluginRoots: Readonly<Record<string, string>>;
 }
 
 const cache = new Map<string, CacheEntry>();
@@ -79,6 +108,8 @@ function resolveOpts(opts: SkillsOptions | undefined): ResolvedOpts {
     projectDirs: opts?.projectDirs ?? DEFAULT_PROJECT_DIRS,
     userPaths: opts?.userPaths ?? DEFAULT_USER_DIRS,
     extraDirs: opts?.extraDirs ?? [],
+    maxFileBytes: opts?.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES,
+    pluginRoots: opts?.pluginRoots ?? {},
   };
 }
 
@@ -112,6 +143,27 @@ function errMsg(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/**
+ * Read a `SKILL.md` after checking its size, so an oversized file is never
+ * pulled into memory. `statSync` follows symlinks, so a symlinked SKILL.md is
+ * measured and read through to its target. Callers must have already
+ * established that the path exists — an absent SKILL.md is a silent skip (an
+ * ordinary subdirectory), not a failure worth reporting.
+ */
+function readCapped(path: string, maxBytes: number): { ok: string } | { error: string } {
+  try {
+    const size = statSync(path).size;
+    if (size > maxBytes) {
+      return {
+        error: `SKILL.md is ${size} bytes, over the ${maxBytes}-byte limit (raise settings.skills.maxFileBytes)`,
+      };
+    }
+    return { ok: readFileSync(path, "utf8") };
+  } catch (err) {
+    return { error: errMsg(err) };
+  }
+}
+
 interface ParsedSkill {
   name: string;
   description: string;
@@ -121,117 +173,58 @@ interface ParsedSkill {
 }
 
 function parseSkillFile(text: string): { ok: ParsedSkill } | { error: string } {
-  const normalized = text.replace(/\r\n/g, "\n");
-  const fm = FRONT_MATTER_RE.exec(normalized);
-  if (!fm) return { error: "missing front-matter" };
-  let meta: Record<string, unknown>;
-  try {
-    meta = parseFrontMatter(fm[1] ?? "");
-  } catch (e) {
-    return { error: errMsg(e) };
-  }
-  const name = meta["name"];
-  if (typeof name !== "string" || !NAME_RE.test(name)) {
+  // The parser is best-effort by contract: it never throws, so the only ways a
+  // SKILL.md is rejected are the three genuine identity failures below. A field
+  // we don't model (`allowed-tools`, `hooks`, nested `metadata`, …) is carried
+  // in the object and ignored rather than failing the file — that is what lets
+  // skills authored for other agent runtimes load unchanged.
+  const { meta, body, hasFrontMatter } = splitFrontMatter(text);
+  if (!hasFrontMatter) return { error: "missing front-matter" };
+  const name = frontMatterText(meta["name"]);
+  if (name === undefined || !NAME_RE.test(name)) {
     return { error: `invalid or missing name (must match ${NAME_RE.source})` };
   }
-  const descRaw = meta["description"];
-  if (typeof descRaw !== "string" || descRaw.trim().length === 0) {
+  const descRaw = frontMatterText(meta["description"])?.trim();
+  if (descRaw === undefined || descRaw.length === 0) {
     return { error: "missing description" };
   }
   // Claude Code semantics: `when_to_use` is optional extra trigger context that
-  // is appended to the description. We fold it in here so `description` is the
-  // single model-facing string, then cap the combined length.
-  const whenRaw = meta["when_to_use"];
-  const whenToUse = typeof whenRaw === "string" ? whenRaw.trim() : "";
-  const combined = whenToUse ? `${descRaw} ${whenToUse}` : descRaw;
-  const description =
-    combined.length > DESCRIPTION_MAX ? combined.slice(0, DESCRIPTION_MAX) : combined;
-  // Who is allowed to invoke this skill (Claude Code semantics). Front-matter
-  // scalars arrive as strings, so coerce leniently; unknown values fall back
-  // to the permissive default.
-  const disableModelInvocation = parseBool(meta["disable-model-invocation"], false);
-  const userInvocable = parseBool(meta["user-invocable"], true);
-  const body = normalized.slice(fm[0].length).trimStart();
-  return { ok: { name, description, disableModelInvocation, userInvocable, body } };
-}
-
-/**
- * Tiny YAML-subset parser. Covers only what SKILL.md front-matter needs:
- *   key: scalar               (unquoted or "double"/'single' quoted)
- *   key: [a, b, c]            (flow-style array of scalars)
- *   key:
- *     - item                  (block-style array of scalars)
- *     - item
- * Anything else throws; the caller treats throws as parse failure.
- */
-function parseFrontMatter(src: string): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  const lines = src.split("\n");
-  let i = 0;
-  while (i < lines.length) {
-    const line = lines[i] ?? "";
-    if (line.trim() === "" || line.trimStart().startsWith("#")) {
-      i++;
-      continue;
-    }
-    const m = /^([A-Za-z_][\w-]*)\s*:\s*(.*)$/.exec(line);
-    if (!m) throw new Error(`unrecognized front-matter line: ${line}`);
-    const key = m[1] as string;
-    const rest = (m[2] ?? "").trim();
-    if (rest === "") {
-      const items: string[] = [];
-      i++;
-      while (i < lines.length) {
-        const next = lines[i] ?? "";
-        const dash = /^\s*-\s*(.*)$/.exec(next);
-        if (!dash) break;
-        items.push(parseScalar((dash[1] ?? "").trim()));
-        i++;
-      }
-      out[key] = items;
-      continue;
-    }
-    if (rest.startsWith("[") && rest.endsWith("]")) {
-      const inner = rest.slice(1, -1).trim();
-      out[key] = inner === "" ? [] : inner.split(",").map((s) => parseScalar(s.trim()));
-    } else {
-      out[key] = parseScalar(rest);
-    }
-    i++;
-  }
-  return out;
-}
-
-function parseScalar(v: string): string {
-  if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
-    return v.slice(1, -1);
-  }
-  return v;
-}
-
-/**
- * Coerce a front-matter value to a boolean. The tiny YAML parser only yields
- * strings, so accept case-insensitive "true"/"false"; anything else (missing,
- * array, typo) falls back to `dflt`.
- */
-function parseBool(v: unknown, dflt: boolean): boolean {
-  if (typeof v !== "string") return dflt;
-  const s = v.trim().toLowerCase();
-  if (s === "true") return true;
-  if (s === "false") return false;
-  return dflt;
+  // is appended to the description, so `description` is the single model-facing
+  // string. It is carried verbatim, at whatever length the author wrote: the
+  // description is what the model routes on, and truncating it silently drops
+  // exactly the trigger keywords that make routing work. The only bound on
+  // index text is applied at render time (`renderSkillsBlock`), which caps each
+  // entry at `skills.maxDescriptionBytes` and, when the whole block overruns
+  // its budget, degrades entries to name-only rather than dropping skills.
+  const whenToUse = frontMatterText(meta["when_to_use"])?.trim() ?? "";
+  const description = whenToUse ? `${descRaw} ${whenToUse}` : descRaw;
+  // Who is allowed to invoke this skill (Claude Code semantics). Unknown values
+  // fall back to the permissive default.
+  const disableModelInvocation = frontMatterBool(meta["disable-model-invocation"], false);
+  const userInvocable = frontMatterBool(meta["user-invocable"], true);
+  return {
+    ok: { name, description, disableModelInvocation, userInvocable, body: body.trimStart() },
+  };
 }
 
 interface Target {
   kind: "user" | "project";
   root: string;
+  /** Plugin that owns this root, resolved from `pluginRoots` at target build time. */
+  pluginRoot?: string;
 }
 
 function scan(r: ResolvedOpts, logger: SkillsLogger | undefined): CacheEntry {
   const targets: Target[] = [];
   for (const d of r.projectDirs) targets.push({ kind: "project", root: resolve(r.cwd, d) });
   for (const d of r.userPaths) targets.push({ kind: "user", root: expandHome(d, r.home) });
-  for (const d of r.extraDirs) targets.push({ kind: "user", root: expandHome(d, r.home) });
+  for (const d of r.extraDirs) {
+    const root = expandHome(d, r.home);
+    // Look the plugin up by the caller's spelling *and* the expanded path, so
+    // a `~/`-relative extraDir still matches its pluginRoots entry.
+    const pluginRoot = r.pluginRoots[d] ?? r.pluginRoots[root];
+    targets.push({ kind: "user", root, ...(pluginRoot !== undefined ? { pluginRoot } : {}) });
+  }
 
   const list: SkillListItem[] = [];
   const seen = new Set<string>();
@@ -241,7 +234,11 @@ function scan(r: ResolvedOpts, logger: SkillsLogger | undefined): CacheEntry {
     let entries: string[];
     try {
       entries = readdirSync(t.root, { withFileTypes: true })
-        .filter((e) => e.isDirectory())
+        // `withFileTypes` reports a symlinked directory as a symlink, not a
+        // directory, so filtering on isDirectory() alone silently drops skills
+        // that were symlinked into place — a normal way to share one skill
+        // across checkouts. Resolve those through isDir (statSync) instead.
+        .filter((e) => e.isDirectory() || (e.isSymbolicLink() && isDir(join(t.root, e.name))))
         .map((e) => e.name)
         .sort();
     } catch (err) {
@@ -252,14 +249,12 @@ function scan(r: ResolvedOpts, logger: SkillsLogger | undefined): CacheEntry {
       const dir = join(t.root, entryName);
       const path = join(dir, "SKILL.md");
       if (!isFile(path)) continue;
-      let text: string;
-      try {
-        text = readFileSync(path, "utf8");
-      } catch (err) {
-        logger?.warn({ path, err: errMsg(err) }, "skill parse failed");
+      const read = readCapped(path, r.maxFileBytes);
+      if ("error" in read) {
+        logger?.warn({ path, err: read.error }, "skill parse failed");
         continue;
       }
-      const parsed = parseSkillFile(text);
+      const parsed = parseSkillFile(read.ok);
       if ("error" in parsed) {
         logger?.warn({ path, err: parsed.error }, "skill parse failed");
         continue;
@@ -271,6 +266,7 @@ function scan(r: ResolvedOpts, logger: SkillsLogger | undefined): CacheEntry {
         disableModelInvocation: parsed.ok.disableModelInvocation,
         userInvocable: parsed.ok.userInvocable,
         location: dir,
+        ...(t.pluginRoot !== undefined ? { pluginRoot: t.pluginRoot } : {}),
       });
       seen.add(parsed.ok.name);
     }
@@ -295,6 +291,8 @@ export function getSkillList(opts?: SkillsOptions): SkillListItem[] {
 export interface LoadedSkill {
   body: string;
   location: string;
+  /** Owning plugin's root, when the skill came from a plugin. */
+  pluginRoot?: string;
 }
 
 export function getSkill(
@@ -303,15 +301,18 @@ export function getSkill(
 ): LoadedSkill | undefined {
   const item = ensureScanned(opts).list.find((s) => s.name === input.name);
   if (!item) return undefined;
-  let text: string;
-  try {
-    text = readFileSync(join(item.location, "SKILL.md"), "utf8");
-  } catch {
-    return undefined;
-  }
-  const parsed = parseSkillFile(text);
+  // Re-read rather than serving a cached body, so an edit lands without a
+  // rescan — which also means the size cap has to be re-applied here: the file
+  // may have grown past it since the scan that indexed it.
+  const read = readCapped(join(item.location, "SKILL.md"), resolveOpts(opts).maxFileBytes);
+  if ("error" in read) return undefined;
+  const parsed = parseSkillFile(read.ok);
   if ("error" in parsed) return undefined;
-  return { body: parsed.ok.body, location: item.location };
+  return {
+    body: parsed.ok.body,
+    location: item.location,
+    ...(item.pluginRoot !== undefined ? { pluginRoot: item.pluginRoot } : {}),
+  };
 }
 
 /** Exported for tests; not part of the public API. */

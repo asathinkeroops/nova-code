@@ -1,6 +1,7 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
+import { expandArgs, expandMentions, expandShell } from "@nova/runtime";
 
 export type SlashCommandKind = "builtin" | "user" | "project" | "mcp" | "skill" | "plugin";
 
@@ -267,7 +268,7 @@ export function expandPlaceholders(
   body: string,
   args: SlashArgSpec[],
   rawArgs: string,
-): { ok: string } | { error: string } {
+): { ok: string; values: Record<string, string> } | { error: string } {
   const values: Record<string, string> = { args: rawArgs.trim() };
   if (args.length > 0) {
     const trimmed = rawArgs.trim();
@@ -298,39 +299,7 @@ export function expandPlaceholders(
     return match;
   });
   if (error) return { error };
-  return { ok: expanded };
-}
-
-/** `$ARGUMENTS` (all args) and `$1`..`$N` (positional) — Claude Code spelling. */
-const DOLLAR_RE = /\$(ARGUMENTS|\d+)/g;
-/** `` !`cmd` `` shell interpolation. */
-const BANG_RE = /!`([^`]+)`/g;
-/** `@path` file reference at a word boundary (so emails / `@scope/pkg` are safe). */
-const MENTION_RE = /(^|\s)@([^\s]+)/g;
-/** Cap embedded file content so a stray `@huge.log` can't blow up the prompt. */
-const MAX_EMBED_BYTES = 100_000;
-
-/** Replace matches of a global regex with an async-computed replacement. */
-async function replaceAsync(
-  input: string,
-  re: RegExp,
-  fn: (match: string, ...groups: string[]) => Promise<string>,
-): Promise<string> {
-  re.lastIndex = 0;
-  const hits: RegExpExecArray[] = [];
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(input)) !== null) {
-    hits.push(m);
-    if (m.index === re.lastIndex) re.lastIndex++;
-  }
-  let out = "";
-  let last = 0;
-  for (const hit of hits) {
-    out += input.slice(last, hit.index);
-    out += await fn(hit[0], ...hit.slice(1));
-    last = hit.index + hit[0].length;
-  }
-  return out + input.slice(last);
+  return { ok: expanded, values };
 }
 
 /**
@@ -338,11 +307,21 @@ async function replaceAsync(
  * nova's `{{arg}}` placeholders. Applied in order so each stage can feed the
  * next:
  *   1. `{{arg}}` / `{{arg|default}}` — declared positional args + defaults.
- *   2. `$ARGUMENTS` (raw trailing string) and `$1`..`$N` (positional tokens).
+ *      Nova-specific, so it stays here rather than in the shared stages.
+ *   2. `$ARGUMENTS`, `$ARGUMENTS[n]`, `$1`..`$N`, `$name`, `\$` — argument
+ *      references. Named values come from the same map stage 1 resolved, so
+ *      `{{path}}` and `$path` in one file can never disagree.
  *   3. `@path` — embed a readable file's contents (left verbatim when the path
  *      doesn't resolve to a file, so emails / `@scope/pkg` survive).
  *   4. `` !`cmd` `` — shell interpolation via the host-injected, sandbox-confined
  *      `ctx.runCommand` (left verbatim when no runner is wired).
+ *
+ * If arguments were typed but *no* placeholder in either argument stage
+ * consumed them, they are appended as an `ARGUMENTS:` line rather than dropped
+ * — a command with no placeholders should still see what the user typed.
+ *
+ * Stages 2-4 are shared with the `SKILL.md` loader via `@nova/runtime`, so both
+ * surfaces expand identically.
  */
 export async function expandCommandBody(
   body: string,
@@ -352,38 +331,14 @@ export async function expandCommandBody(
 ): Promise<{ ok: string } | { error: string }> {
   const placeheld = expandPlaceholders(body, args, rawArgs);
   if ("error" in placeheld) return placeheld;
-  let text = placeheld.ok;
-
+  const expanded = expandArgs(placeheld.ok, rawArgs, { named: placeheld.values });
+  let text = expanded.text;
   const trimmed = rawArgs.trim();
-  const tokens = trimmed.length === 0 ? [] : trimmed.split(/\s+/);
-  text = text.replace(DOLLAR_RE, (_match, key: string) => {
-    if (key === "ARGUMENTS") return trimmed;
-    const idx = Number(key) - 1;
-    return idx >= 0 && idx < tokens.length ? (tokens[idx] as string) : "";
-  });
-
-  text = await replaceAsync(text, MENTION_RE, async (full, lead: string, rel: string) => {
-    const abs = resolve(ctx.cwd, rel);
-    const st = await stat(abs).catch(() => null);
-    if (!st || !st.isFile()) return full;
-    let content = await readFile(abs, "utf8").catch(() => null);
-    if (content === null) return full;
-    let note = "";
-    if (Buffer.byteLength(content, "utf8") > MAX_EMBED_BYTES) {
-      content = content.slice(0, MAX_EMBED_BYTES);
-      note = "\n… (truncated)";
-    }
-    return `${lead}Contents of ${rel}:\n\`\`\`\n${content}${note}\n\`\`\``;
-  });
-
-  const runCommand = ctx.runCommand;
-  if (runCommand) {
-    text = await replaceAsync(text, BANG_RE, async (_full, command: string) => {
-      const { output } = await runCommand(command);
-      return output.trim();
-    });
+  if (trimmed.length > 0 && !expanded.bound && placeheld.ok === body) {
+    text += `\n\nARGUMENTS: ${trimmed}`;
   }
-
+  text = await expandMentions(text, ctx.cwd);
+  text = await expandShell(text, ctx.runCommand ? { runCommand: ctx.runCommand } : {});
   return { ok: text };
 }
 

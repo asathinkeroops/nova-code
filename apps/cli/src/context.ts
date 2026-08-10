@@ -1,4 +1,4 @@
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { createAgent, emptyCursor, loadMessages, type Agent } from "@nova/agent";
 import { loadMemory, sliceFromLastCompacted } from "@nova/context";
 import {
@@ -32,6 +32,7 @@ import {
   resolveAutoMemoryDir,
   resolveMaxTokens,
   resolveModelId,
+  resolveSkillsIndexBudget,
   resolveModelModalities,
   resolveThinkingLevel,
   type Logger,
@@ -68,7 +69,7 @@ import { classifyCommandRisk } from "./auto-classify.js";
 import { makePlanModeReminder } from "./plan-mode-reminder.js";
 import { askPlanApproval } from "./plan-approval.js";
 import { loadAgents } from "./agents.js";
-import { loadPlugins } from "./plugins/loader.js";
+import { loadPlugins, pluginSkillRoots } from "./plugins/loader.js";
 import { DEFAULT_PLUGIN_CACHE_DIR } from "./plugins/install.js";
 import { buildGuideAgentDefinition, NOVA_GUIDE_AGENT } from "./guide/agent.js";
 import { ensureFresh, resolveGuideSourceDir } from "./guide/provisioner.js";
@@ -243,20 +244,21 @@ export async function createContext(
   }
   // Skill directories contributed by plugins, folded into the index via extraDirs
   // (each entry is a `skills/` root whose subdirs each hold a SKILL.md).
-  const pluginSkillRoots = [
-    ...new Set(pluginResult.plugins.flatMap((p) => p.skills.map((s) => dirname(s)))),
-  ];
+  const pluginSkills = pluginSkillRoots(pluginResult.plugins);
 
   // Skills index: build one SkillsOptions and let getSkillList + builtinTools
   // both consume it. The first call warms the cache; the second hits it.
-  const skillsExtraDirs = [...(settings.skills.extraDirs ?? []), ...pluginSkillRoots];
+  const skillsExtraDirs = [...(settings.skills.extraDirs ?? []), ...pluginSkills.dirs];
   const skillsOpts: SkillsOptions | undefined = settings.skills.enabled
     ? {
         cwd: workspace,
         ...(settings.skills.projectDirs ? { projectDirs: settings.skills.projectDirs } : {}),
         ...(settings.skills.userPaths ? { userPaths: settings.skills.userPaths } : {}),
         ...(skillsExtraDirs.length > 0 ? { extraDirs: skillsExtraDirs } : {}),
+        ...(pluginSkills.dirs.length > 0 ? { pluginRoots: pluginSkills.roots } : {}),
         maxResponseBytes: settings.skills.maxResponseBytes,
+        maxFileBytes: settings.skills.maxFileBytes,
+        disableShellExecution: settings.skills.disableShellExecution,
         logger,
       }
     : undefined;
@@ -266,7 +268,10 @@ export async function createContext(
   // `/{name}` slash command (which names the skill explicitly to loadSkill).
   const modelSkillItems = skillItems.filter((s) => !s.disableModelInvocation);
   const skillsBlock = skillsOpts
-    ? renderSkillsBlock(modelSkillItems, settings.skills.maxIndexBytes)
+    ? renderSkillsBlock(modelSkillItems, {
+        budgetBytes: resolveSkillsIndexBudget(settings, settings.model),
+        maxDescriptionBytes: settings.skills.maxDescriptionBytes,
+      })
     : "";
   if (skillsOpts) {
     await transcript.append({
@@ -948,6 +953,7 @@ export async function createContext(
       toolConcurrency: ctx.settings.toolConcurrency,
       modelModalities: resolveModelModalities(ctx.settings, ctx.settings.model),
       language: ctx.settings.language,
+      effort: ctx.thinkingLevel,
     }),
     getTools: () => ctx.tools.definitions(),
     dispatch: ctx.dispatch,
@@ -1229,7 +1235,14 @@ export async function createContext(
   }
   // Bridge skills as slash commands. Registered last so an explicit builtin or
   // file command of the same name always shadows the auto-generated skill one.
-  const skillCmds = loadSkillCommandsInto(ctx.registry, { cwd: workspace, settings, logger });
+  const skillCmds = loadSkillCommandsInto(ctx.registry, {
+    cwd: workspace,
+    settings,
+    logger,
+    plugins: pluginResult.plugins,
+    getSessionId: () => ctx.session.id,
+    getEffort: () => ctx.thinkingLevel,
+  });
   if (skillCmds.added > 0) {
     logger.info({ added: skillCmds.added }, "skill slash commands registered");
   }

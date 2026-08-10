@@ -134,7 +134,15 @@ export {
   type SkillsLogger,
   type SkillsOptions,
 } from "./builtin/skills.js";
-export { createLoadSkillTool, type GetSkillFn } from "./builtin/load-skill.js";
+export {
+  createLoadSkillTool,
+  expandSkillBody,
+  renderSkillPayload,
+  bashRunnerFor,
+  type GetSkillFn,
+  type LoadSkillOptions,
+  type ExpandSkillOptions,
+} from "./builtin/load-skill.js";
 export { createLspTool } from "./builtin/lsp.js";
 export {
   createPlanModeTools,
@@ -198,9 +206,12 @@ export function builtinTools(
     tools.push(
       createLoadSkillTool(
         (input) => getSkill(input, skills),
-        skills.maxResponseBytes !== undefined
-          ? { maxResponseBytes: skills.maxResponseBytes }
-          : undefined,
+        {
+          ...(skills.maxResponseBytes !== undefined
+            ? { maxResponseBytes: skills.maxResponseBytes }
+            : {}),
+          ...(skills.disableShellExecution ? { disableShellExecution: true } : {}),
+        },
       ),
     );
   }

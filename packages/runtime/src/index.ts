@@ -22,6 +22,7 @@ export {
   type ModelPricing,
   resolveModelId,
   resolveContextWindowSize,
+  resolveSkillsIndexBudget,
   resolveMaxTokens,
   resolveModelModalities,
   resolveThinkingLevel,
@@ -65,6 +66,18 @@ export {
 export { createLogger, type Logger, type LoggerConfig } from "./logging.js";
 
 export { canonicalizePath, canonicalizeRoots } from "./path-safety.js";
+export {
+  expandVars,
+  expandArgs,
+  expandDollarArgs,
+  type ExpandArgsOptions,
+  type ExpandArgsResult,
+  expandMentions,
+  expandShell,
+  SHELL_DISABLED_NOTICE,
+  type PromptCommandRunner,
+  type ExpandShellOptions,
+} from "./prompt-expansion.js";
 
 export {
   createSession,

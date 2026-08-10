@@ -4,14 +4,29 @@ import {
   loadFileCommands,
   type SlashCommand,
 } from "@nova/external";
-import { getSkillList } from "@nova/tools";
+import { getSkill, getSkillList, renderSkillPayload } from "@nova/tools";
 import type { Logger, Settings } from "@nova/runtime";
+import { pluginSkillRoots } from "./plugins/loader.js";
+import type { LoadedPlugin } from "./plugins/loader.js";
 import type { SlashCommand as UISlashCommand } from "./ui/input-box.js";
 
 interface LoadOpts {
   cwd: string;
   settings: Settings;
   logger: Logger;
+  /**
+   * Loaded plugins. Their skill directories must be folded into the same scan
+   * the model-facing index uses, or the two views disagree about which skills
+   * exist — see `pluginSkillRoots`.
+   */
+  plugins?: readonly LoadedPlugin[];
+  /**
+   * Live reads of session id / effort for `${*_SESSION_ID}` / `${*_EFFORT}`.
+   * Getters, not values: `/resume` and `/effort` change them mid-session, and
+   * the registry is built once.
+   */
+  getSessionId?: () => string;
+  getEffort?: () => string;
 }
 
 /**
@@ -53,22 +68,15 @@ export async function reloadFileCommands(
 }
 
 /**
- * Build the prompt a skill slash command injects when invoked. The agent is
- * told to load the skill through the existing `loadSkill` tool (which reads the
- * SKILL.md body fresh from disk) and follow it, with any typed args forwarded.
- */
-function skillPrompt(name: string, rawArgs: string): string {
-  const args = rawArgs.trim();
-  const base =
-    `Run the "${name}" skill: call the \`loadSkill\` tool with name "${name}", ` +
-    `then follow the returned instructions.`;
-  return args.length > 0 ? `${base}\n\nArguments: ${args}` : base;
-}
-
-/**
  * Register every discovered skill as a slash command so `/{skill-name}` is a
- * direct shortcut for invoking it. Each command emits a `prompt` outcome (see
- * `skillPrompt`) rather than running inline.
+ * direct shortcut for invoking it.
+ *
+ * A user-typed `/{name} args` expands the SKILL.md **inline** and injects it as
+ * the next prompt — one hop, so `$ARGUMENTS` / `$1`..`$N` in the body can bind
+ * to what the user typed. (The model's own route is the `loadSkill` tool, which
+ * takes a name and nothing else; there is no way for typed arguments to survive
+ * that trip, which is why the two paths differ here.) Both render through
+ * `renderSkillPayload`, so the model sees identical text either way.
  *
  * Must be called AFTER builtins and file commands are registered: skill
  * commands are never builtin, so on a name collision the already-registered
@@ -81,13 +89,22 @@ export function loadSkillCommandsInto(
   opts: LoadOpts,
 ): { added: number } {
   if (!opts.settings.skills.enabled) return { added: 0 };
-  const items = getSkillList({
+  // One options object for both the listing scan and the per-invocation reread.
+  // Every field that takes part in the scan cache key (extraDirs, pluginRoots,
+  // maxFileBytes) must match what context.ts passes, or the slash registry and
+  // the model-facing index get built from two different scans.
+  const pluginSkills = pluginSkillRoots(opts.plugins ?? []);
+  const extraDirs = [...(opts.settings.skills.extraDirs ?? []), ...pluginSkills.dirs];
+  const skillsOpts = {
     cwd: opts.cwd,
     ...(opts.settings.skills.projectDirs ? { projectDirs: opts.settings.skills.projectDirs } : {}),
     ...(opts.settings.skills.userPaths ? { userPaths: opts.settings.skills.userPaths } : {}),
-    ...(opts.settings.skills.extraDirs ? { extraDirs: opts.settings.skills.extraDirs } : {}),
+    ...(extraDirs.length > 0 ? { extraDirs } : {}),
+    ...(pluginSkills.dirs.length > 0 ? { pluginRoots: pluginSkills.roots } : {}),
+    maxFileBytes: opts.settings.skills.maxFileBytes,
     logger: opts.logger,
-  });
+  };
+  const items = getSkillList(skillsOpts);
   // register() returns {} both for a fresh add and for a shadowed no-op, so we
   // pre-snapshot the taken names to count only the commands we actually added.
   const taken = new Set(registry.list().map((c) => c.name));
@@ -101,7 +118,34 @@ export function loadSkillCommandsInto(
       description: item.description,
       argHint: "[args]",
       source: { kind: "skill", path: item.location },
-      run: (_ctx, args) => ({ kind: "prompt", text: skillPrompt(item.name, args) }),
+      run: async (ctx, args) => {
+        // Reread rather than trusting the scan's body: the file may have been
+        // edited (or grown past maxFileBytes) since startup, and `/{name}`
+        // should always run what is on disk right now.
+        const loaded = getSkill({ name: item.name }, skillsOpts);
+        if (!loaded) {
+          return {
+            kind: "error",
+            message: `skill "${item.name}" is no longer readable at ${item.location}. Run /commands reload after fixing it.`,
+          };
+        }
+        return {
+          kind: "prompt",
+          text: await renderSkillPayload(item.name, loaded.body, {
+            location: loaded.location,
+            cwd: ctx.cwd,
+            args,
+            ...(loaded.pluginRoot !== undefined ? { pluginRoot: loaded.pluginRoot } : {}),
+            ...(opts.getSessionId ? { sessionId: opts.getSessionId() } : {}),
+            ...(opts.getEffort ? { effort: opts.getEffort() } : {}),
+            ...(ctx.runCommand ? { runCommand: ctx.runCommand } : {}),
+            maxResponseBytes: opts.settings.skills.maxResponseBytes,
+            ...(opts.settings.skills.disableShellExecution
+              ? { disableShellExecution: true }
+              : {}),
+          }),
+        };
+      },
     };
     registry.register(cmd);
     if (!taken.has(item.name)) added++;

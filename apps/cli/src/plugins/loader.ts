@@ -1,6 +1,6 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 import {
   fileCommandToSlash,
@@ -106,6 +106,30 @@ async function isDir(p: string): Promise<boolean> {
 async function isFile(p: string): Promise<boolean> {
   const s = await stat(p).catch(() => null);
   return !!s && s.isFile();
+}
+
+/**
+ * Skill container directories contributed by plugins, each mapped back to the
+ * root of the plugin that owns it.
+ *
+ * Both the model-facing index (`context.ts`) and the `/{name}` slash registry
+ * (`slash.ts`) must feed the skill scanner the *same* `extraDirs` +
+ * `pluginRoots`, because both take part in the scan cache key — deriving them
+ * from one helper is what keeps the two views from silently disagreeing about
+ * which skills exist. First plugin wins if two somehow share a root, matching
+ * the skill list's own first-wins rule.
+ */
+export function pluginSkillRoots(plugins: readonly LoadedPlugin[]): {
+  dirs: string[];
+  roots: Record<string, string>;
+} {
+  const roots: Record<string, string> = {};
+  for (const p of plugins) {
+    for (const skillDir of p.skills) {
+      roots[dirname(skillDir)] ??= p.root;
+    }
+  }
+  return { dirs: Object.keys(roots), roots };
 }
 
 /** Recursively replace `${CLAUDE_PLUGIN_ROOT}` / `${NOVA_PLUGIN_ROOT}` in a JSON value. */
