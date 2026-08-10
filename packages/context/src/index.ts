@@ -16,6 +16,7 @@ export {
   shouldAutoCompact,
   autoCompact,
   type ThresholdOptions,
+  type CompactTriggerOptions,
   type AutoCompactOptions,
   type AutoCompactResult,
 } from "./compact.js";

@@ -56,6 +56,7 @@ import {
 import { CronScheduler } from "./cron-scheduler.js";
 import { dim } from "./colors.js";
 import { buildCompactor } from "./compactor.js";
+import { fixedOverheadTotal, measureFixedOverhead } from "./context-usage.js";
 import { loadGoal } from "./goal.js";
 import { buildMcpManager } from "./mcp.js";
 import { canonicalizePath, canonicalizeRoots, PATH_INPUT_TOOLS } from "./path-safety.js";
@@ -898,6 +899,7 @@ export async function createContext(
     // machinery, surfaced only via the post_compact card. Built from the live
     // model name so it still follows /model switches.
     getModel: () => ctx.buildModel(ctx.settings.model, false),
+    getOverheadTokens: () => fixedOverheadTotal(measureFixedOverhead(ctx)),
     onPreCompact: async ({ before }) => {
       const r = await ctx.userHooks.firePreCompact({
         subject: "auto",

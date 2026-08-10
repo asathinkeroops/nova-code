@@ -7,6 +7,15 @@ export interface BuildCompactorOptions {
   /** Closes over the CLI's live model binding. */
   getModel: () => ModelClient;
   /**
+   * Tokens the next request will spend on the system prompt and tool schemas.
+   * Counted against the compaction threshold alongside the messages, so the
+   * trigger measures the same thing `/context` displays.
+   *
+   * A getter, not a value: MCP servers connect after startup and plan mode
+   * swaps the tool registry, so the overhead changes within a session.
+   */
+  getOverheadTokens?: () => number;
+  /**
    * Fired right before auto-compact runs the summarizer (awaited). Return
    * `{ block: true }` to skip this compaction (a PreCompact hook vetoed it).
    */
@@ -59,7 +68,7 @@ export async function manualCompact(
 export function buildCompactor(
   opts: BuildCompactorOptions,
 ): (messages: MessageParam[]) => Promise<MessageParam[]> {
-  const { settings, getModel, onPreCompact, onAutoCompact } = opts;
+  const { settings, getModel, getOverheadTokens, onPreCompact, onAutoCompact } = opts;
   const auto = settings.compact.auto;
 
   return async (messages) => {
@@ -81,6 +90,9 @@ export function buildCompactor(
         ...(auto.contextWindowPercent !== undefined
           ? { contextWindowPercent: auto.contextWindowPercent }
           : {}),
+        // System prompt + tool schemas ride on every request; the threshold has
+        // to see them or it fires only once the real prompt is already over.
+        ...(getOverheadTokens ? { overheadTokens: getOverheadTokens() } : {}),
       },
       resolveProfile(settings.provider).tokenEstimate,
     );

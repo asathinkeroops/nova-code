@@ -94,6 +94,36 @@ describe("shouldAutoCompact / computeThreshold", () => {
     expect(shouldAutoCompact([{ role: "user", content: "hi" }], opts)).toBe(false);
   });
 
+  // The system prompt and tool schemas ride on every request, so they fill the
+  // window exactly as the messages do. Leaving them out of the trigger is what
+  // let a 90% threshold fire only once the real prompt was already over 100% on
+  // a small context window.
+  it("counts fixed overhead against the threshold", () => {
+    const messages = [{ role: "user" as const, content: "x".repeat(4 * 30_000) }];
+    const opts = { thresholdTokens: 50_000 };
+    expect(shouldAutoCompact(messages, opts)).toBe(false);
+    expect(shouldAutoCompact(messages, { ...opts, overheadTokens: 25_000 })).toBe(true);
+  });
+
+  it("treats absent overhead as zero", () => {
+    const messages = [{ role: "user" as const, content: "x".repeat(4 * 30_000) }];
+    const opts = { thresholdTokens: 50_000 };
+    expect(shouldAutoCompact(messages, { ...opts, overheadTokens: 0 })).toBe(
+      shouldAutoCompact(messages, opts),
+    );
+  });
+
+  it("can trigger on overhead alone when the window is small enough", () => {
+    // A 32k window with ~14k of system + tools is already 44% spent before the
+    // first message; the trigger has to see that.
+    expect(
+      shouldAutoCompact([{ role: "user", content: "hi" }], {
+        contextWindowSize: 32_000,
+        overheadTokens: 30_000,
+      }),
+    ).toBe(true);
+  });
+
   it("estimateTokens grows with message size", () => {
     const short = estimateTokens([{ role: "user", content: "hi" }]);
     const long = estimateTokens([{ role: "user", content: "x".repeat(4000) }]);

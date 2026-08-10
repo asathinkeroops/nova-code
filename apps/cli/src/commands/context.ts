@@ -1,14 +1,13 @@
-import { buildSystemPrompt } from "@nova/agent";
 import { computeThreshold, estimateTokens, sliceFromLastCompacted } from "@nova/context";
-import { estimateTextTokens, resolveProfile, toWireTools } from "@nova/core";
+import { resolveProfile } from "@nova/core";
 import { resolveContextWindowSize } from "@nova/runtime";
 import { accent, blue, bold, cyan, dim, green, magenta, PURPLE_HEX, yellow } from "../colors.js";
 import type { CliContext } from "../context.js";
+import { measureFixedOverhead } from "../context-usage.js";
 import { t } from "../i18n/index.js";
 import { contextBar, formatPercent, formatTokenCount } from "../ui/status-format.js";
 
 const TITLE = "/context";
-const MCP_PREFIX = "mcp__";
 
 interface Row {
   label: string;
@@ -36,29 +35,12 @@ export async function handleContext(ctx: CliContext): Promise<void> {
   // Weight the estimate by the active provider's tokenizer ratios (CJK vs. rest)
   // so the breakdown matches what `shouldAutoCompact` triggers on.
   const weights = resolveProfile(ctx.settings.provider).tokenEstimate;
-  const estimateChars = (s: string): number => estimateTextTokens(s, weights);
 
-  // System prompt = core instructions + memory bundle + skills block. We size
-  // the whole thing, then attribute memory/skills to their own rows and treat
-  // the remainder (base prompt + language guard + glue) as "system prompt".
-  const fullSystem = buildSystemPrompt(
-    ctx.workspace,
-    ctx.memory,
-    ctx.session.id,
-    ctx.skillsBlock,
-    ctx.settings.language,
-  );
-  const memoryTokens = estimateChars(ctx.memory.system);
-  const skillsTokens = estimateChars(ctx.skillsBlock);
-  const systemTokens = Math.max(0, estimateChars(fullSystem) - memoryTokens - skillsTokens);
-
-  // Tool schemas, sized as the exact wire payload the model receives. MCP tools
-  // (prefixed `mcp__`) are split out since they're often the bulk of the budget.
-  const wire = toWireTools(ctx.tools.definitions());
-  const builtinWire = wire.filter((t) => !t.name.startsWith(MCP_PREFIX));
-  const mcpWire = wire.filter((t) => t.name.startsWith(MCP_PREFIX));
-  const toolsTokens = builtinWire.length ? estimateChars(JSON.stringify(builtinWire)) : 0;
-  const mcpTokens = mcpWire.length ? estimateChars(JSON.stringify(mcpWire)) : 0;
+  // The non-conversation part of the request, measured by the SAME helper the
+  // auto-compaction trigger uses — the panel and the trigger have to agree on
+  // what fills the window, or the gauge lies about when compaction fires.
+  const { systemTokens, memoryTokens, skillsTokens, toolsTokens, mcpTokens } =
+    measureFixedOverhead(ctx, weights);
 
   // The model only receives the slice from the last <compacted> boundary; the
   // retained pre-boundary history stays on disk / in the TUI but costs no

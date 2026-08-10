@@ -70,6 +70,20 @@ export interface ThresholdOptions {
   contextWindowPercent?: number;
 }
 
+export interface CompactTriggerOptions extends ThresholdOptions {
+  /**
+   * Tokens the request spends on everything that is not conversation — the
+   * system prompt and the tool schemas, re-sent verbatim on every call.
+   *
+   * Counted against the threshold because it occupies the window just as the
+   * messages do. Omitting it makes the threshold mean "messages only", which
+   * understates usage by the whole fixed cost: with a 128k window and ~14k of
+   * system + tools, a 90% trigger would not fire until the real request was
+   * already at 101% of the window.
+   */
+  overheadTokens?: number;
+}
+
 export function computeThreshold(t: ThresholdOptions): number {
   if (t.thresholdTokens && t.thresholdTokens > 0) return t.thresholdTokens;
   if (t.contextWindowSize && t.contextWindowSize > 0) {
@@ -81,10 +95,10 @@ export function computeThreshold(t: ThresholdOptions): number {
 
 export function shouldAutoCompact(
   messages: MessageParam[],
-  t: ThresholdOptions,
+  t: CompactTriggerOptions,
   weights: TokenEstimate = DEFAULT_TOKEN_ESTIMATE,
 ): boolean {
-  return estimateTokens(messages, weights) >= computeThreshold(t);
+  return estimateTokens(messages, weights) + (t.overheadTokens ?? 0) >= computeThreshold(t);
 }
 
 // ────────────────────────────────────────────────────────────────────────────
