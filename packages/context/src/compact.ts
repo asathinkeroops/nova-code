@@ -10,7 +10,15 @@ import {
 export const COMPACT_MARKER = "[compacted]";
 
 const DEFAULT_MAX_SUMMARY_TOKENS = 4000;
-const DEFAULT_CONTEXT_WINDOW_PERCENT = 0.5;
+/**
+ * Share of the context window that has to fill before auto-compaction fires.
+ *
+ * Compaction is not free: it costs a summarization call, and it resets the
+ * prefix cache once (a new `<compacted>` boundary moves the model-facing slice
+ * head forward — see the prefix-caching contract in CLAUDE.md). Firing at half
+ * a window spent both of those while most of the window was still usable.
+ */
+const DEFAULT_CONTEXT_WINDOW_PERCENT = 0.9;
 
 // ────────────────────────────────────────────────────────────────────────────
 // Compaction boundary — the model-facing view of an append-only history
@@ -66,7 +74,7 @@ export interface ThresholdOptions {
   thresholdTokens?: number;
   /** Otherwise: compute from context window × percent. */
   contextWindowSize?: number;
-  /** Percent of context window that triggers compaction. Default 0.5. */
+  /** Percent of context window that triggers compaction. Default 0.9. */
   contextWindowPercent?: number;
 }
 

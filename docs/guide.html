@@ -978,6 +978,7 @@
         <p class="font-medium mt-5" style="color:var(--text)">auto 压缩（默认开）：</p>
         <ul class="space-y-3">
           <li>只在上下文窗口吃紧时触发。它<strong>不截断历史</strong>，而是往 append-only 历史里<strong>追加一条 <code>&lt;compacted&gt;</code> 摘要边界</strong> —— 完整历史仍留在磁盘、TUI 里照旧全量渲染，只有喂给<strong>模型</strong>的视图缩短到「最后一条边界往后」。这是一次有意为之的「前缀重置」：边界之内前缀依旧稳定命中缓存，边界推进时才重置一次。可调 <code>compact.auto.enabled</code> / <code>thresholdTokens</code> / <code>contextWindowPercent</code> / <code>maxSummaryTokens</code>。</li>
+          <li>触发阈值默认是<strong>上下文窗口的 90%</strong>（<code>contextWindowPercent</code>，或用 <code>thresholdTokens</code> 钉死一个绝对值）。这个 90% 算的是<strong>整个请求</strong> —— system 提示词、记忆、skills 索引、工具 schema，加上对话消息，和 <code>/context</code> 面板显示的口径一致。固定开销通常在一万多 token，窗口越小占比越高，所以把它计入触发判断是必要的：只按消息量算的话，128k 窗口下等阈值触发时真实请求已经超出窗口了。</li>
         </ul>
         <p>手动压缩：随时 <code>/compact</code>，可附带关注点（如 <code>/compact 保留关于鉴权的部分</code>）让摘要更聚焦。</p>
         <div class="callout callout-info">
@@ -1262,7 +1263,8 @@
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)"><code>compact</code></h3>
         <div class="tbl-wrap"><table class="doc"><thead><tr><th>字段</th><th>默认</th><th>说明</th></tr></thead><tbody>
           <tr><td><code>auto.enabled</code></td><td><code>true</code></td><td>上下文吃紧时自动压缩（追加 <code>&lt;compacted&gt;</code> 边界，见 <a class="inline-link" href="#sec-12">§12</a>）</td></tr>
-          <tr><td><code>auto.thresholdTokens</code> / <code>contextWindowPercent</code> / <code>maxSummaryTokens</code></td><td>内置常量</td><td>auto 调参</td></tr>
+          <tr><td><code>auto.contextWindowPercent</code></td><td><code>0.9</code></td><td>触发阈值占上下文窗口的比例，按<strong>整个请求</strong>计（含 system / 工具 schema，与 <code>/context</code> 同口径）</td></tr>
+          <tr><td><code>auto.thresholdTokens</code> / <code>maxSummaryTokens</code></td><td>内置常量</td><td>绝对阈值覆写（优先于比例）/ 摘要长度上限</td></tr>
         </tbody></table></div>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)"><code>invariants</code>（工具不变量，dispatcher 强制）</h3>

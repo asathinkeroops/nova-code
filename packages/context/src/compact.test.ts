@@ -77,8 +77,8 @@ describe("shouldAutoCompact / computeThreshold", () => {
     expect(computeThreshold({ thresholdTokens: 1234 })).toBe(1234);
   });
 
-  it("computes 50% of contextWindowSize by default", () => {
-    expect(computeThreshold({ contextWindowSize: 200_000 })).toBe(100_000);
+  it("computes 90% of contextWindowSize by default", () => {
+    expect(computeThreshold({ contextWindowSize: 200_000 })).toBe(180_000);
   });
 
   it("respects contextWindowPercent override", () => {

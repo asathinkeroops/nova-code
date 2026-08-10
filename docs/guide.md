@@ -514,6 +514,8 @@ Output: … — read or grep it if you need the command's output.</background-no
 
 **auto 压缩（默认开）**：只在上下文窗口吃紧时触发。它不截断历史，而是往 append-only 历史里**追加一条 `<compacted>` 摘要边界**——完整历史仍留在磁盘、TUI 里照旧全量渲染，只有喂给**模型**的视图缩短到「最后一条边界往后」。这是一次有意为之的「前缀重置」：边界之内前缀依旧稳定命中缓存，边界推进时才重置一次。可调 `compact.auto.enabled` / `thresholdTokens` / `contextWindowPercent` / `maxSummaryTokens`。
 
+触发阈值默认是**上下文窗口的 90%**（`contextWindowPercent`，或用 `thresholdTokens` 钉死一个绝对值）。这个 90% 算的是**整个请求**——system 提示词、记忆、skills 索引、工具 schema，加上对话消息，和 `/context` 面板显示的口径一致。固定开销通常在一万多 token，窗口越小占比越高，所以把它计入触发判断是必要的：只按消息量算的话，128k 窗口下等阈值触发时真实请求已经超出窗口了。
+
 手动压缩：随时 `/compact`，可附带关注点（如 `/compact 保留关于鉴权的部分`）让摘要更聚焦。
 
 **缓存计量**：每个响应的 `cache_read_input_tokens` / `cache_creation_input_tokens` 都会累加进本 session 的用量统计，状态行能看到每轮有多少命中了缓存。
@@ -824,7 +826,8 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 | 字段 | 默认 | 说明 |
 |------|------|------|
 | `auto.enabled` | `true` | 上下文吃紧时自动压缩（追加 `<compacted>` 边界，见 [§12](#12-上下文管理与压缩)） |
-| `auto.thresholdTokens` / `contextWindowPercent` / `maxSummaryTokens` | （内置常量） | auto 调参 |
+| `auto.contextWindowPercent` | `0.9` | 触发阈值占上下文窗口的比例，按**整个请求**计（含 system / 工具 schema，与 `/context` 同口径） |
+| `auto.thresholdTokens` / `maxSummaryTokens` | （内置常量） | 绝对阈值覆写（优先于比例）/ 摘要长度上限 |
 
 ### `invariants`（工具不变量，dispatcher 强制）
 
