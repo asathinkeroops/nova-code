@@ -25,6 +25,21 @@ async function waitFor(predicate: () => boolean, timeoutMs = 3000): Promise<void
   }
 }
 
+/**
+ * Blank out the notice's two random components before asserting that a
+ * command's output was NOT inlined.
+ *
+ * Both leak digits into the text: the command id is `randomBytes(6)` as
+ * base64url, and the temp dir carries `mkdtemp`'s random suffix — and both are
+ * echoed back in the notice (as `id="…"` and in the log path). A bare
+ * `not.toContain("42")` therefore fails whenever either happens to contain
+ * those two characters, which is ~0.34% of runs. Scrubbing them asserts what
+ * the test actually means: the output itself never made it into the notice.
+ */
+function withoutRandomParts(text: string, dir: string, id: string): string {
+  return text.split(dir).join("").split(id).join("");
+}
+
 describe("makeBackgroundNotifier", () => {
   it("returns undefined when the queue is empty", async () => {
     const mgr = new BackgroundCommandManager();
@@ -84,7 +99,7 @@ describe("makeBackgroundNotifier", () => {
     const blocks = out!.messages![1]!.content as Array<{ text: string }>;
     const text = blocks[0]!.text;
     expect(text).toContain('status="completed"');
-    expect(text).not.toContain("42");
+    expect(withoutRandomParts(text, dir, id)).not.toContain("42");
     expect(text).toContain(logPath);
   });
 
@@ -102,7 +117,7 @@ describe("makeBackgroundNotifier", () => {
     expect(text).toContain("exited with code 2");
     expect(text).toContain(join(dir, `${id}.log`));
     // The output stayed in the file.
-    expect(text).not.toContain("42");
+    expect(withoutRandomParts(text, dir, id)).not.toContain("42");
     expect(readFileSync(join(dir, `${id}.log`), "utf8")).toContain("42");
   });
 
