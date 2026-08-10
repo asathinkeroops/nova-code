@@ -91,7 +91,7 @@ export const zh: DeepPartial<Catalog> = {
     batchSearched: (n: number): string => `搜索了 ${n} 个模式`,
     batchRead: (n: number): string => `读取了 ${n} 个文件`,
     batchRan: (n: number): string => `运行了 ${n} 条 shell 命令`,
-    jumpToBottom: " 跳到底部 (ctrl+End) ↓ ",
+    jumpToBottom: " 跳到底部 (点击) ↓ ",
     bannerModel: "模型：",
     bannerWorkspace: "工作区：",
     bannerSession: "会话：",

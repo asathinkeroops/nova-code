@@ -116,7 +116,7 @@ export const en = {
     batchRead: (n: number): string => `Read ${n} file${n === 1 ? "" : "s"}`,
     batchRan: (n: number): string => `Ran ${n} shell command${n === 1 ? "" : "s"}`,
     /** "Jump to bottom" button shown above the InputBox while scrolled up. */
-    jumpToBottom: " Jump to bottom (ctrl+End) ↓ ",
+    jumpToBottom: " Jump to bottom (click) ↓ ",
     // Banner metadata labels (colon included). The renderer pads them to a
     // common display width, so translations need not match in length.
     bannerModel: "model:",
