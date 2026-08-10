@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { canonicalizePath, saveSettings, type Settings } from "@nova/runtime";
 import { isWithin } from "@nova/safety";
-import { dim, PURPLE_HEX } from "./colors.js";
+import { ACCENT_HEX, dim } from "./colors.js";
 import { t } from "./i18n/index.js";
 import { fatalExit, type Screen } from "./screen.js";
 import { pickerArrow } from "./ui/picker.js";
@@ -91,7 +91,7 @@ export async function ensureWorkspaceTrust(
       items: [{ trust: true }, { trust: false }],
       footer: dim(t.trust.footer),
       border: false,
-      topRuleColor: PURPLE_HEX,
+      topRuleColor: ACCENT_HEX,
       render: (it, selected) => {
         const label = it.trust ? t.trust.yes : t.trust.no;
         return `${pickerArrow(selected)} ${label}`;

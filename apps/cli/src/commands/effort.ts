@@ -1,6 +1,6 @@
 import { isThinkingLevel, THINKING_LEVELS, type ThinkingLevel } from "@nova/core";
 import { saveSettings } from "@nova/runtime";
-import { dim, PURPLE_HEX, type Rgb } from "../colors.js";
+import { ACCENT_HEX, dim, type Rgb } from "../colors.js";
 import { thinkingLevelLabel, refreshBanner, type CliContext } from "../context.js";
 import { t } from "../i18n/index.js";
 
@@ -77,7 +77,7 @@ export async function handleEffort(ctx: CliContext, arg: string): Promise<void> 
       rightLabel: t.effort.smarter,
       footer: dim(t.effort.footer),
       initialIndex: currentIdx >= 0 ? currentIdx : 0,
-      topRuleColor: PURPLE_HEX,
+      topRuleColor: ACCENT_HEX,
       label: (level) => level,
       description: (level) => levelBlurb(level),
       tint: (level) => LEVEL_TINT[level],

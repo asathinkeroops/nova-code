@@ -4,7 +4,7 @@ import {
   resolveThinkingLevel,
   saveSettings,
 } from "@nova/runtime";
-import { accent, dim, green, PURPLE_HEX } from "../colors.js";
+import { accent, ACCENT_HEX, dim, green } from "../colors.js";
 import { refreshBanner, thinkingLevelLabel, type CliContext } from "../context.js";
 import { t } from "../i18n/index.js";
 import { pickerArrow } from "../ui/picker.js";
@@ -18,7 +18,7 @@ function notice(ctx: CliContext, lines: string[]): Promise<void> {
     header: accent(TITLE),
     footer: dim(t.model.footerClose),
     border: false,
-    topRuleColor: PURPLE_HEX,
+    topRuleColor: ACCENT_HEX,
   });
 }
 
@@ -97,7 +97,7 @@ export async function handleModel(ctx: CliContext, arg: string): Promise<void> {
     pageSize: 10,
     initialIndex: currentIdx >= 0 ? currentIdx : 0,
     border: false,
-    topRuleColor: PURPLE_HEX,
+    topRuleColor: ACCENT_HEX,
     render: (name, isSelected) => {
       const resolved = resolveModelId(ctx.settings, name);
       const marker = name === ctx.settings.model ? green("*") : " ";

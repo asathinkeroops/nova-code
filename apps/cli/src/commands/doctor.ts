@@ -3,7 +3,7 @@ import { estimateTokens, sliceFromLastCompacted } from "@nova/context";
 import { estimateTextTokens, resolveProfile, toWireTools } from "@nova/core";
 import type { SlashOutcome } from "@nova/external";
 import { resolveContextWindowSize } from "@nova/runtime";
-import { bold, dim, green, PURPLE_HEX } from "../colors.js";
+import { ACCENT_HEX, bold, dim, green } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { buildFixPrompt, diagnoseConfig, formatIssues, summarizeReport } from "../doctor.js";
 import { t } from "../i18n/index.js";
@@ -91,7 +91,7 @@ export async function handleDoctor(ctx: CliContext): Promise<SlashOutcome> {
     header: modalBody(report, ctx),
     footer: canFix ? t.doctor.footerFix : t.doctor.footerClose,
     border: false,
-    topRuleColor: PURPLE_HEX,
+    topRuleColor: ACCENT_HEX,
     ...(canFix ? { hotkeys: { f: "fix" as Action } } : {}),
   });
 

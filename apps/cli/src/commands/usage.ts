@@ -1,5 +1,5 @@
 import { computeCost, formatMoney, type ModelRates } from "@nova/observability";
-import { accent, bold, cyan, dim, PURPLE_HEX } from "../colors.js";
+import { accent, ACCENT_HEX, bold, cyan, dim } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { t } from "../i18n/index.js";
 import { cacheHitRate, formatPercent, formatTokenCount } from "../ui/status-format.js";
@@ -44,7 +44,7 @@ export async function handleUsage(ctx: CliContext): Promise<void> {
       header: `${accent(TITLE)}  ${dim(ctx.settings.model)}`,
       footer: dim(t.common.footerClose),
       border: false,
-      topRuleColor: PURPLE_HEX,
+      topRuleColor: ACCENT_HEX,
     });
     return;
   }
@@ -97,6 +97,6 @@ export async function handleUsage(ctx: CliContext): Promise<void> {
     footer: dim(t.common.footerScrollClose),
     pageSize: 24,
     border: false,
-    topRuleColor: PURPLE_HEX,
+    topRuleColor: ACCENT_HEX,
   });
 }

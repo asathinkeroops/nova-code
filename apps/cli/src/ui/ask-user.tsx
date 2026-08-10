@@ -6,7 +6,7 @@ import type {
   AskUserRequest,
   AskUserResponse,
 } from "@nova/core";
-import { PURPLE_HEX } from "../colors.js";
+import { ACCENT_HEX, CHIP_ACTIVE_BG_HEX } from "../colors.js";
 import { t } from "../i18n/index.js";
 import { countWrappedLines } from "./measure.js";
 import { visibleWidth } from "./width.js";
@@ -442,7 +442,7 @@ export function AskPanel({ req, onResolve, panelWidth }: AskPanelProps): React.R
                 bold={chip.isCur}
                 color={chip.isCur ? "white" : undefined}
                 dimColor={!chip.isCur}
-                {...(chip.isCur ? { backgroundColor: PURPLE_HEX } : {})}
+                {...(chip.isCur ? { backgroundColor: CHIP_ACTIVE_BG_HEX } : {})}
               >
                 {tabChip(chip.label, chip.status)}
               </Text>
@@ -475,7 +475,7 @@ export function AskPanel({ req, onResolve, panelWidth }: AskPanelProps): React.R
               const isCur = confirmIndex === b.idx;
               const disabled = b.idx === CONFIRM_SUBMIT && !everyAnswered;
               return (
-                <Text key={b.idx} color={isCur ? PURPLE_HEX : undefined}>
+                <Text key={b.idx} color={isCur ? ACCENT_HEX : undefined}>
                   {isCur ? "❯ " : "  "}
                   <Text dimColor={!isCur}>{b.idx + 1}.</Text>{" "}
                   <Text color={isCur ? b.color : undefined} dimColor={disabled && !isCur}>
@@ -494,7 +494,7 @@ export function AskPanel({ req, onResolve, panelWidth }: AskPanelProps): React.R
             i === otherIdx && q.freeform.trim().length > 0 ? `${o.label}: ${q.freeform}` : o.label;
           return (
             <React.Fragment key={i}>
-              <Text color={isCur ? PURPLE_HEX : undefined}>
+              <Text color={isCur ? ACCENT_HEX : undefined}>
                 {isCur ? "❯ " : "  "}
                 <Text dimColor={!isCur}>{i + 1}.</Text>{" "}
                 {q.spec.multiSelect ? `${isSelected ? "[x]" : "[ ]"} ` : ""}
@@ -515,7 +515,7 @@ export function AskPanel({ req, onResolve, panelWidth }: AskPanelProps): React.R
           <>
             <Text> </Text>
             <Box>
-              <Text color={PURPLE_HEX}>{"  › "}</Text>
+              <Text color={ACCENT_HEX}>{"  › "}</Text>
               <Text>{freeformBuffer}</Text>
               <Text inverse> </Text>
               {freeformBuffer.length === 0 ? (

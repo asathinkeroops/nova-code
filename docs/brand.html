@@ -1,0 +1,1391 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Nova-Code 品牌设计规范 — 标志、色彩、字体、图形语言、组件与动效的唯一事实来源。">
+<link rel="icon" href="./app-icon-v2.webp" type="image/webp">
+<title>Nova-Code 品牌设计规范</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+
+  /* ============================================================
+     Design tokens — 与 index.html 保持一一对应，这里是唯一事实来源
+     ============================================================ */
+  :root {
+    color-scheme: light;
+    --ground: #FAF9FE;
+    --ground-2: #F3F0FB;
+    --surface: #FFFFFF;
+    --ink: #14101F;
+    --ink-soft: #2C2640;
+    --muted: #6C6579;
+    --faint: #9A93A8;
+    --line: #ECE8F5;
+    --line-strong: #DED7EF;
+    --accent: #6D28D9;
+    --accent-bright: #A855F7;
+    --accent-wash: #F1EBFC;
+    --cosmos: #0D0A1A;
+    --cosmos-2: #16112B;
+    --cosmos-line: #2A2246;
+    --cosmos-ink: #E9E4F7;
+    --cosmos-muted: #9C93C4;
+    --ok: #46C77E;
+    --warn: #E9A23B;
+    --star: #C9B7FF;
+
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Roboto, sans-serif;
+    --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", "Roboto Mono", Menlo, Consolas, monospace;
+
+    --maxw: 1140px;
+    --radius: 14px;
+    --radius-lg: 20px;
+    --shadow-soft: 0 1px 2px rgba(20,16,31,.04), 0 8px 30px rgba(80,44,150,.06);
+    --shadow-panel: 0 24px 70px -24px rgba(60,30,120,.45), 0 2px 8px rgba(20,16,31,.18);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --ground: #0A0713; --ground-2: #100B1F; --surface: #140F24;
+      --ink: #F1ECFB; --ink-soft: #D6CEEE; --muted: #9A92B4; --faint: #6E6788;
+      --line: #241D3C; --line-strong: #322853;
+      --accent: #B98CFF; --accent-bright: #C9A6FF; --accent-wash: #1C1436;
+      --cosmos: #07040F; --cosmos-2: #120C24; --cosmos-line: #2A2246;
+      --shadow-soft: 0 1px 2px rgba(0,0,0,.3), 0 10px 34px rgba(0,0,0,.35);
+      --shadow-panel: 0 26px 80px -28px rgba(0,0,0,.75), 0 2px 8px rgba(0,0,0,.5);
+    }
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --ground: #FAF9FE; --ground-2: #F3F0FB; --surface: #FFFFFF;
+    --ink: #14101F; --ink-soft: #2C2640; --muted: #6C6579; --faint: #9A93A8;
+    --line: #ECE8F5; --line-strong: #DED7EF;
+    --accent: #6D28D9; --accent-bright: #A855F7; --accent-wash: #F1EBFC;
+    --cosmos: #0D0A1A; --cosmos-2: #16112B;
+    --shadow-soft: 0 1px 2px rgba(20,16,31,.04), 0 8px 30px rgba(80,44,150,.06);
+    --shadow-panel: 0 24px 70px -24px rgba(60,30,120,.45), 0 2px 8px rgba(20,16,31,.18);
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --ground: #0A0713; --ground-2: #100B1F; --surface: #140F24;
+    --ink: #F1ECFB; --ink-soft: #D6CEEE; --muted: #9A92B4; --faint: #6E6788;
+    --line: #241D3C; --line-strong: #322853;
+    --accent: #B98CFF; --accent-bright: #C9A6FF; --accent-wash: #1C1436;
+    --cosmos: #07040F; --cosmos-2: #120C24;
+    --shadow-soft: 0 1px 2px rgba(0,0,0,.3), 0 10px 34px rgba(0,0,0,.35);
+    --shadow-panel: 0 26px 80px -28px rgba(0,0,0,.75), 0 2px 8px rgba(0,0,0,.5);
+  }
+
+  html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; background: var(--ground); }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font-family: var(--font-sans); font-size: 17px; line-height: 1.7;
+    -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+  }
+  a { color: inherit; text-decoration: none; }
+  img { max-width: 100%; display: block; }
+  ::selection { background: color-mix(in srgb, var(--accent-bright) 28%, transparent); }
+  code { font-family: var(--font-mono); font-size: .88em; }
+
+  .wrap { width: 100%; max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+
+  /* 与首页一致的胶片颗粒 */
+  body::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 100; opacity: .018;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.75'/%3E%3C/svg%3E");
+  }
+
+  .eyebrow {
+    font-family: var(--font-mono); font-size: .72rem; letter-spacing: .2em;
+    text-transform: uppercase; color: var(--accent); font-weight: 600;
+    display: inline-flex; align-items: center; gap: .55em;
+  }
+  .eyebrow::before { content: ""; width: 22px; height: 1px; background: currentColor; opacity: .55; }
+
+  /* ---------- Nav ---------- */
+  header.nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+    background: color-mix(in srgb, var(--ground) 82%, transparent);
+    backdrop-filter: saturate(1.4) blur(14px); -webkit-backdrop-filter: saturate(1.4) blur(14px);
+    border-bottom: 1px solid transparent; transition: border-color .3s ease, background .3s ease;
+  }
+  header.nav.scrolled { border-bottom-color: var(--line); }
+  .nav-inner { height: 66px; display: flex; align-items: center; gap: 28px; }
+  .brand { display: flex; align-items: center; gap: 11px; margin-right: auto; }
+  .brand .mark { width: 42px; height: 42px; filter: drop-shadow(0 6px 14px rgba(120,60,220,.55)); }
+  .brand-text { display: flex; flex-direction: column; justify-content: center; gap: 2px; }
+  .brand .word { font-family: var(--font-mono); font-weight: 600; font-size: 1.08rem; letter-spacing: -.01em; line-height: 1.1; color: var(--ink); }
+  .brand .tagline { font-size: .7rem; font-weight: 500; line-height: 1.1; color: var(--muted); white-space: nowrap; }
+  @media (max-width: 900px) { .brand .tagline { display: none; } }
+  .nav-links { display: flex; align-items: center; gap: 24px; }
+  .nav-links a:not(.nav-cta) { font-size: .92rem; color: var(--muted); font-weight: 500; transition: color .2s ease; }
+  .nav-links a:not(.nav-cta):hover { color: var(--ink); }
+  .nav-cta {
+    font-family: var(--font-mono); font-size: .84rem; font-weight: 600;
+    color: var(--surface); background: var(--ink); padding: 9px 16px; border-radius: 10px;
+    display: inline-flex; align-items: center; gap: 8px;
+    transition: transform .2s ease, box-shadow .2s ease, background-color .2s ease;
+  }
+  .nav-cta:hover { transform: translateY(-1px); background: color-mix(in srgb, var(--ink) 82%, var(--accent)); box-shadow: 0 8px 22px -8px rgba(20,16,31,.5); }
+  @media (max-width: 860px) { .nav-links a:not(.nav-cta) { display: none; } }
+  .theme-toggle {
+    width: 36px; height: 36px; flex: none; border-radius: 10px; cursor: pointer;
+    border: 1px solid var(--line-strong); background: var(--surface); color: var(--muted);
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: color .2s ease, border-color .2s ease;
+  }
+  .theme-toggle:hover { color: var(--accent); border-color: var(--accent); }
+  .theme-toggle svg { width: 17px; height: 17px; }
+
+  /* ---------- Cover ---------- */
+  .cover {
+    position: relative; overflow: hidden;
+    padding: 168px 0 96px;
+    background-color: #080513;
+    background:
+      radial-gradient(82% 58% at 76% 3%, rgba(191,77,232,.38), transparent 53%),
+      radial-gradient(62% 54% at 8% 18%, rgba(44,190,255,.18), transparent 58%),
+      radial-gradient(54% 48% at 88% 46%, rgba(103,63,221,.2), transparent 68%),
+      radial-gradient(68% 55% at 47% 68%, rgba(107,42,202,.18), transparent 72%),
+      linear-gradient(145deg, #050916 0%, #090619 35%, #110724 62%, #190b36 100%);
+    color: #fff;
+  }
+  .cover::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background:
+      linear-gradient(rgba(137,216,255,.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(198,161,255,.048) 1px, transparent 1px);
+    background-size: 72px 72px, 72px 72px;
+    mask-image: linear-gradient(to bottom, rgba(0,0,0,.72), rgba(0,0,0,.34) 58%, transparent 92%);
+  }
+  .cover .orbit-ring {
+    position: absolute; right: -200px; top: -240px; width: 700px; height: 700px; border-radius: 50%;
+    border: 1px solid rgba(215,190,255,.18); pointer-events: none;
+    box-shadow: 0 0 0 90px rgba(178,125,255,.025), 0 0 0 190px rgba(178,125,255,.018);
+    animation: cover-orbit 22s ease-in-out infinite alternate;
+  }
+  @keyframes cover-orbit { to { transform: rotate(10deg) scale(1.05); } }
+  .cover .planet-a { position: absolute; width: clamp(90px, 11vw, 168px); right: 7%; top: 22%; opacity: .55;
+    filter: drop-shadow(0 18px 26px rgba(2,7,18,.45)); animation: float-a 12s ease-in-out infinite alternate; }
+  .cover .planet-b { position: absolute; width: clamp(44px, 5vw, 82px); left: 5%; bottom: 16%; opacity: .6;
+    filter: drop-shadow(0 12px 18px rgba(2,7,18,.4)); animation: float-b 9s ease-in-out infinite alternate; }
+  @keyframes float-a { to { transform: translate3d(16px,-14px,0) rotate(5deg); } }
+  @keyframes float-b { to { transform: translate3d(-10px,16px,0) rotate(-7deg); } }
+  .cover-inner { position: relative; z-index: 2; }
+  .cover .eyebrow { color: #c6a2ff; }
+  .cover h1 {
+    font-size: clamp(2.5rem, 5.6vw, 4rem); line-height: 1.14; letter-spacing: -.035em;
+    font-weight: 700; margin: 20px 0 0; text-wrap: balance; color: #fff;
+    text-shadow: 0 2px 24px rgba(8,4,20,.4);
+  }
+  .cover h1 .hl {
+    color: transparent; -webkit-text-fill-color: transparent;
+    background: linear-gradient(96deg, #8fefff 0%, #b3a3ff 36%, #f0a6ff 66%, #ff9fce 100%);
+    background-size: 220% 100%; -webkit-background-clip: text; background-clip: text;
+    animation: title-shimmer 7s ease-in-out infinite alternate;
+  }
+  @keyframes title-shimmer { to { background-position: 100% 0; } }
+  .cover p.lead { margin: 22px 0 0; max-width: 52ch; font-size: 1.12rem; color: rgba(240,236,251,.9); line-height: 1.64; }
+  .cover .meta { margin-top: 32px; display: flex; flex-wrap: wrap; gap: 10px; font-family: var(--font-mono); font-size: .78rem; }
+  .cover .meta span {
+    padding: 6px 12px; border: 1px solid rgba(255,255,255,.14); border-radius: 8px;
+    background: rgba(255,255,255,.05); color: rgba(226,216,255,.92); backdrop-filter: blur(7px);
+  }
+
+  /* ---------- Section scaffolding ---------- */
+  section { position: relative; }
+  section[id] { scroll-margin-top: 82px; }
+  .band { padding: 86px 0; isolation: isolate; overflow: hidden; }
+  .band + .band { border-top: 1px solid var(--line); }
+  .band.deep {
+    border-top: 1px solid rgba(214,190,255,.12); border-bottom: 1px solid rgba(214,190,255,.12);
+    color: var(--cosmos-ink);
+    background:
+      radial-gradient(100% 90% at 92% 8%, rgba(168,85,247,.17), transparent 46%),
+      radial-gradient(72% 80% at 0% 100%, rgba(72,130,255,.09), transparent 50%),
+      linear-gradient(145deg, #090514 0%, #110923 56%, #0a0616 100%);
+  }
+  .band.deep::before {
+    content: ""; position: absolute; z-index: -1; inset: 0; pointer-events: none; opacity: .7;
+    background: radial-gradient(circle, rgba(214,194,255,.13) 1px, transparent 1.5px);
+    background-size: 34px 34px;
+    mask-image: linear-gradient(to bottom, transparent, #000 16%, #000 84%, transparent);
+  }
+  .band.deep .band-head h2, .band.deep h3, .band.deep .swatch-name { color: #f7f3ff; }
+  .band.deep .band-head p, .band.deep p, .band.deep .note { color: rgba(219,210,238,.68); }
+  .band.deep .eyebrow { color: #c6a2ff; }
+  .band-head { max-width: 660px; }
+  .band-head h2 {
+    font-size: clamp(1.85rem, 3.6vw, 2.55rem); line-height: 1.12; letter-spacing: -.02em;
+    font-weight: 700; margin: 16px 0 0; text-wrap: balance; color: var(--ink);
+  }
+  .band-head p { margin: 16px 0 0; color: var(--muted); font-size: 1.06rem; }
+  h3.sub { font-size: 1.06rem; font-weight: 700; letter-spacing: -.01em; margin: 0 0 16px; color: var(--ink); }
+  .note { font-size: .92rem; color: var(--muted); margin: 14px 0 0; }
+  .grid { display: grid; gap: 18px; }
+  .g2 { grid-template-columns: repeat(2, 1fr); }
+  .g3 { grid-template-columns: repeat(3, 1fr); }
+  .g4 { grid-template-columns: repeat(4, 1fr); }
+  @media (max-width: 940px) { .g4 { grid-template-columns: repeat(2, 1fr); } .g3 { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 640px) { .g2, .g3, .g4 { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 22px; box-shadow: var(--shadow-soft);
+  }
+  .band.deep .card { background: rgba(255,255,255,.035); border-color: rgba(220,201,255,.14); box-shadow: 0 28px 90px -50px rgba(94,36,190,.72); }
+
+  /* ---------- Logo ---------- */
+  .logo-stage {
+    display: grid; place-items: center; min-height: 230px; border-radius: var(--radius);
+    border: 1px solid var(--line); background: var(--ground-2); padding: 28px; position: relative; overflow: hidden;
+  }
+  .logo-stage.dark { background: linear-gradient(150deg, #0b0718, #16102b); border-color: var(--cosmos-line); }
+  .logo-stage .cap {
+    position: absolute; left: 14px; bottom: 10px; font-family: var(--font-mono);
+    font-size: .68rem; letter-spacing: .12em; text-transform: uppercase; color: var(--faint);
+  }
+  .logo-stage.dark .cap { color: var(--cosmos-muted); }
+  .lockup { display: flex; align-items: center; gap: 13px; }
+  .lockup img { width: 62px; height: 62px; filter: drop-shadow(0 8px 18px rgba(120,60,220,.5)); }
+  .lockup .txt { display: flex; flex-direction: column; gap: 3px; }
+  .lockup .word { font-family: var(--font-mono); font-weight: 600; font-size: 1.5rem; letter-spacing: -.01em; line-height: 1.05; }
+  .lockup .tag { font-size: .78rem; color: var(--muted); line-height: 1.1; }
+  .logo-stage.dark .lockup .word { color: #fff; }
+  .logo-stage.dark .lockup .tag { color: rgba(226,216,255,.75); }
+  .wordmark-svg { width: 100%; max-width: 420px; border-radius: 12px; }
+
+  /* clear space diagram */
+  .clearspace { position: relative; display: inline-block; padding: 34px; }
+  .clearspace::before {
+    content: ""; position: absolute; inset: 0; border: 1px dashed var(--accent);
+    opacity: .5; border-radius: 10px;
+  }
+  .clearspace .x {
+    position: absolute; width: 34px; height: 34px;
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
+    display: grid; place-items: center; font-family: var(--font-mono); font-size: .62rem; color: var(--accent);
+  }
+  .clearspace .x.t { left: 50%; top: 0; transform: translateX(-50%); }
+  .clearspace .x.l { left: 0; top: 50%; transform: translateY(-50%); }
+  .clearspace img { width: 76px; height: 76px; }
+
+  .sizes { display: flex; align-items: flex-end; gap: 26px; flex-wrap: wrap; }
+  .sizes figure { margin: 0; text-align: center; }
+  .sizes figcaption { margin-top: 10px; font-family: var(--font-mono); font-size: .7rem; color: var(--faint); }
+
+  /* do / don't */
+  .rules { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; margin-top: 26px; }
+  @media (max-width: 720px) { .rules { grid-template-columns: 1fr; } }
+  .rule { border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px; background: var(--surface); }
+  .band.deep .rule { background: rgba(255,255,255,.035); border-color: rgba(220,201,255,.14); }
+  .rule .hd { display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: .96rem; }
+  .rule.do .hd { color: var(--ok); }
+  .rule.dont .hd { color: #E96A6A; }
+  .rule .hd svg { width: 17px; height: 17px; }
+  .rule ul { margin: 12px 0 0; padding-left: 20px; color: var(--muted); font-size: .94rem; line-height: 1.66; }
+  .rule li + li { margin-top: 7px; }
+  .band.deep .rule ul { color: rgba(219,210,238,.7); }
+
+  /* ---------- Color ---------- */
+  .swatches { display: grid; gap: 14px; margin-top: 28px; }
+  .sw {
+    border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden;
+    background: var(--surface); cursor: pointer; text-align: left; width: 100%; padding: 0;
+    font: inherit; color: inherit; transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+  }
+  .band.deep .sw { background: rgba(255,255,255,.035); border-color: rgba(220,201,255,.14); }
+  .sw:hover { transform: translateY(-3px); box-shadow: 0 16px 34px -20px rgba(90,50,170,.6); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+  .sw .chip-fill { height: 78px; position: relative; }
+  .sw .chip-fill::after {
+    content: "点击复制"; position: absolute; right: 10px; bottom: 8px;
+    font-family: var(--font-mono); font-size: .62rem; letter-spacing: .06em;
+    color: rgba(255,255,255,.72); opacity: 0; transition: opacity .2s ease;
+    text-shadow: 0 1px 4px rgba(0,0,0,.5);
+  }
+  .sw.on-light .chip-fill::after { color: rgba(20,16,31,.6); text-shadow: none; }
+  .sw:hover .chip-fill::after { opacity: 1; }
+  .sw.copied .chip-fill::after { content: "已复制 ✓"; opacity: 1; }
+  .sw .meta { padding: 12px 14px 14px; }
+  .swatch-name { font-family: var(--font-mono); font-size: .82rem; font-weight: 600; color: var(--ink); }
+  .sw .hex { font-family: var(--font-mono); font-size: .76rem; color: var(--muted); margin-top: 3px; }
+  .sw .use { font-size: .78rem; color: var(--faint); margin-top: 6px; line-height: 1.45; }
+  .band.deep .sw .hex { color: rgba(219,210,238,.7); }
+  .band.deep .sw .use { color: rgba(200,190,225,.5); }
+
+  .gradients { display: grid; gap: 16px; margin-top: 26px; }
+  .grad { border-radius: var(--radius); border: 1px solid var(--line); overflow: hidden; background: var(--surface); }
+  .band.deep .grad { border-color: rgba(220,201,255,.14); background: rgba(255,255,255,.035); }
+  .grad .fill { height: 96px; }
+  .grad .meta { padding: 12px 16px 15px; }
+  .grad .meta .t { font-weight: 600; font-size: .94rem; }
+  .grad .meta .d { font-size: .8rem; color: var(--muted); margin-top: 4px; }
+  .band.deep .grad .meta .d { color: rgba(219,210,238,.66); }
+  .grad code { display: block; margin-top: 8px; font-size: .72rem; color: var(--accent); word-break: break-all; line-height: 1.6; }
+
+  /* ---------- Type ---------- */
+  .type-row { display: grid; grid-template-columns: 190px 1fr; gap: 26px; padding: 26px 0; border-top: 1px solid var(--line); align-items: baseline; }
+  .band.deep .type-row { border-top-color: rgba(219,201,255,.12); }
+  .type-row:last-child { border-bottom: 1px solid var(--line); }
+  .band.deep .type-row:last-child { border-bottom-color: rgba(219,201,255,.12); }
+  @media (max-width: 720px) { .type-row { grid-template-columns: 1fr; gap: 10px; } }
+  .type-row .spec { font-family: var(--font-mono); font-size: .74rem; color: var(--muted); line-height: 1.7; }
+  .type-row .spec b { display: block; color: var(--accent); font-size: .78rem; letter-spacing: .06em; text-transform: uppercase; margin-bottom: 4px; }
+  .band.deep .type-row .spec { color: rgba(219,210,238,.62); }
+  .t-hero { font-size: clamp(2rem, 4.4vw, 3.1rem); font-weight: 700; letter-spacing: -.035em; line-height: 1.16; }
+  .t-h2 { font-size: clamp(1.6rem, 3vw, 2.1rem); font-weight: 700; letter-spacing: -.02em; line-height: 1.14; }
+  .t-h3 { font-size: 1.28rem; font-weight: 700; letter-spacing: -.01em; }
+  .t-body { font-size: 1.06rem; color: var(--muted); line-height: 1.7; }
+  .t-small { font-size: .9rem; color: var(--muted); }
+  .t-mono { font-family: var(--font-mono); font-size: .84rem; }
+
+  /* ---------- Imagery ---------- */
+  .planets { display: flex; flex-wrap: wrap; gap: 26px; margin-top: 30px; }
+  .planets figure { margin: 0; text-align: center; width: 148px; }
+  .planets img { width: 118px; height: 118px; margin: 0 auto; filter: drop-shadow(0 14px 20px rgba(5,2,14,.5)); animation: planet-idle 6s ease-in-out infinite; }
+  .planets figure:nth-child(2) img { animation-delay: -1.2s; }
+  .planets figure:nth-child(3) img { animation-delay: -2.4s; }
+  .planets figure:nth-child(4) img { animation-delay: -3.6s; }
+  .planets figure:nth-child(5) img { animation-delay: -4.8s; }
+  @keyframes planet-idle { 50% { transform: translate3d(6px,-10px,0) rotate(2.4deg); } }
+  .planets figcaption { margin-top: 10px; font-family: var(--font-mono); font-size: .72rem; color: var(--cosmos-muted); }
+  .planets figcaption b { display: block; color: #f0e9ff; font-size: .8rem; margin-bottom: 2px; }
+
+  .texture-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 28px; }
+  @media (max-width: 760px) { .texture-grid { grid-template-columns: 1fr; } }
+  .tex { height: 148px; border-radius: var(--radius); border: 1px solid rgba(220,201,255,.14); position: relative; overflow: hidden; }
+  .tex .lb { position: absolute; left: 12px; bottom: 10px; font-family: var(--font-mono); font-size: .68rem; color: rgba(230,222,250,.8); z-index: 2; }
+  .tex.t1 { background:
+      radial-gradient(82% 58% at 76% 3%, rgba(191,77,232,.38), transparent 53%),
+      radial-gradient(62% 54% at 8% 18%, rgba(44,190,255,.18), transparent 58%),
+      linear-gradient(145deg, #050916 0%, #090619 35%, #110724 62%, #190b36 100%); }
+  .tex.t2 { background-color: #0a0616; background-image:
+      linear-gradient(rgba(137,216,255,.09) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(198,161,255,.09) 1px, transparent 1px);
+    background-size: 36px 36px, 36px 36px; }
+  .tex.t3 { background-color: #0a0616; background-image: radial-gradient(circle, rgba(214,194,255,.28) 1px, transparent 1.5px); background-size: 22px 22px; }
+
+  /* ---------- Components showcase ---------- */
+  .demo-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 8px; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 9px;
+    font-family: var(--font-mono); font-size: .76rem; font-weight: 500;
+    color: var(--ink-soft); background: var(--surface); border: 1px solid var(--line-strong);
+    padding: 6px 13px 6px 8px; border-radius: 100px; box-shadow: var(--shadow-soft);
+  }
+  .badge .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 22%, transparent); }
+  .badge b { color: var(--accent); font-weight: 600; }
+  .btn-primary {
+    display: inline-flex; align-items: center; gap: 9px; font-weight: 600; font-size: .98rem;
+    color: #fff; background: var(--accent); padding: 13px 22px; border-radius: 12px; border: 0; cursor: pointer;
+    font-family: inherit;
+    box-shadow: 0 10px 26px -10px color-mix(in srgb, var(--accent) 80%, black);
+    transition: transform .2s ease, box-shadow .2s ease, background .2s ease;
+  }
+  .btn-primary:hover { transform: translateY(-2px); background: color-mix(in srgb, var(--accent) 88%, black);
+    box-shadow: 0 16px 34px -12px color-mix(in srgb, var(--accent) 85%, black); }
+  .btn-primary svg { width: 17px; height: 17px; }
+  .cmd {
+    display: inline-flex; align-items: center; gap: 12px; font-family: var(--font-mono); font-size: .9rem;
+    color: var(--ink-soft); background: var(--surface); border: 1px solid var(--line-strong);
+    padding: 12px 12px 12px 16px; border-radius: 12px; box-shadow: var(--shadow-soft);
+    cursor: pointer; transition: border-color .2s ease;
+  }
+  .cmd:hover { border-color: var(--accent); }
+  .cmd .prompt { color: var(--accent); font-weight: 600; }
+  .cmd .copy { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px;
+    border-radius: 8px; background: var(--ground-2); color: var(--muted); transition: background .2s ease, color .2s ease; }
+  .cmd:hover .copy { color: var(--accent); }
+  .cmd .copy svg { width: 15px; height: 15px; }
+  .cmd.copied .copy { color: var(--ok); }
+  .chips { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { font-family: var(--font-mono); font-size: .74rem; color: var(--ink-soft);
+    background: var(--surface); border: 1px solid var(--line-strong); padding: 4px 10px; border-radius: 7px; }
+  .metric { margin-top: 4px; padding-top: 16px; border-top: 1px dashed var(--line-strong);
+    font-family: var(--font-mono); font-size: .82rem; color: var(--ink-soft); display: flex; align-items: center; gap: 8px; }
+  .metric b { color: var(--accent); font-size: 1.15rem; font-weight: 700; }
+  .cap-demo .ct { font-family: var(--font-mono); font-size: .95rem; font-weight: 600; color: var(--ink); display: flex; align-items: center; gap: 9px; }
+  .cap-demo .ct .g { width: 7px; height: 7px; border-radius: 2px; background: var(--accent); transform: rotate(45deg); }
+  .cap-demo p { margin: 9px 0 0; font-size: .9rem; color: var(--muted); line-height: 1.55; }
+
+  .term {
+    position: relative; background: var(--cosmos); border: 1px solid var(--cosmos-line);
+    border-radius: var(--radius-lg); box-shadow: var(--shadow-panel); overflow: hidden;
+    font-family: var(--font-mono); margin-top: 8px;
+  }
+  .term-bar { display: flex; align-items: center; gap: 8px; padding: 13px 16px;
+    border-bottom: 1px solid rgba(255,255,255,.06); background: linear-gradient(to bottom, rgba(255,255,255,.03), transparent); }
+  .term-bar .tl { width: 11px; height: 11px; border-radius: 50%; }
+  .tl.r { background: #ff5f57; } .tl.y { background: #febc2e; } .tl.g { background: #28c840; }
+  .term-bar .tt { margin-left: 10px; font-size: .76rem; color: var(--cosmos-muted); display: inline-flex; align-items: center; gap: 7px; }
+  .term-bar .tt img { width: 15px; height: 15px; border-radius: 50%; clip-path: circle(42% at 50% 50%); object-fit: cover; }
+  .term-body { padding: 18px 20px 22px; font-size: .82rem; line-height: 1.72; color: var(--cosmos-ink); }
+  .term-body .prm { color: var(--accent-bright); font-weight: 600; }
+  .term-body .tok { color: var(--star); }
+  .term-body .dim { color: var(--cosmos-muted); }
+  .term-body .ok { color: var(--ok); }
+  .term-body .warn { color: var(--warn); }
+  .term-body .cursor { display: inline-block; width: 8px; height: 1.05em; background: var(--accent-bright);
+    vertical-align: text-bottom; margin-left: 2px; border-radius: 1px; animation: blink 1.05s steps(2, start) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* ---------- Tables ---------- */
+  .tbl-wrap { margin-top: 28px; overflow-x: auto; border: 1px solid var(--line);
+    border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow-soft); }
+  .band.deep .tbl-wrap { background: rgba(255,255,255,.035); border-color: rgba(220,201,255,.14); backdrop-filter: blur(14px); box-shadow: 0 30px 100px -50px rgba(114,54,225,.58); }
+  table.t { width: 100%; border-collapse: collapse; min-width: 560px; font-size: .94rem; }
+  table.t th, table.t td { padding: 14px 18px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.t thead th { font-family: var(--font-mono); font-size: .72rem; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--faint); font-weight: 600; background: var(--ground-2); }
+  .band.deep table.t th, .band.deep table.t td { border-bottom-color: rgba(220,201,255,.1); }
+  .band.deep table.t thead th { background: rgba(255,255,255,.035); color: rgba(208,198,225,.56); }
+  .band.deep table.t tbody td { color: rgba(219,210,238,.72); }
+  .band.deep table.t tbody td:first-child { color: rgba(242,236,251,.9); }
+  table.t tbody td:first-child { color: var(--ink-soft); font-weight: 500; }
+  table.t tbody tr:last-child td { border-bottom: none; }
+  table.t tbody tr { transition: background .2s ease; }
+  table.t tbody tr:hover { background: color-mix(in srgb, var(--accent-wash) 38%, transparent); }
+  .band.deep table.t tbody tr:hover { background: rgba(168,85,247,.07); }
+  table.t code { background: var(--accent-wash); color: var(--accent); padding: 1px 6px; border-radius: 5px; }
+  .band.deep table.t code { background: rgba(168,85,247,.14); color: #d7b9ff; }
+  .yes { color: var(--ok); font-weight: 600; }
+  .no { color: #E96A6A; font-weight: 600; }
+
+  /* ---------- Assets ---------- */
+  .assets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 28px; }
+  @media (max-width: 820px) { .assets { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 520px) { .assets { grid-template-columns: 1fr; } }
+  .asset {
+    display: flex; flex-direction: column; gap: 4px; padding: 16px 18px;
+    border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface);
+    transition: border-color .2s ease, transform .2s ease;
+  }
+  .asset:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .asset .fn { font-family: var(--font-mono); font-size: .82rem; color: var(--accent); word-break: break-all; }
+  .asset .ds { font-size: .82rem; color: var(--muted); }
+
+  /* ---------- TUI appendix ---------- */
+  .cdot {
+    display: inline-block; width: 11px; height: 11px; border-radius: 3px;
+    background: var(--c); vertical-align: -1px; margin-right: 9px; flex: none;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,.16);
+  }
+  .layer-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 40px; }
+  @media (max-width: 820px) { .layer-grid { grid-template-columns: 1fr; } }
+  .layer { border: 1px solid var(--line); border-radius: var(--radius); padding: 20px 22px; background: var(--surface); box-shadow: var(--shadow-soft); }
+  .layer .tag {
+    font-family: var(--font-mono); font-size: .66rem; letter-spacing: .14em; text-transform: uppercase;
+    padding: 3px 9px; border-radius: 100px; display: inline-block;
+  }
+  .layer.brand-l .tag { color: var(--accent); background: var(--accent-wash); }
+  .layer.web-l .tag { color: #3b82a8; background: color-mix(in srgb, #3b82a8 12%, transparent); }
+  .layer.tui-l .tag { color: #c0357f; background: color-mix(in srgb, #c0357f 12%, transparent); }
+  .layer h3 { margin: 14px 0 0; font-size: 1.06rem; font-weight: 700; letter-spacing: -.01em; }
+  .layer p { margin: 8px 0 0; font-size: .92rem; color: var(--muted); line-height: 1.62; }
+  .layer ul { margin: 12px 0 0; padding-left: 19px; font-size: .88rem; color: var(--muted); line-height: 1.7; }
+
+  .ansi-note {
+    margin-top: 26px; padding: 16px 20px; border-radius: var(--radius);
+    border: 1px dashed var(--line-strong); background: var(--accent-wash);
+    font-size: .92rem; color: var(--ink-soft); line-height: 1.66;
+  }
+  .ansi-note b { color: var(--accent); }
+  .ansi-note.warn-note { background: color-mix(in srgb, var(--warn) 12%, transparent); border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
+  .ansi-note.warn-note b { color: #a86b12; }
+  :root[data-theme="dark"] .ansi-note.warn-note b { color: var(--warn); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .ansi-note.warn-note b { color: var(--warn); } }
+  .old { text-decoration: line-through; opacity: .5; }
+  .arrow { color: var(--faint); padding: 0 4px; }
+  td .cr { font-family: var(--font-mono); font-size: .78rem; color: var(--faint); white-space: nowrap; }
+
+  /* ---------- Footer ---------- */
+  footer.foot { border-top: 1px solid var(--line); padding: 40px 0 54px;
+    background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--accent-wash) 36%, transparent)); }
+  .foot-inner { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; justify-content: space-between; }
+  .foot-brand { display: flex; align-items: center; gap: 11px; }
+  .foot-brand .mark { width: 28px; height: 28px; }
+  .foot-brand .word { font-family: var(--font-mono); font-weight: 600; color: var(--ink); }
+  .foot-meta { font-family: var(--font-mono); font-size: .8rem; color: var(--faint); display: flex; gap: 18px; flex-wrap: wrap; }
+  .foot-meta a:hover { color: var(--accent); }
+
+  /* ---------- reveal ---------- */
+  .reveal { opacity: 0; transform: translateY(18px); transition: opacity .7s ease, transform .7s ease; }
+  .reveal.in { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+    .reveal { opacity: 1; transform: none; }
+    .term-body .cursor { display: none; }
+  }
+  @media (max-width: 620px) {
+    .wrap { padding-left: 18px; padding-right: 18px; }
+    .cover { padding: 132px 0 74px; }
+    .band { padding: 66px 0; }
+  }
+</style>
+</head>
+<body>
+
+<header class="nav" id="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="#top" aria-label="Nova-Code 品牌规范">
+      <img class="mark" src="./app-icon-v2.webp" alt="Nova-Code logo" width="42" height="42">
+      <span class="brand-text">
+        <span class="word">Nova-Code</span>
+        <span class="tagline">品牌设计规范 Brand Guidelines</span>
+      </span>
+    </a>
+    <nav class="nav-links">
+      <a href="#logo">标志</a>
+      <a href="#color">色彩</a>
+      <a href="#type">字体</a>
+      <a href="#imagery">图形</a>
+      <a href="#components">组件</a>
+      <a href="#motion">动效</a>
+      <a href="#tui">终端</a>
+      <a href="#voice">语气</a>
+      <a href="./index.html">官网</a>
+      <button class="theme-toggle" id="themeToggle" type="button" aria-label="切换明暗主题">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg>
+      </button>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- ============ COVER ============ -->
+  <section class="cover">
+    <span class="orbit-ring" aria-hidden="true"></span>
+    <img class="planet-a" src="./planet-pillar-gas.webp" alt="" width="1254" height="1254" aria-hidden="true">
+    <img class="planet-b" src="./planet-pillar-ice.webp" alt="" width="1254" height="1254" aria-hidden="true">
+    <div class="wrap cover-inner">
+      <span class="eyebrow">Brand system v1</span>
+      <h1>Nova-Code<br><span class="hl">品牌设计规范</span></h1>
+      <p class="lead">一套从官网提炼出的设计语言：深空紫的宇宙叙事、等宽字体的工程质感、克制而有呼吸的动效。本页是标志、色彩、字体、图形、组件与文案口吻的唯一事实来源——做任何 Nova-Code 的物料，先看这里。</p>
+      <div class="meta">
+        <span>主色 #6D28D9</span>
+        <span>栅格 1140 / 24</span>
+        <span>圆角 14 · 20</span>
+        <span>正文 17px / 1.7</span>
+        <span>明暗双主题</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 品牌内核 ============ -->
+  <section class="band" id="essence">
+    <div class="wrap">
+      <div class="band-head reveal">
+        <span class="eyebrow">Brand core</span>
+        <h2>品牌内核：一颗为 DeepSeek 而生的新星</h2>
+        <p>Nova（新星）不是装饰性的命名。它同时表达三件事——爆发式的效率跃迁、可被观测的确定轨道、以及围绕一个恒星（DeepSeek）构建的完整系统。所有视觉决策都必须能回到这三点。</p>
+      </div>
+      <div class="grid g3" style="margin-top:44px">
+        <div class="card reveal">
+          <h3 class="sub">一句话定义</h3>
+          <p style="margin:0;color:var(--muted);font-size:.96rem">为 DeepSeek 而生的终端编程 Agent。</p>
+          <div class="chips" style="margin-top:16px"><span class="chip">中文首选表述</span></div>
+        </div>
+        <div class="card reveal">
+          <h3 class="sub">英文定义</h3>
+          <p style="margin:0;color:var(--muted);font-size:.96rem">A DeepSeek-native coding agent for your terminal.</p>
+          <div class="chips" style="margin-top:16px"><span class="chip">English</span></div>
+        </div>
+        <div class="card reveal">
+          <h3 class="sub">三个支点</h3>
+          <p style="margin:0;color:var(--muted);font-size:.96rem">省钱 · 安全 · 灵活。任何一屏物料至少落到其中一条，不要三条都讲成一句空话。</p>
+        </div>
+      </div>
+
+      <h3 class="sub reveal" style="margin-top:56px">名称书写规范</h3>
+      <div class="tbl-wrap reveal" style="margin-top:14px">
+        <table class="t">
+          <thead><tr><th>场景</th><th>正确</th><th>错误</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>产品名</td><td class="yes">Nova-Code</td><td class="no">NovaCode / nova code / NOVA-CODE</td><td>首字母大写、中间连字符，正文中不全大写</td></tr>
+            <tr><td>简称</td><td class="yes">Nova</td><td class="no">nova（指代产品时）</td><td>上下文明确时可用简称，仍需首字母大写</td></tr>
+            <tr><td>CLI 命令</td><td class="yes"><code>nova</code></td><td class="no"><code>Nova</code></td><td>命令行二进制永远小写，且用等宽字体呈现</td></tr>
+            <tr><td>包名</td><td class="yes"><code>@nova/core</code></td><td class="no"><code>@Nova/Core</code></td><td>workspace 包名全小写</td></tr>
+            <tr><td>模型名</td><td class="yes">DeepSeek</td><td class="no">Deepseek / deep seek</td><td>大写 S，是我们最重要的伙伴名词</td></tr>
+            <tr><td>许可证</td><td class="yes">Apache 2.0</td><td class="no">Apache2 / APACHE-2.0</td><td>对外一律这一种写法</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ LOGO ============ -->
+  <section class="band deep" id="logo">
+    <div class="wrap">
+      <div class="band-head reveal">
+        <span class="eyebrow">Logo</span>
+        <h2>标志：一颗行星，和一段等宽字标</h2>
+        <p>标志系统由两部分组成——立体渲染的应用图标（行星）与像素栅格化的字标。二者可单独使用，也可横向锁定成组合标志；组合关系一经确定不得自行调整。</p>
+      </div>
+
+      <div class="grid g2" style="margin-top:44px">
+        <div class="reveal">
+          <div class="logo-stage dark">
+            <div class="lockup">
+              <img src="./app-icon-v2.webp" alt="Nova-Code 组合标志" width="62" height="62">
+              <span class="txt">
+                <span class="word">Nova-Code</span>
+                <span class="tag">一个专为 DeepSeek 打造的编码智能体</span>
+              </span>
+            </div>
+            <span class="cap">Primary lockup · on deep space</span>
+          </div>
+        </div>
+        <div class="reveal">
+          <div class="logo-stage">
+            <div class="lockup">
+              <img src="./app-icon-v2.webp" alt="Nova-Code 组合标志（浅色底）" width="62" height="62">
+              <span class="txt">
+                <span class="word" style="color:var(--ink)">Nova-Code</span>
+                <span class="tag">一个专为 DeepSeek 打造的编码智能体</span>
+              </span>
+            </div>
+            <span class="cap">Primary lockup · on light ground</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid g2" style="margin-top:18px">
+        <div class="reveal">
+          <div class="logo-stage dark">
+            <img class="wordmark-svg" src="./logo.svg" alt="Nova-Code 字标">
+            <span class="cap">Wordmark · logo.svg</span>
+          </div>
+        </div>
+        <div class="reveal">
+          <div class="logo-stage dark">
+            <img src="./app-icon-v2.webp" alt="Nova-Code 应用图标" width="132" height="132" style="width:132px;height:132px;filter:drop-shadow(0 20px 40px rgba(120,60,220,.6))">
+            <span class="cap">App icon · app-icon-v2.webp</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid g2" style="margin-top:44px;align-items:start">
+        <div class="card reveal">
+          <h3 class="sub">安全边距</h3>
+          <p style="margin:0 0 18px;color:inherit;font-size:.94rem">四周留白不小于图标高度的 <b>1/2（记作 X）</b>。任何文字、边框、图片都不得进入该区域。</p>
+          <div class="clearspace">
+            <span class="x t">X</span><span class="x l">X</span>
+            <img src="./app-icon-v2.webp" alt="安全边距示意" width="76" height="76">
+          </div>
+        </div>
+        <div class="card reveal">
+          <h3 class="sub">最小尺寸</h3>
+          <p style="margin:0 0 22px;color:inherit;font-size:.94rem">低于最小尺寸时行星的环带与高光会糊成一团，此时改用纯字标或单色版本。</p>
+          <div class="sizes">
+            <figure><img src="./app-icon-v2.webp" alt="" width="96" height="96" style="width:96px;height:96px"><figcaption>96px 首选</figcaption></figure>
+            <figure><img src="./app-icon-v2.webp" alt="" width="48" height="48" style="width:48px;height:48px"><figcaption>48px 导航</figcaption></figure>
+            <figure><img src="./app-icon-v2.webp" alt="" width="28" height="28" style="width:28px;height:28px"><figcaption>28px 页脚</figcaption></figure>
+            <figure><img src="./app-icon-v2.webp" alt="" width="16" height="16" style="width:16px;height:16px"><figcaption>16px 下限</figcaption></figure>
+          </div>
+        </div>
+      </div>
+
+      <div class="rules">
+        <div class="rule do reveal">
+          <div class="hd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>应该</div>
+          <ul>
+            <li>优先把标志放在深空底或浅紫灰底上，让行星的紫光有呼吸空间。</li>
+            <li>图标保持原始方形比例，只在被当作「嵌入式行星」使用时（如终端标题栏）做圆形裁切。</li>
+            <li>组合标志中，图标与字标间距固定为 <code>11px</code>（小尺寸）/ <code>13px</code>（大尺寸）。</li>
+            <li>需要单色场景时，用纯白或 <code>--ink</code> 呈现字标，图标改用纯色剪影。</li>
+          </ul>
+        </div>
+        <div class="rule dont reveal">
+          <div class="hd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>不应该</div>
+          <ul>
+            <li>不要拉伸、旋转、倾斜图标，也不要给它加描边或投影以外的效果。</li>
+            <li>不要重新排布组合标志（上下堆叠、字标在左都不允许）。</li>
+            <li>不要把标志放在杂乱照片、高饱和纯色（尤其橙、绿）或低对比灰底上。</li>
+            <li>不要改写标语中的字词，也不要把标语与字标的字体混用。</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ COLOR ============ -->
+  <section class="band" id="color">
+    <div class="wrap">
+      <div class="band-head reveal">
+        <span class="eyebrow">Color</span>
+        <h2>色彩：深空紫主导，青与品红只用来点亮边缘</h2>
+        <p>整套颜色以 CSS 自定义属性发布，明暗两套主题共享同一批变量名——写样式时永远引用变量，不要写死十六进制。点击任意色卡即可复制色值。</p>
+      </div>
+
+      <h3 class="sub reveal" style="margin-top:48px">主色 · Accent</h3>
+      <div class="swatches g4 grid reveal" data-swatches>
+        <button class="sw" data-hex="#6D28D9"><span class="chip-fill" style="background:#6D28D9"></span><span class="meta"><span class="swatch-name">--accent</span><span class="hex">#6D28D9 · 亮色主题</span><span class="use">主按钮、链接、强调数字、代码高亮</span></span></button>
+        <button class="sw" data-hex="#A855F7"><span class="chip-fill" style="background:#A855F7"></span><span class="meta"><span class="swatch-name">--accent-bright</span><span class="hex">#A855F7</span><span class="use">光晕、光标、悬停辉光、终端提示符</span></span></button>
+        <button class="sw" data-hex="#B98CFF"><span class="chip-fill" style="background:#B98CFF"></span><span class="meta"><span class="swatch-name">--accent（dark）</span><span class="hex">#B98CFF · 暗色主题</span><span class="use">暗底上的主色，提亮以保证对比度</span></span></button>
+        <button class="sw on-light" data-hex="#F1EBFC"><span class="chip-fill" style="background:#F1EBFC"></span><span class="meta"><span class="swatch-name">--accent-wash</span><span class="hex">#F1EBFC / 暗色 #1C1436</span><span class="use">代码底、行悬停、表格高亮列</span></span></button>
+      </div>
+
+      <h3 class="sub reveal" style="margin-top:48px">中性色 · 亮色主题</h3>
+      <div class="swatches g4 grid reveal" data-swatches>
+        <button class="sw on-light" data-hex="#FAF9FE"><span class="chip-fill" style="background:#FAF9FE;border-bottom:1px solid var(--line)"></span><span class="meta"><span class="swatch-name">--ground</span><span class="hex">#FAF9FE</span><span class="use">页面底色</span></span></button>
+        <button class="sw on-light" data-hex="#F3F0FB"><span class="chip-fill" style="background:#F3F0FB;border-bottom:1px solid var(--line)"></span><span class="meta"><span class="swatch-name">--ground-2</span><span class="hex">#F3F0FB</span><span class="use">次级底、表头</span></span></button>
+        <button class="sw" data-hex="#14101F"><span class="chip-fill" style="background:#14101F"></span><span class="meta"><span class="swatch-name">--ink</span><span class="hex">#14101F</span><span class="use">标题与主要文字</span></span></button>
+        <button class="sw" data-hex="#6C6579"><span class="chip-fill" style="background:#6C6579"></span><span class="meta"><span class="swatch-name">--muted</span><span class="hex">#6C6579</span><span class="use">正文说明、次要文字</span></span></button>
+        <button class="sw" data-hex="#2C2640"><span class="chip-fill" style="background:#2C2640"></span><span class="meta"><span class="swatch-name">--ink-soft</span><span class="hex">#2C2640</span><span class="use">列表项、加粗内文</span></span></button>
+        <button class="sw" data-hex="#9A93A8"><span class="chip-fill" style="background:#9A93A8"></span><span class="meta"><span class="swatch-name">--faint</span><span class="hex">#9A93A8</span><span class="use">元信息、页脚、表头标签</span></span></button>
+        <button class="sw on-light" data-hex="#ECE8F5"><span class="chip-fill" style="background:#ECE8F5;border-bottom:1px solid var(--line)"></span><span class="meta"><span class="swatch-name">--line</span><span class="hex">#ECE8F5</span><span class="use">常规分割线</span></span></button>
+        <button class="sw on-light" data-hex="#DED7EF"><span class="chip-fill" style="background:#DED7EF"></span><span class="meta"><span class="swatch-name">--line-strong</span><span class="hex">#DED7EF</span><span class="use">卡片描边、芯片边框</span></span></button>
+      </div>
+
+      <h3 class="sub reveal" style="margin-top:48px">深空色 · Cosmos（深色区块与终端面板专用）</h3>
+      <div class="swatches g4 grid reveal" data-swatches>
+        <button class="sw" data-hex="#0D0A1A"><span class="chip-fill" style="background:#0D0A1A"></span><span class="meta"><span class="swatch-name">--cosmos</span><span class="hex">#0D0A1A</span><span class="use">终端 / 代码面板底</span></span></button>
+        <button class="sw" data-hex="#16112B"><span class="chip-fill" style="background:#16112B"></span><span class="meta"><span class="swatch-name">--cosmos-2</span><span class="hex">#16112B</span><span class="use">深空次级层</span></span></button>
+        <button class="sw" data-hex="#2A2246"><span class="chip-fill" style="background:#2A2246"></span><span class="meta"><span class="swatch-name">--cosmos-line</span><span class="hex">#2A2246</span><span class="use">深底上的描边</span></span></button>
+        <button class="sw on-light" data-hex="#E9E4F7"><span class="chip-fill" style="background:#E9E4F7"></span><span class="meta"><span class="swatch-name">--cosmos-ink</span><span class="hex">#E9E4F7</span><span class="use">深底上的正文</span></span></button>
+        <button class="sw" data-hex="#9C93C4"><span class="chip-fill" style="background:#9C93C4"></span><span class="meta"><span class="swatch-name">--cosmos-muted</span><span class="hex">#9C93C4</span><span class="use">深底上的次要文字</span></span></button>
+        <button class="sw on-light" data-hex="#C9B7FF"><span class="chip-fill" style="background:#C9B7FF"></span><span class="meta"><span class="swatch-name">--star</span><span class="hex">#C9B7FF</span><span class="use">星光、代码关键字、进度条尾色</span></span></button>
+        <button class="sw" data-hex="#46C77E"><span class="chip-fill" style="background:#46C77E"></span><span class="meta"><span class="swatch-name">--ok</span><span class="hex">#46C77E</span><span class="use">成功、缓存命中、复制完成</span></span></button>
+        <button class="sw" data-hex="#E9A23B"><span class="chip-fill" style="background:#E9A23B"></span><span class="meta"><span class="swatch-name">--warn</span><span class="hex">#E9A23B</span><span class="use">警告、待确认的权限请求</span></span></button>
+      </div>
+
+      <h3 class="sub reveal" style="margin-top:52px">渐变 · Gradients</h3>
+      <div class="gradients g3 grid reveal">
+        <div class="grad">
+          <div class="fill" style="background:
+            radial-gradient(82% 58% at 76% 3%, rgba(191,77,232,.38), transparent 53%),
+            radial-gradient(62% 54% at 8% 18%, rgba(44,190,255,.18), transparent 58%),
+            linear-gradient(145deg, #050916 0%, #090619 35%, #110724 62%, #190b36 100%)"></div>
+          <div class="meta">
+            <div class="t">超新星深空 Supernova</div>
+            <div class="d">首屏与所有深色区块的底。紫为主，青只在左上角压边。</div>
+            <code>linear-gradient(145deg,#050916,#090619 35%,#110724 62%,#190b36)</code>
+          </div>
+        </div>
+        <div class="grad">
+          <div class="fill" style="background:linear-gradient(96deg, #8fefff 0%, #b3a3ff 36%, #f0a6ff 66%, #ff9fce 100%)"></div>
+          <div class="meta">
+            <div class="t">标题流光 Title shimmer</div>
+            <div class="d">仅用于首屏主标题的高亮行，7s 往复。一屏最多出现一次。</div>
+            <code>linear-gradient(96deg,#8fefff,#b3a3ff 36%,#f0a6ff 66%,#ff9fce)</code>
+          </div>
+        </div>
+        <div class="grad">
+          <div class="fill" style="background:linear-gradient(180deg,#00eeff,#5aa0ff 25%,#aa6ef5 50%,#e650d2 75%,#ff3caa)"></div>
+          <div class="meta">
+            <div class="t">字标光谱 Wordmark spectrum</div>
+            <div class="d">像素字标的填充渐变，自上而下贯穿整个字高，不可换向。</div>
+            <code>#00eeff → #5aa0ff → #aa6ef5 → #e650d2 → #ff3caa</code>
+          </div>
+        </div>
+      </div>
+
+      <div class="rules">
+        <div class="rule do reveal">
+          <div class="hd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>应该</div>
+          <ul>
+            <li>始终通过 <code>var(--accent)</code> 这类变量取色，明暗主题自动切换。</li>
+            <li>深色区块与浅色区块交替出现，形成「深—浅—深」的阅读节奏。</li>
+            <li>正文与底色对比度不低于 WCAG AA（4.5:1）；等宽小字不低于 12px。</li>
+          </ul>
+        </div>
+        <div class="rule dont reveal">
+          <div class="hd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>不应该</div>
+          <ul>
+            <li>不要引入品牌色板之外的第五种色相（尤其是暖橙、草绿做主色）。</li>
+            <li>不要用主色铺大面积实底——紫色是强调色，不是背景色。</li>
+            <li>不要在同一屏里同时使用两种以上渐变，光会互相打架。</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ TYPOGRAPHY ============ -->
+  <section class="band deep" id="type">
+    <div class="wrap">
+      <div class="band-head reveal">
+        <span class="eyebrow">Typography</span>
+        <h2>字体：系统无衬线讲人话，等宽字体讲工程</h2>
+        <p>不加载任何 Web 字体——首屏必须零字体请求。中文走系统字体栈（苹方 / 微软雅黑），所有技术性内容（命令、路径、指标、标签）一律等宽，这是 Nova-Code 最强的排版识别符。</p>
+      </div>
+
+      <div class="grid g2 reveal" style="margin-top:40px">
+        <div class="card">
+          <h3 class="sub">Sans · 界面与正文</h3>
+          <code style="font-size:.76rem;color:var(--star);display:block;line-height:1.8;word-break:break-all">-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Roboto, sans-serif</code>
+        </div>
+        <div class="card">
+          <h3 class="sub">Mono · 技术语汇</h3>
+          <code style="font-size:.76rem;color:var(--star);display:block;line-height:1.8;word-break:break-all">ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", "Roboto Mono", Menlo, Consolas, monospace</code>
+        </div>
+      </div>
+
+      <div style="margin-top:44px">
+        <div class="type-row reveal">
+          <div class="spec"><b>Hero</b>clamp(2.7rem, 5.9vw, 4.45rem)<br>700 · lh 1.16 · ls −.035em</div>
+          <div class="t-hero">为 DeepSeek 而生的终端编程 Agent</div>
+        </div>
+        <div class="type-row reveal">
+          <div class="spec"><b>Section H2</b>clamp(1.85rem, 3.6vw, 2.55rem)<br>700 · lh 1.12 · ls −.02em</div>
+          <div class="t-h2">省钱、安全、灵活——不是堆功能，是一套架构</div>
+        </div>
+        <div class="type-row reveal">
+          <div class="spec"><b>Card H3</b>1.28rem · 700 · ls −.01em<br>可搭配等宽副名</div>
+          <div class="t-h3">前缀缓存自动命中 <em style="font-family:var(--font-mono);font-style:normal;font-size:.78rem;color:var(--accent-bright);font-weight:600">prefix cache</em></div>
+        </div>
+        <div class="type-row reveal">
+          <div class="spec"><b>Body</b>17px · lh 1.7<br>说明文 1.06rem · --muted</div>
+          <div class="t-body">终端 AI 编程工具，开发者最在意的三件事——Nova 把它们做进了架构底层。</div>
+        </div>
+        <div class="type-row reveal">
+          <div class="spec"><b>Eyebrow</b>.72rem · mono · 600<br>ls .2em · uppercase · 前置短横</div>
+          <div><span class="eyebrow">Design pillars</span></div>
+        </div>
+        <div class="type-row reveal">
+          <div class="spec"><b>Meta / Code</b>.74–.84rem · mono<br>--faint / --accent</div>
+          <div class="t-mono" style="color:var(--star)">$ nova --output-format jsonl · 缓存命中 96% · ¥0.02 / 轮</div>
+        </div>
+      </div>
+
+      <p class="note reveal">排版三条硬规矩：标题一律 <code>text-wrap: balance</code>；正文段落宽度不超过 <code>44ch</code>（首屏副标题 <code>33ch</code>）；英文技术名词在中文句子里不加空格以外的任何修饰，也不翻译（Hook、MCP、Skill、Agent 保持原文）。</p>
+    </div>
+  </section>
+
+  <!-- ============ IMAGERY ============ -->
+  <section class="band deep" id="imagery" style="border-top:none">
+    <div class="wrap">
+      <div class="band-head reveal">
+        <span class="eyebrow">Imagery</span>
+        <h2>图形语言：五颗行星，一片可信的深空</h2>
+        <p>行星是 Nova-Code 的插画母题。它们代表「围绕一个恒星运行的系统」，每颗对应一个设计支柱，出现顺序固定，不要临时新增或替换材质。</p>
+      </div>
+
+      <div class="planets reveal">
+        <figure><img src="./planet-pillar-gas.webp" alt="气态行星" width="1254" height="1254" loading="lazy"><figcaption><b>Gas</b>省钱 · 前缀缓存</figcaption></figure>
+        <figure><img src="./planet-pillar-rock.webp" alt="岩质行星" width="1254" height="1254" loading="lazy"><figcaption><b>Rock</b>安全 · 纵深防御</figcaption></figure>
+        <figure><img src="./planet-pillar-ice.webp" alt="冰质行星" width="1254" height="1254" loading="lazy"><figcaption><b>Ice</b>灵活 · 声明式扩展</figcaption></figure>
+        <figure><img src="./planet-pillar-desert.webp" alt="荒漠行星" width="1254" height="1254" loading="lazy"><figcaption><b>Desert</b>代码智能 · LSP</figcaption></figure>
+        <figure><img src="./planet-pillar-ocean.webp" alt="海洋行星" width="1254" height="1254" loading="lazy"><figcaption><b>Ocean</b>沙箱 · OS 级安全</figcaption></figure>
+      </div>
+
+      <h3 class="sub reveal" style="margin-top:52px;color:#f7f3ff">底纹三件套</h3>
+      <div class="texture-grid reveal">
+        <div class="tex t1"><span class="lb">Supernova field · 首屏与深色区块</span></div>
+        <div class="tex t2"><span class="lb">72px 技术栅格 · 透明度 ≤ .05</span></div>
+        <div class="tex t3"><span class="lb">34px 星点 · 上下渐隐遮罩</span></div>
+      </div>
+
+      <div class="rules">
+        <div class="rule do reveal">
+          <div class="hd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>应该</div>
+          <ul>
+            <li>行星统一投影 <code>drop-shadow(0 14px 20px rgba(5,2,14,.5))</code>，光源恒定在左上。</li>
+            <li>让行星部分溢出容器边界（压住卡片顶角），制造纵深。</li>
+            <li>底纹永远是配角：栅格与星点透明度控制在 .03–.09，并加渐隐遮罩收边。</li>
+          </ul>
+        </div>
+        <div class="rule dont reveal">
+          <div class="hd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>不应该</div>
+          <ul>
+            <li>不要用通用图库的科技配图、电路板、机器人、人脑。</li>
+            <li>不要给行星换色相去凑主题色——材质本身就是识别点。</li>
+            <li>不要在浅色区块上直接铺深空底图，浅色区靠留白与紫光晕承载。</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ COMPONENTS ============ -->
+  <section class="band" id="components">
+    <div class="wrap">
+      <div class="band-head reveal">
+        <span class="eyebrow">Components</span>
+        <h2>组件：一套可以直接抄走的原子</h2>
+        <p>下列组件在官网、文档、演示物料中通用。间距体系为 8 的倍数，圆角只有三档：<code>7–8px</code>（芯片/小控件）、<code>12–14px</code>（按钮/卡片）、<code>20px</code>（面板）。</p>
+      </div>
+
+      <div class="grid g2" style="margin-top:44px;align-items:start">
+        <div class="card reveal">
+          <h3 class="sub">徽标与按钮</h3>
+          <div class="demo-strip">
+            <span class="badge"><span class="dot"></span>为 DeepSeek 原生设计 · <b>Apache 2.0</b></span>
+          </div>
+          <div class="demo-strip" style="margin-top:18px">
+            <button class="btn-primary" type="button">
+              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5A11.5 11.5 0 0 0 .5 12a11.5 11.5 0 0 0 7.86 10.92c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.53-1.34-1.29-1.7-1.29-1.7-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.2 1.77 1.2 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.7 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.43-2.7 5.4-5.26 5.69.41.36.78 1.05.78 2.12v3.14c0 .31.2.67.8.56A11.5 11.5 0 0 0 23.5 12 11.5 11.5 0 0 0 12 .5Z"/></svg>
+              在 GitHub 上 Star
+            </button>
+          </div>
+          <div class="demo-strip" style="margin-top:18px">
+            <button class="cmd" id="copyCmd" type="button" aria-label="复制克隆命令">
+              <span class="prompt">$</span><span>git clone github.com/asathinkeroops/nova-code</span>
+              <span class="copy" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span>
+            </button>
+          </div>
+          <p class="note">主按钮一屏只出现一个；命令条是「第二动作」，永远可点击复制并给出 <code>--ok</code> 色的完成反馈。</p>
+        </div>
+
+        <div class="card reveal">
+          <h3 class="sub">芯片、指标与能力卡</h3>
+          <div class="chips">
+            <span class="chip">truncation 续写</span><span class="chip">tool_result 兜底</span>
+            <span class="chip">read-before-edit</span><span class="chip">mtime 漂移检测</span>
+          </div>
+          <div class="metric"><b>96%+</b> 前缀缓存命中率</div>
+          <div class="cap-demo" style="margin-top:24px">
+            <div class="ct"><span class="g"></span>多会话热切换</div>
+            <p><code>/resume</code> 交互式挑选历史会话，完整迁移 Agent 状态；<code>/clear</code> 开新会话而不丢旧的。</p>
+          </div>
+          <p class="note">数字用等宽加粗 + 主色，单位与说明用常规字重，避免整句都在喊。</p>
+        </div>
+      </div>
+
+      <h3 class="sub reveal" style="margin-top:48px">终端面板 · 品牌的主视觉道具</h3>
+      <div class="term reveal">
+        <div class="term-bar">
+          <span class="tl r"></span><span class="tl y"></span><span class="tl g"></span>
+          <span class="tt"><img src="./app-icon-v2.webp" alt="">nova-code — brand sample</span>
+        </div>
+        <div class="term-body">
+          <div><span class="prm">›</span> <span style="color:#fff">帮我把 sandbox 的写入白名单加上 ~/.cache</span></div>
+          <div class="dim">· 读取 packages/runtime/src/config.ts</div>
+          <div class="dim">· 编辑 packages/sandbox/src/sandbox.ts</div>
+          <div><span class="ok">✓</span> 2 个文件已更新 <span class="dim">·</span> <span class="tok">pnpm vitest run</span> <span class="ok">42 passed</span></div>
+          <div><span class="warn">!</span> <span class="dim">写入被限制在工作区内（seatbelt）</span></div>
+          <div><span class="prm">›</span> <span class="cursor"></span></div>
+        </div>
+      </div>
+      <p class="note reveal">终端面板必须包含：三色灯 + 图标标题栏、真实可信的命令输出、至少一处 <code>--ok</code> 或 <code>--warn</code> 状态色。截图里不要出现编造的接口名或不存在的命令。</p>
+    </div>
+  </section>
+
+  <!-- ============ MOTION & LAYOUT ============ -->
+  <section class="band deep" id="motion">
+    <div class="wrap">
+      <div class="band-head reveal">
+        <span class="eyebrow">Motion &amp; layout</span>
+        <h2>动效：慢、轻、可暂停</h2>
+        <p>动效服务于「这是一个活着的运行时」这一叙事，而不是炫技。所有环境动画都必须能被 <code>prefers-reduced-motion</code> 与视口检测停掉。</p>
+      </div>
+
+      <div class="tbl-wrap reveal">
+        <table class="t">
+          <thead><tr><th>类型</th><th>时长</th><th>缓动</th><th>用法</th></tr></thead>
+          <tbody>
+            <tr><td>微交互</td><td><code>.2s</code></td><td><code>ease</code></td><td>颜色、边框、图标状态切换</td></tr>
+            <tr><td>悬停浮起</td><td><code>.25–.35s</code></td><td><code>ease</code></td><td><code>translateY(-2px ~ -5px)</code> + 阴影加深</td></tr>
+            <tr><td>面板变换</td><td><code>.5s</code></td><td><code>cubic-bezier(.2,.75,.2,1)</code></td><td>终端 3D 旋转归位、大卡片位移</td></tr>
+            <tr><td>入场揭示</td><td><code>.7s</code></td><td><code>ease</code></td><td>滚动进入时 <code>opacity 0→1</code> + <code>18px</code> 上移</td></tr>
+            <tr><td>环境循环</td><td><code>4–52s</code></td><td><code>ease-in-out</code> / <code>linear</code></td><td>行星漂移、极光、轨道、流光；一律 <code>infinite alternate</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="grid g2" style="margin-top:34px">
+        <div class="card reveal">
+          <h3 class="sub" style="color:#f7f3ff">布局尺度</h3>
+          <ul style="margin:0;padding-left:20px;color:rgba(219,210,238,.72);font-size:.94rem;line-height:1.8">
+            <li>内容最大宽度 <code>1140px</code>，左右安全边距 <code>24px</code>（移动端 <code>18px</code>）。</li>
+            <li>区块纵向留白 <code>90px</code>（移动端 <code>72px</code>）；深浅区块交替，边界用 1px 紫调描边收口。</li>
+            <li>栅格：三栏用于并列能力，两栏用于图文对照，长列表用「编号 + 标题 + 描述」的三列行式索引。</li>
+          </ul>
+        </div>
+        <div class="card reveal">
+          <h3 class="sub" style="color:#f7f3ff">性能红线</h3>
+          <ul style="margin:0;padding-left:20px;color:rgba(219,210,238,.72);font-size:.94rem;line-height:1.8">
+            <li>只动 <code>transform</code> 与 <code>opacity</code>，不要动 <code>background-position</code> 之类会全量重绘的属性。</li>
+            <li>离开视口的区块必须暂停动画（<code>IntersectionObserver</code> + <code>animation-play-state</code>）。</li>
+            <li>不加载 Web 字体、不引外部脚本；首屏图片用 WebP 并预加载关键一张。</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ TUI APPENDIX ============ -->
+  <section class="band" id="tui">
+    <div class="wrap">
+      <div class="band-head reveal">
+        <span class="eyebrow">Appendix A · Terminal</span>
+        <h2>终端色板</h2>
+        <p>Nova-Code 的主界面是终端。本节是终端色彩的规范值——已落地，与源码一致；两者不符时以源码为准，并把本节当 bug 修。文末的<a href="#tui-log" style="color:var(--accent);font-weight:600">校正记录</a>留存了这批值替换掉了什么、为什么。</p>
+      </div>
+
+      <!-- ---------- 对比度事实 ---------- -->
+      <h3 class="sub reveal" style="margin-top:52px">对比度标准的实测依据</h3>
+      <p class="note reveal" style="margin-bottom:0">一条容易想当然的规矩是「正文级色相在近黑与近白上都要 ≥ 4.5:1」。实测下来<b>没有任何一个饱和色能同时做到</b>——能满足浅底的必然在深底失效，反之亦然。唯一两边都过线的是中等亮度的去饱和色，而它在小号等宽字下会发糊。</p>
+      <div class="tbl-wrap reveal">
+        <table class="t">
+          <thead><tr><th>候选色</th><th>纯黑底</th><th>#1e1e1e 底</th><th>纯白底</th><th>结论</th></tr></thead>
+          <tbody>
+            <tr><td><span class="cdot" style="--c:#6D28D9"></span><code>#6D28D9</code> 规范主色</td><td class="cr no">2.96</td><td class="cr no">2.35</td><td class="cr yes">7.10</td><td>深底不可用</td></tr>
+            <tr><td><span class="cdot" style="--c:#A855F7"></span><code>#A855F7</code> 规范亮主色</td><td class="cr yes">5.31</td><td class="cr">4.21</td><td class="cr">3.96</td><td><b>两侧最均衡</b></td></tr>
+            <tr><td><span class="cdot" style="--c:#ff3caa"></span><code>#ff3caa</code> 现行主色</td><td class="cr yes">6.48</td><td class="cr">5.14</td><td class="cr no">3.24</td><td>浅底本就未达 4.5</td></tr>
+            <tr><td><span class="cdot" style="--c:#00eeff"></span><code>#00eeff</code> 光谱青端</td><td class="cr yes">14.67</td><td class="cr">11.65</td><td class="cr no">1.43</td><td>浅底几乎不可见</td></tr>
+            <tr><td><span class="cdot" style="--c:#9e629e"></span><code>#9e629e</code> 现行 H4</td><td class="cr">4.69</td><td class="cr">3.73</td><td class="cr">4.47</td><td>两边勉强，但发灰发糊</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="ansi-note warn-note reveal">
+        <b>因此真实标准是「深底优先」：</b>正文级色相在近黑终端 ≥ 4.5:1，在近白终端 ≥ 3:1；chrome 与边框角色深底 ≥ 4:1 即可。这不是降低要求，而是承认终端没有背景色所有权时的物理上限——并用第 ③ 条硬规矩（颜色不单独承载信息）来补偿浅底用户的损失。
+      </div>
+
+      <!-- ---------- 目标色板 ---------- -->
+      <h3 class="sub reveal" style="margin-top:56px">规范色板</h3>
+      <p class="note reveal" style="margin-bottom:0">对比度按「纯黑 / 纯白」两端标注，数值为实测。下限见前一节：正文级近黑 ≥ 4.5、近白 ≥ 3，chrome 与边框近黑 ≥ 4，白字填充 ≥ 4.5。</p>
+      <div class="tbl-wrap reveal">
+        <table class="t">
+          <thead><tr><th>角色</th><th>色值</th><th>对比度 黑/白</th><th>依据</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><span class="cdot" style="--c:#a855f7"></span>界面主强调<br><span style="font-size:.82rem;color:var(--faint)">提示符、斜杠命令、加载动画、状态行、面板顶栏、思考标签、模态框</span></td>
+              <td><code>#a855f7</code><br><span style="font-size:.78rem;color:var(--faint)">16 色回退 magenta</span></td>
+              <td class="cr">5.31 / 3.96</td>
+              <td>规范 <code>--accent-bright</code> 原值。终端整体印象由此为紫，与网页一致。面板顶栏与思考标签共用此色，全局只此一个 chrome 紫</td>
+            </tr>
+            <tr>
+              <td><span class="cdot" style="--c:#f0a6e6"></span>标题 H1<br><span class="cdot" style="--c:#ec7cdc"></span>H2 &nbsp;<span class="cdot" style="--c:#e650d2"></span>H3 &nbsp;<span class="cdot" style="--c:#b43fa4"></span>H4–H6</td>
+              <td><code>#f0a6e6</code><br><code>#ec7cdc</code><br><code>#e650d2</code><br><code>#b43fa4</code></td>
+              <td class="cr">11.30<br>8.48<br>6.44<br>4.19</td>
+              <td>锚定在字标光谱的品红停靠点 <code>#e650d2</code>（H3），向两端提亮/压暗。单一色相按亮度分级，H4–H6 共用底档避免读成禁用态</td>
+            </tr>
+            <tr>
+              <td><span class="cdot" style="--c:#a78bfa"></span>行内代码</td>
+              <td><code>#a78bfa</code><br><span style="font-size:.78rem;color:var(--faint)">16 色回退 blue</span></td>
+              <td class="cr">7.72 / 2.72</td>
+              <td>落在规范 <code>--accent</code>（暗色档 <code>#B98CFF</code>）family 内。比 chrome 紫更亮更淡，两者并置仍可区分；回退取蓝而非品红，是为避开标题</td>
+            </tr>
+            <tr>
+              <td><span class="cdot" style="--c:#6d28d9"></span>激活态芯片填充<br><span style="font-size:.82rem;color:var(--faint)">白字压在其上</span></td>
+              <td><code>#6d28d9</code></td>
+              <td class="cr">白字 7.10</td>
+              <td>规范主色 <code>--accent</code> 原值。它作终端<b>文字</b>不可用（近黑仅 2.96），作<b>填充</b>却最优——背景是深端品牌色在终端唯一的用武之地</td>
+            </tr>
+            <tr>
+              <td><span class="cdot" style="--c:#46c77e"></span>成功 / 就绪</td>
+              <td><code>#46c77e</code></td>
+              <td class="cr">9.73 / 2.16</td>
+              <td>规范 <code>--ok</code>。此前状态类绿有三种并存，已归一</td>
+            </tr>
+            <tr>
+              <td><span class="cdot" style="--c:#e9a23b"></span>警告 / 待确认</td>
+              <td><code>#e9a23b</code></td>
+              <td class="cr">9.70 / 2.17</td>
+              <td>规范 <code>--warn</code></td>
+            </tr>
+            <tr>
+              <td><span class="cdot" style="--c:#06828a"></span><span class="cdot" style="--c:#106df5"></span><span class="cdot" style="--c:#513bf7"></span><span class="cdot" style="--c:#af2ff6"></span><span class="cdot" style="--c:#e10983"></span>会话徽标十色</td>
+              <td><code>#06828a #087cb6 #106df5<br>#3b56f7 #513bf7 #833bf7<br>#af2ff6 #c909dd #d609b3<br>#e10983</code></td>
+              <td class="cr">白字 ≥ 4.60</td>
+              <td>沿字标光谱色相弧（184°→326°）等距取十点，各自压暗到白字过 AA。相邻两色的 RGB 距离 34.8，比替换前的通用色板更易区分</td>
+            </tr>
+            <tr>
+              <td><span class="cdot" style="--c:#ff3caa"></span>粉 <code>#ff3caa</code></td>
+              <td>小面积点缀</td>
+              <td class="cr">6.48 / 3.24</td>
+              <td>不作主色。保留在 banner 光谱末端等小面积处，作为紫调之上的高光</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- ---------- 保持不变 ---------- -->
+      <h3 class="sub reveal" style="margin-top:56px">刻意保持不变的部分</h3>
+      <div class="grid g2 reveal" style="margin-top:18px">
+        <div class="card">
+          <h3 class="sub">列表标记与链接：继续用 16 色 ANSI 名</h3>
+          <p style="margin:0;color:var(--muted);font-size:.93rem">看上去它们「该」换成字标光谱的青 <code>#00eeff</code> 与蓝 <code>#5aa0ff</code>，但那会在浅色终端上直接崩掉——青端白底仅 <b>1.43:1</b>，等于隐形。ANSI 具名色由用户终端主题重映射，永远与其背景协调。<b>这是终端独有的优势，不要用真彩色去换掉它。</b></p>
+        </div>
+        <div class="card">
+          <h3 class="sub">Banner 光谱：逐值不动</h3>
+          <p style="margin:0;color:var(--muted);font-size:.93rem">启动 banner 的七档渐变中间五档已与字标光谱逐值相同，是两个介质间唯一天然对齐的资产。它是<b>本次校正的基准</b>，不是校正对象。</p>
+        </div>
+        <div class="card">
+          <h3 class="sub">权限模式：功能色豁免</h3>
+          <p style="margin:0;color:var(--muted);font-size:.93rem">五种模式必须一眼分辨，可辨识性优先于品牌一致性。仅建议把默认档的中性灰调成微带紫的灰。首次配置面板上的 DeepSeek 品牌蓝同样豁免——那是第三方标识色。</p>
+        </div>
+        <div class="card">
+          <h3 class="sub">Beta 徽标蓝：出身可疑，但达标</h3>
+          <p style="margin:0;color:var(--muted);font-size:.93rem">它同样来自通用框架色板，本该一并换成光谱蓝 <code>#5aa0ff</code>。但实测拦下了这一步：现值近黑 4.06、近白 5.17，<b>两侧都过线</b>；换成光谱蓝后近白只剩 2.66，反而违反本节自己的下限。<b>出身不正不等于该改</b>——按数据留用。</p>
+        </div>
+        <div class="card">
+          <h3 class="sub">Diff 前景与底纹：不动</h3>
+          <p style="margin:0;color:var(--muted);font-size:.93rem">加/减色是跨工具的既定约定（绿加红减），读者的肌肉记忆比品牌色重要。且它们运行在自带背景色的行内，不受终端主题影响。</p>
+        </div>
+      </div>
+
+      <!-- ---------- 被否决的方案 ---------- -->
+      <div class="ansi-note reveal" style="margin-top:34px">
+        <b>已否决的方案 · 五停靠点映射五角色。</b>字标光谱恰有五档，终端恰需约五个互不冲突的色相角色，把二者一一对应看起来极优雅：青→列表、蓝→链接、紫→chrome、品红→标题、粉→行内代码。<b>否决理由</b>：它要求把列表与链接从 ANSI 具名色改成真彩色，而这两档在浅色终端上分别只有 1.43:1 与 2.66:1。为构图优雅牺牲一半用户的可读性，不成立。仅保留其中成立的部分——chrome 取紫、标题取品红。
+      </div>
+
+      <!-- ---------- 三层分类 ---------- -->
+      <h3 class="sub reveal" style="margin-top:56px">规范分层：哪些条目进得了终端</h3>
+      <div class="layer-grid">
+        <div class="layer brand-l reveal">
+          <span class="tag">Brand · 跨介质</span>
+          <h3>无条件适用</h3>
+          <ul>
+            <li>名称书写规范（Nova-Code / <code>nova</code> / DeepSeek）</li>
+            <li>色相家族：紫为主导，品红与青为点缀</li>
+            <li>字标光谱的停靠点与顺序</li>
+            <li>语气与文案口吻</li>
+          </ul>
+        </div>
+        <div class="layer web-l reveal">
+          <span class="tag">Web only</span>
+          <h3>终端不适用</h3>
+          <ul>
+            <li>全部背景变量（ground / surface / cosmos）</li>
+            <li>明暗双主题与 <code>prefers-color-scheme</code></li>
+            <li>字号阶梯、字重、letter-spacing、行宽</li>
+            <li>渐变面、阴影、圆角、模糊</li>
+            <li>五档动效时长与缓动曲线</li>
+          </ul>
+        </div>
+        <div class="layer tui-l reveal">
+          <span class="tag">TUI only</span>
+          <h3>终端独有约束</h3>
+          <ul>
+            <li>16 色 / <code>NO_COLOR</code> 回退链</li>
+            <li>深底优先的对比度标准</li>
+            <li>色相不得与相邻角色撞色</li>
+            <li>颜色不得单独承载信息</li>
+            <li>定帧重绘节奏 <code>80ms</code></li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- ---------- 三条硬规矩 ---------- -->
+      <h3 class="sub reveal" style="margin-top:56px">三条硬规矩</h3>
+      <div class="grid g3 reveal" style="margin-top:18px">
+        <div class="card">
+          <h3 class="sub">① 只画前景</h3>
+          <p style="margin:0;color:var(--muted);font-size:.93rem">终端背景归用户所有。仅三处允许上背景色：diff 行底纹、输入区选区、会话名徽标。其余一律靠前景色与字符边框造型。</p>
+        </div>
+        <div class="card">
+          <h3 class="sub">② 深底优先，浅底不塌</h3>
+          <p style="margin:0;color:var(--muted);font-size:.93rem">正文级近黑 ≥ 4.5:1、近白 ≥ 3:1；chrome 与边框近黑 ≥ 4:1。规范亮色主题的 <code>#6D28D9</code> 在近黑仅 2.96:1，<b>禁止</b>作终端文字色——要紫就用 <code>#A855F7</code>。</p>
+        </div>
+        <div class="card">
+          <h3 class="sub">③ 颜色只是补充</h3>
+          <p style="margin:0;color:var(--muted);font-size:.93rem">每个真彩色都要有 16 色近似，且回退后不得与相邻角色同色（现行行内代码回退到蓝而非品红，正是为了避开标题——这条先例要保留）。靠颜色区分的状态必须同时用字形或字面标记双编码。</p>
+        </div>
+      </div>
+
+      <!-- ---------- 色相分配 ---------- -->
+      <h3 class="sub reveal" style="margin-top:56px">色相分配</h3>
+      <p class="note reveal" style="margin-bottom:0">终端里正文与内嵌元素共处一行，色相冲突比网页严重得多。五个高频角色的色相分配完毕后，新增元素只能复用，不得新开。</p>
+      <div class="term reveal" style="margin-top:22px">
+        <div class="term-bar">
+          <span class="tl r"></span><span class="tl y"></span><span class="tl g"></span>
+          <span class="tt"><img src="./app-icon-v2.webp" alt="">nova-code — hue allocation</span>
+        </div>
+        <div class="term-body">
+          <div style="color:#f0a6e6"><b># 标题 → 品红家族（唯一按亮度分级的角色）</b></div>
+          <div style="color:#ec7cdc"><b>## 二级标题</b></div>
+          <div style="margin-top:6px"><span style="color:#22d3ee">•</span> 列表标记 → 终端 <span style="color:#22d3ee">cyan</span>（ANSI 具名，随用户主题走）</div>
+          <div><span style="color:#22d3ee">•</span> 链接 <span style="color:#5aa0ff">https://nova-code.top</span> → 终端 <span style="color:#5aa0ff">blue</span>（同上）</div>
+          <div><span style="color:#22d3ee">•</span> 行内 <span style="color:#a78bfa">`代码`</span> → violet <span class="dim">#a78bfa</span>，界面 chrome → <span style="color:#A855F7">紫 #A855F7</span></div>
+          <div class="dim" style="margin-top:6px">· 正文本身保持终端默认前景色，不着色</div>
+          <div style="margin-top:6px"><span style="color:#A855F7;font-weight:600">›</span> <span style="display:inline-block;width:8px;height:1.05em;background:#A855F7;vertical-align:text-bottom;margin-left:2px;border-radius:1px" class="cursor"></span></div>
+        </div>
+      </div>
+
+      <!-- ---------- 校正记录 ---------- -->
+      <h3 class="sub reveal" id="tui-log" style="margin-top:56px">校正记录</h3>
+      <p class="note reveal" style="margin-bottom:0">上表的值是一次性校正的结果。留档于此，是为了让后来者知道哪些取值是<b>刻意的</b>，不要在不了解缘由的情况下改回去。</p>
+
+      <!-- ---------- 校正前的三个偏离 ---------- -->
+      <h3 class="sub reveal" style="margin-top:40px">校正前存在的三个偏离</h3>
+      <div class="grid g3 reveal" style="margin-top:18px">
+        <div class="card">
+          <h3 class="sub">① 主色取错了光谱位置</h3>
+          <p style="margin:0;color:var(--muted);font-size:.93rem">网页主导色相是紫，品红只出现在字标光谱末端与标题流光。校正前，终端把末端色 <code>#ff3caa</code> 当成了整个 chrome 的主色——提示符、斜杠命令、加载动画、状态行、模态框。同一产品，网页读作「深空紫」，终端读作「赛博朋克粉」。</p>
+        </div>
+        <div class="card">
+          <h3 class="sub">② 标题阶梯也偏粉</h3>
+          <p style="margin:0;color:var(--muted);font-size:.93rem">当时的标题四档 <code>#e8a8e8 → #9e629e</code> 属兰花紫/粉系，不在品牌色相内。于是终端里面积最大的两处（chrome 与标题）双双偏粉，偏离被放大而非抵消。</p>
+        </div>
+        <div class="card">
+          <h3 class="sub">③ 大量通用色板默认值</h3>
+          <p style="margin:0;color:var(--muted);font-size:.93rem">当时的会话徽标十色是某 CSS 框架的 600 档原值，逐个对应；模式色里的青、正文紫、Beta 徽标蓝同样是该框架的 400/600 档。这些颜色没有经过品牌决策。</p>
+        </div>
+      </div>
+
+
+      <div class="tbl-wrap reveal" style="margin-top:30px">
+        <table class="t">
+          <thead><tr><th>改了什么</th><th>从 → 到</th><th>影响面</th></tr></thead>
+          <tbody>
+            <tr><td>界面主强调</td><td><code class="old">#ff3caa</code><span class="arrow">→</span><code>#a855f7</code></td><td>提示符、斜杠命令、加载动画、状态行、审批与选择器高亮、鼠标悬停高亮、首次配置与信任面板</td></tr>
+            <tr><td>标题阶梯四档</td><td><code class="old">#e8a8e8 #ce8ece #b676b6 #9e629e</code><span class="arrow">→</span><code>#f0a6e6 #ec7cdc #e650d2 #b43fa4</code></td><td>全部 Markdown 渲染输出。亮度阶梯逐档基本持平（11.2/8.4/6.3/4.7 → 11.3/8.5/6.4/4.2），只换色相</td></tr>
+            <tr><td>面板顶栏紫</td><td><code class="old">#7c3aed</code> 独立常量 <span class="arrow">→</span> 并入主强调，常量删除</td><td>约 25 处面板顶栏；思考标签同步并入</td></tr>
+            <tr><td>激活态芯片填充</td><td><code class="old">#7c3aed</code><span class="arrow">→</span><code>#6d28d9</code></td><td>问答面板的标签条。单独拆出，因为白字压在其上需要更深的底</td></tr>
+            <tr><td>状态绿 / 警告琥珀</td><td><code class="old">#3ddc84</code> <code class="old">#ffb454</code><span class="arrow">→</span><code>#46c77e</code> <code>#e9a23b</code></td><td>权限模式行。色相不变（仍是绿与琥珀），可辨识性不受影响</td></tr>
+            <tr><td>默认模式中性灰</td><td><code class="old">#b8c1cf</code><span class="arrow">→</span><code>#bfb8cf</code></td><td>状态行模式区，蓝灰改微紫灰</td></tr>
+            <tr><td>会话徽标十色</td><td>通用框架 600 档 <span class="arrow">→</span> 光谱色相等距采样</td><td>已命名会话的徽标与输入框边框。最差白字对比度 3.09 → 4.60</td></tr>
+            <tr><td><b>未改动</b></td><td>banner 光谱、diff 加减色、列表 cyan、链接 blue、行内代码 violet、权限模式的青与红</td><td>理由见「刻意保持不变的部分」</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note reveal">全部值已通过程序化对比度校验（见上表数值）。唯一无法自动化的一步是<b>在近黑与近白两种真实终端上各跑一遍会话肉眼复核</b>——尤其是标题里嵌行内代码时品红与紫的可分辨性。现行色值当初也是「在真实会话上肉眼挑」定下来的，后续调整应沿用同一验收方式。</p>
+
+      <div class="rules">
+        <div class="rule do reveal">
+          <div class="hd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>应该</div>
+          <ul>
+            <li>先在近黑与近白两种终端上各看一遍，再定色。</li>
+            <li>新增角色优先复用已分配的五个色相，实在不行才动色板。</li>
+            <li>色值集中定义在一个模块里导出，不要在组件里散写十六进制。</li>
+            <li>颜色关掉后界面仍要完整可用——这是可访问性底线，不是可选项。</li>
+          </ul>
+        </div>
+        <div class="rule dont reveal">
+          <div class="hd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>不应该</div>
+          <ul>
+            <li>不要把已随用户主题走的 ANSI 具名色「升级」成真彩色。</li>
+            <li>不要直接搬网页亮色主题的深紫做终端文字色——近黑底上会糊成一团。</li>
+            <li>不要从通用 CSS 框架的默认色板里取色补空缺，那是本次偏离的主要来源。</li>
+            <li>不要为了品牌一致性去牺牲权限模式行的可辨识性。</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ VOICE ============ -->
+  <section class="band" id="voice">
+    <div class="wrap">
+      <div class="band-head reveal">
+        <span class="eyebrow">Voice &amp; tone</span>
+        <h2>语气：像一个不吹牛的资深工程师</h2>
+        <p>我们的读者会读源码。文案里的每个数字都要能被验证，每个能力都要能被复现——夸张一次，信任就没了。</p>
+      </div>
+
+      <div class="grid g3" style="margin-top:42px">
+        <div class="card reveal"><h3 class="sub">具体优于形容</h3><p style="margin:0;color:var(--muted);font-size:.94rem">说「96%+ 前缀缓存命中率」，不说「极致性能」。没有数字就描述机制。</p></div>
+        <div class="card reveal"><h3 class="sub">先说结论</h3><p style="margin:0;color:var(--muted);font-size:.94rem">标题给答案，正文给原因。破折号用来承接转折，不用来堆排比。</p></div>
+        <div class="card reveal"><h3 class="sub">承认边界</h3><p style="margin:0;color:var(--muted);font-size:.94rem">对比表注明时间与前提；不支持的平台就写「静默降级」，不粉饰。</p></div>
+      </div>
+
+      <div class="tbl-wrap reveal">
+        <table class="t">
+          <thead><tr><th>不要这样写</th><th>要这样写</th><th>为什么</th></tr></thead>
+          <tbody>
+            <tr><td>革命性的 AI 编程神器</td><td>为 DeepSeek 而生的终端编程 Agent</td><td>说清楚是什么，而不是有多厉害</td></tr>
+            <tr><td>极大降低成本</td><td>同等预算跑出数倍吞吐，效果丝毫不减</td><td>给可感知的量级，而不是形容词</td></tr>
+            <tr><td>全方位安全防护</td><td>所有 bash 与子进程跑在内核沙箱里，写入锁在工作区内</td><td>说出机制，读者才能判断真假</td></tr>
+            <tr><td>零门槛上手</td><td>命令行兼容 Claude Code，几乎零学习成本</td><td>给出参照系，可验证</td></tr>
+            <tr><td>业界唯一</td><td>开源阵营里唯一或最完整的一个（截至 2026 年）</td><td>限定范围与时间，经得起追问</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note reveal">中英混排规则：中文与拉丁字母、数字之间留一个空格；代码、命令、文件名一律用等宽字体并保持原始大小写；技术名词（Hook、MCP、Skill、Agent、prefix cache）不翻译。</p>
+    </div>
+  </section>
+
+  <!-- ============ ASSETS ============ -->
+  <section class="band deep" id="assets">
+    <div class="wrap">
+      <div class="band-head reveal">
+        <span class="eyebrow">Assets</span>
+        <h2>资源清单</h2>
+        <p>全部位于仓库 <code>docs/</code> 目录，直接引用相对路径即可，不要另行导出低质量副本。</p>
+      </div>
+      <div class="assets reveal">
+        <a class="asset" href="./app-icon-v2.webp" target="_blank" rel="noopener"><span class="fn">app-icon-v2.webp</span><span class="ds">应用图标（当前版本），用于导航、页脚、favicon</span></a>
+        <a class="asset" href="./logo.svg" target="_blank" rel="noopener"><span class="fn">logo.svg</span><span class="ds">像素字标（中文语境）</span></a>
+        <a class="asset" href="./logo.en.svg" target="_blank" rel="noopener"><span class="fn">logo.en.svg</span><span class="ds">像素字标（英文语境）</span></a>
+        <a class="asset" href="./nova-galaxy-hero.webp" target="_blank" rel="noopener"><span class="fn">nova-galaxy-hero.webp</span><span class="ds">首屏星系底图</span></a>
+        <a class="asset" href="./planet-pillar-gas.webp" target="_blank" rel="noopener"><span class="fn">planet-pillar-*.webp</span><span class="ds">五颗行星：gas / rock / ice / desert / ocean</span></a>
+        <a class="asset" href="./architecture.svg" target="_blank" rel="noopener"><span class="fn">architecture.svg</span><span class="ds">架构示意图</span></a>
+        <a class="asset" href="./agent-loop.svg" target="_blank" rel="noopener"><span class="fn">agent-loop.svg</span><span class="ds">Agent 循环示意图</span></a>
+        <a class="asset" href="./index.html"><span class="fn">index.html</span><span class="ds">官网首页——本规范的落地参考实现</span></a>
+        <a class="asset" href="./guide.html"><span class="fn">guide.html</span><span class="ds">使用手册，沿用同一套 token</span></a>
+        <a class="asset" href="https://github.com/asathinkeroops/nova-code/blob/main/apps/cli/src/colors.ts" target="_blank" rel="noopener"><span class="fn">apps/cli/src/colors.ts</span><span class="ds">终端色板的唯一定义处——附录 A 以它为准</span></a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap foot-inner">
+    <div class="foot-brand">
+      <img class="mark" src="./app-icon-v2.webp" alt="Nova-Code logo" width="28" height="28">
+      <span class="word">Nova-Code</span>
+      <span style="color:var(--faint);font-size:.86rem;font-family:var(--font-mono)">· 品牌设计规范</span>
+    </div>
+    <div class="foot-meta">
+      <span>Apache 2.0</span>
+      <a href="https://github.com/asathinkeroops/nova-code" target="_blank" rel="noopener">GitHub</a>
+      <a href="./index.html">官网</a>
+      <span>© 2026 Nova-Code</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // ---- nav shadow ----
+  var nav = document.getElementById("nav");
+  function onScroll() { nav.classList.toggle("scrolled", window.scrollY > 8); }
+  onScroll();
+  window.addEventListener("scroll", onScroll, { passive: true });
+
+  // ---- theme toggle (light / dark override on top of the media query) ----
+  var toggle = document.getElementById("themeToggle");
+  toggle.addEventListener("click", function () {
+    var root = document.documentElement;
+    var current = root.getAttribute("data-theme");
+    if (!current) {
+      var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      current = prefersDark ? "dark" : "light";
+    }
+    root.setAttribute("data-theme", current === "dark" ? "light" : "dark");
+  });
+
+  // ---- copy helpers ----
+  function flash(el) {
+    el.classList.add("copied");
+    setTimeout(function () { el.classList.remove("copied"); }, 1400);
+  }
+  function copy(text, el) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { flash(el); }).catch(function () { flash(el); });
+    } else { flash(el); }
+  }
+  Array.prototype.forEach.call(document.querySelectorAll(".sw[data-hex]"), function (sw) {
+    sw.addEventListener("click", function () { copy(sw.getAttribute("data-hex"), sw); });
+  });
+  var cmd = document.getElementById("copyCmd");
+  if (cmd) cmd.addEventListener("click", function () {
+    copy("git clone https://github.com/asathinkeroops/nova-code", cmd);
+  });
+
+  // ---- reveal on scroll ----
+  var items = document.querySelectorAll(".reveal");
+  if (reduce || !("IntersectionObserver" in window)) {
+    Array.prototype.forEach.call(items, function (el) { el.classList.add("in"); });
+  } else {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); }
+      });
+    }, { threshold: .12, rootMargin: "0px 0px -8% 0px" });
+    Array.prototype.forEach.call(items, function (el) { io.observe(el); });
+  }
+})();
+</script>
+</body>
+</html>

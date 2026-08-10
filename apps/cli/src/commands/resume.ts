@@ -1,5 +1,5 @@
 import { listSessions, type Session } from "@nova/runtime";
-import { dim, green, PURPLE_HEX } from "../colors.js";
+import { ACCENT_HEX, dim, green } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { pickerArrow } from "../ui/picker.js";
 import { t } from "../i18n/index.js";
@@ -42,7 +42,7 @@ export async function handleResume(ctx: CliContext, arg: string): Promise<void> 
       pageSize: 10,
       initialIndex: currentIdx >= 0 ? currentIdx : 0,
       border: false,
-      topRuleColor: PURPLE_HEX,
+      topRuleColor: ACCENT_HEX,
       render: ({ session: s, label }, isSelected) => {
         const marker = s.id === ctx.session.id ? green("*") : " ";
         return `${pickerArrow(isSelected)} ${marker} ${s.id}  ${dim(formatTimestamp(s.createdAt))}  ${dim(label)}`;

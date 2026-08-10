@@ -1,6 +1,6 @@
 import type { CommandRecord, MonitorRecord } from "@nova/tools";
 
-import { bold, dim, green, PURPLE_HEX, red, yellow } from "../colors.js";
+import { ACCENT_HEX, bold, dim, green, yellow, red } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { t } from "../i18n/index.js";
 import { pickerArrow } from "../ui/picker.js";
@@ -205,7 +205,7 @@ export async function handleTasks(ctx: CliContext, args: string): Promise<void> 
       render: (r, selected) =>
         `${pickerArrow(selected)}  ${statusDot(r.status)}   ${oneLine(r.command, CMD_MAX).padEnd(cmdWidth)}   ${metaColumn(r, pidWidth)}`,
       border: false,
-      topRuleColor: PURPLE_HEX,
+      topRuleColor: ACCENT_HEX,
     });
     if (!pick) break;
     cursor = Math.max(
@@ -232,7 +232,7 @@ async function openTaskActions(ctx: CliContext, id: string): Promise<void> {
     header: `${statusDot(rec.status)} ${bold(oneLine(rec.command))}  ${dim(`${statusWord(rec.status)} · pid ${rec.pid}`)}`,
     footer: dim(t.tasks.actionFooter),
     border: false,
-    topRuleColor: PURPLE_HEX,
+    topRuleColor: ACCENT_HEX,
   });
   if (!action) return;
 
@@ -252,6 +252,6 @@ async function openTaskActions(ctx: CliContext, id: string): Promise<void> {
     footer: `\n${dim(t.tasks.viewerFooter)}`,
     pageSize: 24,
     border: false,
-    topRuleColor: PURPLE_HEX,
+    topRuleColor: ACCENT_HEX,
   });
 }

@@ -1,5 +1,5 @@
 import { getSkillList } from "@nova/tools";
-import { accent, dim, PURPLE_HEX } from "../colors.js";
+import { accent, ACCENT_HEX, dim } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { t } from "../i18n/index.js";
 import { pickerArrow } from "../ui/picker.js";
@@ -15,7 +15,7 @@ export async function handleSkills(ctx: CliContext): Promise<void> {
       header: accent(TITLE),
       footer: dim(t.common.footerClose),
       border: false,
-      topRuleColor: PURPLE_HEX,
+      topRuleColor: ACCENT_HEX,
     });
 
   if (!ctx.settings.skills.enabled) {
@@ -41,7 +41,7 @@ export async function handleSkills(ctx: CliContext): Promise<void> {
     footer: dim(t.common.footerNavTopBottomClose),
     pageSize: 24,
     border: false,
-    topRuleColor: PURPLE_HEX,
+    topRuleColor: ACCENT_HEX,
     render: (s, selected) => {
       const name = s.name.padEnd(nameWidth, " ");
       return `${pickerArrow(selected)} ${name}  ${s.description}`;

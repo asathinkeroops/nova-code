@@ -1,5 +1,5 @@
 import type { SlashCommandKind } from "@nova/external";
-import { accent, cyan, dim, PURPLE_HEX } from "../colors.js";
+import { accent, ACCENT_HEX, cyan, dim } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { t } from "../i18n/index.js";
 import { pickerArrow } from "../ui/picker.js";
@@ -60,7 +60,7 @@ export async function handleCommands(ctx: CliContext, arg: string): Promise<void
     footer: dim(t.common.footerNavTopBottomClose),
     pageSize: 24,
     border: false,
-    topRuleColor: PURPLE_HEX,
+    topRuleColor: ACCENT_HEX,
     render: (c, selected) => {
       const tag = KIND_TAG[c.source.kind];
       // Colour the command name (accent) and its parameters (cyan) distinctly

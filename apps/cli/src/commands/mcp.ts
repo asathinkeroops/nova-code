@@ -1,5 +1,5 @@
 import type { McpManager, McpServerState, McpServerStatus } from "@nova/external";
-import { bold, cyan, dim, green, magenta, PURPLE_HEX, red, yellow } from "../colors.js";
+import { ACCENT_HEX, bold, cyan, dim, green, yellow, magenta, red } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { t } from "../i18n/index.js";
 import {
@@ -70,7 +70,7 @@ async function runMenu(ctx: CliContext, mcp: McpManager): Promise<void> {
       render: (s, sel) => `${pickerArrow(sel)} ${rowLabel(s)}`,
       pageSize: 12,
       border: false,
-      topRuleColor: PURPLE_HEX,
+      topRuleColor: ACCENT_HEX,
     });
     if (!pick) return;
     await serverActions(ctx, mcp, pick.name);
@@ -103,7 +103,7 @@ async function serverActions(ctx: CliContext, mcp: McpManager, name: string): Pr
     items: actions,
     render: (a, sel) => `${pickerArrow(sel)} ${a.label}`,
     border: false,
-    topRuleColor: PURPLE_HEX,
+    topRuleColor: ACCENT_HEX,
   });
   if (!pick || pick.key === "back") return;
 
@@ -239,7 +239,7 @@ async function viewTools(ctx: CliContext, mcp: McpManager, name: string): Promis
     lines: lines.length > 0 ? lines : [dim(t.mcp.noToolsBridged)],
     footer: dim(t.mcp.footerEscClose),
     border: false,
-    topRuleColor: PURPLE_HEX,
+    topRuleColor: ACCENT_HEX,
   });
 }
 
@@ -383,7 +383,7 @@ async function waitForBrowserAuth(
         dim(t.mcp.pressEscCancel),
       ],
       border: false,
-      topRuleColor: PURPLE_HEX,
+      topRuleColor: ACCENT_HEX,
     },
     { signal: controller.signal },
   );

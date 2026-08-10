@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { highlight } from "cli-highlight";
 import { apiKeyFromEnv, DEFAULT_CONFIG_PATH, saveSettings, type Settings } from "@nova/runtime";
-import { accent, dim, rgbFg, BLUE_RGB, PURPLE_HEX } from "./colors.js";
+import { accent, ACCENT_HEX, BLUE_RGB, dim, rgbFg } from "./colors.js";
 import { t } from "./i18n/index.js";
 import { PROVIDER_TEMPLATES, type ProviderTemplate } from "./provider-templates.js";
 import { pickerArrow } from "./ui/picker.js";
@@ -126,7 +126,7 @@ export async function ensureSettings(
             header: t.setup.providerQuestion,
             footer: dim(t.setup.providerFooter),
             border: false,
-            topRuleColor: PURPLE_HEX,
+            topRuleColor: ACCENT_HEX,
             render: (it, selected) => {
               const name = it.kind === "other" ? t.setup.otherProvider : it.template.label;
               let badge = "";

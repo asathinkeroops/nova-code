@@ -48,17 +48,33 @@ export function rgbFg([r, g, b]: Rgb, text: string): string {
   return `${open}${reopen(text, "\x1b[39m", open)}\x1b[39m`;
 }
 
-// The primary UI accent — the banner logo's bottom gradient stop, a hot
-// magenta-pink. Used for chrome: prompts, slash commands, spinner, status line,
-// modals. Markdown body text keeps real `cyan` instead (see `accent` vs `cyan`
-// below). Matches LOGO_GRADIENT's bottom wordmark stop (the row just above the
-// trailing starfield) in ui/logo.ts — keep the two in sync.
-export const ACCENT_RGB: Rgb = [255, 60, 170];
+// The primary UI accent — brand violet. Used for chrome: prompts, slash
+// commands, spinner, status line, panel top rules, modals. Markdown body text
+// keeps real `cyan` instead (see `accent` vs `cyan` below).
+//
+// This used to be the wordmark gradient's *bottom* stop (#ff3caa, a hot
+// magenta-pink), which made the whole terminal read pink while every other
+// surface of the product reads violet. The wordmark spectrum runs
+// cyan→blue→violet→magenta→pink; chrome belongs on the violet middle, not the
+// pink tail. The swap is contrast-neutral (6.5:1 → 5.3:1 on near-black, 3.2:1 →
+// 4.0:1 on near-white — better on light terminals), so it costs no legibility.
+//
+// The banner keeps the full spectrum verbatim (see LOGO_GRADIENT in ui/logo.ts);
+// #ff3caa survives there as its tail, which is the small-surface role it should
+// have had all along. The two are no longer meant to match — do not "re-sync" them.
+export const ACCENT_RGB: Rgb = [168, 85, 247];
 /** The accent as a hex string, for Ink `<Text color>` props. */
-export const ACCENT_HEX = "#ff3caa";
+export const ACCENT_HEX = "#a855f7";
 
-/** Purple (#7c3aed) as a hex string, for Ink border/`<Text color>` props. */
-export const PURPLE_HEX = "#7c3aed";
+/**
+ * Fill behind an *active* chip (white text on top), e.g. the `/ask` tab strip.
+ *
+ * Deliberately NOT `ACCENT_HEX`: white-on-#a855f7 is only 4.0:1, under AA. This
+ * is the brand's primary violet, which is unusable as terminal *text* (2.96:1 on
+ * near-black) but ideal as a *fill* — white on it clears 7.1:1. Backgrounds are
+ * the one place the darker end of the brand palette works in a terminal.
+ */
+export const CHIP_ACTIVE_BG_HEX = "#6d28d9";
 
 /** Blue (#2563eb) as RGB, for `rgbFg` string tinting (e.g. the "Beta" badge on setup). */
 export const BLUE_RGB: Rgb = [37, 99, 235];
@@ -76,12 +92,12 @@ export const BASH_HEX = "#7fd99a";
 // its own glyph (the glyph lives in the i18n label), so the row stays legible
 // without relying on colour alone.
 
-/** Manual/default — a light grey: recessive next to the other modes, but still readable. */
-export const MODE_MANUAL_HEX = "#b8c1cf";
-/** Accept-edits — bright green (writes flow, commands still ask). */
-export const MODE_ACCEPT_HEX = "#3ddc84";
-/** Auto — amber (writes plus unattended commands). */
-export const MODE_AUTO_HEX = "#ffb454";
+/** Manual/default — a violet-leaning grey: recessive next to the other modes, but still readable. */
+export const MODE_MANUAL_HEX = "#bfb8cf";
+/** Accept-edits — green (writes flow, commands still ask). Brand `--ok`. */
+export const MODE_ACCEPT_HEX = "#46c77e";
+/** Auto — amber (writes plus unattended commands). Brand `--warn`. */
+export const MODE_AUTO_HEX = "#e9a23b";
 /** Plan — bright cyan (read-only). */
 export const MODE_PLAN_HEX = "#22d3ee";
 /** Bypass — hot red (all gating off). */
@@ -91,20 +107,32 @@ export const MODE_BYPASS_HEX = "#ff5f56";
  * Candidate backgrounds for the session-name badge (`/rename`). A session name
  * is hashed to one of these (see {@link sessionBadgeColor}) so each named window
  * gets a stable, distinct colour — making it easy to tell several open sessions
- * apart at a glance. All are saturated mid-dark tones chosen for contrast with
- * the badge's white text.
+ * apart at a glance.
+ *
+ * Ten hue-equidistant samples across the wordmark spectrum's arc (184°→326°,
+ * i.e. its cyan end through its pink end), each darkened until white badge text
+ * clears 4.6:1. The previous set was a generic CSS-framework default palette
+ * whose hues (red, amber, emerald, olive) had nothing to do with the brand and
+ * whose worst entry sat at 3.1:1 under its own white text. Sampling one arc
+ * instead fixes both: every entry now clears AA, and adjacent entries are
+ * *further* apart in RGB than before (34.8 vs 32.1), so sessions stay as easy to
+ * tell apart as they were.
+ *
+ * The badge colour doubles as the input-box frame tint, which is foreground on
+ * the user's terminal background — that role is decorative and its contrast
+ * floor is unchanged from the old palette (3.3:1 on near-black).
  */
 export const SESSION_BADGE_PALETTE = [
-  "#2563eb", // blue
-  "#7c3aed", // purple
-  "#0d9488", // teal
-  "#dc2626", // red
-  "#d97706", // amber
-  "#059669", // emerald
-  "#db2777", // pink
-  "#4f46e5", // indigo
-  "#0284c7", // sky
-  "#65a30d", // olive
+  "#06828a", // cyan
+  "#087cb6", // sky
+  "#106df5", // blue
+  "#3b56f7", // indigo
+  "#513bf7", // iris
+  "#833bf7", // violet
+  "#af2ff6", // purple
+  "#c909dd", // orchid
+  "#d609b3", // magenta
+  "#e10983", // pink
 ] as const;
 
 /**
@@ -166,9 +194,10 @@ export const green = (s: string): string => wrap(32, 39, s);
 export const red = (s: string): string => wrap(31, 39, s);
 export const dim = (s: string): string => wrap(2, 22, s);
 export const cyan = (s: string): string => wrap(36, 39, s);
-// Primary UI accent (hot magenta-pink, #ff3caa). Truecolor uses the exact RGB;
-// 16-colour falls back to magenta, the nearest palette match. UI chrome uses
-// this; markdown body text uses `cyan` above.
+// Primary UI accent (brand violet, #a855f7). Truecolor uses the exact RGB;
+// 16-colour falls back to magenta — one hue off, but the 16-colour blue is
+// already spoken for by links and inline code, so magenta keeps the roles
+// apart. UI chrome uses this; markdown body text uses `cyan` above.
 export const accent = (s: string): string => {
   if (!useColor) return s;
   if (useTruecolor) return rgbFg(ACCENT_RGB, s);
@@ -183,18 +212,23 @@ export const orange = (s: string): string => {
   if (useTruecolor) return rgbFg([255, 140, 50], s);
   return wrap(33, 39, s);
 };
+// Chrome violet (thinking labels). Shares ACCENT_RGB: chrome is one colour, and
+// the old #7c3aed only managed 3.7:1 on a near-black terminal — the background
+// most of these labels are actually read on.
 export const purple = (s: string): string => {
   if (!useColor) return s;
-  if (useTruecolor) return rgbFg([124, 58, 237], s);
+  if (useTruecolor) return rgbFg(ACCENT_RGB, s);
   return wrap(35, 39, s);
 };
-// Inline-code violet (#a78bfa) — a blue-leaning purple, not the pink-leaning
-// kind. Distinct from `purple` (#7c3aed) above, which is chrome (thinking
-// labels, panel top rules): this one is body-sized text that recurs many times
-// per paragraph next to plain white prose, so it is pulled up to ~7.3:1 on a
-// near-black background where #7c3aed sits at ~2.5:1 and goes muddy at small
-// monospace sizes. Picked by eye against a real transcript — darker (#8b5cf6,
-// 4.7:1) and desaturated grey-violets both lost the code spans in the prose.
+// Inline-code violet (#a78bfa) — a lighter, blue-leaning sibling of the chrome
+// accent (#a855f7). Chrome is saturated and appears in fixed positions; this is
+// body-sized text that recurs many times per paragraph next to plain white
+// prose, so it is pulled up to ~7.7:1 on a near-black background where the
+// chrome violet sits at 5.3:1 and the brand's darker #6d28d9 sits at ~3:1 and
+// goes muddy at small monospace sizes. Picked by eye against a real transcript —
+// darker (#8b5cf6, 4.7:1) and desaturated grey-violets both lost the code spans
+// in the prose. The two violets are close enough to read as one family and far
+// enough apart in lightness to stay distinguishable when adjacent.
 //
 // The 16-colour fallback is blue(34), NOT the nearer magenta(35): headings are
 // magenta, so falling back there made inline code and an H1 the same colour with
@@ -216,20 +250,26 @@ export const violet = (s: string): string => {
  * bold on top of it, so the ramp never has to double as emphasis.
  *
  * The magenta family is deliberate: it is the one hue left free after cyan went
- * to list markers, blue to links, and violet to inline code — so a heading never
- * competes with the spans inside it.
+ * to list markers, blue to links, violet to inline code, and the accent violet
+ * to chrome — so a heading never competes with the spans inside it.
+ *
+ * The ramp is anchored on the wordmark spectrum's magenta stop (#e650d2) at H3
+ * and tinted/shaded from there, replacing an orchid-pink family that sat outside
+ * the brand hues. The luminance ladder is deliberately unchanged step for step
+ * (~11.3 / 8.5 / 6.4 / 4.2 on near-black, vs ~11.2 / 8.4 / 6.3 / 4.7 before), so
+ * this reads as the same ramp in a corrected hue rather than as a new one.
  *
  * H4-H6 share the floor rather than continuing to darken. Below roughly 4:1 a
  * bold heading starts reading as disabled text, and levels that deep are rare
  * enough that legibility beats one more step of contrast.
  */
 const HEADING_RAMP: readonly Rgb[] = [
-  [232, 168, 232], // H1  ~10:1 on near-black
-  [206, 142, 206], // H2  ~7:1
-  [182, 118, 182], // H3  ~5:1
-  [158, 98, 158], // H4  ~4:1
-  [158, 98, 158], // H5
-  [158, 98, 158], // H6
+  [240, 166, 230], // H1  ~11:1 on near-black
+  [236, 124, 220], // H2  ~8.5:1
+  [230, 80, 210], // H3  ~6.4:1  — the wordmark spectrum's magenta stop
+  [180, 63, 164], // H4  ~4.2:1
+  [180, 63, 164], // H5
+  [180, 63, 164], // H6
 ];
 
 /**

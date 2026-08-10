@@ -1,4 +1,4 @@
-import { accent, dim, PURPLE_HEX } from "../colors.js";
+import { accent, ACCENT_HEX, dim } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { t } from "../i18n/index.js";
 
@@ -19,6 +19,6 @@ export function overlayNotice(ctx: CliContext, title: string, lines: string[]): 
     header: accent(title),
     footer: dim(t.common.footerClose),
     border: false,
-    topRuleColor: PURPLE_HEX,
+    topRuleColor: ACCENT_HEX,
   });
 }

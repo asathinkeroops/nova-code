@@ -1,3 +1,4 @@
+import { ACCENT_RGB } from "../colors.js";
 import { charDisplayWidth, stripAnsi } from "./width.js";
 
 /**
@@ -60,8 +61,9 @@ const SEL_BG_CLOSE = "\x1b[49m";
 // tool-batch title). Hover recolours the text rather than painting a background
 // band: a fixed dark band hides dark text on a light terminal, but a single
 // accent foreground reads as "hovered/clickable" on both light and dark themes.
-// The accent pink (#ff3caa) matches the rest of the UI chrome.
-const HOVER_FG_OPEN = "\x1b[38;2;255;60;170m";
+// Derived from ACCENT_RGB rather than spelled out, so it cannot drift out of
+// sync with the rest of the chrome the way a literal did.
+const HOVER_FG_OPEN = `\x1b[38;2;${ACCENT_RGB[0]};${ACCENT_RGB[1]};${ACCENT_RGB[2]}m`;
 const HOVER_FG_CLOSE = "\x1b[39m";
 
 /**

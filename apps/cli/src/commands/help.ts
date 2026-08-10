@@ -1,5 +1,5 @@
 import type { SlashCommand, SlashCommandKind } from "@nova/external";
-import { accent, cyan, dim, PURPLE_HEX } from "../colors.js";
+import { accent, ACCENT_HEX, cyan, dim } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { t } from "../i18n/index.js";
 import { pickerArrow } from "../ui/picker.js";
@@ -70,7 +70,7 @@ export async function handleHelp(ctx: CliContext): Promise<void> {
     footer: dim(t.help.navFooter),
     pageSize: 24,
     border: false,
-    topRuleColor: PURPLE_HEX,
+    topRuleColor: ACCENT_HEX,
     selectable: (r) => r.selectable,
     render: (r, selected) => (r.selectable ? `${pickerArrow(selected)} ${r.text}` : r.text),
   });

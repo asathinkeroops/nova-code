@@ -1,4 +1,4 @@
-import { accent, dim, green, PURPLE_HEX, red, yellow } from "../colors.js";
+import { accent, ACCENT_HEX, dim, green, yellow, red } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { t } from "../i18n/index.js";
 
@@ -19,7 +19,7 @@ export async function handleLsp(ctx: CliContext): Promise<void> {
       footer: dim(t.common.footerScrollClose),
       pageSize: 24,
       border: false,
-      topRuleColor: PURPLE_HEX,
+      topRuleColor: ACCENT_HEX,
     });
 
   if (!ctx.settings.lsp.enabled || !ctx.lspManager) {

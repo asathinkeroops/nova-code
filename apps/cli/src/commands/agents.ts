@@ -1,6 +1,6 @@
 import type { AgentDefinition } from "@nova/subagent";
 import { loadAgents } from "../agents.js";
-import { accent, dim, PURPLE_HEX } from "../colors.js";
+import { accent, ACCENT_HEX, dim } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { t } from "../i18n/index.js";
 import { pickerArrow } from "../ui/picker.js";
@@ -52,7 +52,7 @@ export async function handleAgents(ctx: CliContext, arg: string): Promise<void> 
     footer: dim(t.agents.pickerFooter),
     pageSize: 24,
     border: false,
-    topRuleColor: PURPLE_HEX,
+    topRuleColor: ACCENT_HEX,
     render: (d, selected) => {
       const tag = dim(t.agents.sourceTag[d.source]);
       const name = d.name.padEnd(nameWidth, " ");

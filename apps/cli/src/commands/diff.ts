@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 
-import { bold, diffSign, dim, green, PURPLE_HEX, red, yellow } from "../colors.js";
+import { ACCENT_HEX, bold, diffSign, dim, green, yellow, red } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { t } from "../i18n/index.js";
 import { highlightContent } from "../ui/diff.js";
@@ -294,7 +294,7 @@ export async function handleDiff(ctx: CliContext, args: string): Promise<void> {
         return `${pickerArrow(selected)} ${statusCode(c)}  ${name}  ${statusLabel(c)}${stat}`;
       },
       border: false,
-      topRuleColor: PURPLE_HEX,
+      topRuleColor: ACCENT_HEX,
     });
     if (!pick) break;
     cursor = Math.max(0, changes.indexOf(pick));
@@ -309,7 +309,7 @@ export async function handleDiff(ctx: CliContext, args: string): Promise<void> {
       footer: dim(t.diff.viewerFooter),
       pageSize: 24,
       border: false,
-      topRuleColor: PURPLE_HEX,
+      topRuleColor: ACCENT_HEX,
     });
   }
 }

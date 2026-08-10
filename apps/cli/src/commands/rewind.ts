@@ -1,6 +1,6 @@
 import { relative } from "node:path";
 import { blocksOf, extractText, type MessageParam } from "@nova/core";
-import { dim, green, PURPLE_HEX, red, yellow } from "../colors.js";
+import { ACCENT_HEX, dim, green, yellow, red } from "../colors.js";
 import { persist, type CliContext } from "../context.js";
 import { pickerArrow } from "../ui/picker.js";
 import { t } from "../i18n/index.js";
@@ -92,7 +92,7 @@ export async function handleRewind(ctx: CliContext, arg: string): Promise<void> 
       footer: dim(t.common.footerNavConfirm),
       pageSize: 10,
       border: false,
-      topRuleColor: PURPLE_HEX,
+      topRuleColor: ACCENT_HEX,
       render: (t, isSelected) => `${pickerArrow(isSelected)} ${dim(`#${t.turn}`)}  ${t.label}`,
     });
     if (!target) return; // esc — leave the feed quiet
@@ -132,7 +132,7 @@ export async function handleRewind(ctx: CliContext, arg: string): Promise<void> 
       label: (ok) =>
         ok ? (fileCount > 0 ? t.rewind.restoreAndRewind : t.rewind.rewindHistoryOnly) : t.rewind.cancel,
       border: false,
-      topRuleColor: PURPLE_HEX,
+      topRuleColor: ACCENT_HEX,
     });
     if (confirm === null) return; // esc — leave the feed quiet
     if (!confirm) {

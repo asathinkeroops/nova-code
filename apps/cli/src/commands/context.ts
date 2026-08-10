@@ -1,7 +1,7 @@
 import { computeThreshold, estimateTokens, sliceFromLastCompacted } from "@nova/context";
 import { resolveProfile } from "@nova/core";
 import { resolveContextWindowSize } from "@nova/runtime";
-import { accent, blue, bold, cyan, dim, green, magenta, PURPLE_HEX, yellow } from "../colors.js";
+import { accent, ACCENT_HEX, blue, bold, cyan, dim, green, yellow, magenta } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { measureFixedOverhead } from "../context-usage.js";
 import { t } from "../i18n/index.js";
@@ -106,6 +106,6 @@ export async function handleContext(ctx: CliContext): Promise<void> {
     footer: dim(t.common.footerScrollClose),
     pageSize: 24,
     border: false,
-    topRuleColor: PURPLE_HEX,
+    topRuleColor: ACCENT_HEX,
   });
 }
