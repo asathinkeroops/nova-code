@@ -12,7 +12,7 @@
     "dev": "tsx apps/cli/src/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "pnpm -r run typecheck",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
