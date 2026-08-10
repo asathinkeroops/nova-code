@@ -111,6 +111,41 @@ describe("expandDollarArgs", () => {
   });
 });
 
+// `bound` decides whether the caller appends an `ARGUMENTS:` fallback line, so
+// a reference that resolves to nothing must not claim it consumed anything —
+// otherwise the fallback is suppressed and the user's typed arguments are lost
+// from the prompt entirely.
+describe("expandArgs — bound only on a real substitution", () => {
+  it("does not bind an out-of-range positional", () => {
+    const r = expandArgs("Fix $2", "foo");
+    expect(r.text).toBe("Fix ");
+    expect(r.bound).toBe(false);
+  });
+
+  it("does not bind an out-of-range $ARGUMENTS[n]", () => {
+    const r = expandArgs("Fix $ARGUMENTS[5]", "foo");
+    expect(r.text).toBe("Fix ");
+    expect(r.bound).toBe(false);
+  });
+
+  it("does not bind a named arg the user left unset", () => {
+    const r = expandArgs("Fix $mode", "foo", { named: { mode: "" } });
+    expect(r.text).toBe("Fix ");
+    expect(r.bound).toBe(false);
+  });
+
+  it("does not bind $ARGUMENTS when nothing was typed", () => {
+    expect(expandArgs("Fix $ARGUMENTS", "").bound).toBe(false);
+  });
+
+  it("binds when at least one reference resolved, even if others did not", () => {
+    // `foo` did reach the prompt through $1, so the fallback must stay quiet.
+    const r = expandArgs("$1 then $2", "foo");
+    expect(r.text).toBe("foo then ");
+    expect(r.bound).toBe(true);
+  });
+});
+
 describe("expandMentions", () => {
   it("embeds a readable file", async () => {
     const dir = fixture();

@@ -176,9 +176,17 @@ describe("expandCommandBody — Claude Code syntax", () => {
     expect(r).toEqual({ ok: "all=alpha beta first=alpha second=beta" });
   });
 
-  it("expands a missing positional to empty string", async () => {
+  it("expands a missing positional to empty and still surfaces the typed args", async () => {
+    // The placeholder resolves to nothing, so nothing carried "only" into the
+    // prompt — the fallback has to, or the argument is lost outright. This used
+    // to yield a bare "x=" with the user's input nowhere in the request.
     const r = await expandCommandBody("x=$2", [], "only", { cwd });
-    expect(r).toEqual({ ok: "x=" });
+    expect(r).toEqual({ ok: "x=\n\nARGUMENTS: only" });
+  });
+
+  it("stays quiet when another placeholder did consume the args", async () => {
+    const r = await expandCommandBody("$1 then $2", [], "only", { cwd });
+    expect(r).toEqual({ ok: "only then " });
   });
 
   it("leaves non-arg dollar tokens (e.g. $HOME) untouched", async () => {

@@ -104,7 +104,9 @@ export interface ExpandArgsResult {
  *   - `\$` — an escaped dollar, emitted literally and never substituted
  *
  * Out-of-range positionals and indexes expand to empty, so a template never
- * leaks a raw `$2` into the prompt when the user supplied one argument.
+ * leaks a raw `$2` into the prompt when the user supplied one argument — but
+ * they do not set `bound`, which reports only whether a reference actually
+ * consumed one of the supplied arguments.
  */
 export function expandArgs(
   body: string,
@@ -126,20 +128,28 @@ export function expandArgs(
   );
 
   let bound = false;
-  const take = (value: string): string => {
+  /**
+   * Substitute `value`, reporting `bound` only when something was actually
+   * consumed. A reference that resolves to nothing — an out-of-range `$2`, an
+   * `$ARGUMENTS[5]` past the end, a declared arg the user left unset — expands
+   * to empty but must NOT count as bound: it did not carry the user's input
+   * into the prompt, so the caller's `ARGUMENTS:` fallback still has to fire.
+   * Marking it bound is how typed arguments used to vanish entirely (`Fix $2`
+   * with one argument produced `Fix ` and nothing else).
+   */
+  const take = (value: string | undefined): string => {
+    if (value === undefined || value === "") return "";
     bound = true;
     return value;
   };
 
   for (const name of names) {
     text = text.replace(new RegExp(`\\$${escapeRegExp(name)}(?![[\\w])`, "g"), () =>
-      take(named[name] as string),
+      take(named[name]),
     );
   }
-  text = text.replace(/\$ARGUMENTS\[(\d+)\]/g, (_m, n: string) =>
-    take(tokens[Number(n)] ?? ""),
-  );
-  text = text.replace(/\$(\d+)(?!\w)/g, (_m, n: string) => take(tokens[Number(n) - 1] ?? ""));
+  text = text.replace(/\$ARGUMENTS\[(\d+)\]/g, (_m, n: string) => take(tokens[Number(n)]));
+  text = text.replace(/\$(\d+)(?!\w)/g, (_m, n: string) => take(tokens[Number(n) - 1]));
   text = text.replaceAll("$ARGUMENTS", () => take(trimmed));
 
   return { text: text.replaceAll(ESCAPE_SENTINEL, "$"), bound };
