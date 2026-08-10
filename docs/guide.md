@@ -554,7 +554,48 @@ Skill 是「按需加载的专长说明书」。把 `SKILL.md` 放在：
 启动时 Nova 扫描这些目录，把每个 skill 的 **name + description 索引**注入 system prompt（只占很少 token），并暴露 `loadSkill` 工具。当某个任务匹配到某个 skill 时，模型才用 `loadSkill` 拉取完整正文。
 
 - 用 `/skills` 查看发现了哪些、各自来自哪里。
-- 索引/响应大小上限：`skills.maxIndexBytes`（默认 8KB）/ `skills.maxResponseBytes`（默认 16KB）。
+- 索引预算：默认取**当前模型上下文窗口的 1%**（按 4 字节/token 折算），`skills.indexBudgetFraction` 可调。200k 窗口约 8000 字节，1M 窗口自动放大到 40000。想钉死一个绝对值就设 `skills.maxIndexBytes`，它优先于比例。
+- 索引里单条描述的上限：`skills.maxDescriptionBytes`（默认 1536 字节，超出以 `…` 标记）。这只影响索引条目，`SKILL.md` 里的完整 description 不受影响。
+- **超预算时不会丢技能**，而是把条目降级成只剩名字（`- name`），按代价从小到大尽量多保留描述。名字还在就仍然能被 `loadSkill` 调起，而完整正文本来就要靠 `loadSkill` 拉。
+- 响应大小上限：`skills.maxResponseBytes`（默认 16KB）。
+- 单个 `SKILL.md` 的磁盘上限：`skills.maxFileBytes`（默认 1MB）。超限的文件在 `stat` 阶段就被跳过并 warn，不会读进内存。
+- 技能目录可以是**符号链接**（用来在多个 checkout 之间共享同一份技能），会被正常跟随；链接指向非目录时静默忽略。
+
+**Front-matter**：只有三件事会让一个 `SKILL.md` 被拒收 —— 缺 `---` 块、缺 `name`（必须匹配 `^[a-z][a-z0-9-]*$`）、缺 `description`。Nova 认得的字段：
+
+| 字段 | 作用 |
+| --- | --- |
+| `name` | 技能名，同时是 `/{name}` 命令名 |
+| `description` | 模型据此判断何时该用；原样注入，不截断 |
+| `when_to_use` | 补充触发条件，拼接到 `description` 之后 |
+| `disable-model-invocation` | `true` 时不进模型索引，只能用户 `/{name}` 手动调用 |
+| `user-invocable` | `false` 时不注册 `/{name}`，只能模型自主调用 |
+
+其余字段（`allowed-tools`、`hooks`、`model` 等）会被**解析后忽略**，不会导致加载失败 —— 这样为其它 agent 运行时写的技能可以原样放进来。front-matter 走标准 YAML 子集：嵌套映射、块序列、`[a, b]` / `{a: 1}` 流式集合、`|` / `>` 块标量、折行的多行标量、`#` 注释都支持。
+
+**两条调用路径**：
+
+| 谁调的 | 怎么走 | 参数 |
+| --- | --- | --- |
+| 模型自己 | 匹配到索引里的 description → 调 `loadSkill` 工具 → 拿到展开后的正文 | 无（工具只收技能名） |
+| 你敲 `/{name} 参数` | 直接读盘、展开、作为下一轮 prompt 注入（一跳，不经过工具） | `$ARGUMENTS` / `$1`..`$N` 绑定你敲的内容 |
+
+两条路都经由同一个渲染函数，模型看到的文本逐字节一致 —— 一个技能不会因为「谁调它」而表现不同。`/{name}` 每次调用都重新读盘，所以改完 `SKILL.md` 直接再敲一次就生效，不用 `/commands reload`（那个只在增删技能目录时才需要）。
+
+**正文里的变量与插值**：按顺序做四层展开，和自定义 slash 命令用的是同一套实现。
+
+| 写法 | 展开成 |
+| --- | --- |
+| `${CLAUDE_SKILL_DIR}` / `${NOVA_SKILL_DIR}` | 该技能自己的目录绝对路径 |
+| `${CLAUDE_PROJECT_DIR}` / `${NOVA_PROJECT_DIR}` | 当前工作区根目录 |
+| `${CLAUDE_PLUGIN_ROOT}` / `${NOVA_PLUGIN_ROOT}` | 技能所属插件的根目录（仅插件提供的技能有） |
+| `${CLAUDE_SESSION_ID}` / `${NOVA_SESSION_ID}` | 当前会话 ID |
+| `${CLAUDE_EFFORT}` / `${NOVA_EFFORT}` | 当前思考等级（`off`/`low`/`medium`/`high`/`max`），随 `/effort` 变化 |
+| `$ARGUMENTS` / `$ARGUMENTS[n]` / `$1`..`$N` | 你在 `/{name}` 后面敲的内容；模型走 `loadSkill` 时这些占位符**原样保留**（没有参数可绑） |
+| `@相对路径` | 内嵌该文件内容（上限 100KB，超出截断）；解析不到文件就原样保留，所以邮箱和 `@scope/pkg` 安全 |
+| `` !`命令` `` | 执行并内嵌输出，走 bash 工具和沙箱；设 `skills.disableShellExecution: true` 后替换为一行提示且不执行 |
+
+不认识的 `${NAME}` 原样保留（别的工具的变量不会被抹成空），小写的 `${name}` 完全不动（JS 模板字符串示例不会被误伤）。取不到值的变量（非插件技能的 `${CLAUDE_PLUGIN_ROOT}`、无会话时的 `${CLAUDE_SESSION_ID}`）同样保持原样而不是变空，这样「不适用」和「解析成空」能区分开。展开顺序是变量 → 参数 → `@` → `` ! ``，每层的产物喂给下一层，所以 `@${NOVA_SKILL_DIR}/ref.md` 和 ``!`grep $1 file` `` 都能用。
 
 ---
 
@@ -569,6 +610,8 @@ Skill 是「按需加载的专长说明书」。把 `SKILL.md` 放在：
 
 - 每个 `*.md` 文件名即命令名（`deploy.md` → `/deploy`）。
 - 文件前置 frontmatter 声明 `description` / arg hint / 参数；正文做占位符替换后，作为下一轮 prompt 发给模型。
+- 正文支持的参数写法：`{{name}}` / `{{name|默认值}}`（Nova 原生）、`$ARGUMENTS`、`$ARGUMENTS[n]`（**0 起**）、`$1`..`$N`（**1 起**，`$1` 是第一个）、`$name`（取 `args:` 声明的具名参数，和 `{{name}}` 同源同值）、`\$` 转义。另外还有 `@路径` 内嵌文件和 `` !`命令` `` 插值。
+- **敲了参数但正文里一个占位符都没命中**时，参数会以 `ARGUMENTS: ...` 追加到末尾，而不是被丢掉。
 - **优先级**：内置命令永远赢；项目层覆盖用户层（同名时）。
 - 改了文件后用 `/commands reload` 重新扫盘，`/commands`（或 `/help`）查看当前注册了哪些。
 
@@ -824,7 +867,7 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 | `memory.userPaths` / `globalPath` | （无） | 覆盖用户层/全局记忆路径 |
 | `memory.auto.*` | `enabled:true` | 自动记忆（agent 自维护）：默认 `~/.nova/projects/<项目编码>/memory/`（`dir` 未设，可设为工作区内路径覆盖）、`maxEntries`=100，见 [§13](#13-记忆memory) |
 | `slash.enabled` | `true` | 自定义 slash 命令开关；`projectDirs`/`userPaths`/`extraDirs` 额外目录 |
-| `skills.enabled` | `true` | Skills 开关；`maxIndexBytes`=8192、`maxResponseBytes`=16384，及额外目录 |
+| `skills.enabled` | `true` | Skills 开关；`indexBudgetFraction`=0.01、`maxDescriptionBytes`=1536、`maxResponseBytes`=16384、`maxFileBytes`=1048576、`disableShellExecution`=false；`maxIndexBytes` 可选（钉死索引预算，优先于比例）；及额外目录 |
 | `subagent.enabled` | `true` | 子 agent 开关；`model`（按子 agent 名索引的档位表，见 [§8](#8-plan-模式与子-agent)）/`maxTurns`=100/`maxTokens`=32768 |
 | `guide.*` | `enabled:true` | nova-code-guide 来源：`source`=`remote`（默认，克隆 `repoUrl`@`ref`→`cacheDir`，`refreshIntervalHours`=24）或 `local`（读 `localPath`/工作区），见 [§8](#8-plan-模式与子-agent) |
 | `goal.*` | `enabled:true` | `/goal` 目标模式：`evalModel`（判定档位，模板设 `lite`）/`maxContinuations`=25/`maxEvalTurns`=15 |

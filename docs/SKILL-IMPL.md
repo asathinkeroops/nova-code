@@ -21,7 +21,7 @@
 - **Skill-as-subagent**：把 skill 当成隔离子 loop 跑，是另一个独立 feature，单独排期。
 - **每个 skill 单独的 permission rule**：未来可叠在 `permissions.rules` 上用 `skill:<name>` 形式，先不做。
 - **Skill 远程分发 / 版本管理 / 签名**：纯本地文件。
-- **Markdown 模板占位符 / 参数化 skill body**：slash 命令已经做了，skill 故意只回原文。
+- ~~**Markdown 模板占位符 / 参数化 skill body**~~：**已实现**。正文支持 `${*_SKILL_DIR}` / `${*_PROJECT_DIR}` 变量、`@path` 内嵌、`` !`cmd` `` 插值，用户经 `/{name} 参数` 调用时还会绑定 `$ARGUMENTS` / `$1`..`$N`。展开阶段与 slash 命令共用 `@nova/runtime` 的 `prompt-expansion`。
 
 ---
 
@@ -142,8 +142,8 @@ export function getSkill(
 - **没有 `SkillIndex` / `Skill` / `SkillSource` 等中间类型对外**——调用方拿到的就是"列表"或"正文字符串"。
 - **没有显式 reload**——记忆化按 opts 指纹缓存；要刷新就重启 CLI 或传新的 `extraDirs`。`/skills` 命令本身就直接调 `getSkillList()`，永远反映当前盘上状态（首次调用必然 miss，之后命中缓存）。
 - **没有错误数组对外**——解析失败走 logger.warn，UI 想看就翻日志。这与 slash loader 的可见性一致（slash 错误也是 warn 出来）。
-- **`getSkill` 不返回 location**——body 里出现的相对路径，渲染时由 loadSkill 工具自己补绝对路径前缀（见 §5）。
-- **`maxResponseBytes` 寄居在 SkillsOptions 里**——严格说它是"loadSkill 工具的输出 cap"而不是扫描参数，但放一个统一的 config bag 比另开一个 ToolOptions 干净，调用方就一个对象走全程（CLI 装配传一次，slash 命令再读一次都是同一份）。代价是 `getSkillList`/`getSkill` 看到这个字段会忽略；为防止它意外影响 cache 命中，scan 的 cache key 只由 ResolvedOpts 五元组构成（`cwd/home/projectDirs/userPaths/extraDirs`），`maxResponseBytes` 与 `logger` 都不参与。
+- **`getSkill` 返回 location**——`<skill location="…">` 属性和 `${*_SKILL_DIR}` 变量都要用它。
+- **`maxResponseBytes` / `disableShellExecution` 寄居在 SkillsOptions 里**——严格说它们是"loadSkill 工具的输出参数"而不是扫描参数，但放一个统一的 config bag 比另开一个 ToolOptions 干净，调用方就一个对象走全程（CLI 装配传一次，slash 命令再读一次都是同一份）。代价是 `getSkillList`/`getSkill` 看到这些字段会忽略；为防止它们意外影响 cache 命中，scan 的 cache key 只由 ResolvedOpts 六元组构成（`cwd/home/projectDirs/userPaths/extraDirs/maxFileBytes`），其余字段与 `logger` 都不参与。`maxFileBytes` **必须**在内，因为它决定哪些 skill 存在。
 
 ---
 
@@ -155,14 +155,16 @@ export function getSkill(
 <available-skills>
 - code-reviewer: Review a diff for correctness, regressions, and obvious smell
 - migration-safety: Audit a SQL migration for lock duration and rollback risk
-- (… 总字节超过 maxIndexBytes 时这里出现 "…N more skills truncated; raise settings.skills.maxIndexBytes to see all")
+- overflowed-skill   (← 超预算时条目降级成只剩名字)
 Use the `loadSkill` tool with `name` to read full instructions before acting.
 </available-skills>
 ```
 
 - 每行 `- <name>: <description>`，不带 `location`（路径污染缓存命中、对模型无价值，要看的话 `/skills` 自己看）。
-- 排序：project 优先，然后 user，组内按 name 字典序。稳定 → cache 命中率高。
-- 总字节超过 `settings.skills.maxIndexBytes`（默认 8 KiB）则尾部截断 + 加 hint 行。
+- 排序：按 name 字典序。稳定 → cache 命中率高。
+- 单条 description 超 `settings.skills.maxDescriptionBytes`（默认 1536 字节）截断并加 `…`，按 utf8 字节计且不切断多字节字符。
+- 总字节预算 = `resolveSkillsIndexBudget()`：显式 `skills.maxIndexBytes` 优先，否则取上下文窗口 × 4 字节/token × `skills.indexBudgetFraction`（默认 0.01）。
+- 超预算**不丢技能**，而是把条目降级成 `- <name>`，按代价从小到大贪心保留尽量多的 description。降级决策是输入的纯函数 → 输出逐字节稳定，不破坏 prefix cache。
 
 ### 4.2 接入点
 
@@ -171,10 +173,13 @@ Use the `loadSkill` tool with `name` to read full instructions before acting.
 ```ts
 // apps/cli/src/context.ts 启动时
 const skills = getSkillList({ cwd: workspace.root });
-const skillsBlock = renderSkillsBlock(skills, settings.skills.maxIndexBytes);
+const skillsBlock = renderSkillsBlock(skills, {
+  budgetBytes: resolveSkillsIndexBudget(settings, settings.model),
+  maxDescriptionBytes: settings.skills.maxDescriptionBytes,
+});
 ```
 
-`renderSkillsBlock` 是 apps/cli 里的 ~20 行小函数：空数组返回 `""`，否则 `lines.map(s => "- " + s.name + ": " + s.description)`，按 name 字典序排，超 cap 截断 + 加 hint 行，包 `<available-skills>` tag。**渲染逻辑不进 external 包**——`external` 只管"有哪些 skill"，怎么塞进 prompt 是 CLI 的事。
+`renderSkillsBlock` 是 apps/cli 里的小函数：空数组返回 `""`，否则按 name 字典序排，每条渲染成 `- <name>: <description>`（description 超 `maxDescriptionBytes` 截断加 `…`），总量超预算时把条目降级成 `- <name>`，包 `<available-skills>` tag。**渲染逻辑不进 external 包**——`external` 只管"有哪些 skill"，怎么塞进 prompt 是 CLI 的事。
 
 拼接顺序：
 
@@ -267,12 +272,24 @@ skills: z
     projectDirs: z.array(z.string().min(1)).optional(),
     userPaths: z.array(z.string().min(1)).optional(),
     extraDirs: z.array(z.string().min(1)).optional(),
-    /** 注入 system prompt 的索引总字节上限。 */
-    maxIndexBytes: z.number().int().positive().default(8_192),
+    /** 索引总字节上限的绝对值覆写；不设则按 indexBudgetFraction 从上下文窗口推。 */
+    maxIndexBytes: z.number().int().positive().optional(),
+    /** 索引可占用的上下文窗口比例（× 4 字节/token）。 */
+    indexBudgetFraction: z.number().positive().max(1).default(0.01),
+    /** 索引中单条 description 的字节上限。 */
+    maxDescriptionBytes: z.number().int().positive().default(1_536),
     /** loadSkill 单次响应字节上限。 */
     maxResponseBytes: z.number().int().positive().default(16_384),
+    /** 单个 SKILL.md 的磁盘字节上限，超限跳过。 */
+    maxFileBytes: z.number().int().positive().default(1_048_576),
   })
-  .default({ enabled: true, maxIndexBytes: 8_192, maxResponseBytes: 16_384 }),
+  .default({
+    enabled: true,
+    indexBudgetFraction: 0.01,
+    maxDescriptionBytes: 1_536,
+    maxResponseBytes: 16_384,
+    maxFileBytes: 1_048_576,
+  }),
 ```
 
 默认开。`enabled: false` 时：不扫描、不注入索引、不注册工具、`/skills` 显示 "skills disabled in settings"。
@@ -413,7 +430,7 @@ skills 整套都落在 `@nova/tools` 一个包内：
 
 | 风险 | 对策 |
 |------|------|
-| 索引膨胀污染 system prompt / 打穿 cache | 硬 cap `maxIndexBytes` + 排序稳定（不按时间/调用频次重排） |
+| 索引膨胀污染 system prompt / 打穿 cache | 单条 cap `maxDescriptionBytes` + 总量按上下文窗口比例设预算，超预算降级成 name-only；排序与降级决策均为输入的纯函数（不按时间/调用频次重排） |
 | 模型把 `loadSkill` 错认成"用户喊它做的工具" | 工具 description 明确说"only call when a skill in `<available-skills>` matches the task" |
 | 用户在 `~/.nova/skills/` 放了几百个 skill | 默认硬 cap 在 `renderSkillsBlock` 就截断；`/skills` 仍能看到全部并提示 raise cap |
 | 把 `node_modules` 之类的目录当成 skill root | 不递归 + 必须有 SKILL.md + name 合法 → 天然过滤 |

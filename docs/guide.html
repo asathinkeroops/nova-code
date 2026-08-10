@@ -1022,8 +1022,40 @@
         <p>启动时 Nova 扫描这些目录，把每个 skill 的 <strong>name + description 索引</strong>注入 system prompt（只占很少 token），并暴露 <code>loadSkill</code> 工具。当某个任务匹配到某个 skill 时，模型才用 <code>loadSkill</code> 拉取完整正文。</p>
         <ul class="space-y-2">
           <li>用 <code>/skills</code> 查看发现了哪些、各自来自哪里。</li>
-          <li>索引 / 响应大小上限：<code>skills.maxIndexBytes</code>（默认 8KB）/ <code>skills.maxResponseBytes</code>（默认 16KB）。</li>
+          <li>索引预算：默认取<strong>当前模型上下文窗口的 1%</strong>（按 4 字节 / token 折算），<code>skills.indexBudgetFraction</code> 可调。200k 窗口约 8000 字节，1M 窗口自动放大到 40000。想钉死一个绝对值就设 <code>skills.maxIndexBytes</code>，它优先于比例。</li>
+          <li>索引里单条描述的上限：<code>skills.maxDescriptionBytes</code>（默认 1536 字节，超出以 <code>…</code> 标记）。这只影响索引条目，<code>SKILL.md</code> 里的完整 description 不受影响。</li>
+          <li><strong>超预算时不会丢技能</strong>，而是把条目降级成只剩名字（<code>- name</code>），按代价从小到大尽量多保留描述。名字还在就仍然能被 <code>loadSkill</code> 调起，而完整正文本来就要靠 <code>loadSkill</code> 拉。</li>
+          <li>响应大小上限：<code>skills.maxResponseBytes</code>（默认 16KB）。</li>
+          <li>单个 <code>SKILL.md</code> 的磁盘上限：<code>skills.maxFileBytes</code>（默认 1MB）。超限的文件在 <code>stat</code> 阶段就被跳过并 warn，不会读进内存。</li>
+          <li>技能目录可以是<strong>符号链接</strong>（用来在多个 checkout 之间共享同一份技能），会被正常跟随；链接指向非目录时静默忽略。</li>
         </ul>
+        <p><strong>Front-matter</strong>：只有三件事会让一个 <code>SKILL.md</code> 被拒收 —— 缺 <code>---</code> 块、缺 <code>name</code>（必须匹配 <code>^[a-z][a-z0-9-]*$</code>）、缺 <code>description</code>。Nova 认得的字段：</p>
+        <div class="tbl-wrap"><table class="doc"><thead><tr><th>字段</th><th>作用</th></tr></thead><tbody>
+          <tr><td><code>name</code></td><td>技能名，同时是 <code>/{name}</code> 命令名</td></tr>
+          <tr><td><code>description</code></td><td>模型据此判断何时该用；原样注入，不截断</td></tr>
+          <tr><td><code>when_to_use</code></td><td>补充触发条件，拼接到 <code>description</code> 之后</td></tr>
+          <tr><td><code>disable-model-invocation</code></td><td><code>true</code> 时不进模型索引，只能用户 <code>/{name}</code> 手动调用</td></tr>
+          <tr><td><code>user-invocable</code></td><td><code>false</code> 时不注册 <code>/{name}</code>，只能模型自主调用</td></tr>
+        </tbody></table></div>
+        <p>其余字段（<code>allowed-tools</code>、<code>hooks</code>、<code>model</code> 等）会被<strong>解析后忽略</strong>，不会导致加载失败 —— 这样为其它 agent 运行时写的技能可以原样放进来。front-matter 走标准 YAML 子集：嵌套映射、块序列、<code>[a, b]</code> / <code>{a: 1}</code> 流式集合、<code>|</code> / <code>&gt;</code> 块标量、折行的多行标量、<code>#</code> 注释都支持。</p>
+        <p class="font-medium mt-3" style="color:var(--text)">两条调用路径：</p>
+        <div class="tbl-wrap"><table class="doc"><thead><tr><th>谁调的</th><th>怎么走</th><th>参数</th></tr></thead><tbody>
+          <tr><td>模型自己</td><td>匹配到索引里的 description → 调 <code>loadSkill</code> 工具 → 拿到展开后的正文</td><td>无（工具只收技能名）</td></tr>
+          <tr><td>你敲 <code>/{name} 参数</code></td><td>直接读盘、展开、作为下一轮 prompt 注入（一跳，不经过工具）</td><td><code>$ARGUMENTS</code> / <code>$1</code>..<code>$N</code> 绑定你敲的内容</td></tr>
+        </tbody></table></div>
+        <p>两条路都经由同一个渲染函数，模型看到的文本逐字节一致 —— 一个技能不会因为「谁调它」而表现不同。<code>/{name}</code> 每次调用都重新读盘，所以改完 <code>SKILL.md</code> 直接再敲一次就生效，不用 <code>/commands reload</code>（那个只在增删技能目录时才需要）。</p>
+        <p class="font-medium mt-3" style="color:var(--text)">正文里的变量与插值：按顺序做四层展开，和自定义 slash 命令用的是同一套实现。</p>
+        <div class="tbl-wrap"><table class="doc"><thead><tr><th>写法</th><th>展开成</th></tr></thead><tbody>
+          <tr><td><code>${CLAUDE_SKILL_DIR}</code> / <code>${NOVA_SKILL_DIR}</code></td><td>该技能自己的目录绝对路径</td></tr>
+          <tr><td><code>${CLAUDE_PROJECT_DIR}</code> / <code>${NOVA_PROJECT_DIR}</code></td><td>当前工作区根目录</td></tr>
+          <tr><td><code>${CLAUDE_PLUGIN_ROOT}</code> / <code>${NOVA_PLUGIN_ROOT}</code></td><td>技能所属插件的根目录（仅插件提供的技能有）</td></tr>
+          <tr><td><code>${CLAUDE_SESSION_ID}</code> / <code>${NOVA_SESSION_ID}</code></td><td>当前会话 ID</td></tr>
+          <tr><td><code>${CLAUDE_EFFORT}</code> / <code>${NOVA_EFFORT}</code></td><td>当前思考等级（<code>off</code>/<code>low</code>/<code>medium</code>/<code>high</code>/<code>max</code>），随 <code>/effort</code> 变化</td></tr>
+          <tr><td><code>$ARGUMENTS</code> / <code>$ARGUMENTS[n]</code> / <code>$1</code>..<code>$N</code></td><td>你在 <code>/{name}</code> 后面敲的内容；模型走 <code>loadSkill</code> 时这些占位符<strong>原样保留</strong>（没有参数可绑）</td></tr>
+          <tr><td><code>@相对路径</code></td><td>内嵌该文件内容（上限 100KB，超出截断）；解析不到文件就原样保留，所以邮箱和 <code>@scope/pkg</code> 安全</td></tr>
+          <tr><td><code>!`命令`</code></td><td>执行并内嵌输出，走 bash 工具和沙箱；设 <code>skills.disableShellExecution: true</code> 后替换为一行提示且不执行</td></tr>
+        </tbody></table></div>
+        <p>不认识的 <code>${NAME}</code> 原样保留（别的工具的变量不会被抹成空），小写的 <code>${name}</code> 完全不动（JS 模板字符串示例不会被误伤）。取不到值的变量（非插件技能的 <code>${CLAUDE_PLUGIN_ROOT}</code>、无会话时的 <code>${CLAUDE_SESSION_ID}</code>）同样保持原样而不是变空，这样「不适用」和「解析成空」能区分开。展开顺序是变量 → 参数 → <code>@</code> → <code>!</code>，每层的产物喂给下一层，所以 <code>@${NOVA_SKILL_DIR}/ref.md</code> 和 <code>!`grep $1 file`</code> 都能用。</p>
       </section>
 
       <!-- §15 -->
@@ -1038,6 +1070,8 @@
         <ul class="space-y-2">
           <li>每个 <code>*.md</code> 文件名即命令名（<code>deploy.md</code> → <code>/deploy</code>）。</li>
           <li>文件前置 frontmatter 声明 <code>description</code> / arg hint / 参数；正文做占位符替换后，作为下一轮 prompt 发给模型。</li>
+          <li>正文支持的参数写法：<code>{{name}}</code> / <code>{{name|默认值}}</code>（Nova 原生）、<code>$ARGUMENTS</code>、<code>$ARGUMENTS[n]</code>（<strong>0 起</strong>）、<code>$1</code>..<code>$N</code>（<strong>1 起</strong>，<code>$1</code> 是第一个）、<code>$name</code>（取 <code>args:</code> 声明的具名参数，和 <code>{{name}}</code> 同源同值）、<code>\$</code> 转义。另外还有 <code>@路径</code> 内嵌文件和 <code>!`命令`</code> 插值。</li>
+          <li><strong>敲了参数但正文里一个占位符都没命中</strong>时，参数会以 <code>ARGUMENTS: ...</code> 追加到末尾，而不是被丢掉。</li>
           <li><strong>优先级</strong>：内置命令永远赢；项目层覆盖用户层（同名时）。</li>
           <li>改了文件后用 <code>/commands reload</code> 重新扫盘，<code>/commands</code>（或 <code>/help</code>）查看当前注册了哪些。</li>
         </ul>
@@ -1296,7 +1330,7 @@
           <tr><td><code>memory.userPaths</code> / <code>globalPath</code></td><td>（无）</td><td>覆盖用户层 / 全局记忆路径</td></tr>
           <tr><td><code>memory.auto.*</code></td><td><code>enabled:true</code></td><td>自动记忆（agent 自维护）：默认 <code>~/.nova/projects/&lt;项目编码&gt;/memory/</code>（<code>dir</code> 未设，可设为工作区内路径覆盖）、<code>maxEntries</code>=100，见 <a class="inline-link" href="#sec-13">§13</a></td></tr>
           <tr><td><code>slash.enabled</code></td><td><code>true</code></td><td>自定义 slash 命令开关；可覆写的发现目录：<code>projectDirs</code>、<code>userPaths</code>、<code>extraDirs</code></td></tr>
-          <tr><td><code>skills.enabled</code></td><td><code>true</code></td><td>Skills 开关；<code>maxIndexBytes</code>=8192、<code>maxResponseBytes</code>=16384；可覆写的发现目录：<code>projectDirs</code>、<code>userPaths</code>、<code>extraDirs</code></td></tr>
+          <tr><td><code>skills.enabled</code></td><td><code>true</code></td><td>Skills 开关；<code>indexBudgetFraction</code>=0.01、<code>maxDescriptionBytes</code>=1536、<code>maxResponseBytes</code>=16384、<code>maxFileBytes</code>=1048576、<code>disableShellExecution</code>=false；<code>maxIndexBytes</code> 可选（钉死索引预算，优先于比例）；可覆写的发现目录：<code>projectDirs</code>、<code>userPaths</code>、<code>extraDirs</code></td></tr>
           <tr><td><code>subagent.enabled</code></td><td><code>true</code></td><td>子 agent 开关；<code>model</code>（按子 agent 名索引的档位表，见 <a class="inline-link" href="#sec-8">§8</a>）/<code>maxTurns</code>=100/<code>maxTokens</code>=32768；子 agent 的 <code>maxTokensContinuations</code> 继承顶层设置；自定义类型目录：<code>projectDirs</code>/<code>userPaths</code>/<code>extraDirs</code></td></tr>
           <tr><td><code>guide.*</code></td><td><code>enabled:true</code></td><td>nova-code-guide 来源：<code>source</code>=<code>remote</code>（默认，克隆 <code>repoUrl</code>@<code>ref</code>→<code>cacheDir</code>，<code>refreshIntervalHours</code>=24）或 <code>local</code>（读 <code>localPath</code>/工作区），见 <a class="inline-link" href="#sec-8">§8</a></td></tr>
           <tr><td><code>goal.*</code></td><td><code>enabled:true</code></td><td><code>/goal</code> 目标模式：<code>evalModel</code>（判定档位，模板设 <code>lite</code>）/<code>maxContinuations</code>=25/<code>maxEvalTurns</code>=15</td></tr>
