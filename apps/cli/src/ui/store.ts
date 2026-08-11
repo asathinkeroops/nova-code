@@ -289,6 +289,17 @@ export interface AppState {
   /** Session-cumulative output (completion) tokens. Reset on `reset()`. */
   sessionOutputTokens: number;
   /**
+   * Same three prompt-token buckets as above, but **all-time across every
+   * session on this machine** — the "累计 / total" half of the StatusLine cache
+   * meter. Seeded at boot from `~/.nova/usage.json` ({@link seedLifetimeUsage})
+   * and grown by every {@link addUsage} thereafter; unlike the session counters
+   * these deliberately survive `reset()` (/clear) and a session switch, so the
+   * lifetime hit rate never restarts from zero.
+   */
+  lifetimeCacheReadTokens: number;
+  lifetimeCacheCreationTokens: number;
+  lifetimeUncachedInputTokens: number;
+  /**
    * Active model's resolved per-token rates, or null when pricing is disabled
    * or the model is unpriced. Lets the StatusLine show an estimated session
    * cost from the cumulative token counters. Set by `setCostRates` (from
@@ -477,13 +488,26 @@ export interface AppActions {
   /**
    * Fold one request's usage into the session-cumulative token counters that
    * back the cache-hit-rate meter and `/usage`. Each field is added to its
-   * running total; missing cache fields count as 0.
+   * running total; missing cache fields count as 0. The same usage is folded
+   * into the all-time `lifetime*` counters and handed to
+   * `opts.persistUsage` so it reaches `~/.nova/usage.json`.
    */
   addUsage: (usage: {
     inputTokens: number;
     outputTokens: number;
     cacheReadInputTokens?: number;
     cacheCreationInputTokens?: number;
+  }) => void;
+  /**
+   * Set the all-time (cross-session) prompt-token counters to absolute totals —
+   * called at boot with what `~/.nova/usage.json` holds, and again after each
+   * flush so a total that another running nova process advanced is picked up
+   * rather than silently diverging.
+   */
+  seedLifetimeUsage: (totals: {
+    cacheReadTokens: number;
+    cacheCreationTokens: number;
+    uncachedInputTokens: number;
   }) => void;
   /**
    * Set the session-cumulative token counters to absolute totals — used to
@@ -626,6 +650,19 @@ export interface AppStoreOptions {
    * does not await it.
    */
   persistInputHistory?: (history: string[]) => void;
+  /**
+   * Fold one request's usage into the cross-session ledger behind the
+   * StatusLine's all-time cache hit rate. Called with the same per-request delta
+   * `addUsage` just applied (never a running total — the ledger accumulates on
+   * disk). Injected for the same reason as {@link persistInputHistory}: the
+   * store does no file I/O and does not await it.
+   */
+  persistUsage?: (usage: {
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadInputTokens?: number;
+    cacheCreationInputTokens?: number;
+  }) => void;
 }
 
 export function createAppStore(opts: AppStoreOptions = {}): AppStoreApi {
@@ -714,6 +751,9 @@ export function createAppStore(opts: AppStoreOptions = {}): AppStoreApi {
       cacheCreationTokens: 0,
       uncachedInputTokens: 0,
       sessionOutputTokens: 0,
+      lifetimeCacheReadTokens: 0,
+      lifetimeCacheCreationTokens: 0,
+      lifetimeUncachedInputTokens: 0,
       costRates: null,
       accountBalance: null,
       inputQueue: [],
@@ -1128,7 +1168,30 @@ export function createAppStore(opts: AppStoreOptions = {}): AppStoreApi {
           cacheReadTokens: s.cacheReadTokens + (usage.cacheReadInputTokens ?? 0),
           cacheCreationTokens: s.cacheCreationTokens + (usage.cacheCreationInputTokens ?? 0),
           sessionOutputTokens: s.sessionOutputTokens + usage.outputTokens,
+          lifetimeUncachedInputTokens: s.lifetimeUncachedInputTokens + usage.inputTokens,
+          lifetimeCacheReadTokens: s.lifetimeCacheReadTokens + (usage.cacheReadInputTokens ?? 0),
+          lifetimeCacheCreationTokens:
+            s.lifetimeCacheCreationTokens + (usage.cacheCreationInputTokens ?? 0),
         }));
+        // Hand the same delta to the cross-session ledger. Injected so the store
+        // stays free of file I/O; best-effort, never awaited.
+        opts.persistUsage?.(usage);
+      },
+
+      seedLifetimeUsage(totals) {
+        const s = get();
+        if (
+          s.lifetimeCacheReadTokens === totals.cacheReadTokens &&
+          s.lifetimeCacheCreationTokens === totals.cacheCreationTokens &&
+          s.lifetimeUncachedInputTokens === totals.uncachedInputTokens
+        ) {
+          return;
+        }
+        set({
+          lifetimeCacheReadTokens: totals.cacheReadTokens,
+          lifetimeCacheCreationTokens: totals.cacheCreationTokens,
+          lifetimeUncachedInputTokens: totals.uncachedInputTokens,
+        });
       },
 
       seedUsage(totals) {
@@ -1138,6 +1201,8 @@ export function createAppStore(opts: AppStoreOptions = {}): AppStoreApi {
           uncachedInputTokens: totals.uncachedInputTokens,
           sessionOutputTokens: totals.outputTokens,
         });
+        // The `lifetime*` counters are deliberately untouched: they span every
+        // session, so switching sessions must not rewind them.
       },
 
       enqueueInput(line) {

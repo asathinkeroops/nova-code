@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   cacheHitRate,
+  cacheSegmentText,
   contextBar,
   displayCwd,
   fitSegments,
@@ -20,6 +21,7 @@ import {
   MODE_MANUAL_HEX,
   MODE_PLAN_HEX,
 } from "../colors.js";
+import { setLocale } from "../i18n/index.js";
 import type { PermissionMode } from "../permissions.js";
 
 describe("formatDuration", () => {
@@ -100,6 +102,28 @@ describe("formatPercent", () => {
   it("clamps out-of-range ratios", () => {
     expect(formatPercent(1.4)).toBe("100%");
     expect(formatPercent(-0.2)).toBe("0%");
+  });
+});
+
+describe("cacheSegmentText", () => {
+  // The catalog defaults to English; `setLocale` is exercised explicitly below.
+  it("shows the session rate before the all-time one", () => {
+    expect(cacheSegmentText(0.9, 0.99)).toBe("cache 90% session 99% total");
+  });
+  it("drops the session half before the first request of a session", () => {
+    expect(cacheSegmentText(null, 0.99)).toBe("cache 99% total");
+  });
+  it("drops the all-time half when the ledger is empty or unread", () => {
+    expect(cacheSegmentText(0.9, null)).toBe("cache 90% session");
+  });
+  it("reads the active locale at call time", () => {
+    setLocale("zh-CN");
+    try {
+      expect(cacheSegmentText(0.9, 0.99)).toBe("缓存 90% 会话 99% 累计");
+      expect(cacheSegmentText(null, 0.99)).toBe("缓存 99% 累计");
+    } finally {
+      setLocale("en");
+    }
   });
 });
 

@@ -117,6 +117,30 @@ export function cacheHitRate(read: number, creation: number, uncachedInput: numb
   return read / total;
 }
 
+/**
+ * Text of the StatusLine's cache segment: `缓存 90% 会话 99% 累计` — this
+ * session's hit rate alongside the all-time (cross-session) one. Both earn their
+ * place: the session rate reflects how this conversation is actually being
+ * served — a cold start, a compaction, or a mid-session system-prompt change all
+ * show up in it — while the all-time rate is the stable baseline it should be
+ * converging toward.
+ *
+ * Unlike the other segments on that row this one leads with its label, since two
+ * numbers each need their own trailing qualifier. Either half is dropped when
+ * its rate is null: no request yet in this session (`缓存 99% 累计`), or an
+ * empty/unread ledger (`缓存 90% 会话`).
+ */
+export function cacheSegmentText(sessionRate: number | null, lifetimeRate: number | null): string {
+  const parts: string[] = [t.status.usageCache];
+  if (sessionRate !== null) {
+    parts.push(`${formatPercent(sessionRate)} ${t.status.usageCacheSession}`);
+  }
+  if (lifetimeRate !== null) {
+    parts.push(`${formatPercent(lifetimeRate)} ${t.status.usageCacheTotal}`);
+  }
+  return parts.join(" ");
+}
+
 /** A 0–1 ratio as a whole-percent string, e.g. 0.8523 → "85%". */
 export function formatPercent(ratio: number): string {
   const clamped = Math.max(0, Math.min(1, ratio));

@@ -612,6 +612,9 @@ export async function runRepl(ctx: CliContext, initialPrompt: string): Promise<v
   if (updateInterval) clearInterval(updateInterval);
   ctx.cronScheduler.dispose();
   await ctx.transcript.flush();
+  // The all-time token ledger batches writes on a timer; fold in whatever the
+  // last turns left pending before the process goes away.
+  await ctx.screen.flushGlobalUsage();
   await ctx.backgroundManager.disposeAll();
   await ctx.monitorManager.disposeAll();
   if (ctx.lspManager) await ctx.lspManager.disposeAll();

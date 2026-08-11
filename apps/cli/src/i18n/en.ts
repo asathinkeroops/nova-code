@@ -135,7 +135,12 @@ export const en = {
     bypass: "⚠ bypass permissions on",
     // Trailing labels on the cumulative-usage row (follow a number/amount).
     usageBalance: "balance",
+    // The cache segment leads with its label and carries two rates:
+    // `cache 90% session 99% total` — this session, and all-time across every
+    // session. Either half drops when it has no data yet.
     usageCache: "cache",
+    usageCacheSession: "session",
+    usageCacheTotal: "total",
     usageIn: "in",
     usageOut: "out",
     usageCost: "cost",

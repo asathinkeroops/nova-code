@@ -639,7 +639,11 @@
         <p>输入框下方两行实时状态：</p>
         <ul class="space-y-2">
           <li><strong>第一行</strong>：模型档位 + 思考等级 + 上下文窗口、上下文占用进度条与百分比、工作区目录名、git 分支、完整 cwd。</li>
-          <li><strong>第二行（累计用量）</strong>：账户余额（仅接 DeepSeek 官方 API 时出现；账户不可扣费时转为琥珀色）、缓存命中率、累计输入 / 输出 token、按当前档位 <code>pricing</code> 估算的花费。终端过窄时从右往左丢弃分段，余额和命中率优先保留。</li>
+          <li><strong>第二行（用量）</strong>：账户余额（仅接 DeepSeek 官方 API 时出现；账户不可扣费时转为琥珀色）、缓存命中率、累计输入 / 输出 token、按当前档位 <code>pricing</code> 估算的花费。终端过窄时从右往左丢弃分段，余额和命中率优先保留。
+            <ul class="mt-2 space-y-1">
+              <li>缓存分段给两个数字：<code>缓存 90% 会话 99% 累计</code> —— 前者是<strong>本会话</strong>（从 transcript 重放，扛得住重启和 <code>/resume</code>）的命中率，后者是<strong>跨会话累计</strong>的命中率，<code>/clear</code>、换会话、重装都不归零。累计值记在 <code>~/.nova/usage.json</code>（每请求批量累加、原子写，多个 nova 进程会各自并入而不是互相覆盖），而不是启动时去扫 <code>~/.nova/sessions/*</code> —— 旧会话目录会被 <code>sessionCleanup.maxAgeDays</code> 清掉，扫出来的历史本来就不全。哪一半还没有数据就只显示另一半。</li>
+            </ul>
+          </li>
         </ul>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">界面语言（i18n）</h3>
@@ -1203,6 +1207,7 @@
           <tr><td>自动记忆（agent 自维护）</td><td><code>~/.nova/projects/&lt;项目路径编码&gt;/memory/</code>（<code>MEMORY.md</code> + 每条一文件；<code>memory.auto.dir</code> 可改回工作区内）</td></tr>
           <tr><td>MCP OAuth token</td><td><code>~/.nova/mcp-auth/</code></td></tr>
           <tr><td>更新检查节流状态</td><td><code>~/.nova/update-check.json</code></td></tr>
+          <tr><td>跨会话 token 累计（状态行「累计」命中率）</td><td><code>~/.nova/usage.json</code></td></tr>
         </tbody></table></div>
         <div class="callout callout-info">
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>

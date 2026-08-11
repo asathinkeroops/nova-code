@@ -79,6 +79,9 @@ export async function runHeadless(settings: Settings, opts: HeadlessOptions): Pr
     result = await ctx.agent.runTurn(opts.prompt);
   } finally {
     await ctx.transcript.flush();
+    // A `-p` run's tokens count toward the all-time ledger like any other; its
+    // batched writes need the same flush before the process exits.
+    await ctx.screen.flushGlobalUsage();
     await ctx.backgroundManager.disposeAll();
     await ctx.monitorManager.disposeAll();
     if (ctx.lspManager) await ctx.lspManager.disposeAll();

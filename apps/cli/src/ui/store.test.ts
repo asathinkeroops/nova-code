@@ -304,3 +304,70 @@ describe("checklist footers", () => {
     expect(store.getState().todos).toHaveLength(2);
   });
 });
+
+describe("token usage accounting", () => {
+  const req = (uncached: number, read: number, creation = 0) => ({
+    inputTokens: uncached,
+    outputTokens: 10,
+    cacheReadInputTokens: read,
+    cacheCreationInputTokens: creation,
+  });
+
+  it("grows the session and all-time counters together", () => {
+    const store = createAppStore();
+    store.getState().seedLifetimeUsage({
+      cacheReadTokens: 900,
+      cacheCreationTokens: 0,
+      uncachedInputTokens: 100,
+    });
+    store.getState().addUsage(req(100, 0));
+    store.getState().addUsage(req(0, 100));
+    const s = store.getState();
+    expect(s.uncachedInputTokens).toBe(100);
+    expect(s.cacheReadTokens).toBe(100);
+    // All-time starts from the seeded ledger and adds the same two requests.
+    expect(s.lifetimeUncachedInputTokens).toBe(200);
+    expect(s.lifetimeCacheReadTokens).toBe(1000);
+  });
+
+  it("hands each request's delta to the cross-session ledger", () => {
+    const seen: number[] = [];
+    const store = createAppStore({ persistUsage: (u) => seen.push(u.cacheReadInputTokens ?? 0) });
+    store.getState().addUsage(req(100, 0));
+    store.getState().addUsage(req(0, 300));
+    // Per-request deltas, not running totals — the ledger accumulates on disk.
+    expect(seen).toEqual([0, 300]);
+  });
+
+  it("keeps the all-time counters across /clear and a session switch", () => {
+    const store = createAppStore();
+    store.getState().addUsage(req(100, 300));
+
+    store.getState().reset();
+    expect(store.getState().cacheReadTokens).toBe(0);
+    expect(store.getState().lifetimeCacheReadTokens).toBe(300);
+
+    store.getState().seedUsage({
+      cacheReadTokens: 7,
+      cacheCreationTokens: 0,
+      uncachedInputTokens: 3,
+      outputTokens: 1,
+    });
+    const s = store.getState();
+    expect(s.cacheReadTokens).toBe(7);
+    // Switching sessions re-seeds the session counters from that session's
+    // transcript; the all-time ones span every session and must not rewind.
+    expect(s.lifetimeCacheReadTokens).toBe(300);
+    expect(s.lifetimeUncachedInputTokens).toBe(100);
+  });
+
+  it("ignores a lifetime seed that matches the current totals", () => {
+    const store = createAppStore();
+    const totals = { cacheReadTokens: 5, cacheCreationTokens: 1, uncachedInputTokens: 2 };
+    store.getState().seedLifetimeUsage(totals);
+    const first = store.getState();
+    store.getState().seedLifetimeUsage({ ...totals });
+    // Same values → no publish, so a periodic flush can't churn a re-render.
+    expect(store.getState()).toBe(first);
+  });
+});

@@ -107,6 +107,8 @@ export const zh: DeepPartial<Catalog> = {
     bypass: "⚠ 跳过权限已开启",
     usageBalance: "余额",
     usageCache: "缓存",
+    usageCacheSession: "会话",
+    usageCacheTotal: "累计",
     usageIn: "输入",
     usageOut: "输出",
     usageCost: "花费",

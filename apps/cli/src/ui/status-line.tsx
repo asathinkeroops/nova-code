@@ -8,10 +8,10 @@ import { t } from "../i18n/index.js";
 import type { AppStoreApi } from "./store.js";
 import {
   cacheHitRate,
+  cacheSegmentText,
   contextBar,
   displayCwd,
   fitSegments,
-  formatPercent,
   formatTokenCount,
   shellModeIndicator,
   type StatusSegment,
@@ -56,8 +56,8 @@ function SegmentRow({
 /**
  * Two always-reserved rows above the InputBox. The first renders the session
  * status — model, context-window usage, workspace, git branch, and directory;
- * the second renders cumulative usage — prompt-cache hit rate and prompt /
- * output token totals. Each row is fitted to the terminal width independently
+ * the second renders usage — prompt-cache hit rate (this session and all-time)
+ * and session prompt / output token totals. Each row is fitted independently
  * (rightmost segments drop first when space runs out). The transient "✓ copied"
  * notice from a mouse-drag selection takes over the first row for its short
  * lifetime (the second stays blank). Permanent layout slot: the block is always
@@ -75,6 +75,9 @@ export function StatusLine({ store, shellMode = false }: StatusLineProps): React
     cacheReadTokens,
     cacheCreationTokens,
     uncachedInputTokens,
+    lifetimeCacheReadTokens,
+    lifetimeCacheCreationTokens,
+    lifetimeUncachedInputTokens,
     sessionOutputTokens,
     costRates,
     accountBalance,
@@ -90,6 +93,9 @@ export function StatusLine({ store, shellMode = false }: StatusLineProps): React
       cacheReadTokens: s.cacheReadTokens,
       cacheCreationTokens: s.cacheCreationTokens,
       uncachedInputTokens: s.uncachedInputTokens,
+      lifetimeCacheReadTokens: s.lifetimeCacheReadTokens,
+      lifetimeCacheCreationTokens: s.lifetimeCacheCreationTokens,
+      lifetimeUncachedInputTokens: s.lifetimeUncachedInputTokens,
       sessionOutputTokens: s.sessionOutputTokens,
       costRates: s.costRates,
       accountBalance: s.accountBalance,
@@ -153,8 +159,8 @@ export function StatusLine({ store, shellMode = false }: StatusLineProps): React
     main.push({ icon: "•", text: displayCwd(banner.cwd, banner.home), color: ACCENT_HEX });
   }
 
-  // Second row: cumulative usage — cache hit rate, prompt / output token
-  // totals, and estimated cost when the model is priced.
+  // Second row: usage — cache hit rate (this session / all-time), session
+  // prompt / output token totals, and estimated cost when the model is priced.
   // Each segment gets a distinct color so the row reads like a small dashboard
   // (matching the multi-colored reference statusline) rather than a flat block.
   const usage: StatusSegment[] = [];
@@ -170,11 +176,16 @@ export function StatusLine({ store, shellMode = false }: StatusLineProps): React
     });
   }
   const hitRate = cacheHitRate(cacheReadTokens, cacheCreationTokens, uncachedInputTokens);
-  if (hitRate !== null) {
+  const lifetimeRate = cacheHitRate(
+    lifetimeCacheReadTokens,
+    lifetimeCacheCreationTokens,
+    lifetimeUncachedInputTokens,
+  );
+  if (hitRate !== null || lifetimeRate !== null) {
     // A geometric glyph (not an emoji like ⚡): emoji render double-width but
     // `visibleWidth` counts them as 1, so the layout would under-reserve space
     // and leave a visible gap after the icon.
-    usage.push({ icon: "◆", text: `${formatPercent(hitRate)} ${t.status.usageCache}`, color: "cyan" });
+    usage.push({ icon: "◆", text: cacheSegmentText(hitRate, lifetimeRate), color: "cyan" });
   }
   const promptTotal = cacheReadTokens + cacheCreationTokens + uncachedInputTokens;
   if (promptTotal > 0) {

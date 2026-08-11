@@ -44,6 +44,7 @@ import {
   type SpinnerLabel,
 } from "./ui/store.js";
 import { loadInputHistory, saveInputHistory } from "./ui/input-history.js";
+import { GlobalUsageLedger, loadGlobalUsage } from "./ui/global-usage.js";
 
 export type { SpinnerLabel } from "./ui/store.js";
 export type Spinner = SpinnerHandle;
@@ -95,8 +96,18 @@ export interface ScreenOptions {
 }
 
 export class Screen {
+  /**
+   * Cross-session token ledger behind the StatusLine's all-time cache hit rate.
+   * Batches per-request usage and folds it into `~/.nova/usage.json`; each flush
+   * pushes the merged total back into the store so a second nova process's spend
+   * is picked up too.
+   */
+  private readonly globalUsage = new GlobalUsageLedger(undefined, (totals) =>
+    this.store.getState().seedLifetimeUsage(totals),
+  );
   private store: AppStoreApi = createAppStore({
     persistInputHistory: (history) => void saveInputHistory(history),
+    persistUsage: (usage) => this.globalUsage.add(usage),
   });
   private instance: InkInstance | null = null;
   private mounted = false;
@@ -121,6 +132,9 @@ export class Screen {
     void loadInputHistory().then((history) => {
       if (history.length > 0) this.store.getState().setInputHistory(history);
     });
+    // Same treatment for the all-time token ledger: the StatusLine shows the
+    // session-only rate until the read lands, then re-renders with both.
+    void loadGlobalUsage().then((totals) => this.store.getState().seedLifetimeUsage(totals));
   }
 
   /**
@@ -471,6 +485,14 @@ export class Screen {
     cacheCreationInputTokens?: number;
   }): void {
     this.store.getState().addUsage(usage);
+  }
+
+  /**
+   * Write out any usage still batched in the cross-session ledger. Called on
+   * shutdown so the last turn's spend isn't lost with the process.
+   */
+  flushGlobalUsage(): Promise<void> {
+    return this.globalUsage.flush();
   }
 
   seedUsage(totals: {
