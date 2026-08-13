@@ -62,6 +62,27 @@ export async function askPlanApproval(
 }
 
 /**
+ * Whether the answer should end the turn outright instead of handing the model
+ * something to work with.
+ *
+ * Exactly one thing keeps a turn running after this prompt: something for the
+ * model to act on. Approval is that (implement it), and so is feedback typed
+ * into "Other" (revise against it). Everything else — "No, keep planning" with
+ * nothing typed, or a prompt dismissed with ESC — leaves the model with no new
+ * information, so the only thing it could do with the rest of the turn is
+ * re-plan blindly or ask again. The host ends the turn instead and hands the
+ * input box back; plan mode stays on and the user's next message decides what
+ * happens.
+ *
+ * ESC during an in-flight turn has usually aborted it already (the REPL's esc
+ * handler), which is why this is idempotent on the caller's side: `agent.abort`
+ * on an already-aborted controller is a no-op.
+ */
+export function shouldStopTurn(decision: PlanApproval): boolean {
+  return !decision.approved && !decision.feedback?.trim();
+}
+
+/**
  * Whether the REPL should raise the approval prompt itself, checked once per
  * pass through the idle loop.
  *

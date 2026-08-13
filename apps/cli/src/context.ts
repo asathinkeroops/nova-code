@@ -68,7 +68,7 @@ import {
 } from "./permissions.js";
 import { classifyCommandRisk } from "./auto-classify.js";
 import { makePlanModeReminder } from "./plan-mode-reminder.js";
-import { askPlanApproval } from "./plan-approval.js";
+import { askPlanApproval, shouldStopTurn } from "./plan-approval.js";
 import { loadAgents } from "./agents.js";
 import { loadPlugins, pluginSkillRoots } from "./plugins/loader.js";
 import { DEFAULT_PLUGIN_CACHE_DIR } from "./plugins/install.js";
@@ -1071,7 +1071,17 @@ export async function createContext(
           // Tell the REPL's end-of-turn gate that this turn already asked, so
           // a rejection here is not immediately followed by the same prompt.
           ctx.planApprovalAskedThisTurn = true;
-          return await askPlanApproval(askUser, ctx.screen);
+          const decision = await askPlanApproval(askUser, ctx.screen);
+          // A bare "keep planning" — or a dismissed prompt — ends the turn,
+          // exactly like an explicit Deny at a permission prompt: the loop
+          // cancels any sibling tool and stops without another model
+          // round-trip, and the user gets the input box back with plan mode
+          // still on. Feedback typed instead keeps the turn running so the
+          // model can revise against it. See shouldStopTurn.
+          if (shouldStopTurn(decision)) {
+            ctx.agent.abort(new Error("plan not approved by user"));
+          }
+          return decision;
         },
       }),
     );

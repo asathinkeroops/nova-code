@@ -3,6 +3,7 @@ import type { AskUserFn, AskUserResponse } from "@nova/core";
 import {
   askPlanApproval,
   shouldGatePlanApproval,
+  shouldStopTurn,
   PLAN_APPROVED_PROMPT,
   type PlanApprovalScreen,
 } from "./plan-approval.js";
@@ -57,6 +58,25 @@ describe("askPlanApproval", () => {
     const out = await askPlanApproval(answering({ answers: [], cancelled: true }), screen);
     expect(out).toEqual({ approved: false, cancelled: true });
     expect(screen.getPermissionMode()).toBe("plan");
+  });
+});
+
+describe("shouldStopTurn", () => {
+  it("stops the turn on a bare decline — no direction to work from", () => {
+    expect(shouldStopTurn({ approved: false })).toBe(true);
+    expect(shouldStopTurn({ approved: false, feedback: "   " })).toBe(true);
+  });
+
+  it("stops the turn on a dismissed prompt — nobody answered", () => {
+    expect(shouldStopTurn({ approved: false, cancelled: true })).toBe(true);
+  });
+
+  it("keeps the turn running when the user typed feedback to revise against", () => {
+    expect(shouldStopTurn({ approved: false, feedback: "先只改 config" })).toBe(false);
+  });
+
+  it("leaves an approval alone — that turn continues into the work", () => {
+    expect(shouldStopTurn({ approved: true })).toBe(false);
   });
 });
 

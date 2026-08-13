@@ -103,12 +103,31 @@ describe("exitPlanMode", () => {
     expect(res.output).toContain("split step 2");
   });
 
-  it("errors on a cancelled prompt so the model stops instead of retrying", async () => {
+  it("tells the model to wait when the user declines without feedback", async () => {
+    const h = harness({ active: true, answer: { approved: false } });
+    const res = await h.exit.run({ plan: "1. rewrite everything" }, ctx);
+    expect(h.state.active).toBe(true);
+    // Not an error — the user answered, they just did not say what to change.
+    // The host ends the turn; this text is what the model reads next time.
+    expect(res.isError).toBeUndefined();
+    expect(res.output).toContain("did NOT approve");
+    expect(res.output).toContain("wait for their next message");
+    expect(res.output).not.toContain("Revise the plan accordingly");
+  });
+
+  it("treats whitespace-only feedback as no feedback", async () => {
+    const h = harness({ active: true, answer: { approved: false, feedback: "   " } });
+    const res = await h.exit.run({ plan: "1. ship it" }, ctx);
+    expect(res.output).toContain("wait for their next message");
+  });
+
+  it("errors on a cancelled prompt so the model waits instead of retrying", async () => {
     const h = harness({ active: true, answer: { approved: false, cancelled: true } });
     const res = await h.exit.run({ plan: "1. ship it" }, ctx);
     expect(h.state.active).toBe(true);
     expect(res.isError).toBe(true);
-    expect(res.output).toContain("Do not retry");
+    expect(res.output).toContain("do not retry this tool");
+    expect(res.output).toContain("wait for the user's next message");
   });
 
   it("rejects an empty or whitespace-only plan before asking the user", async () => {

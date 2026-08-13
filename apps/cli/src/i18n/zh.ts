@@ -73,7 +73,7 @@ export const zh: DeepPartial<Catalog> = {
     approve: "可以，开始实现",
     approveHint: "关闭 plan 模式，重新启用 write/edit/bash。",
     reject: "先别，继续规划",
-    rejectHint: "保持只读。选“Other”可以说明要改什么。",
+    rejectHint: "保持只读并结束本轮，等你下一条消息。选“其他”可以直接说要改什么。",
   },
 
   tool: {

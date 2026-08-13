@@ -86,7 +86,7 @@ export const en = {
     approve: "Yes, implement it",
     approveHint: "Turns plan mode off; write/edit/bash are enabled again.",
     reject: "No, keep planning",
-    rejectHint: "Stays read-only. Pick “Other” to say what to change.",
+    rejectHint: "Stays read-only and ends the turn. Pick “Other” to say what to change.",
   },
 
   /** Shared tool-call rendering fragments (`ui/render-strings.ts`, approval). */

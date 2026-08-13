@@ -805,7 +805,7 @@
         <div class="tbl-wrap"><table class="doc"><thead><tr><th>工具</th><th>权限</th><th>说明</th></tr></thead><tbody>
           <tr><td><code>askUserQuestion</code></td><td><span class="pill pill-ro">只读</span></td><td>一次提 1–4 个选择题（每题 2–4 个选项，可多选）；运行时自动补一个「Other」让你自由作答</td></tr>
           <tr><td><code>enterPlanMode</code></td><td><span class="pill pill-ro">默认放行</span></td><td>模型把<strong>当前会话</strong>切进只读的 <code>plan</code> 权限模式（与 <span class="kbd">Shift+Tab</span> 切到的那一档是同一个开关）。只会收权，所以不问你；界面上显示为一行 <code>plan  read-only</code>，标出会话是从哪里开始只读的</td></tr>
-          <tr><td><code>exitPlanMode</code></td><td><span class="pill pill-ro">默认放行</span></td><td>带上完整方案（markdown）请你拍板，直接弹一个「按这个计划动手吗？」的选择框。它的调用行<strong>不显示</strong>，取而代之的是 <code>plan</code> 参数<strong>当作模型正文渲染出来</strong> —— 那正是要你拍板的东西（模型若已在正文里写过同一份方案，则不重复渲染）。<strong>只有你明确同意</strong>才关掉 plan 模式（回到进入前的那个模式，没记录则回 <code>default</code>）；选「Other」写的意见会作为反馈回给模型，plan 模式保持开着</td></tr>
+          <tr><td><code>exitPlanMode</code></td><td><span class="pill pill-ro">默认放行</span></td><td>带上完整方案（markdown）请你拍板，直接弹一个「按这个计划动手吗？」的选择框。它的调用行<strong>不显示</strong>，取而代之的是 <code>plan</code> 参数<strong>当作模型正文渲染出来</strong> —— 那正是要你拍板的东西（模型若已在正文里写过同一份方案，则不重复渲染）。<strong>只有你明确同意</strong>才关掉 plan 模式（回到进入前的那个模式，没记录则回 <code>default</code>）；选「其他」写的意见会作为反馈回给模型继续改，选「不同意」而不写意见、或直接 ESC 关掉，则<strong>当场结束这一轮</strong>回到输入框 —— 几种情况 plan 模式都保持开着</td></tr>
         </tbody></table></div>
         <p>模型自己进出 plan 模式这套由 <code>planMode.agentTools</code> 控制（默认开）。关掉后这两个工具不再注册，plan 模式就只能靠 <span class="kbd">Shift+Tab</span> 或 <code>--permission-mode plan</code> 手动进。子 agent 永远拿不到这两个工具 —— 它跑在主会话里，不该去改主会话的权限模式。</p>
         <p><strong>不过退出 plan 模式并不依赖模型调 <code>exitPlanMode</code></strong>：只要一轮结束时还在 plan 模式，nova 自己就会弹那个确认框（<code>planMode.approvalGate</code>，默认开），见 <a class="inline-link" href="#sec-10">§10</a>。</p>
@@ -883,10 +883,11 @@
           <p><strong>退出则不靠模型自觉。</strong> 只要一轮结束时会话还停在 plan 模式，nova 在回到输入框之前会自己弹确认框：</p>
           <ul class="list-disc pl-6 space-y-1">
             <li>选<strong>同意</strong> → 权限模式立刻回到<strong>进入 plan 之前的那一档</strong>（shift+tab 进的也记得，例如从 <code>auto</code> 进就回 <code>auto</code>），并立刻续跑一轮开始实现，你不用再输入任何东西</li>
-            <li>选<strong>不同意</strong> → 留在 plan 模式；你在「Other」里写的意见直接作为下一轮输入回给模型</li>
+            <li>选<strong>不同意</strong> → 留在 plan 模式，<strong>本轮到此结束</strong>，回到输入框等你下一条消息（不写意见就等于「先停一下」，模型不会自己再改一版方案）</li>
+            <li>在「其他」里写意见 → 同样留在 plan 模式，但你写的内容直接作为下一轮输入回给模型，让它照着改</li>
             <li><strong>ESC 关掉</strong> → 什么也不做，回到输入框（shift+tab 和直接打字都照常）</li>
           </ul>
-          <p>模型主动调 <code>exitPlanMode</code> 弹的是同一个框、同一套恢复逻辑；那一轮里已经问过，闸门就不会再问第二遍。这一层由 <code>planMode.approvalGate</code> 控制（默认开），关掉则退出 plan 模式回到只靠 <code>exitPlanMode</code> 或 <span class="kbd">Shift+Tab</span>。</p></div>
+          <p>模型主动调 <code>exitPlanMode</code> 弹的是同一个框、同一套恢复逻辑；那一轮里已经问过，闸门就不会再问第二遍。区别只在于那一轮还在跑：<strong>除非你写了修改意见</strong>，不同意和 ESC 都会把这一轮就地中断（和权限框里点「拒绝」一样），模型拿不到继续跑的机会。这一层由 <code>planMode.approvalGate</code> 控制（默认开），关掉则退出 plan 模式回到只靠 <code>exitPlanMode</code> 或 <span class="kbd">Shift+Tab</span>。</p></div>
         </div>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">默认放行 vs 默认询问</h3>

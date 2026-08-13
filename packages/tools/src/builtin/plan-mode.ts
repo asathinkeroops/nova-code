@@ -40,6 +40,11 @@ export interface PlanModeDeps {
    * it. MUST turn plan mode off itself iff it returns `approved: true` — the
    * tool never flips the mode on the exit path, so a host that prompts
    * asynchronously cannot leave the two out of sync.
+   *
+   * A decline with no `feedback` — and likewise a `cancelled` prompt — means
+   * "stop, I'll say what's next": the tool tells the model to wait rather than
+   * re-plan, and an interactive host is expected to end the turn outright
+   * instead of trusting that instruction.
    */
   requestExit(plan: string): Promise<PlanExitDecision>;
 }
@@ -110,8 +115,9 @@ function exitPlanModeTool(deps: PlanModeDeps): ToolHandler {
         "Ask the user to approve your plan and leave plan mode so you can implement it. Call this " +
         "ONLY when plan mode is on and the plan is complete — it is a request for approval, not a " +
         "way to grant yourself write access. The user sees the plan and answers: on approval plan " +
-        "mode turns off and you may start implementing; otherwise plan mode stays on and you " +
-        "revise the plan from their feedback and ask again. This is also the FIRST thing to call " +
+        "mode turns off and you may start implementing; if they decline with feedback, plan mode " +
+        "stays on and you revise from that feedback and ask again; if they decline without " +
+        "feedback, stop and wait for their next message. This is also the FIRST thing to call " +
         "when the user tells you to go ahead and implement while plan mode is still on: their " +
         "approval does not lift the mode by itself, so starting with a write, edit, or bash just " +
         "gets denied.",
@@ -139,16 +145,29 @@ function exitPlanModeTool(deps: PlanModeDeps): ToolHandler {
         return {
           output:
             "No answer — plan mode is still ON and every write, edit, bash, and monitor call will " +
-            "be denied. Do not retry this tool or guess an approval: report the plan in plain " +
-            "text and stop, leaving the decision to the user.",
+            "be denied. Stop here and wait for the user's next message: do not retry this tool, " +
+            "guess an approval, or start implementing. The decision is theirs to give when they " +
+            "are ready.",
           isError: true,
         };
       }
       const feedback = decision.feedback?.trim();
+      if (!feedback) {
+        // Declining without a word is the user taking the wheel, not a request
+        // for another draft: they have not said what is wrong, so a rewrite
+        // would be a guess. The host ends the turn here, but say so anyway —
+        // this result is what the model reads at the START of the next turn,
+        // and it must not resume by re-planning or re-asking on its own.
+        return {
+          output:
+            "The user did NOT approve the plan and gave no feedback; plan mode stays ON. Stop " +
+            "here and wait for their next message — do not revise the plan, call this tool " +
+            "again, or start implementing.",
+        };
+      }
       return {
         output:
-          "The user did NOT approve the plan; plan mode stays ON." +
-          (feedback ? ` Their feedback: ${feedback}` : "") +
+          `The user did NOT approve the plan; plan mode stays ON. Their feedback: ${feedback}` +
           " Revise the plan accordingly (still read-only) and ask again when it addresses the " +
           "feedback — do not start implementing.",
       };
