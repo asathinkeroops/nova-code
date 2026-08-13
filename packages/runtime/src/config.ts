@@ -530,18 +530,28 @@ export const settingsSchema = z.object({
   // newer version is published; the running process keeps its already-loaded
   // code, so the new version takes effect on the NEXT launch. Set it false to
   // go back to notify-only.
+  //
+  // The default command pins `--registry https://registry.npmjs.org` so the
+  // install pulls from the SAME registry the version check queries (see
+  // fetchLatestVersion in apps/cli) — a user-level npmrc pointing at a mirror
+  // that lags behind npmjs would otherwise "successfully" install an older
+  // version while the check reports the newer one. All of npm/pnpm/yarn/bun
+  // accept `--registry`; override the command to use any other source.
   update: z
     .object({
       enabled: z.boolean().default(true),
       autoInstall: z.boolean().default(true),
       notifyIntervalHours: z.number().int().positive().default(6),
-      command: z.string().default("npm install -g @asathinkeroops/nova-code@latest"),
+      command: z
+        .string()
+        .default("npm install -g @asathinkeroops/nova-code@latest --registry https://registry.npmjs.org"),
     })
     .default({
       enabled: true,
       autoInstall: true,
       notifyIntervalHours: 6,
-      command: "npm install -g @asathinkeroops/nova-code@latest",
+      command:
+        "npm install -g @asathinkeroops/nova-code@latest --registry https://registry.npmjs.org",
     }),
   logging: z
     .object({

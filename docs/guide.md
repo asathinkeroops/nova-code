@@ -740,7 +740,7 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 
 - **更新检查 + 后台自动安装**：交互启动时以及运行中每小时，Nova 会比对 npm 上是否有新版。默认（`update.autoInstall: true`）发现新版就在后台静默跑 `update.command` 装好——但**当前进程已经把代码加载进内存了，装完不会热生效，下次启动 nova 才是新版**，卡片文案也据此提示。安装失败（比如全局安装权限不足）会退回普通的「运行 `nova upgrade`」提示，并按 `notifyIntervalHours` 退避后重试，不会每小时重装。设 `update.autoInstall: false` 回到只提醒不安装。
 - **提醒限流**：为避免长时间会话被反复打扰，同一提醒最多每 `update.notifyIntervalHours`（默认 6h）弹一次（拉取版本本身不限流；一次成功的后台安装则总会提示一次）。上次提醒时间和最近一次自动安装记在 `~/.nova/update-check.json`；设 `update.enabled: false` 整个静音。
-- **手动升级**：`nova upgrade` 跑 `update.command`（默认 `npm install -g @asathinkeroops/nova-code@latest`，可改成 pnpm/yarn/bun 全局安装）把自己升到最新版。`nova --version` 打印当前版本。
+- **手动升级**：`nova upgrade` 跑 `update.command`（默认 `npm install -g @asathinkeroops/nova-code@latest --registry https://registry.npmjs.org`，可改成 pnpm/yarn/bun 全局安装）把自己升到最新版。默认命令显式指定 npmjs 官方源，与版本检测查询的 registry 一致——如果你的 npm 配置了未同步的镜像（`npm config get registry` 可查），裸命令会"成功"装回旧版。安装后 `nova upgrade` 会校验磁盘上的实际版本，装到旧版时会明确报错而不是宣称成功。`nova --version` 打印当前版本。
 
 ### 数据落在哪
 
@@ -862,7 +862,7 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 | `update.enabled` | `true` | 检查 npm 新版，见 [§19](#19-会话检查点与数据落盘) |
 | `update.autoInstall` | `true` | 发现新版就后台静默安装（下次启动生效）；`false` 则只提醒 |
 | `update.notifyIntervalHours` | `6` | 同一更新提醒的最小间隔（同时用作失败安装的退避间隔） |
-| `update.command` | `npm install -g @asathinkeroops/nova-code@latest` | `nova upgrade` 跑的安装器（可改 pnpm/yarn/bun） |
+| `update.command` | `npm install -g @asathinkeroops/nova-code@latest --registry https://registry.npmjs.org` | `nova upgrade` 跑的安装器（可改 pnpm/yarn/bun；默认显式走 npmjs 官方源，避免镜像滞后装回旧版） |
 
 ### 扩展子系统
 

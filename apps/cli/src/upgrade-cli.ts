@@ -36,6 +36,22 @@ export function buildUpgradeCommand(): Command {
       process.stdout.write(`installing via: ${settings.update.command}\n\n`);
       const code = await runUpgrade(settings.update.command);
       if (code === 0) {
+        // Exit 0 from the install command is not proof the *published* version
+        // landed: a user-level npmrc pointing at a lagging mirror can make
+        // `npm install -g …@latest` succeed while installing an older version.
+        // Re-read the on-disk package.json (the install just overwrote it) and
+        // verify before claiming victory.
+        const installed = await readCliPackage();
+        if (installed.version !== "0.0.0" && installed.version !== latest) {
+          process.stdout.write(
+            `\n⚠ installed ${installed.version}, but the latest published version is ${latest}.\n` +
+              `The upgrade command ran but did not update nova. Check settings.update.command\n` +
+              `and your npm registry (\`npm config get registry\`) — a mirror that hasn't synced\n` +
+              `${latest} yet can silently install an older version. Force the official registry:\n` +
+              `\n  npm install -g @asathinkeroops/nova-code@latest --registry https://registry.npmjs.org\n`,
+          );
+          process.exit(1);
+        }
         process.stdout.write(`\n✓ updated to ${latest}. restart nova to use it.\n`);
       } else {
         process.stdout.write(`\n✗ upgrade command exited with code ${code}.\n`);
