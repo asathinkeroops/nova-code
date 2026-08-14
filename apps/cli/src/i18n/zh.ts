@@ -83,7 +83,7 @@ export const zh: DeepPartial<Catalog> = {
   render: {
     tagline:
       "专为 DeepSeek 打造的编程智能体 —— 95%+ 缓存命中 · 系统级沙箱 · 工具齐备 · 开箱即用。 ",
-    thinking: "思考中",
+    thinking: "思考",
     redacted: "（已隐去）",
     showLess: "… 收起",
     moreLines: (n: number): string => `… 还有 ${n} 行`,
