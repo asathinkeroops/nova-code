@@ -11,13 +11,11 @@ import { Transcript } from "@nova/observability";
 import { red } from "./colors.js";
 import { refreshBanner, type CliContext } from "./context.js";
 import { loadDisplaySidecar } from "./display-sidecar.js";
+import { t } from "./i18n/index.js";
 import { loadCards } from "./card-store.js";
 import { loadGoal } from "./goal.js";
 import { loadSessionName } from "./session-name.js";
-import {
-  restoreContextTokensFromTranscript,
-  restoreUsageFromTranscript,
-} from "./usage-restore.js";
+import { restoreFromTranscript } from "./usage-restore.js";
 import { SnapshotStore } from "./snapshots.js";
 import { loadMessages, emptyCursor } from "@nova/agent";
 
@@ -69,15 +67,29 @@ export async function pruneOldSessions(ctx: CliContext): Promise<void> {
  * Load every saved session and derive a one-line label from its first user
  * message. Empty sessions are skipped; sessions whose history fails to load are
  * kept with a red error label. Used by /resume to build its picker rows.
+ *
+ * "Empty" means the file is absent or has no lines — NOT that nothing in it
+ * parsed. `loadMessages` skips unreadable lines instead of throwing, so a
+ * session whose every line is corrupt comes back as an empty array; treating
+ * that as empty would drop it from the picker and hide the damage. It gets the
+ * error label instead, same as a genuine read failure.
  */
 export async function buildSessionRows(sessionDir: string | undefined): Promise<SessionRow[]> {
   const list = await listSessions(sessionDir);
   const rows: SessionRow[] = [];
   for (const s of list) {
     try {
-      const msgs = await loadMessages(s.messagesPath);
-      if (msgs.length === 0) continue;
-      rows.push({ session: s, label: firstUserLabel(msgs) });
+      let skipped = 0;
+      const msgs = await loadMessages(s.messagesPath, {
+        onSkip: () => {
+          skipped += 1;
+        },
+      });
+      if (msgs.length > 0) {
+        rows.push({ session: s, label: firstUserLabel(msgs) });
+      } else if (skipped > 0) {
+        rows.push({ session: s, label: red(`load failed: ${skipped} unreadable line(s)`) });
+      }
     } catch (err) {
       const msg = err instanceof Error ? (err.message.split("\n")[0] ?? "") : String(err);
       rows.push({ session: s, label: red(`load failed: ${msg.slice(0, 80)}`) });
@@ -142,8 +154,14 @@ export async function switchToSession(
   const title = opts.title ?? "/resume";
   const resumed = opts.resumed ?? true;
   let newMessages: MessageParam[];
+  let skipped = 0;
   try {
-    newMessages = await loadMessages(newSession.messagesPath);
+    newMessages = await loadMessages(newSession.messagesPath, {
+      onSkip: ({ line, error }) => {
+        skipped += 1;
+        ctx.logger.warn({ line, err: error, target: newSession.id }, "skipped unreadable message");
+      },
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     // persist:false — the switch hasn't committed, so ctx.session still points
@@ -173,8 +191,10 @@ export async function switchToSession(
   ctx.transcript = new Transcript(newSession.transcriptPath);
   ctx.snapshots = new SnapshotStore(join(newSession.dir, "snapshots"));
   await ctx.snapshots.load();
+  // An empty cursor forces the next write to rewrite the file — the desired
+  // outcome after skipping unreadable lines, which appending would preserve.
   ctx.persistCursor =
-    newMessages.length === 0
+    newMessages.length === 0 || skipped > 0
       ? emptyCursor
       : {
           count: newMessages.length,
@@ -214,6 +234,9 @@ export async function switchToSession(
   // session-info notice (persist:false so it isn't re-recorded each switch).
   ctx.screen.setCards(await loadCards(newSession.dir));
   ctx.screen.card(card, { kind: "info", title, persist: false });
+  if (skipped > 0) {
+    ctx.screen.card(t.resume.skippedMessages(skipped), { kind: "warn", title, persist: false });
+  }
   ctx.screen.setMessages(newMessages);
   // Carry the switched-in session's active /goal (or null for a fresh one), so
   // auto-continuation follows the session rather than leaking across a switch.
@@ -226,11 +249,12 @@ export async function switchToSession(
   // switched-in session's transcript. `/clear` lands on a fresh empty session,
   // so its counters stay at the zero set by `screen.reset()` above.
   if (resumed) {
-    ctx.screen.seedUsage(await restoreUsageFromTranscript(newSession.transcriptPath));
+    const restored = await restoreFromTranscript(newSession.transcriptPath);
+    ctx.screen.seedUsage(restored.totals);
     // Also rehydrate the context-window meter from the last request's total, so
     // it reads the real occupancy after `/resume` rather than 0% (reset above)
     // until the next model turn.
-    ctx.screen.setContextTokens(await restoreContextTokensFromTranscript(newSession.transcriptPath));
+    ctx.screen.setContextTokens(restored.contextTokens);
   }
   ctx.logger.info(
     { sessionId: newSession.id, dir: newSession.dir, messageCount: newMessages.length, resumed },

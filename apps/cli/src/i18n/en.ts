@@ -443,6 +443,9 @@ export const en = {
     alreadyOn: "already on that session.",
     /** Ephemeral card shown above a restored history (`context.ts`). */
     loadedMessages: (n: number): string => `loaded ${n} message(s) from disk`,
+    /** Warned when history lines were unreadable and skipped (`session.ts`). */
+    skippedMessages: (n: number): string =>
+      `skipped ${n} unreadable line(s) in the history; see the session log`,
   },
 
   /** The `/skills` list (`commands/skills.ts`). */

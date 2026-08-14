@@ -360,6 +360,12 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
       messages = [...messages, ...injected.messages];
       await hooks.runAdvisory("post_messages", { messages });
     }
+
+    // Every message this iteration produced is now final — the assistant
+    // message was restored to the model's block order above, the tool_result
+    // batch is fully settled, and any pre_continue injection is appended.
+    // Signal the durability boundary so persisters can flush (see `post_commit`).
+    await hooks.runAdvisory("post_commit", { messages });
   }
 }
 

@@ -2,10 +2,7 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import {
-  restoreContextTokensFromTranscript,
-  restoreUsageFromTranscript,
-} from "./usage-restore.js";
+import { restoreFromTranscript } from "./usage-restore.js";
 
 async function writeTranscript(lines: object[]): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "nova-usage-"));
@@ -23,7 +20,7 @@ function requestRecord(usage: Record<string, number>): object {
   return { kind: "post_request", data: { usage } };
 }
 
-describe("restoreUsageFromTranscript", () => {
+describe("restoreFromTranscript totals", () => {
   it("sums usage across every post_request record", async () => {
     const path = await writeTranscript([
       { kind: "session_start", data: { id: "s1" } },
@@ -52,7 +49,7 @@ describe("restoreUsageFromTranscript", () => {
         },
       },
     ]);
-    expect(await restoreUsageFromTranscript(path)).toEqual({
+    expect((await restoreFromTranscript(path)).totals).toEqual({
       cacheReadTokens: 1000,
       cacheCreationTokens: 55,
       uncachedInputTokens: 120,
@@ -66,7 +63,7 @@ describe("restoreUsageFromTranscript", () => {
       { kind: "post_request", data: { error: "aborted", durationMs: 5 } },
       { kind: "post_request", data: { usage: { inputTokens: 10, outputTokens: 4 } } },
     ]);
-    expect(await restoreUsageFromTranscript(path)).toEqual({
+    expect((await restoreFromTranscript(path)).totals).toEqual({
       cacheReadTokens: 0,
       cacheCreationTokens: 0,
       uncachedInputTokens: 10,
@@ -76,7 +73,7 @@ describe("restoreUsageFromTranscript", () => {
 
   it("returns all-zero when the transcript is absent (fresh / noTranscript session)", async () => {
     const dir = await mkdtemp(join(tmpdir(), "nova-usage-"));
-    expect(await restoreUsageFromTranscript(join(dir, "transcript.jsonl"))).toEqual({
+    expect((await restoreFromTranscript(join(dir, "transcript.jsonl"))).totals).toEqual({
       cacheReadTokens: 0,
       cacheCreationTokens: 0,
       uncachedInputTokens: 0,
@@ -103,7 +100,7 @@ describe("restoreUsageFromTranscript", () => {
       requestRecord({ inputTokens: 9999, outputTokens: 9999 }),
     ]);
 
-    expect(await restoreUsageFromTranscript(main, subDir)).toEqual({
+    expect((await restoreFromTranscript(main, subDir)).totals).toEqual({
       cacheReadTokens: 840,
       cacheCreationTokens: 3,
       uncachedInputTokens: 111,
@@ -115,7 +112,7 @@ describe("restoreUsageFromTranscript", () => {
     const dir = await mkdtemp(join(tmpdir(), "nova-usage-"));
     const main = join(dir, "transcript.jsonl");
     await writeJsonl(main, [requestRecord({ inputTokens: 5, outputTokens: 2 })]);
-    expect(await restoreUsageFromTranscript(main, join(dir, "subagents"))).toEqual({
+    expect((await restoreFromTranscript(main, join(dir, "subagents"))).totals).toEqual({
       cacheReadTokens: 0,
       cacheCreationTokens: 0,
       uncachedInputTokens: 5,
@@ -124,7 +121,7 @@ describe("restoreUsageFromTranscript", () => {
   });
 });
 
-describe("restoreContextTokensFromTranscript", () => {
+describe("restoreFromTranscript contextTokens", () => {
   it("returns the last request's total (input + cache + output), not the sum", async () => {
     const path = await writeTranscript([
       requestRecord({
@@ -141,7 +138,7 @@ describe("restoreContextTokensFromTranscript", () => {
       }),
     ]);
     // Only the last record: 20 + 200 + 5 + 10.
-    expect(await restoreContextTokensFromTranscript(path)).toBe(235);
+    expect((await restoreFromTranscript(path)).contextTokens).toBe(235);
   });
 
   it("skips trailing error/aborted post_requests without usage", async () => {
@@ -151,13 +148,13 @@ describe("restoreContextTokensFromTranscript", () => {
       { kind: "user_prompt", data: { text: "hi" } },
     ]);
     // Falls back to the last record that actually carried usage: 40 + 100 + 8.
-    expect(await restoreContextTokensFromTranscript(path)).toBe(148);
+    expect((await restoreFromTranscript(path)).contextTokens).toBe(148);
   });
 
   it("returns 0 when the transcript is absent or has no request", async () => {
     const dir = await mkdtemp(join(tmpdir(), "nova-usage-"));
-    expect(await restoreContextTokensFromTranscript(join(dir, "transcript.jsonl"))).toBe(0);
+    expect((await restoreFromTranscript(join(dir, "transcript.jsonl"))).contextTokens).toBe(0);
     const path = await writeTranscript([{ kind: "user_prompt", data: { text: "hi" } }]);
-    expect(await restoreContextTokensFromTranscript(path)).toBe(0);
+    expect((await restoreFromTranscript(path)).contextTokens).toBe(0);
   });
 });

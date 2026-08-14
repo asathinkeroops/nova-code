@@ -170,6 +170,20 @@ export interface HookSpec {
   // ── message-stream / stop ────────────────────────────────────────────
   /** Fires on every mutation of the canonical messages array. */
   post_messages: { payload: { messages: MessageParam[] }; decision: void };
+  /**
+   * Durability boundary: fires at the end of a loop iteration, once every
+   * message it produced has reached its final shape. Unlike `post_messages`
+   * (which fires on every intermediate mutation, including the assistant
+   * message being progressively revealed and the tool_result batch being
+   * filled in), the array handed to `post_commit` contains only *sealed*
+   * messages — nothing already in it will be rewritten by a later iteration.
+   *
+   * That is what makes it safe to persist from: an append-only writer can
+   * flush the whole array and keep its on-disk prefix valid. `@nova/agent`
+   * registers its `messages.jsonl` writer here so history survives an
+   * interrupt or a crash mid-turn rather than only landing when the turn ends.
+   */
+  post_commit: { payload: { messages: MessageParam[] }; decision: void };
   /** Fires when the loop hits a terminating stop_reason. */
   post_stop: { payload: { reason: StopReason; message?: string }; decision: void };
 }

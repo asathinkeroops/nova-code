@@ -157,6 +157,12 @@ export async function handleRewind(ctx: CliContext, arg: string): Promise<void> 
   // path), then repaint a clean screen with the truncated timeline.
   ctx.screen.setMessages(truncated);
   await persist(ctx);
+  // The transcript never rolls back, so record the cut: without it the two
+  // files disagree about which turns exist and nothing on disk explains why.
+  await ctx.transcript.append({
+    kind: "rewind",
+    data: { toIndex: target.index, dropped, turn: target.turn },
+  });
   await ctx.screen.reset();
   // Truncating history invalidates every card anchored past the rewind point
   // (same problem compaction has) — drop the persisted cards so stale-anchored

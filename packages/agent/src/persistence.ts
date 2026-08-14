@@ -50,10 +50,13 @@ export async function persistMessages(
     if (tail === cursor.lastLine) return cursor;
   }
 
-  // Fast path: append-only if the on-disk prefix is unchanged.
-  if (messages.length > cursor.count) {
-    const prefixIntact =
-      cursor.count === 0 || JSON.stringify(messages[cursor.count - 1]) === cursor.lastLine;
+  // Fast path: append-only if the on-disk prefix is unchanged. An empty cursor
+  // does NOT qualify — it means "this writer has not written yet", which says
+  // nothing about what is already on disk. Appending on that assumption would
+  // concatenate onto a pre-existing file (a scratch path reused across runs is
+  // the realistic case); rewriting is both correct and cheap at that point.
+  if (messages.length > cursor.count && cursor.count > 0) {
+    const prefixIntact = JSON.stringify(messages[cursor.count - 1]) === cursor.lastLine;
     if (prefixIntact) {
       await appendChunk(path, messages.slice(cursor.count));
       return cursorOf(messages);
@@ -65,7 +68,21 @@ export async function persistMessages(
   return cursorOf(messages);
 }
 
-export async function loadMessages(path: string): Promise<MessageParam[]> {
+export interface LoadMessagesOptions {
+  /**
+   * Called once per unreadable line, with the 1-based line number. Lines are
+   * skipped rather than aborting the load: history is appended a line at a
+   * time, so a kill mid-write leaves a torn final line, and refusing to open
+   * the session over it would throw away everything before it. Callers should
+   * surface a single warning when this fires.
+   */
+  onSkip?: (info: { line: number; error: string }) => void;
+}
+
+export async function loadMessages(
+  path: string,
+  opts: LoadMessagesOptions = {},
+): Promise<MessageParam[]> {
   let raw: string;
   try {
     raw = await readFile(path, "utf8");
@@ -73,8 +90,18 @@ export async function loadMessages(path: string): Promise<MessageParam[]> {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
     throw err;
   }
-  return raw
-    .split("\n")
-    .filter((l) => l.length > 0)
-    .map((line) => migrateLegacyMeta(messageParamSchema.parse(JSON.parse(line))));
+  const messages: MessageParam[] = [];
+  const lines = raw.split("\n");
+  for (const [i, line] of lines.entries()) {
+    if (line.length === 0) continue;
+    try {
+      messages.push(migrateLegacyMeta(messageParamSchema.parse(JSON.parse(line))));
+    } catch (err) {
+      opts.onSkip?.({
+        line: i + 1,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  return messages;
 }

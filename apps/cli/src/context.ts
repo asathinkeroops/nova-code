@@ -79,7 +79,7 @@ import { UI_FRAME_MS } from "./ui/frame.js";
 import { appendToolDetail, loadDisplaySidecar } from "./display-sidecar.js";
 import { appendCard, appendCardsCleared, loadCards } from "./card-store.js";
 import { registerUiHooks } from "./hooks.js";
-import { restoreContextTokensFromTranscript, restoreUsageFromTranscript } from "./usage-restore.js";
+import { restoreFromTranscript } from "./usage-restore.js";
 import { UserHooks } from "./user-hooks.js";
 import { SnapshotStore } from "./snapshots.js";
 import { renderSkillsBlock } from "./skills-render.js";
@@ -1294,9 +1294,18 @@ export async function createContext(
   if (resumed) {
     await ctx.snapshots.load();
     try {
-      const msgs = await loadMessages(session.messagesPath);
+      let skipped = 0;
+      const msgs = await loadMessages(session.messagesPath, {
+        onSkip: ({ line, error }) => {
+          skipped += 1;
+          logger.warn({ line, err: error }, "skipped unreadable message");
+        },
+      });
+      // An empty cursor forces the next write to rewrite the file, which is what
+      // we want after skipping unreadable lines: appending would keep them
+      // wedged in the file forever. Rewriting purges them once and heals it.
       ctx.persistCursor =
-        msgs.length === 0
+        msgs.length === 0 || skipped > 0
           ? emptyCursor
           : {
               count: msgs.length,
@@ -1310,17 +1319,24 @@ export async function createContext(
       // setMessages so the notice's anchor (-1) puts it above the history.
       ctx.screen.setCards(await loadCards(session.dir));
       ctx.screen.card(dim(t.resume.loadedMessages(msgs.length)), { persist: false });
+      if (skipped > 0) {
+        ctx.screen.card(t.resume.skippedMessages(skipped), { kind: "warn", persist: false });
+      }
       ctx.screen.setMessages(msgs);
       // Restore an active /goal so auto-continuation survives a restart.
       ctx.goal = await loadGoal(session.dir);
       // Rebuild the session-cumulative token counters (cache hit rate / `/usage`)
       // from the transcript so they survive a restart.
-      ctx.screen.seedUsage(
-        await restoreUsageFromTranscript(session.transcriptPath, join(session.dir, "subagents")),
+      // One pass rebuilds both the cumulative counters and the context-window
+      // meter, so the launch path parses the transcript once rather than twice.
+      const restored = await restoreFromTranscript(
+        session.transcriptPath,
+        join(session.dir, "subagents"),
       );
+      ctx.screen.seedUsage(restored.totals);
       // Seed the context-window meter from the last request's total so it shows
       // real occupancy on launch, not 0% until the first model turn.
-      ctx.screen.setContextTokens(await restoreContextTokensFromTranscript(session.transcriptPath));
+      ctx.screen.setContextTokens(restored.contextTokens);
       logger.info({ count: msgs.length }, "messages restored");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

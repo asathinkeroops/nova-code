@@ -18,9 +18,16 @@ interface RecordedUsage {
   cacheCreationInputTokens?: number;
 }
 
-/** Fold every `post_request` usage in one transcript file into `totals`. */
-async function accumulateTranscript(transcriptPath: string, totals: UsageTotals): Promise<void> {
+/**
+ * Fold every `post_request` usage in one transcript file into `totals`, and
+ * return the last one carrying usage (error/aborted requests have none).
+ */
+async function accumulateTranscript(
+  transcriptPath: string,
+  totals: UsageTotals,
+): Promise<RecordedUsage | undefined> {
   const records = await new Transcript(transcriptPath).readAll();
+  let last: RecordedUsage | undefined;
   for (const rec of records) {
     if (rec.kind !== "post_request") continue;
     const usage = (rec.data as { usage?: RecordedUsage } | undefined)?.usage;
@@ -29,34 +36,55 @@ async function accumulateTranscript(transcriptPath: string, totals: UsageTotals)
     totals.outputTokens += usage.outputTokens ?? 0;
     totals.cacheReadTokens += usage.cacheReadInputTokens ?? 0;
     totals.cacheCreationTokens += usage.cacheCreationInputTokens ?? 0;
+    last = usage;
   }
+  return last;
+}
+
+/** What a restart / `/resume` rebuilds from a session's transcript. */
+export interface RestoredUsage {
+  /**
+   * Session-cumulative totals behind `/usage` and the cache-hit-rate meter,
+   * including every sub-agent's spend (no main/child split, matching how the
+   * live `onUsage` sink merges it).
+   */
+  totals: UsageTotals;
+  /**
+   * Total tokens of the *most recent* main-transcript request — input + cache
+   * read + cache creation + output — matching the live `post_request` hook's
+   * `setContextTokens` snapshot. A proxy for how full the context window is, so
+   * the statusline's meter is right immediately after a restart rather than
+   * reading 0% until the next model turn. Sub-agent transcripts are excluded:
+   * their spend never occupies the main session's context window.
+   */
+  contextTokens: number;
 }
 
 /**
- * Sum every persisted `post_request` usage in a session's transcript — plus the
- * per-sub-agent transcripts under `subagentsDir`, when given — so the
- * cache-hit-rate meter and `/usage` survive a restart / `/resume`. The
- * transcripts are the single source of truth — one record per model request,
- * appended across every run — so replaying them needs no extra on-disk state and
- * can't drift from the live counters. Sub-agent spend is folded into the same
- * totals (no main/child split), matching how the live `onUsage` sink merges it.
+ * Rebuild both counters from a session's transcript — plus the per-sub-agent
+ * transcripts under `subagentsDir`, when given — in a single pass. The
+ * transcripts are the single source of truth (one record per model request,
+ * appended across every run), so replaying them needs no extra on-disk state and
+ * can't drift from the live counters. Both counters come off the same read
+ * because these files grow without bound and a long session's transcript is
+ * large enough that parsing it twice on the startup path is felt.
  *
- * Returns all-zero when the transcript is absent or empty (e.g. a fresh
- * session, or one started with `noTranscript`). Malformed lines are skipped by
+ * Returns all-zero when the transcript is absent or empty (e.g. a fresh session,
+ * or one started with `noTranscript`). Malformed lines are skipped by
  * `Transcript.readAll`; a missing `subagentsDir` (no sub-agent ever ran) is
  * ignored; legacy pre-rename request records are not counted.
  */
-export async function restoreUsageFromTranscript(
+export async function restoreFromTranscript(
   transcriptPath: string,
   subagentsDir?: string,
-): Promise<UsageTotals> {
+): Promise<RestoredUsage> {
   const totals: UsageTotals = {
     cacheReadTokens: 0,
     cacheCreationTokens: 0,
     uncachedInputTokens: 0,
     outputTokens: 0,
   };
-  await accumulateTranscript(transcriptPath, totals);
+  const last = await accumulateTranscript(transcriptPath, totals);
 
   if (subagentsDir) {
     // Each sub-agent writes `<id>.transcript.jsonl` here; sum them all. The dir
@@ -67,35 +95,12 @@ export async function restoreUsageFromTranscript(
       await accumulateTranscript(join(subagentsDir, name), totals);
     }
   }
-  return totals;
-}
 
-/**
- * Total tokens of the *most recent* model request in a session's transcript —
- * input + cache read + cache creation + output — matching the live `post_request`
- * hook's `setContextTokens` snapshot. Unlike `restoreUsageFromTranscript` (which
- * sums every request for the cumulative `/usage` row), this is the last request's
- * total alone, a proxy for how full the context window currently is, so the
- * statusline's context meter is correct immediately after a restart / `/resume`
- * rather than reading 0% until the next model turn.
- *
- * Only the main transcript is consulted — sub-agent spend never occupies the main
- * session's context window. Returns 0 when the transcript is absent, empty, or has
- * no `post_request` record yet (e.g. a fresh session).
- */
-export async function restoreContextTokensFromTranscript(transcriptPath: string): Promise<number> {
-  const records = await new Transcript(transcriptPath).readAll();
-  for (let i = records.length - 1; i >= 0; i--) {
-    const rec = records[i];
-    if (rec?.kind !== "post_request") continue;
-    const usage = (rec.data as { usage?: RecordedUsage } | undefined)?.usage;
-    if (!usage) continue;
-    return (
-      (usage.inputTokens ?? 0) +
-      (usage.cacheReadInputTokens ?? 0) +
-      (usage.cacheCreationInputTokens ?? 0) +
-      (usage.outputTokens ?? 0)
-    );
-  }
-  return 0;
+  const contextTokens = last
+    ? (last.inputTokens ?? 0) +
+      (last.cacheReadInputTokens ?? 0) +
+      (last.cacheCreationInputTokens ?? 0) +
+      (last.outputTokens ?? 0)
+    : 0;
+  return { totals, contextTokens };
 }

@@ -516,6 +516,7 @@ export const zh: DeepPartial<Catalog> = {
     header: "选择要恢复的会话：",
     alreadyOn: "已经在该会话上了。",
     loadedMessages: (n: number): string => `已从磁盘加载 ${n} 条消息`,
+    skippedMessages: (n: number): string => `已跳过 ${n} 行无法解析的历史记录，详见会话日志`,
   },
 
   skills: {

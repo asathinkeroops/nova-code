@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  markSynthetic,
   type AssistantTurn,
   type MessageParam,
   type ModelClient,
@@ -40,6 +41,21 @@ function echoExecutor(): ToolExecutor {
     const input = use.input as { msg?: string };
     return { type: "tool_result", tool_use_id: use.id, content: `echo:${input.msg ?? ""}` };
   };
+}
+
+interface InjectionRecord {
+  kind: string;
+  data: { index: number; kind: string; message: MessageParam };
+}
+
+/** Read back the `message_injected` records a turn wrote. */
+async function readInjections(transcriptPath: string): Promise<InjectionRecord[]> {
+  const raw = await readFile(transcriptPath, "utf8");
+  return raw
+    .split("\n")
+    .filter((l) => l.length > 0)
+    .map((l) => JSON.parse(l) as InjectionRecord)
+    .filter((r) => r.kind === "message_injected");
 }
 
 const silentLogger = {
@@ -159,6 +175,162 @@ describe("createAgent.runTurn", () => {
 
     const raw = await readFile(transcriptPath, "utf8");
     expect(raw).toContain('"kind":"user_prompt"');
+  });
+
+  it("persists each tool round-trip, so a turn that dies mid-flight keeps its history", async () => {
+    const messagesPath = join(tmp, "messages.jsonl");
+    const transcriptPath = join(tmp, "transcript.jsonl");
+    // Round-trip one succeeds; the follow-up request dies. Before per-commit
+    // durability the whole turn was dropped from disk while the transcript had
+    // already recorded it happening.
+    let call = 0;
+    const model: ModelClient = {
+      async call() {
+        call += 1;
+        if (call === 1) {
+          return {
+            content: [{ type: "tool_use", id: "t1", name: "echo", input: { msg: "hi" } }],
+            stopReason: "tool_use",
+            usage: { inputTokens: 1, outputTokens: 1 },
+          };
+        }
+        throw new Error("connection reset");
+      },
+    };
+    const agent = createAgent(makeDeps({ model, messagesPath, transcriptPath }));
+
+    const result = await agent.runTurn("run echo");
+    expect(result.ok).toBe(false);
+
+    const persisted = await loadMessages(messagesPath);
+    const blocks = persisted.flatMap((m) =>
+      typeof m.content === "string" ? [] : m.content.map((b) => b.type),
+    );
+    expect(blocks).toContain("tool_use");
+    expect(blocks).toContain("tool_result");
+  });
+
+  it("persists an interrupted turn and publishes the marker to the caller's buffer", async () => {
+    const messagesPath = join(tmp, "messages.jsonl");
+    const transcriptPath = join(tmp, "transcript.jsonl");
+    const controller = new AbortController();
+    const model: ModelClient = {
+      async call() {
+        controller.abort(new Error("interrupted by user"));
+        throw new Error("aborted");
+      },
+    };
+    const agent = createAgent(makeDeps({ model, messagesPath, transcriptPath }));
+    // The CLI's screen store is fed by post_messages and is what the NEXT turn
+    // builds on, so the marker has to reach it or the following write reads as a
+    // divergence and rewrites the marker away.
+    let published: MessageParam[] = [];
+    agent.on("post_messages", ({ messages }) => {
+      published = messages;
+    });
+
+    const result = await agent.runTurn("hello", { signal: controller.signal });
+    expect(result.aborted).toBe(true);
+
+    const persisted = await loadMessages(messagesPath);
+    expect(persisted).toHaveLength(2);
+    expect(persisted[0]?.content).toBe("hello");
+    expect(persisted[1]?.meta).toEqual({ synthetic: true, kind: "interrupted" });
+    expect(published).toEqual(persisted);
+  });
+
+  it("records nova-injected messages in the transcript, so it reads on its own", async () => {
+    const messagesPath = join(tmp, "messages.jsonl");
+    const transcriptPath = join(tmp, "transcript.jsonl");
+    const model = mockModel([
+      {
+        content: [{ type: "tool_use", id: "t1", name: "echo", input: { msg: "hi" } }],
+        stopReason: "tool_use",
+        usage: { inputTokens: 1, outputTokens: 1 },
+      },
+      {
+        content: [{ type: "text", text: "done" }],
+        stopReason: "end_turn",
+        usage: { inputTokens: 1, outputTokens: 1 },
+      },
+    ]);
+    const agent = createAgent(makeDeps({ model, messagesPath, transcriptPath }));
+    // pre_continue fires AFTER post_user_message, so nothing else would record
+    // this — same blind spot as compaction summaries and background notifications.
+    agent.on("pre_continue", () => ({
+      messages: [
+        markSynthetic(
+          { role: "user", content: "<todo-reminder>finish the thing</todo-reminder>" },
+          "todo-reminder",
+        ),
+      ],
+    }));
+
+    await agent.runTurn("go");
+
+    const injected = await readInjections(transcriptPath);
+    expect(injected).toHaveLength(1);
+    expect(injected[0]?.data.kind).toBe("todo-reminder");
+    expect(injected[0]?.data.message.content).toContain("finish the thing");
+    // The index aligns the record with the same message in messages.jsonl.
+    const persisted = await loadMessages(messagesPath);
+    expect(persisted[injected[0]!.data.index]?.content).toBe(
+      "<todo-reminder>finish the thing</todo-reminder>",
+    );
+  });
+
+  it("records the interrupt marker in the transcript too", async () => {
+    const messagesPath = join(tmp, "messages.jsonl");
+    const transcriptPath = join(tmp, "transcript.jsonl");
+    const controller = new AbortController();
+    const model: ModelClient = {
+      async call() {
+        controller.abort(new Error("interrupted by user"));
+        throw new Error("aborted");
+      },
+    };
+    const agent = createAgent(makeDeps({ model, messagesPath, transcriptPath }));
+
+    await agent.runTurn("hello", { signal: controller.signal });
+
+    const injected = await readInjections(transcriptPath);
+    expect(injected.map((r) => r.data.kind)).toEqual(["interrupted"]);
+  });
+
+  it("never persists a tool_use left without its tool_result", async () => {
+    const messagesPath = join(tmp, "messages.jsonl");
+    const transcriptPath = join(tmp, "transcript.jsonl");
+    const model = mockModel([
+      {
+        content: [{ type: "tool_use", id: "t1", name: "echo", input: { msg: "hi" } }],
+        stopReason: "tool_use",
+        usage: { inputTokens: 1, outputTokens: 1 },
+      },
+    ]);
+    const agent = createAgent(makeDeps({ model, messagesPath, transcriptPath }));
+    // Throwing here unwinds the loop after the tool_use block has been revealed
+    // but before any result exists. An unpaired tool_use on disk would make the
+    // session unresumable — the next request is rejected before the model sees it.
+    agent.on("pre_tool_use", () => {
+      throw new Error("permission gate exploded");
+    });
+
+    const result = await agent.runTurn("run echo");
+    expect(result.ok).toBe(false);
+
+    const persisted = await loadMessages(messagesPath);
+    // Falls back to the last sealed state — here, the user message alone.
+    expect(persisted).toHaveLength(1);
+    expect(persisted[0]?.content).toBe("run echo");
+    const pending = new Set<string>();
+    for (const m of persisted) {
+      if (typeof m.content === "string") continue;
+      for (const b of m.content) {
+        if (b.type === "tool_use") pending.add(b.id);
+        else if (b.type === "tool_result") pending.delete(b.tool_use_id);
+      }
+    }
+    expect(pending.size).toBe(0);
   });
 
   it("reads memory fresh each turn via getMemory, so a session-boundary reload is visible", async () => {

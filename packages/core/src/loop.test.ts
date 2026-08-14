@@ -295,6 +295,46 @@ describe("agentLoop · stop_reason state machine", () => {
     expect(permC?.visibleUses).toEqual(["a", "b", "c"]);
   });
 
+  it("fires post_commit once per tool round-trip, with every message sealed", async () => {
+    const commits: MessageParam[][] = [];
+    const hooks = new HookRegistry();
+    hooks.on("post_commit", ({ messages }) => {
+      commits.push(messages);
+    });
+
+    const model = mockModel([
+      {
+        content: [{ type: "tool_use", id: "a", name: "echo", input: { msg: "a" } }],
+        stopReason: "tool_use",
+      },
+      {
+        content: [{ type: "tool_use", id: "b", name: "echo", input: { msg: "b" } }],
+        stopReason: "tool_use",
+      },
+      { content: [{ type: "text", text: "done" }], stopReason: "end_turn" },
+    ]);
+
+    await agentLoop({ ...baseOpts(hooks), model, executeTool: makeExecutor() });
+
+    // One per tool-calling iteration; the tool-free final turn returns instead.
+    expect(commits).toHaveLength(2);
+    // Sealed means: nothing handed to post_commit is still awaiting a result,
+    // which is what makes an append-only writer safe to attach here.
+    for (const messages of commits) {
+      const pending = new Set<string>();
+      for (const m of messages) {
+        if (typeof m.content === "string") continue;
+        for (const b of m.content) {
+          if (b.type === "tool_use") pending.add(b.id);
+          else if (b.type === "tool_result") pending.delete(b.tool_use_id);
+        }
+      }
+      expect(pending.size).toBe(0);
+    }
+    // Each commit extends the previous one — the writer's on-disk prefix stays valid.
+    expect(commits[1]?.slice(0, commits[0]?.length)).toEqual(commits[0]);
+  });
+
   it("preserves the model's original block order in the final assistant message even with interleaved tool_uses", async () => {
     const { hooks } = makeHooks();
     const interleaved = [
