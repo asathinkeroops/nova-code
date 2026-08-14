@@ -446,6 +446,8 @@ export const en = {
     /** Warned when history lines were unreadable and skipped (`session.ts`). */
     skippedMessages: (n: number): string =>
       `skipped ${n} unreadable line(s) in the history; see the session log`,
+    /** Printed after the REPL exits, so the thread can be picked back up. */
+    exitHint: "Resume this session with:",
   },
 
   /** The `/skills` list (`commands/skills.ts`). */

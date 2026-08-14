@@ -621,4 +621,9 @@ export async function runRepl(ctx: CliContext, initialPrompt: string): Promise<v
   await ctx.sandbox.dispose();
   if (ctx.mcp) await ctx.mcp.close();
   await ctx.screen.unmount();
+
+  // The TUI is gone — hand the user the exact command that picks this thread
+  // back up. Headless (-p) never reaches runRepl, so this can't pollute
+  // scripted stdout.
+  process.stdout.write(`\n${t.resume.exitHint}\n  nova --resume ${ctx.session.id}\n`);
 }
