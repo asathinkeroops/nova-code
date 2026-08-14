@@ -515,7 +515,7 @@ export function AskPanel({ req, onResolve, panelWidth }: AskPanelProps): React.R
           <>
             <Text> </Text>
             <Box>
-              <Text color={ACCENT_HEX}>{"  › "}</Text>
+              <Text color={ACCENT_HEX}>{"  ✦ "}</Text>
               <Text>{freeformBuffer}</Text>
               <Text inverse> </Text>
               {freeformBuffer.length === 0 ? (

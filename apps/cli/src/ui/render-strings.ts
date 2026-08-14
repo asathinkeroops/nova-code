@@ -128,7 +128,7 @@ function renderUserBubble(text: string, width: number): string {
   const rule = dim("┄".repeat(Math.max(1, width)));
   const body = text
     .split("\n")
-    .map((line, i) => magenta(`${i === 0 ? " › " : "   "}${line}`))
+    .map((line, i) => magenta(`${i === 0 ? "✦ " : "  "}${line}`))
     .join("\n");
   return `${rule}\n${body}\n${rule}`;
 }
@@ -158,7 +158,7 @@ function renderThinking(
   collapsed = false,
   expanded = false,
 ): string {
-  const head = `${magenta("✦")} ${dim(`${t.render.thinking}${label ? ` · ${label}` : ""}`)}`;
+  const head = `${magenta("◌")} ${dim(`${t.render.thinking}${label ? ` · ${label}` : ""}`)}`;
   const lines = wrapThinkingBody(text, width);
   if (lines.length === 0) return head;
   // Once thinking is done we collapse it to a short preview: the first few
@@ -197,7 +197,7 @@ export function thinkingToggleLineIndex(
 }
 
 function renderRedactedThinking(label: string | undefined): string {
-  return `${magenta("✦")} ${dim(`${t.render.thinking}${label ? ` · ${label}` : ""} ${t.render.redacted}`)}`;
+  return `${magenta("◌")} ${dim(`${t.render.thinking}${label ? ` · ${label}` : ""} ${t.render.redacted}`)}`;
 }
 
 // ─── card ──────────────────────────────────────────────────────────────────
@@ -627,7 +627,7 @@ function toolUseView(use: ToolUseBlock, width: number, ctx: UseCtx): UseView {
 
 /** Glyph per sub-agent detail kind, shown at the head of each detail row. */
 const DETAIL_MARK: Record<SubAgentDetail["type"], string> = {
-  thinking: "✦",
+  thinking: "◌",
   tool_use: "⚒",
   final: "→",
 };
