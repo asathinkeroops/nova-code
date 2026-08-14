@@ -1,6 +1,6 @@
 {
   "name": "@asathinkeroops/nova-code",
-  "version": "0.2.5",
+  "version": "0.3.0",
   "description": "A terminal coding agent, deeply tuned for DeepSeek.",
   "type": "module",
   "license": "MIT",
