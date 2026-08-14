@@ -8,6 +8,7 @@ export {
   apiKeyFromEnv,
   resolveApiKey,
   saveSettings,
+  saveModelProfileOverride,
   isDangerousBash,
   DEFAULT_CONFIG_PATH,
   DEFAULT_MEMORY_FILENAMES,
@@ -62,6 +63,14 @@ export {
   type McpStdioServerConfig,
   type McpHttpServerConfig,
 } from "./config.js";
+
+export {
+  BUILTIN_PROVIDER_MODELS,
+  AUTO_WRITTEN_MODEL_TABLES,
+  builtinModelsFor,
+  mergeBuiltinModels,
+  stripDefaultModels,
+} from "./models.js";
 
 export { createLogger, type Logger, type LoggerConfig } from "./logging.js";
 

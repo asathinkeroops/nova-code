@@ -70,14 +70,18 @@ echo "总结这个 diff" | pnpm dev  # 无 TTY：headless 跑一轮后退出
 
 ## 3. 首次配置向导
 
-第一次启动时，如果 `~/.nova/nova.config.json` 里缺少 `apiKey`，Nova 会进入首次配置向导。它从内置 provider 模板里取一个（模板已填好 `baseURL`、默认档位、`lite`/`pro`/`max` 模型表），所以**唯一要交互问你的就是 API key**（输入时掩码）。
+第一次启动时，如果 `~/.nova/nova.config.json` 里缺少 `apiKey`，Nova 会进入首次配置向导。它从内置 provider 模板里取一个（模板已填好 `baseURL`、默认档位，`lite`/`pro`/`max` 模型表则由 provider 的**内置默认表**提供），所以**唯一要交互问你的就是 API key**（输入时掩码）。
 
 **当前只有 DeepSeek 一个模板对外可选**（Moonshot/Kimi 已内置但在内部测试期，暂从选择器隐藏；「Other provider」手填入口也暂时关闭）。既然只有一个 provider，向导会**跳过选择器**，直接问 DeepSeek 的 API key。它写入：
 
-- `baseURL: https://api.deepseek.com/anthropic`
-- `lite`→`deepseek-v4-flash`，`pro`/`max`→`deepseek-v4-pro`（默认档位 `pro`；三档靠 per-tier `thinking` 拉开梯度）
+- `provider: deepseek`、`baseURL: https://api.deepseek.com/anthropic`、默认档位 `pro`（以及 goal 配置和 key 本身）
+- 模型表**不写盘**：`lite`→`deepseek-v4-flash`，`pro`/`max`→`deepseek-v4-pro`（三档靠 per-tier `thinking` 拉开梯度）来自代码里的内置默认
 
-按 `Ctrl+C` 可中止向导。`apiKey` 已存在则跳过向导；导出了环境变量 `NOVA_API_KEY` 且配置里已有 `models` 表时同样跳过（只有环境变量、还没有 `models` 表时，向导仍会跑，但不再问你 key，也不会把这个 key 写进配置文件）。要接别的 Anthropic 兼容端点，直接**手动编辑** `~/.nova/nova.config.json`——schema 不再为 `baseURL`/`models` 提供默认值，需按 `lite`/`pro`/`max` 三档骨架填全（完整字段见 [§20](#20-配置文件完整参考)）。
+> **默认模型表不落盘。** `models` 的默认值按 `provider` 内置在代码里，加载配置时才层叠进来；配置文件里只放**你自己的覆盖项**。这样 Nova 升级带来的新模型 id、新价格、新上下文窗口，老装机也能直接吃到，而不会被向导当年写进文件的那份表钉死。旧版本写过整张表的配置，启动时会被**改写成它实际表达的覆盖项**（通常是空的，或一条 `/effort` 设过的 `thinking`），取值完全不变。
+>
+> 想覆盖某一档，只写要改的字段即可，例如 `"models": { "pro": { "thinking": "low" } }`——其余字段（`id`、`pricing`、`maxTokens`…）继续跟随内置默认。**但如果你把某档的 `id` 改成别的模型**，该档就整条以你的为准（不再继承内置的价格与上限）；反过来，同 `id` 的档位无法「删掉」某个内置字段（省略即继承）。`/effort` 持久化写的也正是这种最小覆盖。
+
+按 `Ctrl+C` 可中止向导。`apiKey` 已存在则跳过向导；导出了环境变量 `NOVA_API_KEY` 且配置里已有 `models` 表时同样跳过（只有环境变量、还没有 `models` 表时，向导仍会跑，但不再问你 key，也不会把这个 key 写进配置文件）。要接别的 Anthropic 兼容端点，直接**手动编辑** `~/.nova/nova.config.json`——schema 不为 `baseURL`/`models` 提供默认值，`provider` 为 `other`（无内置表）时需按 `lite`/`pro`/`max` 三档骨架填全（完整字段见 [§20](#20-配置文件完整参考)）。
 
 > 如果启动时 `apiKey` 仍为空（且没有 `NOVA_API_KEY`），Nova 会报错退出并提示去配置文件里补上。
 
@@ -234,7 +238,7 @@ Nova 把「extended thinking」暴露成五个等级，或一个显式的 token 
 - 五档：`off` / `low` / `medium` / `high` / `max`
 - 显式预算：传一个正整数（如 `-t 4096`），它会覆盖等级映射，直接当作 `budget_tokens`
 
-**思考等级是 per-tier（按档位）的属性，没有全局 `thinking` 配置项**——它写在 `models.<tier>.thinking` 里，切档（`/model`）会把当前思考等级换成该档的值。这也是 lite/pro/max 能在同一个模型 id 上拉出能力梯度的原因（DeepSeek 模板：lite→`low`、pro→`high`、max→`max`）。档位没写 `thinking` 时回退到 `max`。
+**思考等级是 per-tier（按档位）的属性，没有全局 `thinking` 配置项**——它写在 `models.<tier>.thinking` 里，切档（`/model`）会把当前思考等级换成该档的值。这也是 lite/pro/max 能在同一个模型 id 上拉出能力梯度的原因（DeepSeek 内置默认：lite→`low`、pro→`high`、max→`max`）。档位没写 `thinking` 时回退到 `max`。
 
 设置方式：
 
@@ -775,7 +779,7 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 | `apiKey` | （无） | provider API key（首次向导会写入）。**环境变量 `NOVA_API_KEY` 优先于此项**：设了就用它，配置文件里的值作为兜底。想把 key 留在环境里、不落到明文配置文件时用这个 |
 | `provider` | `"deepseek"` | 驱动 thinking 参数、错误翻译、重试策略的 **provider profile**：`deepseek`（effort 旋钮 + 错误翻译 + 状态码重试）/ `moonshot` / `other`（通用 Anthropic 兼容端点，用 `budget_tokens`、不翻译错误）。未知 id 回退到 `other` |
 | `model` | `"pro"` | 当前**档位**：`models` 表中的 key（`lite`/`pro`/`max`），**永远不是裸模型 id** |
-| `models` | `{}` | 命名的模型档位表，value 为**档位对象**，每档带自己的 `id`、`maxTokens`、`contextWindowSize`、`thinking`、`modalities`、`pricing`、可选 `description`。非空时**必须含 `lite`/`pro`/`max` 三档**（schema 强制）；首次向导按 provider 模板写入，schema 不再提供默认值 |
+| `models` | `{}` | 命名的模型档位表，value 为**档位对象**，每档带自己的 `id`、`maxTokens`、`contextWindowSize`、`thinking`、`modalities`、`pricing`、可选 `description`。非空时**必须含 `lite`/`pro`/`max` 三档**（schema 强制）。默认表按 `provider` 内置在代码里、加载时层叠进来（**不写进配置文件**，见 [§3](#3-首次配置向导)）；这里只写覆盖项 |
 | `baseURL` | （无） | Anthropic 兼容端点 URL（provider 模板写入；缺省则用 SDK 默认端点） |
 | `sessionDir` | （无→ `~/.nova/sessions`） | session 存放目录 |
 | `language` | `"auto"` | **模型回复语言**（注入 system prompt），同时也是 TUI 界面语言的默认来源；`auto` 跟随系统 locale（`$LC_ALL`/`$LANG`/`$LANGUAGE`，macOS 还读 `AppleLocale`），否则填 BCP-47 标签如 `en`/`zh-CN`。加载时 `auto` 会被解析成具体标签 |
@@ -784,7 +788,7 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 | `maxTurns` | `100` | 单轮最大循环次数 |
 | `toolConcurrency` | `3` | 单轮内工具并发上限（1 = 全串行） |
 
-> **每档输出上限 / 上下文窗口是 per-tier 的**：写在 `models.<tier>.maxTokens`（schema 缺省 32768，DeepSeek 模板三档均写 384000）和 `models.<tier>.contextWindowSize`（缺省 1000000）里，不再是顶层字段。`models.<tier>.thinking` 让同一个模型 id 也能拉出 lite/pro/max 的能力梯度（见 [§7](#7-思考等级thinking)）；`models.<tier>.pricing` 提供 `/usage` 成本估算的每百万 token 单价（见 `pricing` 一节）。
+> **每档输出上限 / 上下文窗口是 per-tier 的**：写在 `models.<tier>.maxTokens`（schema 缺省 32768，DeepSeek 内置默认三档均为 393216 = 384×1024）和 `models.<tier>.contextWindowSize`（缺省 1048576 = 1024×1024）里，不再是顶层字段。`models.<tier>.thinking` 让同一个模型 id 也能拉出 lite/pro/max 的能力梯度（见 [§7](#7-思考等级thinking)）；`models.<tier>.pricing` 提供 `/usage` 成本估算的每百万 token 单价（见 `pricing` 一节）。
 
 ### `permissions`
 

@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { isThinkingLevel, type ThinkingLevel } from "@nova/core";
-import { API_KEY_ENV, type Settings } from "@nova/runtime";
+import { API_KEY_ENV, DEFAULT_CONFIG_PATH, stripDefaultModels, type Settings } from "@nova/runtime";
 import { createContext } from "./context.js";
 import {
   buildDoctorCommand,
@@ -190,6 +190,14 @@ async function runHeadlessMode(
 }
 
 async function run(positional: string[], opts: CliOptions): Promise<void> {
+  // Cleanup for configs written by older versions, which persisted the
+  // provider's whole tier table. Those tables are built-ins now (layered in at
+  // parse time), so a copy on disk would pin the install to the ids / prices /
+  // limits of whenever setup ran. This rewrites such a table down to the
+  // overrides it actually expresses (usually nothing, or one /effort-set
+  // `thinking`) — value-preserving, idempotent, and it never throws.
+  await stripDefaultModels(DEFAULT_CONFIG_PATH);
+
   // Startup config check: never throws, so a broken file surfaces as a friendly,
   // specific report instead of an uncaught boot crash. When the config is VALID
   // (`report.valid`), `settings` is the parsed config and any issues are soft

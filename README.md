@@ -123,7 +123,7 @@ nova -p "解释这段代码"              # headless 模式：只跑一轮，输
 nova upgrade                       # 更新到最新版本（启动时也会自动检查并提示）
 ```
 
-首次启动进入交互式配置向导，写入 `~/.nova/nova.config.json`（API key、模型、session 目录等）；不想让 key 明文落盘时，导出环境变量 `NOVA_API_KEY` 即可——它优先于配置文件里的 `apiKey`。模型按 `lite` / `pro` / `max` 三档配置，每档可单独设定 thinking 等级与定价（`models.<档>.pricing`，支持 USD / CNY）；`/model`、`--model` 切换的是档位而非裸 provider id。默认 provider 为 `deepseek`，`settings.provider` 可切到 `moonshot`（Kimi，beta）或通用 `other`。界面与回复语言由 `settings.language`（模型回复语言，默认跟随系统 locale）与 `settings.locale`（仅 TUI 静态文案，内置 zh-CN / EN）分别控制。
+首次启动进入交互式配置向导，写入 `~/.nova/nova.config.json`（API key、模型、session 目录等）；不想让 key 明文落盘时，导出环境变量 `NOVA_API_KEY` 即可——它优先于配置文件里的 `apiKey`。模型按 `lite` / `pro` / `max` 三档配置，每档可单独设定 thinking 等级与定价（`models.<档>.pricing`，支持 USD / CNY）；`/model`、`--model` 切换的是档位而非裸 provider id。**三档的默认表按 provider 内置在代码里、不写进配置文件**，配置里只放你自己的覆盖项——这样升级 Nova 就能拿到新的模型 id / 价格 / 上下文窗口。默认 provider 为 `deepseek`，`settings.provider` 可切到 `moonshot`（Kimi，beta）或通用 `other`。界面与回复语言由 `settings.language`（模型回复语言，默认跟随系统 locale）与 `settings.locale`（仅 TUI 静态文案，内置 zh-CN / EN）分别控制。
 
 ### 📦 更多子命令
 

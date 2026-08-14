@@ -62,19 +62,24 @@ describe("formatElapsed", () => {
 
 describe("formatTokenCount", () => {
   it("formats millions", () => {
-    expect(formatTokenCount(1_000_000)).toBe("1M");
-    expect(formatTokenCount(1_500_000)).toBe("1.5M");
+    expect(formatTokenCount(1024 * 1024)).toBe("1M");
+    expect(formatTokenCount(1.5 * 1024 * 1024)).toBe("1.5M");
   });
   it("formats thousands", () => {
-    expect(formatTokenCount(256_000)).toBe("256K");
-    expect(formatTokenCount(200_000)).toBe("200K");
+    expect(formatTokenCount(256 * 1024)).toBe("256K");
+    expect(formatTokenCount(200 * 1024)).toBe("200K");
+  });
+  it("uses binary K/M, so a 128K window reads as 128K and not 131.1K", () => {
+    expect(formatTokenCount(131_072)).toBe("128K");
+    expect(formatTokenCount(1_000_000)).toBe("976.6K");
   });
   it("shows a decimal for fractional thousands", () => {
-    expect(formatTokenCount(1_234)).toBe("1.2K");
-    expect(formatTokenCount(12_345)).toBe("12.3K");
+    expect(formatTokenCount(1_260)).toBe("1.2K");
+    expect(formatTokenCount(12_640)).toBe("12.3K");
   });
   it("leaves small counts as-is", () => {
     expect(formatTokenCount(512)).toBe("512");
+    expect(formatTokenCount(1023)).toBe("1023");
   });
 });
 

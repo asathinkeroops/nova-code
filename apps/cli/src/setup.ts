@@ -1,6 +1,12 @@
 import { readFile } from "node:fs/promises";
 import { highlight } from "cli-highlight";
-import { apiKeyFromEnv, DEFAULT_CONFIG_PATH, saveSettings, type Settings } from "@nova/runtime";
+import {
+  apiKeyFromEnv,
+  builtinModelsFor,
+  DEFAULT_CONFIG_PATH,
+  saveSettings,
+  type Settings,
+} from "@nova/runtime";
 import { accent, ACCENT_HEX, BLUE_RGB, dim, rgbFg } from "./colors.js";
 import { t } from "./i18n/index.js";
 import { PROVIDER_TEMPLATES, type ProviderTemplate } from "./provider-templates.js";
@@ -81,8 +87,8 @@ export async function ensureSettings(
 ): Promise<Settings> {
   const raw = await readRawConfig(configPath);
   // The only value we must collect interactively is the API key — a chosen
-  // provider template supplies baseURL / model / the models table (the schema
-  // no longer defaults baseURL or models), so a key alone completes setup.
+  // provider template supplies baseURL / model, and its tier table comes from
+  // the built-ins keyed by `provider`, so a key alone completes setup.
   if (hasValue(raw, "apiKey")) return settings;
   // `$NOVA_API_KEY` satisfies the key requirement just as well, but it says
   // nothing about the endpoint: without a `models` table there is still no
@@ -143,16 +149,16 @@ export async function ensureSettings(
     // config-file path and let them author nova.config.json themselves.
     if (choice.kind === "other") return exitForManualConfig(screen, configPath);
 
-    // A templated provider: its baseURL / model / models all come from the
-    // template's settings, so only the API key is left to ask for — and even
-    // that is skipped when the environment already supplies one.
+    // A templated provider: its baseURL / model come from the template's
+    // settings (and its tier table from the built-ins), so only the API key is
+    // left to ask for — and even that is skipped when the env already has one.
     const { template } = choice;
     let value: string | null = envKey ?? null;
     while (value === null) {
       screen.setSetupPrompt({
         label: t.setup.apiKeyLabel,
         hint: template.apiKeyHint,
-        ...(template.settings.provider ? { provider: template.settings.provider } : {}),
+        provider: template.settings.provider,
       });
       const answer = await screen.promptInput({ mask: true });
       if (answer === null) await fatalExit(screen, t.setup.aborted);
@@ -170,7 +176,12 @@ export async function ensureSettings(
       : { ...template.settings, apiKey: value };
     try {
       await saveSettings(patch, configPath);
-      Object.assign(settings, patch);
+      // The saved patch deliberately carries no `models` — the tier table is a
+      // built-in, resolved from `provider` on every load (see
+      // mergeBuiltinModels), so it stays current as Nova ships new defaults.
+      // This session was booted from a pre-setup config, though, so fold the
+      // same table into the in-memory Settings instead of re-reading the file.
+      Object.assign(settings, patch, { models: builtinModelsFor(template.settings.provider) });
       screen.pushSetupEntry({ kind: "ok", text: t.setup.saved(template.label) });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

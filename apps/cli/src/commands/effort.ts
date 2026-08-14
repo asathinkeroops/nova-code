@@ -1,5 +1,5 @@
 import { isThinkingLevel, THINKING_LEVELS, type ThinkingLevel } from "@nova/core";
-import { saveSettings } from "@nova/runtime";
+import { saveModelProfileOverride } from "@nova/runtime";
 import { ACCENT_HEX, dim, type Rgb } from "../colors.js";
 import { thinkingLevelLabel, refreshBanner, type CliContext } from "../context.js";
 import { t } from "../i18n/index.js";
@@ -54,6 +54,11 @@ function refreshThinkingUi(ctx: CliContext): void {
  * profile to write, so it stays session-only. The numeric budget override
  * (ctx.thinkingBudgetOverride) is always session-only — there's no per-tier
  * budget field — so it takes the lighter `refreshThinkingUi` path instead.
+ *
+ * Only the `thinking` field is written: `ctx.settings.models` is the RESOLVED
+ * table (provider built-ins already merged in), so persisting it wholesale would
+ * freeze today's model ids / prices / limits into nova.config.json and cut the
+ * install off from future default updates.
  */
 async function persistTierThinking(ctx: CliContext): Promise<void> {
   refreshThinkingUi(ctx);
@@ -61,7 +66,7 @@ async function persistTierThinking(ctx: CliContext): Promise<void> {
   if (!tier) return;
   tier.thinking = ctx.thinkingLevel;
   try {
-    await saveSettings({ models: ctx.settings.models });
+    await saveModelProfileOverride(ctx.settings.model, { thinking: ctx.thinkingLevel });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     ctx.screen.card(t.effort.saveFailed(msg), { kind: "error", title: TITLE });

@@ -49,10 +49,15 @@ const LINE_NO_WIDTH = 6;
 // realistically encounter (xls, xlsx, xlsm, xlsb, ods).
 const EXCEL_EXTENSIONS = new Set([".xlsx", ".xls", ".xlsm", ".xlsb", ".ods"]);
 
+// KB/MB are binary here (1 KB = 1024 bytes), matching the CLI's own byte
+// formatter and what `ls -lh` / Finder report for the same file.
+const KB = 1024;
+const MB = 1024 * 1024;
+
 // Max file size for PDF reads (30 MB). unpdf loads and parses the whole document
 // into memory before any pagination applies, so a byte cap guards against a
 // pathological PDF exhausting memory; output is still bounded by MAX_CHARS/limit.
-const MAX_PDF_BYTES = 30_000_000;
+const MAX_PDF_BYTES = 30 * MB;
 
 // ── image support ────────────────────────────────────────────────────────────
 
@@ -60,7 +65,7 @@ const MAX_PDF_BYTES = 30_000_000;
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp"]);
 
 /** Max file size for image reads (20 MB). Larger images are rejected. */
-const MAX_IMAGE_BYTES = 20_000_000;
+const MAX_IMAGE_BYTES = 20 * MB;
 
 /** Magic bytes for verifying that a file's content matches its extension. */
 const IMAGE_MAGIC: Record<string, readonly number[]> = {
@@ -232,8 +237,8 @@ async function readPdf(abs: string, input: { offset?: number; limit?: number }, 
   }
 
   if (buf.length > MAX_PDF_BYTES) {
-    const mb = (buf.length / 1_000_000).toFixed(1);
-    const cap = (MAX_PDF_BYTES / 1_000_000).toFixed(0);
+    const mb = (buf.length / MB).toFixed(1);
+    const cap = (MAX_PDF_BYTES / MB).toFixed(0);
     return {
       output: `read failed: ${path} is ${mb} MB (PDF cap is ${cap} MB). Use bash with a command-line tool (e.g. \`pdftotext\`, \`qpdf\`) to split or extract it.`,
       isError: true,
@@ -465,8 +470,8 @@ async function readImage(
 
   // Size guard — base64 will be ~33% larger, keep it reasonable.
   if (buf.length > MAX_IMAGE_BYTES) {
-    const mb = (buf.length / 1_000_000).toFixed(1);
-    const cap = (MAX_IMAGE_BYTES / 1_000_000).toFixed(0);
+    const mb = (buf.length / MB).toFixed(1);
+    const cap = (MAX_IMAGE_BYTES / MB).toFixed(0);
     return {
       output: `read failed: ${path} is ${mb} MB (cap is ${cap} MB). Use bash with a command-line tool to resize or inspect it.`,
       isError: true,
@@ -480,7 +485,7 @@ async function readImage(
   const mediaType = (IMAGE_MIME[ext] ?? "image/png") as ImageBlock["source"]["media_type"];
 
   const base64 = buf.toString("base64");
-  const sizeKB = (buf.length / 1_000).toFixed(1);
+  const sizeKB = (buf.length / KB).toFixed(1);
 
   let output = `Image: ${path}\n  format: ${ext.slice(1).toUpperCase()}${mediaType ? ` (${mediaType})` : ""}, ${sizeKB} KB`;
   if (!magicOk) {

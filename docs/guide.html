@@ -510,7 +510,7 @@
           <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>多语言</strong> —— 模型回复语言（<code>language</code>）与 TUI 界面语言（<code>locale</code>，内置 zh-CN / EN）分开配置，默认都跟随系统 locale。</span></li>
           <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>权限与沙箱</strong> —— 工作区信任门 + 基于规则的拦截 + OS 级文件写入隔离，三层防护。危险 bash 模式（rm -rf /、fork bomb、mkfs 等）直接拒绝，不可绕过。</span></li>
           <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>可恢复会话</strong> —— append-only 持久化，随时 <code>--resume</code> / <code>--continue</code>，<code>/rewind</code> 回到更早节点（含文件改动预览确认）。</span></li>
-          <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>DeepSeek 深度定制</strong> —— thinking 映射到 DeepSeek 的 <code>output_config.effort</code>，请求结构对自动上下文缓存友好，错误码翻译与瞬时重试。模型按 <code>lite</code>/<code>pro</code>/<code>max</code> 三档配置（DeepSeek 模板：<code>lite</code>→<code>deepseek-v4-flash</code>，<code>pro</code>/<code>max</code>→<code>deepseek-v4-pro</code>，各档 thinking 深度不同），默认档位 <code>pro</code>，支持 <code>/model</code> 运行时切换。</span></li>
+          <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>DeepSeek 深度定制</strong> —— thinking 映射到 DeepSeek 的 <code>output_config.effort</code>，请求结构对自动上下文缓存友好，错误码翻译与瞬时重试。模型按 <code>lite</code>/<code>pro</code>/<code>max</code> 三档配置（DeepSeek 内置默认：<code>lite</code>→<code>deepseek-v4-flash</code>，<code>pro</code>/<code>max</code>→<code>deepseek-v4-pro</code>，各档 thinking 深度不同），默认档位 <code>pro</code>，支持 <code>/model</code> 运行时切换。</span></li>
         </ul>
       </section>
 
@@ -540,13 +540,17 @@
       <!-- §3 -->
       <section id="sec-3" class="mb-20">
         <div class="flex items-center gap-3 mb-5"><span class="sec-num">03</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">首次配置向导</h2></div>
-        <p>第一次启动时，如果 <code>~/.nova/nova.config.json</code> 里缺少 <code>apiKey</code>，Nova 会进入首次配置向导。它从内置 provider 模板里取一个（模板已填好 <code>baseURL</code>、默认档位、<code>lite</code>/<code>pro</code>/<code>max</code> 模型表），所以<strong>唯一要交互问你的就是 API key</strong>（输入时掩码）。</p>
+        <p>第一次启动时，如果 <code>~/.nova/nova.config.json</code> 里缺少 <code>apiKey</code>，Nova 会进入首次配置向导。它从内置 provider 模板里取一个（模板已填好 <code>baseURL</code>、默认档位，<code>lite</code>/<code>pro</code>/<code>max</code> 模型表则由 provider 的<strong>内置默认表</strong>提供），所以<strong>唯一要交互问你的就是 API key</strong>（输入时掩码）。</p>
         <p><strong>当前只有 DeepSeek 一个模板对外可选</strong>（Moonshot/Kimi 已内置但在内部测试期，暂从选择器隐藏；「Other provider」手填入口也暂时关闭）。既然只有一个 provider，向导会<strong>跳过选择器</strong>，直接问 DeepSeek 的 API key。它写入：</p>
         <ul class="space-y-2">
-          <li><code>baseURL: https://api.deepseek.com/anthropic</code></li>
-          <li><code>lite</code>→<code>deepseek-v4-flash</code>，<code>pro</code>/<code>max</code>→<code>deepseek-v4-pro</code>（默认档位 <code>pro</code>；三档靠 per-tier <code>thinking</code> 拉开梯度）</li>
+          <li><code>provider: deepseek</code>、<code>baseURL: https://api.deepseek.com/anthropic</code>、默认档位 <code>pro</code>（以及 goal 配置和 key 本身）</li>
+          <li>模型表<strong>不写盘</strong>：<code>lite</code>→<code>deepseek-v4-flash</code>，<code>pro</code>/<code>max</code>→<code>deepseek-v4-pro</code>（三档靠 per-tier <code>thinking</code> 拉开梯度）来自代码里的内置默认</li>
         </ul>
-        <p>按 <span class="kbd">Ctrl+C</span> 可中止向导。<code>apiKey</code> 已存在则跳过向导；导出了环境变量 <code>NOVA_API_KEY</code> 且配置里已有 <code>models</code> 表时同样跳过（只有环境变量、还没有 <code>models</code> 表时，向导仍会跑，但不再问你 key，也不会把这个 key 写进配置文件）。要接别的 Anthropic 兼容端点，直接<strong>手动编辑</strong> <code>~/.nova/nova.config.json</code> —— schema 不再为 <code>baseURL</code>/<code>models</code> 提供默认值，需按 <code>lite</code>/<code>pro</code>/<code>max</code> 三档骨架填全（完整字段见 <a class="inline-link" href="#sec-20">§20</a>）。</p>
+        <div class="callout callout-info">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          <div><div class="callout-title">默认模型表不落盘</div><p><code>models</code> 的默认值按 <code>provider</code> 内置在代码里，加载配置时才层叠进来；配置文件里只放<strong>你自己的覆盖项</strong>。这样 Nova 升级带来的新模型 id、新价格、新上下文窗口，老装机也能直接吃到，而不会被向导当年写进文件的那份表钉死。旧版本写过整张表的配置，启动时会被<strong>改写成它实际表达的覆盖项</strong>（通常是空的，或一条 <code>/effort</code> 设过的 <code>thinking</code>），取值完全不变。</p><p class="mt-3">想覆盖某一档，只写要改的字段即可，例如 <code>"models": { "pro": { "thinking": "low" } }</code> —— 其余字段（<code>id</code>、<code>pricing</code>、<code>maxTokens</code>…）继续跟随内置默认。<strong>但如果你把某档的 <code>id</code> 改成别的模型</strong>，该档就整条以你的为准（不再继承内置的价格与上限）；反过来，同 <code>id</code> 的档位无法「删掉」某个内置字段（省略即继承）。<code>/effort</code> 持久化写的也正是这种最小覆盖。</p></div>
+        </div>
+        <p>按 <span class="kbd">Ctrl+C</span> 可中止向导。<code>apiKey</code> 已存在则跳过向导；导出了环境变量 <code>NOVA_API_KEY</code> 且配置里已有 <code>models</code> 表时同样跳过（只有环境变量、还没有 <code>models</code> 表时，向导仍会跑，但不再问你 key，也不会把这个 key 写进配置文件）。要接别的 Anthropic 兼容端点，直接<strong>手动编辑</strong> <code>~/.nova/nova.config.json</code> —— schema 不为 <code>baseURL</code>/<code>models</code> 提供默认值，<code>provider</code> 为 <code>other</code>（无内置表）时需按 <code>lite</code>/<code>pro</code>/<code>max</code> 三档骨架填全（完整字段见 <a class="inline-link" href="#sec-20">§20</a>）。</p>
         <div class="callout callout-warn">
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg>
           <div><div class="callout-title">apiKey 仍为空？</div><p>如果启动时 <code>apiKey</code> 仍为空（且没有 <code>NOVA_API_KEY</code>），Nova 会报错退出并提示去配置文件里补上。</p></div>
@@ -714,7 +718,7 @@
           <li>五档：<code>off</code> / <code>low</code> / <code>medium</code> / <code>high</code> / <code>max</code></li>
           <li>显式预算：传一个正整数（如 <code>-t 4096</code>），它会覆盖等级映射，直接当作 <code>budget_tokens</code></li>
         </ul>
-        <p class="mt-5"><strong>思考等级是 per-tier（按档位）的属性，没有全局 <code>thinking</code> 配置项</strong> —— 它写在 <code>models.&lt;tier&gt;.thinking</code> 里，切档（<code>/model</code>）会把当前思考等级换成该档的值。这也是 lite/pro/max 能在同一个模型 id 上拉出能力梯度的原因（DeepSeek 模板：lite→<code>low</code>、pro→<code>high</code>、max→<code>max</code>）。档位没写 <code>thinking</code> 时回退到 <code>max</code>。</p>
+        <p class="mt-5"><strong>思考等级是 per-tier（按档位）的属性，没有全局 <code>thinking</code> 配置项</strong> —— 它写在 <code>models.&lt;tier&gt;.thinking</code> 里，切档（<code>/model</code>）会把当前思考等级换成该档的值。这也是 lite/pro/max 能在同一个模型 id 上拉出能力梯度的原因（DeepSeek 内置默认：lite→<code>low</code>、pro→<code>high</code>、max→<code>max</code>）。档位没写 <code>thinking</code> 时回退到 <code>max</code>。</p>
         <p class="mt-5 font-medium" style="color:var(--text)">设置方式：</p>
         <ul class="space-y-2">
           <li>启动时：<code>nova -t high "..."</code> 或 <code>nova -t 4096 "..."</code>（本次会话临时覆盖）</li>
@@ -1226,7 +1230,7 @@
           <tr><td><code>apiKey</code></td><td>（无）</td><td>provider API key（首次向导会写入）。<strong>环境变量 <code>NOVA_API_KEY</code> 优先于此项</strong>：设了就用它，配置文件里的值作为兜底。想把 key 留在环境里、不落到明文配置文件时用这个</td></tr>
           <tr><td><code>provider</code></td><td><code>"deepseek"</code></td><td>驱动 thinking 参数、错误翻译、重试的 <strong>provider profile</strong>：<code>deepseek</code>（effort 旋钮 + 错误翻译 + 状态码重试）/ <code>moonshot</code> / <code>other</code>（通用 Anthropic 兼容端点，用 <code>budget_tokens</code>）。未知 id 回退到 <code>other</code></td></tr>
           <tr><td><code>model</code></td><td><code>"pro"</code></td><td>当前<strong>档位</strong>：<code>models</code> 表中的 key（<code>lite</code>/<code>pro</code>/<code>max</code>），<strong>永远不是裸模型 id</strong></td></tr>
-          <tr><td><code>models</code></td><td><code>{}</code></td><td>命名的模型档位表，value 为<strong>档位对象</strong>，每档带自己的 <code>id</code>、<code>maxTokens</code>、<code>contextWindowSize</code>、<code>thinking</code>、<code>modalities</code>、<code>pricing</code>、可选 <code>description</code>。非空时<strong>必须含 <code>lite</code>/<code>pro</code>/<code>max</code> 三档</strong>（schema 强制）；首次向导按 provider 模板写入，schema 不再提供默认值</td></tr>
+          <tr><td><code>models</code></td><td><code>{}</code></td><td>命名的模型档位表，value 为<strong>档位对象</strong>，每档带自己的 <code>id</code>、<code>maxTokens</code>、<code>contextWindowSize</code>、<code>thinking</code>、<code>modalities</code>、<code>pricing</code>、可选 <code>description</code>。非空时<strong>必须含 <code>lite</code>/<code>pro</code>/<code>max</code> 三档</strong>（schema 强制）。默认表按 <code>provider</code> 内置在代码里、加载时层叠进来（<strong>不写进配置文件</strong>，见 <a class="inline-link" href="#sec-3">§3</a>）；这里只写覆盖项</td></tr>
           <tr><td><code>baseURL</code></td><td>（无）</td><td>Anthropic 兼容端点 URL（provider 模板写入；缺省用 SDK 默认端点）</td></tr>
           <tr><td><code>sessionDir</code></td><td><code>~/.nova/sessions</code></td><td>session 存放目录</td></tr>
           <tr><td><code>language</code></td><td><code>"auto"</code></td><td><strong>模型回复语言</strong>（注入 system prompt），同时也是 TUI 界面语言的默认来源；<code>auto</code> 跟随系统 locale（<code>$LC_ALL</code>/<code>$LANG</code>/<code>$LANGUAGE</code>，macOS 还读 <code>AppleLocale</code>），否则填 BCP-47 标签如 <code>en</code>/<code>zh-CN</code>。加载时 <code>auto</code> 会被解析成具体标签</td></tr>
@@ -1237,7 +1241,7 @@
         </tbody></table></div>
         <div class="callout callout-info">
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
-          <div><p><strong>每档输出上限 / 上下文窗口是 per-tier 的</strong>：写在 <code>models.&lt;tier&gt;.maxTokens</code>（schema 缺省 32768，DeepSeek 模板三档均写 384000）和 <code>models.&lt;tier&gt;.contextWindowSize</code>（缺省 1000000），不再是顶层字段。<code>models.&lt;tier&gt;.thinking</code> 让同一模型 id 拉出 lite/pro/max 能力梯度（见 <a class="inline-link" href="#sec-7">§7</a>）；<code>models.&lt;tier&gt;.pricing</code> 提供 <code>/usage</code> 成本估算单价。</p></div>
+          <div><p><strong>每档输出上限 / 上下文窗口是 per-tier 的</strong>：写在 <code>models.&lt;tier&gt;.maxTokens</code>（schema 缺省 32768，DeepSeek 内置默认三档均为 393216 = 384×1024）和 <code>models.&lt;tier&gt;.contextWindowSize</code>（缺省 1048576 = 1024×1024），不再是顶层字段。<code>models.&lt;tier&gt;.thinking</code> 让同一模型 id 拉出 lite/pro/max 能力梯度（见 <a class="inline-link" href="#sec-7">§7</a>）；<code>models.&lt;tier&gt;.pricing</code> 提供 <code>/usage</code> 成本估算单价。</p></div>
         </div>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)"><code>permissions</code></h3>
@@ -1441,7 +1445,7 @@
               <span>长回复被 <code>max_tokens</code> 截断</span>
               <svg class="w-4 h-4 text-mute transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
             </summary>
-            <p class="px-5 pb-4 pt-0 text-sm m-0 max-w-none">Nova 的 loop 会自动检测 <code>max_tokens</code> 截断并重新提示模型继续。默认最多连续续传 3 次（<code>maxTokensContinuations: 3</code>），每次有进展时计数器重置。设为 <code>0</code> 可禁用此特性。若长回复频繁被截断，也可以直接调高该档的 <code>models.&lt;tier&gt;.maxTokens</code>（DeepSeek 模板默认已是 384000）。</p>
+            <p class="px-5 pb-4 pt-0 text-sm m-0 max-w-none">Nova 的 loop 会自动检测 <code>max_tokens</code> 截断并重新提示模型继续。默认最多连续续传 3 次（<code>maxTokensContinuations: 3</code>），每次有进展时计数器重置。设为 <code>0</code> 可禁用此特性。若长回复频繁被截断，也可以直接调高该档的 <code>models.&lt;tier&gt;.maxTokens</code>（DeepSeek 内置默认已是 393216）。</p>
           </details>
           <details class="group bg-surface border border-line rounded-xl overflow-hidden">
             <summary class="cursor-pointer list-none px-5 py-3.5 flex items-center justify-between gap-3 font-medium select-none" style="color:var(--text)">

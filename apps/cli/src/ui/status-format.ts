@@ -91,14 +91,21 @@ export function formatElapsed(ms: number): string {
   return `${s}s`;
 }
 
-/** Compact token magnitude: 1_500_000 → "1.5M", 1_234 → "1.2K", 512 → "512". */
+/** One binary "K" / "M" of tokens. Model context windows and output caps are
+ *  quoted in powers of two (a "128K" window is 131_072 tokens), so dividing by
+ *  1000 would render every one of them off-by-2.4% — "131.1K" for a 128K window.
+ */
+const TOKENS_K = 1024;
+const TOKENS_M = 1024 * 1024;
+
+/** Compact token magnitude: 1_572_864 → "1.5M", 1_260 → "1.2K", 512 → "512". */
 export function formatTokenCount(tokens: number): string {
-  if (tokens >= 1_000_000) {
-    const m = tokens / 1_000_000;
+  if (tokens >= TOKENS_M) {
+    const m = tokens / TOKENS_M;
     return `${Number.isInteger(m) ? m : Number(m.toFixed(1))}M`;
   }
-  if (tokens >= 1_000) {
-    const k = tokens / 1_000;
+  if (tokens >= TOKENS_K) {
+    const k = tokens / TOKENS_K;
     return `${Number.isInteger(k) ? k : Number(k.toFixed(1))}K`;
   }
   return `${Math.max(0, Math.floor(tokens))}`;

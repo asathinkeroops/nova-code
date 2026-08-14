@@ -10,7 +10,7 @@ import { readTool } from "./read.js";
 // Mirrors read.ts's MAX_LINE_CHARS. Kept local so the test pins the contract
 // rather than re-importing the constant.
 const MAX_LINE_CHARS = 16_000;
-const MAX_IMAGE_BYTES = 20_000_000;
+const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 
 async function writeFixture(name: string, content: string): Promise<{ cwd: string; path: string }> {
   const cwd = await mkdtemp(join(tmpdir(), "nova-read-"));

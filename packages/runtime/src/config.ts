@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
+import { mergeBuiltinModels } from "./models.js";
 
 export const DEFAULT_CONFIG_PATH = join(homedir(), ".nova", "nova.config.json");
 
@@ -206,8 +207,9 @@ export type ModelPricing = z.infer<typeof modelPricingSchema>;
  *  for those tiers. */
 export const DEFAULT_MAX_TOKENS = 32768;
 
-/** Default context-window budget when the model profile doesn't set one. */
-export const DEFAULT_CONTEXT_WINDOW_SIZE = 1_000_000;
+/** Default context-window budget when the model profile doesn't set one. Binary
+ *  magnitude (1M = 1024 × 1024), matching how the UI renders token counts. */
+export const DEFAULT_CONTEXT_WINDOW_SIZE = 1_048_576;
 
 /** Supported input/output modalities for a model tier. */
 export const modelModalitiesSchema = z.object({
@@ -339,7 +341,7 @@ export const pluginSourceSchema = z.union([
 
 export type PluginSource = z.infer<typeof pluginSourceSchema>;
 
-export const settingsSchema = z.object({
+const settingsObjectSchema = z.object({
   // The model API key. Stored in plaintext here, so `$NOVA_API_KEY` is offered
   // as an alternative and OVERRIDES this value when set — see resolveApiKey,
   // which folds the two into `settings.apiKey` at load.
@@ -358,9 +360,12 @@ export const settingsSchema = z.object({
   // concrete `id` and differ only in their per-tier knobs (e.g. pro/max both →
   // deepseek-v4-pro, differing in `thinking`), which is why all tier lookups are
   // keyed by the alias, never reverse-mapped from the id. No schema default:
-  // the tier set is provider-specific, so it is only populated when a provider
-  // template is chosen (DeepSeek writes lite/pro/max — see provider-templates.ts)
-  // or when the user hand-authors a config. An empty table means "unconfigured".
+  // the table a config NAMING A PROVIDER sees comes from that provider's
+  // built-in table (BUILTIN_PROVIDER_MODELS, layered in pre-parse by
+  // mergeBuiltinModels) — the config file itself only carries OVERRIDES, so
+  // shipped model/price/limit updates reach existing installs. Providers with
+  // no built-in table (e.g. `other`) must spell the ladder out. An empty table
+  // means "unconfigured" (a keyless, pre-setup config).
   models: z.record(modelEntrySchema).default({}),
   // No schema default: the base endpoint is provider-specific, so it is only
   // written when a provider template is chosen (or the user sets it). Callers
@@ -1176,6 +1181,19 @@ export const settingsSchema = z.object({
     }
   });
 
+/**
+ * The config schema, with the provider's built-in tier table layered in BEFORE
+ * validation (see {@link mergeBuiltinModels}). Defaults therefore live in the
+ * code, not in `nova.config.json`: a config that names a `provider` gets that
+ * provider's `models` for free — and only what it spells out itself overrides —
+ * so upgrading Nova upgrades the model ids, prices and limits with it.
+ *
+ * Every path into Settings goes through here ({@link loadSettings},
+ * {@link parseSettings}, the CLI's `diagnoseConfig`), so no caller has to know
+ * about the layering.
+ */
+export const settingsSchema = z.preprocess(mergeBuiltinModels, settingsObjectSchema);
+
 export type Settings = z.infer<typeof settingsSchema>;
 
 /**
@@ -1459,4 +1477,43 @@ export async function saveSettings(
   const merged = { ...raw, ...patch };
   await mkdir(dirname(configPath), { recursive: true });
   await writeFile(configPath, `${JSON.stringify(merged, null, 2)}\n`, "utf8");
+}
+
+/**
+ * Persist a per-tier profile change (e.g. `/effort` writing `models.pro.thinking`)
+ * as an OVERRIDE, without copying the provider's built-in table into the config
+ * file. Only the changed fields are merged into the on-disk `models.<tier>`
+ * entry; everything else keeps coming from `BUILTIN_PROVIDER_MODELS`, so the
+ * tier still tracks shipped updates to its id / price / limits.
+ *
+ * Do NOT replace this with `saveSettings({ models: settings.models })` — the
+ * in-memory table is the RESOLVED one (built-ins already merged in), so saving
+ * it would freeze today's defaults into the file, which is what this whole
+ * layering exists to avoid.
+ */
+export async function saveModelProfileOverride(
+  tier: string,
+  override: Partial<ModelProfile>,
+  configPath: string = DEFAULT_CONFIG_PATH,
+): Promise<void> {
+  let raw: Record<string, unknown> = {};
+  try {
+    const parsed: unknown = JSON.parse(await readFile(configPath, "utf8"));
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      raw = parsed as Record<string, unknown>;
+    }
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+  }
+  const models =
+    raw["models"] && typeof raw["models"] === "object" && !Array.isArray(raw["models"])
+      ? { ...(raw["models"] as Record<string, unknown>) }
+      : {};
+  const existing = models[tier];
+  models[tier] = {
+    ...(existing && typeof existing === "object" && !Array.isArray(existing) ? existing : {}),
+    ...override,
+  };
+  await mkdir(dirname(configPath), { recursive: true });
+  await writeFile(configPath, `${JSON.stringify({ ...raw, models }, null, 2)}\n`, "utf8");
 }

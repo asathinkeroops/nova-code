@@ -21,7 +21,8 @@ interface StubOpts {
 
 function makeCtx(viewers: Viewer[], o: StubOpts = {}): CliContext {
   const toolNames = o.toolNames ?? ["read", "write", "mcp__srv__do"];
-  const windowTokens = o.contextWindowSize ?? 128_000;
+  // Binary magnitude, like the built-in tables: a "128K" window is 128 × 1024.
+  const windowTokens = o.contextWindowSize ?? 128 * 1024;
   return {
     workspace: "/tmp/ws",
     session: { id: "test-session" },
