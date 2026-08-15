@@ -1,4 +1,4 @@
-import { McpManager, type McpServerSpec } from "@nova/external";
+import { McpManager, type McpServerSpec } from "@nova/mcp";
 import type { Logger, Settings } from "@nova/runtime";
 import { makeAuthProviderFactory } from "./mcp-oauth.js";
 

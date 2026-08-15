@@ -2,14 +2,10 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
-import {
-  fileCommandToSlash,
-  loadFileCommands,
-  type McpServerSpec,
-  type SlashCommand,
-} from "@nova/external";
+import type { McpServerSpec } from "@nova/mcp";
 import type { ServerConfig } from "@nova/lsp";
-import { hooksConfigSchema, type HooksConfig, type Logger } from "@nova/runtime";
+import { hooksConfigSchema, type HooksConfig, type Logger, type SlashCommand } from "@nova/runtime";
+import { fileCommandToSlash, loadFileCommands } from "../slash-registry.js";
 import { loadAgentDefinitions, type AgentDefinition } from "@nova/subagent";
 
 import {

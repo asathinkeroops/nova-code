@@ -18,7 +18,7 @@ Standard `pnpm install / build / typecheck / test / lint / format` also work. No
 ## Workspace layout
 
 - `packages/*` (`@nova/<name>`) — library code. Workspace consumers import from `./src/index.ts` directly (no rebuild needed); published builds switch to `dist/` via `publishConfig`.
-- Active packages: `core`, `runtime`, `observability`, `safety`, `context`, `tools`, `external` (MCP), `sandbox` (OS-level write confinement), `lsp` (language-server code intelligence), `agent`, `subagent`. `sandbox` and `lsp` are the most recently added.
+- Active packages: `core`, `runtime`, `observability`, `safety`, `context`, `tools`, `mcp` (Model Context Protocol client), `sandbox` (OS-level write confinement), `lsp` (language-server code intelligence), `agent`, `subagent`. `sandbox` and `lsp` are the most recently added.
 - `apps/cli` — the only active app. `apps/http` and `apps/vscode` are placeholders.
 - `eval/` — replay harness; **excluded from eslint/tsconfig**, don't expect it to build with the rest.
 
@@ -26,14 +26,17 @@ Standard `pnpm install / build / typecheck / test / lint / format` also work. No
 
 `@nova/core` is the model-agnostic loop and never imports a model SDK, tool implementation, or UI — callers wire those in.
 
-**Dependency direction** (do not reverse) — by actual source imports; some `package.json`s declare a superset (e.g. `core` and `observability` list `@nova/runtime`, and `lsp` lists `@nova/core`, but never import them):
+**Dependency direction** (do not reverse) — by actual source imports, which every `package.json` now matches exactly (keep it that way: a declared dep nothing imports is a bug):
 
 ```
 runtime, core, observability, lsp  ──► (no @nova/* source imports — leaf layer)
 safety                             ──► runtime
 context                            ──► core + runtime
 tools                              ──► core + runtime + lsp
-sandbox, external                  ──► core            (both import core type-only)
+sandbox                            ──► core            (type-only)
+mcp                                ──► core + runtime  (both type-only; the `SlashCommand`
+                                       contract it bridges prompts into lives in
+                                       runtime/slash-types.ts — registry + .md loader are CLI-side)
 agent                              ──► core + runtime + context + observability
 subagent                           ──► agent + context + core + observability + runtime
 cli (apps/cli)                     ──► every package above

@@ -1,5 +1,5 @@
 import { stat } from "node:fs/promises";
-import type { SlashOutcome } from "@nova/external";
+import type { SlashOutcome } from "@nova/runtime";
 import { ACCENT_RGB, accent, dim } from "../colors.js";
 import { stopSpinner, type CliContext } from "../context.js";
 import { NOVA_GUIDE_AGENT } from "../guide/agent.js";

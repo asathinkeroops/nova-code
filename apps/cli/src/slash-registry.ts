@@ -1,50 +1,23 @@
+/**
+ * The slash-command registry, the `.md` file loader and the body expander.
+ *
+ * This is host surface, so it lives in the CLI rather than in a package. The
+ * *types* it works with (`SlashCommand` & friends) live in
+ * `@nova/runtime`'s `slash-types.ts` instead, because `@nova/mcp` bridges each
+ * MCP prompt into a `SlashCommand` and a package must not import the app.
+ */
 import { readFile, readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
-import { expandArgs, expandMentions, expandShell } from "@nova/runtime";
-
-export type SlashCommandKind = "builtin" | "user" | "project" | "mcp" | "skill" | "plugin";
-
-export interface SlashCommandSource {
-  kind: SlashCommandKind;
-  /** Absolute path of the .md file; undefined for builtins. */
-  path?: string;
-  /** Same-named commands lower in priority that were shadowed by this one. */
-  shadowedBy?: Array<{ kind: SlashCommandKind; path: string }>;
-}
-
-export interface SlashArgSpec {
-  name: string;
-  required?: boolean;
-  default?: string;
-}
-
-export interface SlashRunCtx {
-  cwd: string;
-  /**
-   * Execute a shell command for Claude-Code-style `` !`cmd` `` interpolation in
-   * a command body. Injected by the host so execution stays sandbox-confined
-   * and this leaf package keeps no dependency on the tool/sandbox layer. When
-   * absent, `` !`cmd` `` segments are left verbatim.
-   */
-  runCommand?: (command: string) => Promise<{ output: string; isError: boolean }>;
-}
-
-export type SlashOutcome =
-  | { kind: "handled" }
-  | { kind: "prompt"; text: string }
-  | { kind: "error"; message: string };
-
-export interface SlashCommand {
-  /** Bare name without the leading "/". */
-  name: string;
-  description: string;
-  /** Short hint shown next to the name in /help, e.g. "[focus]". */
-  argHint?: string;
-  source: SlashCommandSource;
-  args?: SlashArgSpec[];
-  run: (ctx: SlashRunCtx, args: string) => Promise<SlashOutcome> | SlashOutcome;
-}
+import {
+  expandArgs,
+  expandMentions,
+  expandShell,
+  type SlashArgSpec,
+  type SlashCommand,
+  type SlashCommandKind,
+  type SlashRunCtx,
+} from "@nova/runtime";
 
 export interface FileCommandRaw {
   name: string;

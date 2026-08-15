@@ -1,4 +1,4 @@
-import type { SlashOutcome } from "@nova/external";
+import type { SlashOutcome } from "@nova/runtime";
 
 /**
  * `/plan <task goal>` — kick off planning for a task. Returns a prompt that

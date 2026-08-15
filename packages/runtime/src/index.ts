@@ -75,6 +75,14 @@ export {
 export { createLogger, type Logger, type LoggerConfig } from "./logging.js";
 
 export { canonicalizePath, canonicalizeRoots } from "./path-safety.js";
+export type {
+  SlashArgSpec,
+  SlashCommand,
+  SlashCommandKind,
+  SlashCommandSource,
+  SlashOutcome,
+  SlashRunCtx,
+} from "./slash-types.js";
 export {
   expandVars,
   expandArgs,

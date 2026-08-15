@@ -62,7 +62,7 @@
 加新能力 = 挂个钩子,内核一行不动。
 
 ### 🔌 MCP 服务器
-启动时接入 Model Context Protocol 服务器(`@nova/external`),支持 **stdio** 与 **HTTP** 两种传输。每个服务器的工具以 `mcp__<server>__<tool>` 命名空间桥接进工具注册表,走和内置工具一致的**权限引擎门控**(默认 `ask`)。连接失败的服务器只记日志并跳过,**绝不阻塞启动**;`/mcp` 查看服务器状态,`/mcp tools` 列出已桥接的工具。可按服务器或整体 `enabled: false` 关闭。
+启动时接入 Model Context Protocol 服务器(`@nova/mcp`),支持 **stdio** 与 **HTTP** 两种传输。每个服务器的工具以 `mcp__<server>__<tool>` 命名空间桥接进工具注册表,走和内置工具一致的**权限引擎门控**(默认 `ask`)。连接失败的服务器只记日志并跳过,**绝不阻塞启动**;`/mcp` 查看服务器状态,`/mcp tools` 列出已桥接的工具。可按服务器或整体 `enabled: false` 关闭。
 
 ### 🔌 LSP 代码智能
 `lsp` 工具(`@nova/lsp`)直连**语言服务器**(JSON-RPC over stdio),提供 `definition` / `references` / `hover` / `diagnostics` / `document_symbols` / `workspace_symbol` 六个 action——懂作用域和类型,比 grep 精确得多。**只读、默认放行**,语言服务器在首次调用时**懒启动**。内置自动识别 TypeScript / Python / Go / Rust(`typescript-language-server` / `pyright-langserver` / `gopls` / `rust-analyzer`),**Nova 不负责安装**——二进制需已在 PATH,缺失则静默降级为「未安装」提示。`/lsp` 查看各语言状态,`settings.lsp.servers` 可覆盖/扩展服务器表。

@@ -1,4 +1,4 @@
-import type { McpManager, McpServerState, McpServerStatus } from "@nova/external";
+import type { McpManager, McpServerState, McpServerStatus } from "@nova/mcp";
 import { ACCENT_HEX, bold, cyan, dim, green, yellow, magenta, red } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { t } from "../i18n/index.js";

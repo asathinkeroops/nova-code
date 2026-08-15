@@ -1,4 +1,4 @@
-import type { SlashOutcome } from "@nova/external";
+import type { SlashOutcome } from "@nova/runtime";
 
 /**
  * `/init` — bootstrap (or refresh) the project memory file. Returns a prompt

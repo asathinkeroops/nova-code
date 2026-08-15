@@ -9,7 +9,7 @@ import {
   type ModelClient,
   type ToolExecutor,
 } from "@nova/core";
-import { SlashRegistry } from "@nova/external";
+import { SlashRegistry } from "./slash-registry.js";
 import { LspManager, resolveServers } from "@nova/lsp";
 import { Transcript } from "@nova/observability";
 import {

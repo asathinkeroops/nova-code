@@ -1,4 +1,4 @@
-import type { SlashArgSpec, SlashCommand } from "../slash.js";
+import type { SlashArgSpec, SlashCommand } from "@nova/runtime";
 import { MCP_TOOL_PREFIX } from "./tool.js";
 
 /**

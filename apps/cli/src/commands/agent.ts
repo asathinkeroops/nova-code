@@ -1,4 +1,4 @@
-import type { SlashOutcome } from "@nova/external";
+import type { SlashOutcome } from "@nova/runtime";
 import type { CliContext } from "../context.js";
 import { t } from "../i18n/index.js";
 

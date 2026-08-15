@@ -1,11 +1,6 @@
-import {
-  SlashRegistry,
-  fileCommandToSlash,
-  loadFileCommands,
-  type SlashCommand,
-} from "@nova/external";
 import { getSkill, getSkillList, renderSkillPayload } from "@nova/tools";
-import type { Logger, Settings } from "@nova/runtime";
+import type { Logger, Settings, SlashCommand } from "@nova/runtime";
+import { SlashRegistry, fileCommandToSlash, loadFileCommands } from "./slash-registry.js";
 import { pluginSkillRoots } from "./plugins/loader.js";
 import type { LoadedPlugin } from "./plugins/loader.js";
 import type { SlashCommand as UISlashCommand } from "./ui/input-box.js";
@@ -84,10 +79,7 @@ export async function reloadFileCommands(
  * explicit `/foo` (builtin or user/project `.md`) authoritative over a skill
  * that happens to be named `foo`.
  */
-export function loadSkillCommandsInto(
-  registry: SlashRegistry,
-  opts: LoadOpts,
-): { added: number } {
+export function loadSkillCommandsInto(registry: SlashRegistry, opts: LoadOpts): { added: number } {
   if (!opts.settings.skills.enabled) return { added: 0 };
   // One options object for both the listing scan and the per-invocation reread.
   // Every field that takes part in the scan cache key (extraDirs, pluginRoots,
@@ -140,9 +132,7 @@ export function loadSkillCommandsInto(
             ...(opts.getEffort ? { effort: opts.getEffort() } : {}),
             ...(ctx.runCommand ? { runCommand: ctx.runCommand } : {}),
             maxResponseBytes: opts.settings.skills.maxResponseBytes,
-            ...(opts.settings.skills.disableShellExecution
-              ? { disableShellExecution: true }
-              : {}),
+            ...(opts.settings.skills.disableShellExecution ? { disableShellExecution: true } : {}),
           }),
         };
       },
@@ -157,10 +147,7 @@ export function loadSkillCommandsInto(
  * Replace all skill-backed commands in `registry` with a fresh scan. Used by
  * `/commands reload`. Builtins and file commands are left untouched.
  */
-export function reloadSkillCommands(
-  registry: SlashRegistry,
-  opts: LoadOpts,
-): { added: number } {
+export function reloadSkillCommands(registry: SlashRegistry, opts: LoadOpts): { added: number } {
   registry.clearKind("skill");
   return loadSkillCommandsInto(registry, opts);
 }

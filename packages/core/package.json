@@ -29,7 +29,6 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.111.0",
-    "@nova/runtime": "workspace:*",
     "zod": "^3.23.0",
     "zod-to-json-schema": "^3.23.0"
   }

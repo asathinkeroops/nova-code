@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import type { SlashCommand } from "@nova/runtime";
 import {
   SlashRegistry,
   expandCommandBody,
@@ -10,8 +11,7 @@ import {
   loadFileCommands,
   parseCommandFile,
   type FileCommandRaw,
-  type SlashCommand,
-} from "./slash.js";
+} from "./slash-registry.js";
 
 /** Parse a command file and return its `ok` payload or throw the parse error. */
 function parseOk(path: string, md: string): FileCommandRaw {

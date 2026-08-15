@@ -1,4 +1,4 @@
-import type { SlashOutcome } from "@nova/external";
+import type { SlashOutcome } from "@nova/runtime";
 
 const DEFAULT_FOCUS = "correctness and regressions in adjacent code";
 

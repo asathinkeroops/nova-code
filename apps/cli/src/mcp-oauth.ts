@@ -8,7 +8,7 @@ import {
   type McpHttpServerSpec,
   type OAuthStore,
   type StoredOAuth,
-} from "@nova/external";
+} from "@nova/mcp";
 import type { Settings } from "@nova/runtime";
 
 /** Directory holding one `<server>.json` OAuth blob per authenticated server. */

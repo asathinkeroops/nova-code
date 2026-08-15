@@ -7,7 +7,8 @@ import type {
   ThinkingLevel,
   ToolExecutor,
 } from "@nova/core";
-import type { SlashRegistry, McpManager } from "@nova/external";
+import type { McpManager } from "@nova/mcp";
+import type { SlashRegistry } from "./slash-registry.js";
 import type { LspManager } from "@nova/lsp";
 import type { Transcript } from "@nova/observability";
 import type {

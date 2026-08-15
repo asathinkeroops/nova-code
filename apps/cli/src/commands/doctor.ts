@@ -1,8 +1,7 @@
 import { buildSystemPrompt } from "@nova/agent";
 import { estimateTokens, sliceFromLastCompacted } from "@nova/context";
 import { estimateTextTokens, resolveProfile, toWireTools } from "@nova/core";
-import type { SlashOutcome } from "@nova/external";
-import { resolveContextWindowSize } from "@nova/runtime";
+import { resolveContextWindowSize, type SlashOutcome } from "@nova/runtime";
 import { ACCENT_HEX, bold, dim, green } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { buildFixPrompt, diagnoseConfig, formatIssues, summarizeReport } from "../doctor.js";

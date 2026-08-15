@@ -5,7 +5,7 @@ import {
 } from "@modelcontextprotocol/sdk/client/auth.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { ToolHandler } from "@nova/core";
-import type { SlashCommand } from "../slash.js";
+import type { SlashCommand } from "@nova/runtime";
 import { createHttpTransport } from "./http.js";
 import { createStdioTransport } from "./stdio.js";
 import { formatPromptMessages, mcpPromptToSlash, type McpPromptDescriptor } from "./prompt.js";
