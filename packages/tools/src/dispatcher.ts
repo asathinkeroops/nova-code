@@ -1,7 +1,12 @@
-import type { ToolContext, ToolExecutor, ToolResultBlock, ToolUseBlock } from "@nova/core";
+import type {
+  InvariantsCheck,
+  ToolContext,
+  ToolExecutor,
+  ToolResultBlock,
+  ToolUseBlock,
+} from "@nova/core";
 import type { Logger } from "@nova/runtime";
 import type { ZodError } from "zod";
-import type { InvariantsCheck } from "./invariants.js";
 import type { ToolRegistry } from "./registry.js";
 
 /**

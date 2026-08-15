@@ -1,4 +1,10 @@
 export {
+  createInvariants,
+  InMemoryFileAccessLedger,
+  type InvariantsOptions,
+} from "./invariants.js";
+
+export {
   createSandbox,
   type CreateSandboxOptions,
   type SandboxControl,

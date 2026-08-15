@@ -1,8 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import type { ToolHandler, ToolUseBlock } from "@nova/core";
+import type { InvariantsCheck, ToolHandler, ToolUseBlock } from "@nova/core";
 import { createDispatcher, formatValidationError } from "./dispatcher.js";
-import type { InvariantsCheck } from "./invariants.js";
 import { ToolRegistry } from "./registry.js";
 import { PATH_ALIASES, withAliases } from "./schema.js";
 

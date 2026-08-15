@@ -700,7 +700,7 @@
             <div class="mc-func">bash · read / write / edit · glob / grep · lsp · webfetch / websearch · notebook-edit · ask-user · skills / load-skill · todo* · task* · run（long-running）</div>
           </div>
           <div class="mod-chip">
-            <div class="mc-id">tools/invariants</div>
+            <div class="mc-id">safety/invariants</div>
             <div class="mc-name">Tool Invariants</div>
             <div class="mc-func">InMemoryFileAccessLedger —— read-before-edit · mtime 漂移检查 · 经 canonicalizePath 归一（别名 / symlink 同源）</div>
           </div>
@@ -945,8 +945,8 @@
 │   ├── core/             <span class="plane">[A]</span>             <span class="cmt"># 执行核心 — loop · model(DeepSeek) · messages · hooks · stop-reason · thinking</span>
 │   ├── runtime/          <span class="plane">[rt]</span>            <span class="cmt"># 基础 — config · logging · session · path-safety · transcript · cost（叶子）</span>
 │   ├── lsp/              <span class="plane">[L]</span>             <span class="cmt"># 代码智能 — LspManager 多路复用 language server（叶子）</span>
-│   ├── safety/           <span class="plane">[!]</span>             <span class="cmt"># 安全 — permission 引擎 + sandbox（Seatbelt / bubblewrap 写入隔离）</span>
-│   ├── tools/            <span class="plane">[B]</span>             <span class="cmt"># 工具管线 — registry · dispatcher · invariants · builtin(含 todo/task/long-running)</span>
+│   ├── safety/           <span class="plane">[!]</span>             <span class="cmt"># 安全 — permission 引擎 · invariants(read-before-edit) · sandbox(写入隔离)</span>
+│   ├── tools/            <span class="plane">[B]</span>             <span class="cmt"># 工具管线 — registry · dispatcher · schema · builtin(含 todo/task/long-running)</span>
 │   ├── mcp/              <span class="plane">[G]</span>             <span class="cmt"># 外部 — MCP client · tool/prompt/resource 桥接（slash 实现已移入 apps/cli）</span>
 │   └── agent/            <span class="plane">[E]</span>             <span class="cmt"># 装配 — createAgent · system-prompt · persistence · memory/compact · subagent</span>
 │
@@ -1014,8 +1014,9 @@
       </div>
 <pre class="pkg-tree">src/
 ├── permission.ts    <span class="cmt"># allow / deny / ask 规则机</span>
+├── invariants.ts    <span class="cmt"># read-before-edit · mtime 漂移</span>
 ├── sandbox.ts       <span class="cmt"># createSandbox → SandboxBridge</span>
-└── index.ts</pre>
+└── index.ts         <span class="cmt"># 契约在 core，执行在这里</span></pre>
     </div>
 
     <div class="pkg-card">
@@ -1026,7 +1027,6 @@
       </div>
 <pre class="pkg-tree">src/
 ├── registry.ts · dispatcher.ts
-├── invariants.ts    <span class="cmt"># FileAccessLedger</span>
 ├── schema.ts        <span class="cmt"># withAliases（filePath/file→path）</span>
 ├── builtin/
 │   ├── bash · read · write · edit

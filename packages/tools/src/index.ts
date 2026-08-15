@@ -27,12 +27,6 @@ export { ToolRegistry } from "./registry.js";
 export { createDispatcher, type DispatcherDeps } from "./dispatcher.js";
 export { withAliases, aliasedPath, PATH_ALIASES } from "./schema.js";
 export {
-  InMemoryFileAccessLedger,
-  createInvariants,
-  type InvariantsCheck,
-  type InvariantsOptions,
-} from "./invariants.js";
-export {
   askUserQuestionTool,
   bashTool,
   createBashTool,

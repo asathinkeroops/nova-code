@@ -1,5 +1,16 @@
+/**
+ * File-access invariants: the second half of this package's job. The
+ * permission engine decides whether a tool call is *allowed*; this decides
+ * whether a write would *clobber* something the agent never looked at.
+ *
+ * It keys the ledger with the same `canonicalizePath` the permission gate
+ * uses, so both agree on what "the real file" is when a call arrives through a
+ * symlink or a path alias. The dispatcher-facing contract (`InvariantsCheck`)
+ * lives in `@nova/core` next to `FileAccessLedger`, which is what keeps
+ * `@nova/tools` free of a dependency on this package.
+ */
 import { stat } from "node:fs/promises";
-import type { FileAccessLedger, ToolContext, ToolUseBlock } from "@nova/core";
+import type { FileAccessLedger, InvariantsCheck, ToolContext, ToolUseBlock } from "@nova/core";
 import { canonicalizePath } from "@nova/runtime";
 
 /**
@@ -39,16 +50,6 @@ export class InMemoryFileAccessLedger implements FileAccessLedger {
 export interface InvariantsOptions {
   readBeforeEdit: boolean;
   mtimeCheck: boolean;
-}
-
-export interface InvariantViolation {
-  ok: false;
-  message: string;
-}
-
-export interface InvariantsCheck {
-  preCheck(use: ToolUseBlock, ctx: ToolContext): Promise<{ ok: true } | InvariantViolation>;
-  postCommit(use: ToolUseBlock, ctx: ToolContext, isError: boolean): Promise<void>;
 }
 
 interface PathAccess {

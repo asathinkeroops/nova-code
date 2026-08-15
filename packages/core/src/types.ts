@@ -205,6 +205,29 @@ export interface FileAccessLedger {
   get(absPath: string): { lastReadMtimeMs: number } | undefined;
 }
 
+/** A refused tool call, with a model-readable reason for the refusal. */
+export interface InvariantViolation {
+  ok: false;
+  message: string;
+}
+
+/**
+ * The invariants gate the dispatcher consults around every tool call:
+ * `preCheck` runs after schema validation and may refuse the call (the
+ * dispatcher turns a violation into an `is_error` tool_result rather than a
+ * throw, so the model can read the reason and correct itself); `postCommit`
+ * runs after a successful run so the gate can record what changed.
+ *
+ * Declared here, next to `FileAccessLedger`, for the same reason: it is the
+ * contract between the dispatcher and whatever enforces it. The enforcement
+ * itself — read-before-edit and mtime-drift — lives in `@nova/safety`
+ * alongside the permission engine, so `@nova/tools` never depends on it.
+ */
+export interface InvariantsCheck {
+  preCheck(use: ToolUseBlock, ctx: ToolContext): Promise<{ ok: true } | InvariantViolation>;
+  postCommit(use: ToolUseBlock, ctx: ToolContext, isError: boolean): Promise<void>;
+}
+
 /**
  * Optional OS-level sandbox bridge. When present on a ToolContext, tools that
  * spawn a subprocess (bash, foreground and run_in_background alike) route their command through
