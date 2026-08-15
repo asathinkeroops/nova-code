@@ -8,7 +8,7 @@
   :root{
     --bg:#f7f8fa; --panel:#ffffff; --panel2:#f0f2f5; --line:#e6e9ee;
     --txt:#1f2328; --muted:#57606a; --dim:#9aa0a6;
-    --leaf:#0d9488; --d1:#2563eb; --agent:#7c3aed; --subagent:#db2777; --cli:#d97706;
+    --leaf:#0d9488; --d1:#2563eb; --agent:#7c3aed; --cli:#d97706;
     --dep:#ea580c; --consumer:#2563eb;
   }
   *{box-sizing:border-box}
@@ -83,15 +83,14 @@
 <body>
 <div class="wrap">
   <h1><span class="v">Nova</span> · 包依赖关系图</h1>
-  <p class="sub">按 <strong>真实源码 import</strong> 绘制（非 <code>package.json</code> 声明）。共 11 个真实包 + 4 个空占位目录。悬停任意节点查看「依赖谁 / 被谁依赖」。</p>
+  <p class="sub">按 <strong>真实源码 import</strong> 绘制——现在 <code>package.json</code> 的声明与之逐条一致。共 7 个包 + 2 个空占位 app。悬停任意节点查看「依赖谁 / 被谁依赖」。</p>
 
   <div class="grid">
     <div class="card diagram-card">
       <div class="legend">
         <span class="it"><span class="sw" style="background:var(--leaf)"></span>叶子层（无 @nova 依赖）</span>
         <span class="it"><span class="sw" style="background:var(--d1)"></span>L1</span>
-        <span class="it"><span class="sw" style="background:var(--agent)"></span>agent</span>
-        <span class="it"><span class="sw" style="background:var(--subagent)"></span>subagent</span>
+        <span class="it"><span class="sw" style="background:var(--agent)"></span>L2 agent</span>
         <span class="it"><span class="sw" style="background:var(--cli)"></span>cli</span>
         <span class="it"><span class="sw line" style="border-color:var(--dep)"></span>依赖（指向）</span>
         <span class="it"><span class="sw line" style="border-color:var(--consumer)"></span>被依赖</span>
@@ -116,43 +115,29 @@
           <td><span class="mname" style="color:var(--leaf)">runtime</span></td>
           <td><span class="lbadge" style="background:var(--leaf)">叶子 L0</span></td>
           <td class="role">运行时地基：settings 加载/校验、会话存储、结构化日志、路径规范化与越权防护。所有可配置项的 zod schema 单一来源。</td>
-          <td class="api">settingsSchema · loadSettings/parseSettings/saveSettings · isDangerousBash · canonicalizePath/canonicalizeRoots · createSession/listSessions/getSession · createLogger · mcpServerSchema</td>
-          <td class="files">config.ts · session.ts · path-safety.ts · logging.ts</td>
+          <td class="api">settingsSchema · loadSettings/parseSettings/saveSettings · isDangerousBash · canonicalizePath/canonicalizeRoots · createSession/listSessions/getSession · createLogger · mcpServerSchema · Transcript · computeCost/formatMoney · SlashCommand（类型契约）</td>
+          <td class="files">config.ts · models.ts · session.ts · path-safety.ts · logging.ts · prompt-expansion.ts · slash-types.ts · transcript.ts · cost.ts</td>
         </tr>
         <tr>
           <td><span class="mname" style="color:var(--leaf)">core</span></td>
           <td><span class="lbadge" style="background:var(--leaf)">叶子 L0</span></td>
           <td class="role">与模型无关的 agent 主循环 + hook 体系 + 模型客户端抽象。唯一扩展点是 HookRegistry；含 DeepSeek 专属错误翻译/重试与 thinking 预算。</td>
-          <td class="api">agentLoop/LoopResult/LoopTerminatedError · HookRegistry/HookPoint/HookDecision · createAnthropicModel/ModelClient/ModelRequest · resolveBudget/THINKING_BUDGETS · decide(StopDecision) · translateDeepSeekError/DeepSeekApiError</td>
-          <td class="files">loop.ts · hooks.ts · model.ts · messages.ts · thinking.ts · stop-reason.ts · deepseek-errors.ts</td>
-        </tr>
-        <tr>
-          <td><span class="mname" style="color:var(--d1)">observability</span></td>
-          <td><span class="lbadge" style="background:var(--d1)">L1</span></td>
-          <td class="role">旁路观测：把 hook 事件与历史落盘成 transcript（JSONL），并提供指标、成本核算、eval 回放支撑。不参与决策。仅用 runtime 的模型计价表算成本。</td>
-          <td class="api">Transcript · TranscriptKind · TranscriptRecord · 成本核算 · 模型费率解析</td>
-          <td class="files">transcript.ts · metrics.ts · cost.ts · eval.ts</td>
+          <td class="api">agentLoop/LoopResult/LoopTerminatedError · HookRegistry/HookPoint/HookDecision · createAnthropicModel/ModelClient/ModelRequest · resolveBudget/THINKING_BUDGETS · decide(StopDecision) · ProviderError/PROVIDERS · FileAccessLedger/InvariantsCheck/SandboxBridge（不透明契约）</td>
+          <td class="files">loop.ts · hooks.ts · model.ts · messages.ts · thinking.ts · stop-reason.ts · retry.ts · providers/</td>
         </tr>
         <tr>
           <td><span class="mname" style="color:var(--d1)">safety</span></td>
           <td><span class="lbadge" style="background:var(--d1)">L1</span></td>
-          <td class="role">权限引擎：对每次工具调用做 allow / deny / ask 决策，配合沙箱 FS 守卫。作为 hook 挂到 loop 的 pre_tool_use。</td>
-          <td class="api">PermissionEngine · PermissionDecision/PermissionEffect/PermissionInput · AskCallback · PermissionDeniedError</td>
-          <td class="files">permission.ts · sandbox-fs.ts · hooks.ts</td>
-        </tr>
-        <tr>
-          <td><span class="mname" style="color:var(--d1)">context</span></td>
-          <td><span class="lbadge" style="background:var(--d1)">L1</span></td>
-          <td class="role">上下文窗口管理：记忆 bundle 加载（NOVA.md&gt;CLAUDE.md&gt;AGENTS.md，不合并）、token 估算、阈值判断、自动压缩与微压缩。</td>
-          <td class="api">loadMemory/MemoryBundle · estimateTokens/computeThreshold · shouldAutoCompact/autoCompact · microCompact · COMPACT_MARKER</td>
-          <td class="files">memory.ts · compact.ts · cache.ts</td>
+          <td class="role">三道闸门合一：权限引擎对每次工具调用做 allow / deny / ask；invariants 做 read-before-edit 与 mtime 漂移校验，防止覆盖没读过的内容；sandbox 把子进程写入锁在工作区。三者共用 runtime 的 canonicalizePath，对「同一个文件」的判定一致。</td>
+          <td class="api">PermissionEngine · PermissionDecision/PermissionEffect/PermissionInput · isWithin · createInvariants/InMemoryFileAccessLedger · createSandbox/SandboxControl</td>
+          <td class="files">permission.ts · invariants.ts · sandbox.ts</td>
         </tr>
         <tr>
           <td><span class="mname" style="color:var(--d1)">tools</span></td>
           <td><span class="lbadge" style="background:var(--d1)">L1</span></td>
-          <td class="role">内置工具集 + 注册表 + 派发器 + 不变量校验。dispatcher 用 zod 预校验输入，parse 错误转成 is_error 结果；invariants 保证每个 tool_use 必有配对 tool_result。是除 core/runtime 外唯一额外依赖 lsp 的包（type-only）。</td>
-          <td class="api">ToolRegistry · createDispatcher · createInvariants/InMemoryFileAccessLedger · bash/read/edit/write/glob/grep/lsp/webfetch/websearch/ask-user · todo·task 工具组 · long-running 命令管理 · skills/load-skill</td>
-          <td class="files">dispatcher.ts · registry.ts · invariants.ts · schema.ts · builtin/*</td>
+          <td class="role">内置工具集 + 注册表 + 派发器。dispatcher 用 zod 预校验输入，parse 错误转成 is_error 结果，并把<strong>归一化后</strong>的输入交给闸门与 run。是除 core/runtime 外唯一额外依赖 lsp 的包（type-only）；刻意不依赖 safety —— 闸门只以 core 的 InvariantsCheck 接口注入。</td>
+          <td class="api">ToolRegistry · createDispatcher · withAliases/PATH_ALIASES · bash/read/edit/write/glob/grep/lsp/webfetch/websearch/ask-user · todo·task·cron 工具组 · background/monitor 长时命令 · skills/load-skill</td>
+          <td class="files">dispatcher.ts · registry.ts · schema.ts · 各工具平铺于 src/ · todo/ task/ cron/ background/ monitor/</td>
         </tr>
         <tr>
           <td><span class="mname" style="color:var(--leaf)">lsp</span></td>
@@ -162,51 +147,38 @@
           <td class="files">manager.ts · client.ts · rpc.ts · servers.ts · types.ts</td>
         </tr>
         <tr>
-          <td><span class="mname" style="color:var(--d1)">sandbox</span></td>
+          <td><span class="mname" style="color:var(--d1)">mcp</span></td>
           <td><span class="lbadge" style="background:var(--d1)">L1</span></td>
-          <td class="role">真沙箱执行后端：封装 @anthropic-ai/sandbox-runtime（macOS Seatbelt / Linux bubblewrap）。core/tools 不直接碰沙箱 SDK，由 CLI 注入。</td>
-          <td class="api">createSandbox · SandboxControl · CreateSandboxOptions · SandboxLogger</td>
-          <td class="files">sandbox.ts</td>
-        </tr>
-        <tr>
-          <td><span class="mname" style="color:var(--d1)">external</span></td>
-          <td><span class="lbadge" style="background:var(--d1)">L1</span></td>
-          <td class="role">对外集成层：MCP 服务接入（stdio/http 传输、工具名前缀映射）、slash 命令系统（文件命令加载、占位符展开）、REPL/IDE/HTTP transport。</td>
-          <td class="api">McpManager/transportForSpec/mcpToolToHandler/MCP_TOOL_PREFIX · SlashRegistry/loadFileCommands/expandPlaceholders · transport/{repl,ide,http}</td>
-          <td class="files">mcp/* · slash.ts · transport/*</td>
+          <td class="role">MCP 服务接入：stdio / HTTP / SSE 传输、OAuth 流程、工具名前缀映射（<code>mcp__&lt;server&gt;__&lt;tool&gt;</code>）、prompt 与 resource 桥接。</td>
+          <td class="api">McpManager/transportForSpec · mcpToolToHandler/MCP_TOOL_PREFIX · mcpPromptToSlash · resourceToolHandlers · createNovaOAuthProvider</td>
+          <td class="files">client.ts · stdio.ts · http.ts · oauth.ts · tool.ts · prompt.ts · resource.ts</td>
         </tr>
         <tr>
           <td><span class="mname" style="color:var(--agent)">agent</span></td>
           <td><span class="lbadge" style="background:var(--agent)">L2</span></td>
-          <td class="role">把 core loop 与默认 hooks（权限、压缩、transcript、持久化）组装成可用 agent；构建系统提示词；按游标增量持久化 messages.jsonl。</td>
-          <td class="api">createAgent/Agent/agent.on(point,fn) · TurnResult · buildSystemPrompt · persistMessages/loadMessages/emptyCursor</td>
-          <td class="files">agent.ts · system-prompt.ts · persistence.ts</td>
-        </tr>
-        <tr>
-          <td><span class="mname" style="color:var(--subagent)">subagent</span></td>
-          <td><span class="lbadge" style="background:var(--subagent)">L3</span></td>
-          <td class="role">把「派生子 agent」能力封装成一个可被主循环调用的工具，并为子 agent 构建专属系统提示词（按 SubAgentType 分型）。</td>
-          <td class="api">createSubAgentTool · SUBAGENT_TOOL_NAME · buildSubAgentSystemPrompt/SubAgentType</td>
-          <td class="files">subagent.ts · system-prompt.ts</td>
+          <td class="role">把 core loop 与默认 hooks（权限、压缩、transcript、持久化）组装成可用 agent；构建系统提示词；按游标增量持久化 messages.jsonl。同时收纳记忆 bundle 加载与压缩（原 context 包），以及子 agent 的 Task 工具与定义加载（原 subagent 包）。</td>
+          <td class="api">createAgent/Agent/agent.on(point,fn) · TurnResult · buildSystemPrompt · persistMessages/loadMessages/emptyCursor · loadMemory/MemoryBundle · autoCompact/sliceFromLastCompacted · createSubAgentTool/AgentRegistry/loadAgentDefinitions</td>
+          <td class="files">agent.ts · system-prompt.ts · persistence.ts · memory.ts · compact.ts · subagent.ts · subagent-system-prompt.ts · definitions.ts · loader.ts</td>
         </tr>
         <tr>
           <td><span class="mname" style="color:var(--cli)">cli</span></td>
           <td><span class="lbadge" style="background:var(--cli)">App</span></td>
-          <td class="role">唯一 active app：终端 REPL，组装全部 11 个包，把 model/tools/permissions/transport/hooks/lsp 全部连线，是 nova 二进制入口。</td>
-          <td class="api">repl 主循环 · context 装配 · 命令/快捷键 · 流式渲染</td>
-          <td class="files">apps/cli/src/repl.ts · context.ts</td>
+          <td class="role">唯一 active app：终端 REPL，组装全部 7 个包，把 model/tools/permissions/sandbox/hooks/lsp 全部连线，是 nova 二进制入口。slash 命令注册表与 .md 加载器也在这里（类型契约在 runtime）。</td>
+          <td class="api">repl 主循环 · context 装配 · slash-registry · 命令/快捷键 · 流式渲染</td>
+          <td class="files">apps/cli/src/repl.ts · context.ts · slash-registry.ts</td>
         </tr>
       </tbody>
     </table>
   </div>
 
   <div class="card findings">
-    <h3>梳理时发现的「声明 vs 真实 import」偏差（按当前源码静态分析）</h3>
-    <div class="finding"><div class="ic add">+</div><div>新增 <code>lsp</code> 包（代码智能 / 语言服务器多路复用），是<strong>叶子层</strong>：源码零 @nova import，但 <code>package.json</code> 声明的 <code>@nova/core</code> 实际<strong>从未被 import</strong>。<code>tools</code> 现以 type-only 方式消费它。</div></div>
-    <div class="finding"><div class="ic fix">✕</div><div><code>observability</code> <strong>不再是叶子层</strong>：<code>cost.ts</code> 现在 <code>import "@nova/runtime"</code>（取模型计价表算成本），升入 L1。</div></div>
-    <div class="finding"><div class="ic info">i</div><div><code>core</code> 仍<strong>没有任何 @nova 源码 import</strong>（仅注释提及），<code>package.json</code> 声明的 <code>@nova/runtime</code> 未使用 → 与 runtime、lsp 同属叶子层。</div></div>
-    <div class="finding"><div class="ic info">i</div><div><code>external</code> 对 <code>core</code> 仅 <em>type-only</em> import；<code>package.json</code> 另声明的 <code>@nova/runtime</code> <strong>未被 import</strong>。<code>sandbox</code> 对 <code>core</code> 亦仅 type-only。</div></div>
-    <div class="finding"><div class="ic info">i</div><div><code>packages/isolation</code>、<code>packages/orchestration</code> 是<strong>空目录</strong>（0 文件、无 <code>package.json</code>）；<code>apps/http</code>、<code>apps/vscode</code> 是 <code>.gitkeep</code> 占位 → 共 4 个空占位、均未被引用。</div></div>
+    <h3>一次包划分整理后的现状（按当前源码静态分析）</h3>
+    <div class="finding"><div class="ic fix">✕</div><div>包数 <strong>11 → 7</strong>：<code>observability</code>（183 行）并入 <code>runtime</code>、<code>sandbox</code>（217 行）并入 <code>safety</code>、<code>context</code> + <code>subagent</code> 并入 <code>agent</code>、<code>external</code> 更名 <code>mcp</code>。被并掉的都是 200~800 行、且只有 CLI 一个消费者的包 —— 单独成包换不来复用或边界收益。</div></div>
+    <div class="finding"><div class="ic add">+</div><div><code>package.json</code> 的依赖声明现在与真实 import <strong>逐条一致</strong>。此前 <code>core</code>/<code>observability</code> 声明了未使用的 <code>@nova/runtime</code>、<code>lsp</code> 声明了未使用的 <code>@nova/core</code>，已全部移除 —— 叶子层三个包的 <code>dependencies</code> 现在是真的空的。</div></div>
+    <div class="finding"><div class="ic info">i</div><div>依赖图变平：三个叶子（<code>core</code> / <code>runtime</code> / <code>lsp</code>），其余四个包只依赖叶子，唯一的跨层边是 <code>tools → lsp</code>。没有任何包依赖另一个非叶子包。</div></div>
+    <div class="finding"><div class="ic info">i</div><div><code>tools</code> <strong>刻意不依赖 <code>safety</code></strong>：<code>FileAccessLedger</code> / <code>InvariantsCheck</code> / <code>SandboxBridge</code> 三个不透明契约都声明在 <code>core</code>，执行放在 <code>safety</code>，实例由 CLI 注入。新增闸门请走 core 的接口，不要连 <code>tools → safety</code> 这条边。</div></div>
+    <div class="finding"><div class="ic info">i</div><div>slash 命令的<strong>实现</strong>（注册表 + <code>.md</code> 加载器 + body 展开）已移入 <code>apps/cli</code>，只把 <code>SlashCommand</code> <strong>类型契约</strong>留在 <code>runtime/slash-types.ts</code> —— 因为 <code>mcp</code> 要把 MCP prompt 桥接成 slash 命令，而包不能反向依赖 app。</div></div>
+    <div class="finding"><div class="ic info">i</div><div><code>apps/http</code>、<code>apps/vscode</code> 是 <code>.gitkeep</code> 占位，均未被引用。此前记录的 <code>packages/isolation</code> / <code>packages/orchestration</code> 空目录已不存在。</div></div>
   </div>
 
   <p class="foot">生成自仓库源码静态分析 · 单文件离线可用</p>
@@ -217,21 +189,17 @@ const BOX_W = 138, BOX_H = 48;
 
 // 真实源码 import（出边 = 该包依赖谁）
 const PKG = {
-  cli:           {x:620, y:60,  color:'cli',      ns:'apps/', role:'终端应用，把 11 个包组装成 nova CLI（唯一 active app）', files:'apps/cli/src/* · repl · context', deps:['agent','context','core','external','lsp','observability','runtime','safety','sandbox','subagent','tools']},
-  subagent:      {x:620, y:160, color:'subagent', ns:'@nova/', role:'在默认 agent 之上派生子 agent', files:'subagent.ts · definitions.ts · loader.ts · system-prompt.ts', deps:['agent','context','core','observability','runtime']},
-  agent:         {x:620, y:265, color:'agent',    ns:'@nova/', role:'把 core+context+observability 组装成默认 agent', files:'agent.ts (createAgent) · system-prompt.ts · persistence.ts', deps:['core','runtime','context','observability']},
-  observability: {x:110, y:410, color:'d1',       ns:'@nova/', role:'旁路观测：transcript / 指标 / 成本 / eval', files:'transcript.ts · metrics.ts · cost.ts · eval.ts', deps:['runtime'], note:'cost.ts 取 runtime 的模型计价表算成本'},
-  safety:        {x:312, y:410, color:'d1',       ns:'@nova/', role:'权限闸 + 沙箱 FS hook', files:'permission.ts · sandbox-fs.ts · hooks.ts', deps:['runtime'], note:'仅用 runtime 的 PermissionRule / isDangerousBash，不依赖 core'},
-  context:       {x:514, y:410, color:'d1',       ns:'@nova/', role:'上下文管理：压缩 / 缓存 / 记忆', files:'compact.ts · cache.ts · memory.ts', deps:['core','runtime']},
-  tools:         {x:716, y:410, color:'d1',       ns:'@nova/', role:'内置工具集 + 派发器', files:'dispatcher.ts · registry.ts · invariants.ts · schema.ts · builtin/*', deps:['core','lsp','runtime'], note:'对 core / lsp 均为 type-only import'},
-  sandbox:       {x:918, y:410, color:'d1',       ns:'@nova/', role:'真沙箱执行后端', files:'封装 @anthropic-ai/sandbox-runtime', deps:['core'], note:'对 core 仅 type-only import（SandboxBridge）'},
-  external:      {x:1120,y:410, color:'d1',       ns:'@nova/', role:'对外集成：MCP / slash / transport', files:'mcp/* · slash.ts · transport/*', deps:['core'], note:'对 core 仅 type-only import；package.json 另声明的 @nova/runtime 未被 import'},
-  runtime:       {x:360, y:560, color:'leaf',     ns:'@nova/', role:'地基：配置 / 会话 / 日志 / 路径安全', files:'config.ts · session.ts · path-safety.ts · logging.ts', deps:[]},
-  core:          {x:620, y:560, color:'leaf',     ns:'@nova/', role:'模型循环本体（model-agnostic）', files:'loop.ts · hooks.ts · model.ts · messages.ts · thinking.ts · deepseek-errors.ts', deps:[], note:'package.json 声明 @nova/runtime，但源码并未 import'},
-  lsp:           {x:880, y:560, color:'leaf',     ns:'@nova/', role:'代码智能：语言服务器多路复用', files:'manager.ts · client.ts · rpc.ts · servers.ts · types.ts', deps:[], note:'package.json 声明 @nova/core，但源码并未 import → 真叶子层'},
+  cli:           {x:620, y:60,  color:'cli',      ns:'apps/', role:'终端应用，把 7 个包组装成 nova CLI（唯一 active app）', files:'apps/cli/src/* · repl · context · slash-registry', deps:['agent','core','lsp','mcp','runtime','safety','tools']},
+  agent:         {x:620, y:230, color:'agent',    ns:'@nova/', role:'装配默认 agent + 记忆 / 压缩 + 子 agent', files:'agent.ts (createAgent) · system-prompt.ts · persistence.ts · memory.ts · compact.ts · subagent.ts · definitions.ts · loader.ts', deps:['core','runtime']},
+  safety:        {x:360, y:400, color:'d1',       ns:'@nova/', role:'权限闸 + 文件访问不变量 + OS 沙箱', files:'permission.ts · invariants.ts · sandbox.ts', deps:['core','runtime'], note:'对 core 仅 type-only：SandboxBridge / InvariantsCheck / FileAccessLedger 三个契约都声明在 core'},
+  tools:         {x:620, y:400, color:'d1',       ns:'@nova/', role:'内置工具集 + 注册表 + 派发器', files:'dispatcher.ts · registry.ts · schema.ts · bash · read/write/edit · glob/grep · lsp · webfetch/websearch · todo/ task/ cron/ background/ monitor/', deps:['core','lsp','runtime'], note:'对 core / lsp 均为 type-only import；刻意不依赖 safety —— 闸门契约走 core'},
+  mcp:           {x:880, y:400, color:'d1',       ns:'@nova/', role:'MCP 接入：stdio / HTTP / SSE', files:'client.ts · stdio.ts · http.ts · oauth.ts · tool.ts · prompt.ts · resource.ts', deps:['core','runtime'], note:'两条边均为 type-only；runtime 侧只取 SlashCommand 契约（桥接 MCP prompt）'},
+  runtime:       {x:360, y:560, color:'leaf',     ns:'@nova/', role:'地基：配置 / 会话 / 日志 / 路径安全 / transcript / 计费', files:'config.ts · models.ts · session.ts · path-safety.ts · logging.ts · prompt-expansion.ts · slash-types.ts · transcript.ts · cost.ts', deps:[]},
+  core:          {x:620, y:560, color:'leaf',     ns:'@nova/', role:'模型循环本体（model-agnostic）', files:'loop.ts · hooks.ts · model.ts · messages.ts · thinking.ts · stop-reason.ts · retry.ts · providers/', deps:[]},
+  lsp:           {x:880, y:560, color:'leaf',     ns:'@nova/', role:'代码智能：语言服务器多路复用', files:'manager.ts · client.ts · rpc.ts · servers.ts · types.ts', deps:[]},
 };
-const COLORS = {leaf:'#0d9488', d1:'#2563eb', agent:'#7c3aed', subagent:'#db2777', cli:'#d97706'};
-const TINT   = {leaf:'#d3f3ee', d1:'#dbe7fd', agent:'#ebe1fb', subagent:'#fbdcec', cli:'#fceccf'};
+const COLORS = {leaf:'#0d9488', d1:'#2563eb', agent:'#7c3aed', cli:'#d97706'};
+const TINT   = {leaf:'#d3f3ee', d1:'#dbe7fd', agent:'#ebe1fb', cli:'#fceccf'};
 
 // 反向：被谁依赖
 const consumers = {};

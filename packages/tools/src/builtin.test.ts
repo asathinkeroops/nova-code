@@ -14,7 +14,7 @@ import {
   websearchTool,
   createWebsearchTool,
   writeTool,
-} from "../index.js";
+} from "./index.js";
 
 let dir: string;
 beforeEach(async () => {

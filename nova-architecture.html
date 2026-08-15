@@ -760,17 +760,17 @@
       <div class="pc-desc">编排 todo / task / 长时进程，让工作跨越单次循环（已并入工具面，无独立包）</div>
       <div class="mods">
         <div class="mod-chip">
-          <div class="mc-id">builtin/todo</div>
+          <div class="mc-id">tools/todo</div>
           <div class="mc-name">Todo</div>
           <div class="mc-func">单会话有序计划 —— create / update / list / clear + 提醒回注</div>
         </div>
         <div class="mod-chip">
-          <div class="mc-id">builtin/task</div>
+          <div class="mc-id">tools/task</div>
           <div class="mc-name">Task Store</div>
           <div class="mc-func">跨会话任务图 —— 每任务一个 .json 持久化（~/.nova）· 依赖 + 提醒</div>
         </div>
         <div class="mod-chip">
-          <div class="mc-id">builtin/long-running</div>
+          <div class="mc-id">tools/background · monitor</div>
           <div class="mc-name">Long-running</div>
           <div class="mc-func">run / kill / output —— 后台进程，输出回注 messages[]</div>
         </div>
@@ -1025,17 +1025,16 @@
         <span class="pk-name">packages/tools</span>
         <span class="pk-tag">→ core · lsp</span>
       </div>
-<pre class="pkg-tree">src/
+<pre class="pkg-tree">src/                 <span class="cmt"># 工具平铺，无 builtin/ 一层</span>
 ├── registry.ts · dispatcher.ts
 ├── schema.ts        <span class="cmt"># withAliases（filePath/file→path）</span>
-├── builtin/
-│   ├── bash · read · write · edit
-│   ├── glob · grep · lsp
-│   ├── webfetch · websearch · ask-user
-│   ├── skills · load-skill
-│   ├── todo/ · task/   <span class="cmt"># 原编排面</span>
-│   └── long-running/   <span class="cmt"># run / kill / output</span>
-└── index.ts</pre>
+├── bash · read · write · edit
+├── glob · grep · lsp · ask-user
+├── webfetch · websearch
+├── skills · load-skill · plan-mode
+├── todo/ · task/ · cron/   <span class="cmt"># 编排面</span>
+├── background/ · monitor/  <span class="cmt"># 长时进程</span>
+└── index.ts         <span class="cmt"># builtinTools() 工厂</span></pre>
     </div>
 
     <div class="pkg-card">

@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { ImageBlock, ToolHandler } from "@nova/core";
 import type * as XLSX from "xlsx";
 import { extractText } from "unpdf";
-import { PATH_ALIASES, withAliases } from "../schema.js";
+import { PATH_ALIASES, withAliases } from "./schema.js";
 
 /**
  * `xlsx` costs ~57ms to evaluate and is pulled in by `@nova/tools`' entry point,

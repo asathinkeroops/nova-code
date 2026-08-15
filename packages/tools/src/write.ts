@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { z } from "zod";
 import type { ToolHandler } from "@nova/core";
-import { PATH_ALIASES, withAliases } from "../schema.js";
+import { PATH_ALIASES, withAliases } from "./schema.js";
 
 // `withAliases` tolerates `filePath`/`file_path`/`file` as synonyms for `path`
 // (a common model slip). For write/edit this also matters for safety: the

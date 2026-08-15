@@ -117,7 +117,7 @@ The `@nova/lsp` package ([source](https://github.com/nova-ai/nova-code/blob/main
 
 ### Tool Integration
 
-The `lsp` tool ([source](https://github.com/nova-ai/nova-code/blob/main/packages/tools/src/builtin/lsp.ts)) bridges the gap between 1-based model coordinates and 0-based LSP coordinates, renders diagnostics with ANSI-colored severity prefixes, and supports context-rich reference display with source lines. The tool description tells the model exactly what it can ask: go-to-definition at a cursor position, find all references to a symbol, check diagnostics for a file.
+The `lsp` tool ([source](https://github.com/nova-ai/nova-code/blob/main/packages/tools/src/lsp.ts)) bridges the gap between 1-based model coordinates and 0-based LSP coordinates, renders diagnostics with ANSI-colored severity prefixes, and supports context-rich reference display with source lines. The tool description tells the model exactly what it can ask: go-to-definition at a cursor position, find all references to a symbol, check diagnostics for a file.
 
 > **Why it matters:** Claude Code, Aider, and Cline all rely on grep/ripgrep for code search. Nova's LSP integration provides IDE-grade go-to-definition, type-on-hover, and workspace symbol search — without the model needing to guess file locations from regex matches.
 

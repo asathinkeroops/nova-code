@@ -6,7 +6,7 @@ import ignore from "ignore";
 /**
  * Builds the workspace file snapshot that powers `@path` mention completion in
  * the InputBox. Pure I/O — no UI. Mirrors the glob tool's .gitignore handling
- * (`packages/tools/src/builtin/glob.ts`) so completion sees the same files the
+ * (`packages/tools/src/glob.ts`) so completion sees the same files the
  * agent's `glob`/`grep` tools do.
  */
 
