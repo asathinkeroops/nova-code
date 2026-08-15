@@ -545,19 +545,19 @@
       <div class="pc-desc">在 LLM 看到 messages 之前，把知识拼进上下文窗口</div>
       <div class="mods" style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;">
         <div class="mod-chip">
-          <div class="mc-id">ctx/memory</div>
+          <div class="mc-id">agent/memory</div>
           <div class="mc-name">Memory</div>
           <div class="mc-func">全局→用户→项目分层；每目录 NOVA.md &gt; CLAUDE.md &gt; AGENTS.md 取最高优先级（不合并）注入 system prompt</div>
         </div>
         <div class="mod-chip">
-          <div class="mc-id">ctx/compact</div>
+          <div class="mc-id">agent/compact</div>
           <div class="mc-name">Compaction</div>
           <div class="mc-func">microCompact / autoCompact —— 经 pre_compact hook 整段重写 messages[] 防溢出</div>
         </div>
         <div class="mod-chip">
-          <div class="mc-id">ctx/cache</div>
+          <div class="mc-id">deepseek/prefix-cache</div>
           <div class="mc-name">Prompt Cache</div>
-          <div class="mc-func">DeepSeek 服务端自动前缀缓存；命中/写入 token 计入 usage，由 obs/cost 统计命中率</div>
+          <div class="mc-func">DeepSeek 服务端自动前缀缓存；命中/写入 token 计入 usage，由 runtime/cost 统计命中率</div>
         </div>
       </div>
     </div>
@@ -732,7 +732,7 @@
           <div class="mod-chip">
             <div class="mc-id">safe/sandbox-fs</div>
             <div class="mc-name">FS &amp; Net Guard</div>
-            <div class="mc-func">工具级文件系统 / 网络访问白名单（与沙盒面 @nova/sandbox 协同）</div>
+            <div class="mc-func">工具级文件系统 / 网络访问白名单（与同包的 sandbox 面协同）</div>
           </div>
         </div>
       </div>
@@ -784,7 +784,7 @@
         <span class="pc-name">多智能体</span>
       </div>
       <span class="pc-attach">附着点 → spawn 独立子 agent（独立 messages[] / system prompt）</span>
-      <div class="pc-desc">@nova/agent 装配 + @nova/subagent —— Task 工具 spawn 子 agent，摘要返回主 loop</div>
+      <div class="pc-desc">@nova/agent 装配 —— Task 工具 spawn 子 agent，摘要返回主 loop</div>
       <div class="mods">
         <div class="mod-chip">
           <div class="mc-id">agent/createAgent</div>
@@ -792,12 +792,12 @@
           <div class="mc-func">把权限 / 压缩 / transcript / persistence 注册成默认 hook，并组装 system-prompt —— 主 loop 与 CLI 之间的接线层</div>
         </div>
         <div class="mod-chip">
-          <div class="mc-id">subagent/subagent</div>
+          <div class="mc-id">agent/subagent</div>
           <div class="mc-name">Subagent</div>
           <div class="mc-func">Task 工具 spawn 短命子 agent → 独立 messages[] → 摘要回主 loop（共用主仓 cwd）</div>
         </div>
         <div class="mod-chip">
-          <div class="mc-id">subagent/loader</div>
+          <div class="mc-id">agent/loader</div>
           <div class="mc-name">Definitions</div>
           <div class="mc-func">内置 + 从 .md 加载子 agent 定义（角色 / 工具集 / 专属 system-prompt）</div>
         </div>
@@ -811,15 +811,15 @@
         <span class="pc-name">隔离边界</span>
       </div>
       <span class="pc-attach">附着点 → 子进程工具（bash / run）的运行环境</span>
-      <div class="pc-desc">@nova/sandbox 把子进程的文件写入限制在工作区 —— 默认开，不支持处降级 no-op</div>
+      <div class="pc-desc">@nova/safety 的 sandbox 把子进程的文件写入限制在工作区 —— 默认开，不支持处降级 no-op</div>
       <div class="mods">
         <div class="mod-chip">
-          <div class="mc-id">sandbox/bridge</div>
+          <div class="mc-id">safety/sandbox</div>
           <div class="mc-name">FS Write Confinement</div>
           <div class="mc-func">createSandbox → SandboxBridge —— macOS Seatbelt / Linux bubblewrap 把写入锁在 workspace + settings.sandbox.filesystem.allowWrite</div>
         </div>
         <div class="mod-chip">
-          <div class="mc-id">sandbox/optout</div>
+          <div class="mc-id">safety/sandbox 开关</div>
           <div class="mc-name">Default-ON</div>
           <div class="mc-func">settings.sandbox.enabled: false 可关；不支持的平台自动降级为 no-op</div>
         </div>
@@ -850,22 +850,22 @@
       </div>
       <div class="os-mods">
         <div class="mod-chip">
-          <div class="mc-id">obs/cost</div>
+          <div class="mc-id">runtime/cost</div>
           <div class="mc-name">Cost Tracker</div>
           <div class="mc-func">读 ② usage —— uncached / cacheRead / cacheWrite token 分别计费，按会话/任务汇总</div>
         </div>
         <div class="mod-chip">
-          <div class="mc-id">obs/transcript</div>
+          <div class="mc-id">runtime/transcript</div>
           <div class="mc-name">Transcript Log</div>
           <div class="mc-func">以 advisory hook 把每个事件写进 transcript.jsonl</div>
         </div>
         <div class="mod-chip">
-          <div class="mc-id">obs/metrics</div>
-          <div class="mc-name">Metrics</div>
+          <div class="mc-id">metrics</div>
+          <div class="mc-name">Metrics ·（未实现）</div>
           <div class="mc-func">② token / cache 命中 / 延迟　·　③ tool 调用 / 成功率 / 权限　·　loop 轮次 &amp; stop_reason　·　OTel / Prometheus</div>
         </div>
         <div class="mod-chip">
-          <div class="mc-id">obs/eval</div>
+          <div class="mc-id">eval/</div>
           <div class="mc-name">Agent Eval</div>
           <div class="mc-func">离线回放 transcript 跑黄金集（eval/ 目录，独立于主构建）</div>
         </div>
@@ -943,16 +943,12 @@
 │
 ├── <span class="dir">packages/</span>                              <span class="cmt"># 库代码 @nova/&lt;name&gt; · 看图找代码</span>
 │   ├── core/             <span class="plane">[A]</span>             <span class="cmt"># 执行核心 — loop · model(DeepSeek) · messages · hooks · stop-reason · thinking</span>
-│   ├── runtime/          <span class="plane">[rt]</span>            <span class="cmt"># 基础 — config · logging · session · path-safety（叶子）</span>
-│   ├── observability/    <span class="plane">[H]</span>             <span class="cmt"># 观测 — cost · transcript（叶子）</span>
+│   ├── runtime/          <span class="plane">[rt]</span>            <span class="cmt"># 基础 — config · logging · session · path-safety · transcript · cost（叶子）</span>
 │   ├── lsp/              <span class="plane">[L]</span>             <span class="cmt"># 代码智能 — LspManager 多路复用 language server（叶子）</span>
-│   ├── safety/           <span class="plane">[!]</span>             <span class="cmt"># 安全 — permission（写入隔离在 packages/sandbox）</span>
-│   ├── context/          <span class="plane">[C]</span>             <span class="cmt"># 上下文 — memory · compact（cache 走服务端）</span>
+│   ├── safety/           <span class="plane">[!]</span>             <span class="cmt"># 安全 — permission 引擎 + sandbox（Seatbelt / bubblewrap 写入隔离）</span>
 │   ├── tools/            <span class="plane">[B]</span>             <span class="cmt"># 工具管线 — registry · dispatcher · invariants · builtin(含 todo/task/long-running)</span>
 │   ├── mcp/              <span class="plane">[G]</span>             <span class="cmt"># 外部 — MCP client · tool/prompt/resource 桥接（slash 实现已移入 apps/cli）</span>
-│   ├── sandbox/          <span class="plane">[F]</span>             <span class="cmt"># 沙盒 — SandboxBridge（Seatbelt / bubblewrap 写入隔离）</span>
-│   ├── agent/            <span class="plane">[E]</span>             <span class="cmt"># 装配 — createAgent 接默认 hook · system-prompt · persistence</span>
-│   └── subagent/         <span class="plane">[E]</span>             <span class="cmt"># 子 agent — Task spawn · 定义加载</span>
+│   └── agent/            <span class="plane">[E]</span>             <span class="cmt"># 装配 — createAgent · system-prompt · persistence · memory/compact · subagent</span>
 │
 ├── <span class="dir">eval/</span>                                  <span class="cmt"># obs/eval 回放黄金集（独立于主 eslint/tsconfig）</span>
 ├── <span class="dir">docs/</span>                                  <span class="cmt"># 架构 · 安全模型 · 指南</span>
@@ -990,19 +986,10 @@
 ├── logging.ts       <span class="cmt"># 结构化日志</span>
 ├── session.ts       <span class="cmt"># session 目录 · resume / fork · 清理</span>
 ├── path-safety.ts   <span class="cmt"># 路径归一 / 越界校验</span>
-└── index.ts         <span class="cmt"># 无 @nova 源码 import</span></pre>
-    </div>
-
-    <div class="pkg-card">
-      <div class="pkg-card-head">
-        <span class="pk-plane">H</span>
-        <span class="pk-name">packages/observability</span>
-        <span class="pk-tag">叶子</span>
-      </div>
-<pre class="pkg-tree">src/
-├── cost.ts          <span class="cmt"># uncached / cacheRead / cacheWrite 计费</span>
+├── slash-types.ts   <span class="cmt"># SlashCommand 契约（纯类型，供 mcp 复用）</span>
 ├── transcript.ts    <span class="cmt"># transcript.jsonl writer</span>
-└── index.ts</pre>
+├── cost.ts          <span class="cmt"># uncached / cacheRead / cacheWrite 计费</span>
+└── index.ts         <span class="cmt"># 无 @nova 源码 import</span></pre>
     </div>
 
     <div class="pkg-card">
@@ -1023,23 +1010,12 @@
       <div class="pkg-card-head">
         <span class="pk-plane">!</span>
         <span class="pk-name">packages/safety</span>
-        <span class="pk-tag">→ runtime</span>
+        <span class="pk-tag">→ core · runtime</span>
       </div>
 <pre class="pkg-tree">src/
 ├── permission.ts    <span class="cmt"># allow / deny / ask 规则机</span>
+├── sandbox.ts       <span class="cmt"># createSandbox → SandboxBridge</span>
 └── index.ts</pre>
-    </div>
-
-    <div class="pkg-card">
-      <div class="pkg-card-head">
-        <span class="pk-plane">C</span>
-        <span class="pk-name">packages/context</span>
-        <span class="pk-tag">→ core</span>
-      </div>
-<pre class="pkg-tree">src/
-├── memory.ts        <span class="cmt"># NOVA.md &gt; CLAUDE.md &gt; AGENTS.md 加载</span>
-├── compact.ts       <span class="cmt"># microCompact / autoCompact</span>
-└── index.ts         <span class="cmt"># cache 走服务端，不在此实现</span></pre>
     </div>
 
     <div class="pkg-card">
@@ -1079,39 +1055,19 @@
 
     <div class="pkg-card">
       <div class="pkg-card-head">
-        <span class="pk-plane">F</span>
-        <span class="pk-name">packages/sandbox</span>
-        <span class="pk-tag">→ core（type-only）</span>
-      </div>
-<pre class="pkg-tree">src/
-├── sandbox.ts       <span class="cmt"># createSandbox → SandboxBridge</span>
-│                    <span class="cmt"># Seatbelt / bubblewrap 写入隔离</span>
-└── index.ts</pre>
-    </div>
-
-    <div class="pkg-card">
-      <div class="pkg-card-head">
         <span class="pk-plane">E</span>
         <span class="pk-name">packages/agent</span>
-        <span class="pk-tag">装配层</span>
+        <span class="pk-tag">→ core · runtime</span>
       </div>
 <pre class="pkg-tree">src/
 ├── agent.ts         <span class="cmt"># createAgent · 接默认 hook</span>
 ├── system-prompt.ts <span class="cmt"># 组装 system prompt</span>
 ├── persistence.ts   <span class="cmt"># messages.jsonl append-fast-path</span>
-└── index.ts         <span class="cmt"># → core · context · observability · runtime</span></pre>
-    </div>
-
-    <div class="pkg-card">
-      <div class="pkg-card-head">
-        <span class="pk-plane">E</span>
-        <span class="pk-name">packages/subagent</span>
-        <span class="pk-tag">→ agent</span>
-      </div>
-<pre class="pkg-tree">src/
+├── memory.ts        <span class="cmt"># NOVA.md &gt; CLAUDE.md &gt; AGENTS.md 加载</span>
+├── compact.ts       <span class="cmt"># autoCompact · sliceFromLastCompacted</span>
 ├── subagent.ts      <span class="cmt"># Task 工具 spawn 子 agent</span>
 ├── definitions.ts · loader.ts <span class="cmt"># 内置 + .md 子 agent 定义</span>
-├── system-prompt.ts <span class="cmt"># 子 agent 专属 prompt</span>
+├── subagent-system-prompt.ts  <span class="cmt"># 子 agent 专属 prompt</span>
 └── index.ts</pre>
     </div>
 
@@ -1121,17 +1077,13 @@
 <pre class="deps-block"><span class="cmt"># 依赖方向（按实际 source import · 绝不能反向）</span>
 <span class="cmt"># 注：每个 package.json 的依赖声明与真实 source import 一致（叶子层三个包已无 @nova/* 依赖）</span>
 
-  <span class="tag">[rt]</span> runtime     <span class="arr">─→</span>  <span class="cmt">∅</span>
+  <span class="tag">[rt]</span> runtime     <span class="arr">─→</span>  <span class="cmt">∅　（config · session · logging · transcript · cost）</span>
   <span class="tag">[A]</span> core         <span class="arr">─→</span>  <span class="cmt">∅　（叶子层 · 不 import 任何 @nova/*，包括 SDK / 工具实现 / UI）</span>
-  <span class="tag">[H]</span> observability<span class="arr">─→</span>  <span class="cmt">∅</span>
   <span class="tag">[L]</span> lsp          <span class="arr">─→</span>  <span class="cmt">∅</span>
-  <span class="tag">[!]</span> safety       <span class="arr">─→</span>  runtime
-  <span class="tag">[C]</span> context      <span class="arr">─→</span>  core · runtime
+  <span class="tag">[!]</span> safety       <span class="arr">─→</span>  core · runtime   <span class="cmt"># core 侧 type-only（SandboxBridge）</span>
   <span class="tag">[B]</span> tools        <span class="arr">─→</span>  core · runtime · lsp   <span class="cmt"># 注意：不依赖 safety</span>
-  <span class="tag">[F]</span> sandbox      <span class="arr">─→</span>  core   <span class="cmt"># type-only</span>
   <span class="tag">[G]</span> mcp          <span class="arr">─→</span>  core · runtime   <span class="cmt"># type-only</span>
-  <span class="tag">[E]</span> agent        <span class="arr">─→</span>  core · runtime · context · observability
-  <span class="tag">[E]</span> subagent     <span class="arr">─→</span>  agent · core · runtime · context · observability
+  <span class="tag">[E]</span> agent        <span class="arr">─→</span>  core · runtime   <span class="cmt"># 含 memory/compact 与 subagent</span>
   <span class="tag">apps/cli</span>          <span class="arr">─→</span>  <span class="cmt"># 唯一活跃入口 · 消费以上全部包，并接线权限 / 沙盒 / hook</span></pre>
 
 </div>

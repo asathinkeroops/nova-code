@@ -1,6 +1,6 @@
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { Transcript } from "@nova/observability";
+import { Transcript } from "@nova/runtime";
 
 /** Session-cumulative token totals, reconstructed from a transcript. */
 export interface UsageTotals {

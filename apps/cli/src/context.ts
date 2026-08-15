@@ -1,6 +1,15 @@
 import { join, resolve } from "node:path";
-import { createAgent, emptyCursor, loadMessages, type Agent } from "@nova/agent";
-import { loadMemory, sliceFromLastCompacted } from "@nova/context";
+import {
+  AgentRegistry,
+  createAgent,
+  createSubAgentTool,
+  emptyCursor,
+  loadMemory,
+  loadMessages,
+  sliceFromLastCompacted,
+  type Agent,
+  type AgentDefinition,
+} from "@nova/agent";
 import {
   createAnthropicModel,
   resolveProfile,
@@ -11,7 +20,6 @@ import {
 } from "@nova/core";
 import { SlashRegistry } from "./slash-registry.js";
 import { LspManager, resolveServers } from "@nova/lsp";
-import { Transcript } from "@nova/observability";
 import {
   BackgroundCommandManager,
   TaskStore,
@@ -35,12 +43,16 @@ import {
   resolveSkillsIndexBudget,
   resolveModelModalities,
   resolveThinkingLevel,
+  Transcript,
   type Logger,
   type Settings,
 } from "@nova/runtime";
-import { PermissionDeniedError, PermissionEngine } from "@nova/safety";
-import { createSandbox, type SandboxControl } from "@nova/sandbox";
-import { AgentRegistry, createSubAgentTool, type AgentDefinition } from "@nova/subagent";
+import {
+  createSandbox,
+  PermissionDeniedError,
+  PermissionEngine,
+  type SandboxControl,
+} from "@nova/safety";
 import {
   CronStore,
   InMemoryFileAccessLedger,

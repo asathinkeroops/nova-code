@@ -1,4 +1,4 @@
-import { MEMORY_INDEX_FILENAME, type MemoryBundle } from "@nova/context";
+import { MEMORY_INDEX_FILENAME, type MemoryBundle } from "./memory.js";
 
 /**
  * Teach the model to maintain the project-scoped auto-memory store. Emitted only

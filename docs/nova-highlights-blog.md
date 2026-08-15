@@ -77,7 +77,7 @@ Nova does not treat the primary agent as a monolith. It delegates specialized wo
 ### Three Built-in Types
 
 ```typescript
-// packages/subagent/src/definitions.ts
+// packages/agent/src/definitions.ts
 general-purpose  → full tools (read, write, edit, bash)
 explore          → READ-ONLY (no write/edit/bash)
 plan             → READ-ONLY (investigate + report plan, no implementation)
@@ -125,7 +125,7 @@ The `lsp` tool ([source](https://github.com/nova-ai/nova-code/blob/main/packages
 
 ## 5. OS-Level Safety Without Friction
 
-Nova's sandbox (`@nova/sandbox`, [source](https://github.com/nova-ai/nova-code/blob/main/packages/sandbox/src/sandbox.ts)) wraps macOS Seatbelt and Linux bubblewrap at the OS kernel level — it does not rely on Node.js permission models or pattern-based filtering.
+Nova's sandbox (`@nova/safety` 的 sandbox, [source](https://github.com/nova-ai/nova-code/blob/main/packages/safety/src/sandbox.ts)) wraps macOS Seatbelt and Linux bubblewrap at the OS kernel level — it does not rely on Node.js permission models or pattern-based filtering.
 
 ### What It Enforces
 

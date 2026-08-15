@@ -1,8 +1,8 @@
 import { create, type StoreApi, type UseBoundStore } from "zustand";
 import type { AccountBalance, AskUserRequest, AskUserResponse, MessageParam } from "@nova/core";
 import type { Task, Todo } from "@nova/tools";
-import type { ModelRates } from "@nova/observability";
-import type { SubAgentDetail } from "@nova/subagent";
+import type { ModelRates } from "@nova/runtime";
+import type { SubAgentDetail } from "@nova/agent";
 import type { PermissionDecision, PermissionInput } from "@nova/safety";
 import type { BannerProps } from "./render-item.js";
 import type { BoxedInputOptions, SlashCommand } from "./input-box.js";

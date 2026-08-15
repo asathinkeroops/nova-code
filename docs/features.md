@@ -40,9 +40,9 @@
 
 - 权限模式 + 权限门控（hooks 实现）
 - in-code `HookRegistry`（`packages/core/src/loop.ts` 唯一扩展点）
-- subagent（`packages/subagent`）
-- OS 级 sandbox（Seatbelt / bubblewrap，`packages/sandbox`）
-- observability
+- subagent（`packages/agent/src/subagent.ts`）
+- OS 级 sandbox（Seatbelt / bubblewrap，`packages/safety/src/sandbox.ts`）
+- observability（transcript + cost，`packages/runtime`）
 - 模型：Anthropic SDK 客户端 + `baseURL` 覆盖，thinking 格式支持 `anthropic` | `deepseek`
 
 ## 二、关键缺口（按对日常使用的影响排序）

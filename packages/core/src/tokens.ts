@@ -9,7 +9,7 @@ import type { TokenEstimate } from "./providers/types.js";
  * {@link TokenEstimate}; this module owns the shared *counting*, so the ranges
  * and the arithmetic exist in exactly one place (used by both the live
  * streaming counter in `model.ts` and the compaction/`/context` estimators in
- * `@nova/context` and the CLI).
+ * `@nova/agent` and the CLI).
  */
 
 /**

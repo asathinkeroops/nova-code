@@ -1,9 +1,9 @@
 /**
  * Cost accounting: turn cumulative token counts into money amounts using
- * per-model rates. Pure and dependency-free — the price table and the
- * user-facing config live in @nova/runtime; this module only does the
- * arithmetic and the model→rate lookup, so it stays a leaf the CLI (and any
- * future reporter) can reuse without pulling in settings.
+ * per-model rates. Pure and self-contained — it sits next to the price table
+ * and the user-facing config (`config.ts` / `models.ts`) but imports neither,
+ * so the CLI (and any future reporter) can do the arithmetic without pulling
+ * settings into scope.
  */
 
 /**

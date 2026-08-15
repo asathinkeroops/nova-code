@@ -1,6 +1,6 @@
 import type { ToolResultBlock, ToolUseBlock } from "@nova/core";
 import { aliasedPath } from "@nova/tools";
-import type { SubAgentDetail } from "@nova/subagent";
+import type { SubAgentDetail } from "@nova/agent";
 import wrapAnsi from "wrap-ansi";
 import {
   accent,

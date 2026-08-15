@@ -603,7 +603,7 @@ const settingsObjectSchema = z.object({
       },
     }),
   // compact overrides — tuning fields are optional and default to the constants
-  // in @nova/context/compact.ts (single source of truth). `enabled` is a
+  // in @nova/agent's compact.ts (single source of truth). `enabled` is a
   // runtime concern (whether to invoke compact at all) so it defaults here.
   //
   // auto_compact APPENDS a `<compacted>` summary boundary to the append-only

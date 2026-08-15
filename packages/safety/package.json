@@ -28,6 +28,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@anthropic-ai/sandbox-runtime": "0.0.52",
+    "@nova/core": "workspace:*",
     "@nova/runtime": "workspace:*"
   }
 }

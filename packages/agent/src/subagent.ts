@@ -2,8 +2,9 @@ import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import { createAgent, emptyCursor, type AgentSettingsSlice, type TurnResult } from "@nova/agent";
-import type { MemoryBundle } from "@nova/context";
+import { createAgent, type AgentSettingsSlice, type TurnResult } from "./agent.js";
+import { emptyCursor } from "./persistence.js";
+import type { MemoryBundle } from "./memory.js";
 import {
   blocksOf,
   extractText,
@@ -16,10 +17,9 @@ import {
   type ToolExecutor,
   type ToolHandler,
 } from "@nova/core";
-import { Transcript } from "@nova/observability";
-import type { Logger } from "@nova/runtime";
+import { Transcript, type Logger } from "@nova/runtime";
 import type { AgentDefinition, AgentRegistry } from "./definitions.js";
-import { buildSubAgentSystemPrompt } from "./system-prompt.js";
+import { buildSubAgentSystemPrompt } from "./subagent-system-prompt.js";
 
 export const SUBAGENT_TOOL_NAME = "createSubAgent";
 

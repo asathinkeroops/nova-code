@@ -1,5 +1,4 @@
-import { buildSystemPrompt } from "@nova/agent";
-import { estimateTokens, sliceFromLastCompacted } from "@nova/context";
+import { buildSystemPrompt, estimateTokens, sliceFromLastCompacted } from "@nova/agent";
 import { estimateTextTokens, resolveProfile, toWireTools } from "@nova/core";
 import { resolveContextWindowSize, type SlashOutcome } from "@nova/runtime";
 import { ACCENT_HEX, bold, dim, green } from "../colors.js";

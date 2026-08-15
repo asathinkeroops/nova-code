@@ -1,4 +1,4 @@
-import { computeThreshold, estimateTokens, sliceFromLastCompacted } from "@nova/context";
+import { computeThreshold, estimateTokens, sliceFromLastCompacted } from "@nova/agent";
 import { resolveProfile } from "@nova/core";
 import { resolveContextWindowSize } from "@nova/runtime";
 import { accent, ACCENT_HEX, blue, bold, cyan, dim, green, yellow, magenta } from "../colors.js";

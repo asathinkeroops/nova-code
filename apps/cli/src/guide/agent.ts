@@ -1,4 +1,4 @@
-import type { AgentDefinition } from "@nova/subagent";
+import type { AgentDefinition } from "@nova/agent";
 
 /** The `type` value used to spawn the guide sub-agent, and its slash-command name. */
 export const NOVA_GUIDE_AGENT = "nova-code-guide";

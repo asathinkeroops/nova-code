@@ -1,4 +1,4 @@
-import type { AgentDefinition } from "@nova/subagent";
+import type { AgentDefinition } from "@nova/agent";
 import { loadAgents } from "../agents.js";
 import { accent, ACCENT_HEX, dim } from "../colors.js";
 import type { CliContext } from "../context.js";

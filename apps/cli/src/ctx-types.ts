@@ -1,5 +1,4 @@
-import type { Agent, PersistCursor } from "@nova/agent";
-import type { MemoryBundle } from "@nova/context";
+import type { Agent, AgentRegistry, MemoryBundle, PersistCursor } from "@nova/agent";
 import type {
   FileAccessLedger,
   MessageParam,
@@ -10,7 +9,6 @@ import type {
 import type { McpManager } from "@nova/mcp";
 import type { SlashRegistry } from "./slash-registry.js";
 import type { LspManager } from "@nova/lsp";
-import type { Transcript } from "@nova/observability";
 import type {
   BackgroundCommandManager,
   CronStore,
@@ -19,10 +17,8 @@ import type {
   TodoStore,
   ToolRegistry,
 } from "@nova/tools";
-import type { Logger, Session, Settings } from "@nova/runtime";
-import type { PermissionEngine } from "@nova/safety";
-import type { SandboxControl } from "@nova/sandbox";
-import type { AgentRegistry } from "@nova/subagent";
+import type { Logger, Session, Settings, Transcript } from "@nova/runtime";
+import type { PermissionEngine, SandboxControl } from "@nova/safety";
 import type { GoalState } from "./goal.js";
 import type { CronScheduler } from "./cron-scheduler.js";
 import type { LoadedPlugin } from "./plugins/loader.js";

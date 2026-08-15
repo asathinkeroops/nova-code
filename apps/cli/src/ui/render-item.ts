@@ -6,7 +6,7 @@ import {
   type ToolUseBlock,
 } from "@nova/core";
 import { aliasedPath, EXIT_PLAN_MODE_TOOL } from "@nova/tools";
-import type { SubAgentDetail } from "@nova/subagent";
+import type { SubAgentDetail } from "@nova/agent";
 import { readExisting } from "./diff.js";
 import type { Card } from "./store.js";
 

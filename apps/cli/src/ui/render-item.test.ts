@@ -261,7 +261,7 @@ describe("buildRenderItems sub-agent details", () => {
     name: "createSubAgent",
     input: { description: "audit", type: "explore", prompt: "look" },
   };
-  const toolCall = (toolDetails?: Record<string, import("@nova/subagent").SubAgentDetail[]>) =>
+  const toolCall = (toolDetails?: Record<string, import("@nova/agent").SubAgentDetail[]>) =>
     buildRenderItems({
       banner: null,
       cards: [],

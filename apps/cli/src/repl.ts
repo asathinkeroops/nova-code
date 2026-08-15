@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import type { MessageMeta } from "@nova/core";
-import { sliceFromLastCompacted } from "@nova/context";
+import { sliceFromLastCompacted } from "@nova/agent";
 import { bashTool } from "@nova/tools";
 import { resolveModelModalities } from "@nova/runtime";
 import { accent, dim, green } from "./colors.js";

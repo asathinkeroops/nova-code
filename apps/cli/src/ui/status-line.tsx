@@ -2,7 +2,7 @@ import React from "react";
 import { Box, Text } from "ink";
 import { basename } from "node:path";
 import { useShallow } from "zustand/react/shallow";
-import { computeCost, formatMoney } from "@nova/observability";
+import { computeCost, formatMoney } from "@nova/runtime";
 import { ACCENT_HEX } from "../colors.js";
 import { t } from "../i18n/index.js";
 import type { AppStoreApi } from "./store.js";

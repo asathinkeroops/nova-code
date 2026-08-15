@@ -1,4 +1,4 @@
-import type { MemoryBundle } from "@nova/context";
+import type { MemoryBundle } from "./memory.js";
 import { describe, expect, it } from "vitest";
 import { buildSystemPrompt } from "./system-prompt.js";
 

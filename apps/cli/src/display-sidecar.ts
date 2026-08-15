@@ -1,6 +1,6 @@
 import { appendFile, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
-import type { SubAgentDetail } from "@nova/subagent";
+import type { SubAgentDetail } from "@nova/agent";
 
 /**
  * Per-session "display sidecar": out-of-band, display-only metadata that the

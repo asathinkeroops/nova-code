@@ -108,9 +108,6 @@ importers:
       '@nova/agent':
         specifier: workspace:*
         version: link:../../packages/agent
-      '@nova/context':
-        specifier: workspace:*
-        version: link:../../packages/context
       '@nova/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -120,21 +117,12 @@ importers:
       '@nova/mcp':
         specifier: workspace:*
         version: link:../../packages/mcp
-      '@nova/observability':
-        specifier: workspace:*
-        version: link:../../packages/observability
       '@nova/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
       '@nova/safety':
         specifier: workspace:*
         version: link:../../packages/safety
-      '@nova/sandbox':
-        specifier: workspace:*
-        version: link:../../packages/sandbox
-      '@nova/subagent':
-        specifier: workspace:*
-        version: link:../../packages/subagent
       '@nova/tools':
         specifier: workspace:*
         version: link:../../packages/tools
@@ -150,31 +138,15 @@ importers:
 
   packages/agent:
     dependencies:
-      '@nova/context':
-        specifier: workspace:*
-        version: link:../context
       '@nova/core':
         specifier: workspace:*
         version: link:../core
-      '@nova/observability':
-        specifier: workspace:*
-        version: link:../observability
       '@nova/runtime':
         specifier: workspace:*
         version: link:../runtime
-    devDependencies:
       zod:
         specifier: ^3.23.0
         version: 3.25.76
-
-  packages/context:
-    dependencies:
-      '@nova/core':
-        specifier: workspace:*
-        version: link:../core
-      '@nova/runtime':
-        specifier: workspace:*
-        version: link:../runtime
 
   packages/core:
     dependencies:
@@ -205,8 +177,6 @@ importers:
         specifier: ^3.23.0
         version: 3.25.76
 
-  packages/observability: {}
-
   packages/runtime:
     dependencies:
       pino:
@@ -221,39 +191,15 @@ importers:
 
   packages/safety:
     dependencies:
-      '@nova/runtime':
-        specifier: workspace:*
-        version: link:../runtime
-
-  packages/sandbox:
-    dependencies:
       '@anthropic-ai/sandbox-runtime':
         specifier: 0.0.52
         version: 0.0.52
       '@nova/core':
         specifier: workspace:*
         version: link:../core
-
-  packages/subagent:
-    dependencies:
-      '@nova/agent':
-        specifier: workspace:*
-        version: link:../agent
-      '@nova/context':
-        specifier: workspace:*
-        version: link:../context
-      '@nova/core':
-        specifier: workspace:*
-        version: link:../core
-      '@nova/observability':
-        specifier: workspace:*
-        version: link:../observability
       '@nova/runtime':
         specifier: workspace:*
         version: link:../runtime
-      zod:
-        specifier: ^3.23.0
-        version: 3.25.76
 
   packages/tools:
     dependencies:

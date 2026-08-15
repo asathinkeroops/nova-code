@@ -25,7 +25,7 @@ export type PermissionMode = "default" | "acceptEdits" | "auto" | "plan" | "bypa
 
 /**
  * Workspace-mutating tools, withheld in `plan` mode. Mirrors the read-only
- * sub-agent's MUTATING_TOOLS set (packages/subagent/src/subagent.ts).
+ * sub-agent's MUTATING_TOOLS set (packages/agent/src/subagent.ts).
  */
 const MODE_MUTATING_TOOLS: ReadonlySet<string> = new Set(["write", "edit", "bash", "monitor"]);
 

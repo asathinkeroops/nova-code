@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { createAgent, emptyCursor } from "@nova/agent";
-import { sliceFromLastCompacted } from "@nova/context";
+import {
+  createAgent,
+  emptyCursor,
+  sliceFromLastCompacted,
+  SUBAGENT_TOOL_NAME,
+} from "@nova/agent";
 import { blocksOf, extractText, type AskUserFn, type MessageParam } from "@nova/core";
-import { Transcript } from "@nova/observability";
-import { resolveMaxTokens, resolveModelModalities } from "@nova/runtime";
-import { SUBAGENT_TOOL_NAME } from "@nova/subagent";
+import { resolveMaxTokens, resolveModelModalities, Transcript } from "@nova/runtime";
 import type { CliContext } from "./context.js";
 import {
   buildGoalEvalPrompt,

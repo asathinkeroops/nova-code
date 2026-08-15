@@ -74,6 +74,16 @@ export {
 
 export { createLogger, type Logger, type LoggerConfig } from "./logging.js";
 
+export { Transcript, type TranscriptKind, type TranscriptRecord } from "./transcript.js";
+export {
+  computeCost,
+  formatMoney,
+  type Currency,
+  type ModelRates,
+  type TokenCounts,
+  type CostBreakdown,
+} from "./cost.js";
+
 export { canonicalizePath, canonicalizeRoots } from "./path-safety.js";
 export type {
   SlashArgSpec,

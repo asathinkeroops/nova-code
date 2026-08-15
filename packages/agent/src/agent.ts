@@ -16,9 +16,8 @@ import {
   type FileAccessLedger,
   type AskUserFn,
 } from "@nova/core";
-import type { MemoryBundle } from "@nova/context";
-import type { Transcript, TranscriptKind } from "@nova/observability";
-import type { Logger } from "@nova/runtime";
+import type { MemoryBundle } from "./memory.js";
+import type { Logger, Transcript, TranscriptKind } from "@nova/runtime";
 import { buildSystemPrompt } from "./system-prompt.js";
 import { persistMessages, type PersistCursor } from "./persistence.js";
 

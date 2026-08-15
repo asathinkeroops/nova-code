@@ -1,4 +1,4 @@
-import { computeCost, formatMoney, type ModelRates } from "@nova/observability";
+import { computeCost, formatMoney, type ModelRates } from "@nova/runtime";
 import { accent, ACCENT_HEX, bold, cyan, dim } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { t } from "../i18n/index.js";

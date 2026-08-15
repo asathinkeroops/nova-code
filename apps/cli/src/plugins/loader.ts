@@ -6,7 +6,7 @@ import type { McpServerSpec } from "@nova/mcp";
 import type { ServerConfig } from "@nova/lsp";
 import { hooksConfigSchema, type HooksConfig, type Logger, type SlashCommand } from "@nova/runtime";
 import { fileCommandToSlash, loadFileCommands } from "../slash-registry.js";
-import { loadAgentDefinitions, type AgentDefinition } from "@nova/subagent";
+import { loadAgentDefinitions, type AgentDefinition } from "@nova/agent";
 
 import {
   asPathList,
@@ -272,7 +272,8 @@ async function loadPluginMcp(
 /** Read plugin LSP server configs from `.lsp.json` (array or `{ servers: [...] }`). */
 async function loadPluginLsp(manifest: PluginManifest, root: string): Promise<ServerConfig[]> {
   const files = asPathList(manifest.lsp);
-  const candidates = files.length > 0 ? files.map((f) => resolve(root, f)) : [resolve(root, ".lsp.json")];
+  const candidates =
+    files.length > 0 ? files.map((f) => resolve(root, f)) : [resolve(root, ".lsp.json")];
   const out: ServerConfig[] = [];
   for (const file of candidates) {
     if (!(await isFile(file))) continue;
@@ -305,7 +306,8 @@ async function loadPluginBin(root: string): Promise<string[]> {
 async function detectIgnored(root: string): Promise<IgnoredComponent[]> {
   const out: IgnoredComponent[] = [];
   const monitors = join(root, "monitors");
-  if (await isDir(monitors)) out.push({ kind: "monitors", path: monitors, reason: "not supported" });
+  if (await isDir(monitors))
+    out.push({ kind: "monitors", path: monitors, reason: "not supported" });
   return out;
 }
 

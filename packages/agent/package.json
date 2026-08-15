@@ -30,12 +30,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@nova/context": "workspace:*",
     "@nova/core": "workspace:*",
-    "@nova/observability": "workspace:*",
-    "@nova/runtime": "workspace:*"
-  },
-  "devDependencies": {
+    "@nova/runtime": "workspace:*",
     "zod": "^3.23.0"
   }
 }

@@ -5,9 +5,9 @@ import {
   getSession,
   listSessions,
   pruneSessions,
+  Transcript,
   type Session,
 } from "@nova/runtime";
-import { Transcript } from "@nova/observability";
 import { red } from "./colors.js";
 import { refreshBanner, type CliContext } from "./context.js";
 import { loadDisplaySidecar } from "./display-sidecar.js";

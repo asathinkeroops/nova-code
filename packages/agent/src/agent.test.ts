@@ -11,7 +11,7 @@ import {
   type ToolResultBlock,
   type ToolUseBlock,
 } from "@nova/core";
-import { Transcript } from "@nova/observability";
+import { Transcript } from "@nova/runtime";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { createAgent, type AgentDeps } from "./agent.js";

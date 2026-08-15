@@ -5,7 +5,7 @@ import {
   type MessageParam,
   type ToolDefinition,
 } from "@nova/core";
-import { isCompactionMarker } from "@nova/context";
+import { isCompactionMarker } from "@nova/agent";
 import type { PermissionMode } from "./permissions.js";
 
 interface PreRequestPayload {

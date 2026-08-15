@@ -1,4 +1,4 @@
-import { autoCompact, shouldAutoCompact, sliceFromLastCompacted } from "@nova/context";
+import { autoCompact, shouldAutoCompact, sliceFromLastCompacted } from "@nova/agent";
 import { resolveProfile, type MessageParam, type ModelClient } from "@nova/core";
 import { resolveContextWindowSize, type Settings } from "@nova/runtime";
 

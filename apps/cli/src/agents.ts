@@ -1,4 +1,4 @@
-import { loadAgentDefinitions, type AgentLoadOptions, type AgentLoadResult } from "@nova/subagent";
+import { loadAgentDefinitions, type AgentLoadOptions, type AgentLoadResult } from "@nova/agent";
 import type { Logger, Settings } from "@nova/runtime";
 
 /**
