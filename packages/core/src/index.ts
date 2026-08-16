@@ -73,6 +73,12 @@ export {
   type StreamTextDelta,
 } from "./model.js";
 export { agentLoop, LoopTerminatedError, type AgentLoopOptions, type LoopResult } from "./loop.js";
+export {
+  createAgent,
+  type Agent,
+  type AgentContext,
+  type TurnResult,
+} from "./agent.js";
 export { xmlEscape, xmlAttr } from "./xml.js";
 export {
   parseFrontMatter,
