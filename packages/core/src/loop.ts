@@ -8,6 +8,7 @@ import {
   userToolResults,
 } from "./messages.js";
 import type { ModelClient } from "./model.js";
+import type { Compactor, HistoryPort, PermissionGate } from "./ports.js";
 import { decide } from "./stop-reason.js";
 import type {
   AssistantTurn,
@@ -40,6 +41,32 @@ export interface AgentLoopOptions {
    * advisory / blocking semantics.
    */
   hooks: HookRegistry;
+  /**
+   * Compaction. Consulted at the top of every iteration, BEFORE the
+   * `pre_compact` hook chain — the port is simply that chain's built-in first
+   * node, which is how `createAgent` has always wired its compactor. Returning
+   * the same array reference declines and lets the hooks have their turn.
+   * Omitted: pure hook behavior, exactly as before.
+   */
+  compactor?: Compactor;
+  /**
+   * The permission gate. Consulted per tool call, BEFORE the `pre_tool_use`
+   * hook chain, on the same first-node basis: a denial short-circuits the
+   * chain, a grant lets the hooks deny in their own right.
+   * Omitted: pure hook behavior, exactly as before.
+   */
+  permission?: PermissionGate;
+  /**
+   * Durable history. `commit` is called at the end of each iteration — the
+   * durability boundary — before `post_commit` fires, so a persister no longer
+   * has to know to attach itself to the right hook. Only `commit` is used here;
+   * `current()` belongs to the turn-level caller.
+   *
+   * A failed write is swallowed (the implementation logs it and the turn-end
+   * flush retries), because losing the turn over a failed append would be
+   * strictly worse than the failed append.
+   */
+  history?: Pick<HistoryPort, "commit">;
   /**
    * When > 0, asks the model to allocate up to this many tokens to extended
    * thinking. Forwarded to every `model.call` in the loop unless a
@@ -118,8 +145,15 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
     }
     turn++;
 
-    // ── pre_compact (blocking) ────────────────────────────────────────────
-    const compactDecision = await hooks.runBlocking("pre_compact", { messages });
+    // ── compaction: port first, then the pre_compact chain ────────────────
+    let compactDecision: { messages: MessageParam[] } | undefined;
+    if (opts.compactor) {
+      const compacted = await opts.compactor.compact(messages, { reason: "auto" });
+      if (compacted !== messages) compactDecision = { messages: compacted };
+    }
+    if (!compactDecision) {
+      compactDecision = await hooks.runBlocking("pre_compact", { messages });
+    }
     if (compactDecision && compactDecision.messages !== messages) {
       const before = messages.length;
       messages = compactDecision.messages;
@@ -270,7 +304,14 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
       }
 
       await hooks.runAdvisory("pre_permission", { tool: use.name, toolUseId: use.id });
-      const denied = await hooks.runBlocking("pre_tool_use", { use });
+      // Port first, then the pre_tool_use chain (same first-node rule as
+      // compaction): the gate's denial short-circuits, its grant does not.
+      let denied: { allow: false; reason: string } | undefined;
+      if (opts.permission) {
+        const verdict = await opts.permission.check(use, opts.toolContext);
+        if (!verdict.granted) denied = { allow: false, reason: verdict.reason ?? "denied" };
+      }
+      if (!denied) denied = await hooks.runBlocking("pre_tool_use", { use });
       await hooks.runAdvisory("post_permission", {
         tool: use.name,
         toolUseId: use.id,
@@ -364,7 +405,15 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
     // Every message this iteration produced is now final — the assistant
     // message was restored to the model's block order above, the tool_result
     // batch is fully settled, and any pre_continue injection is appended.
-    // Signal the durability boundary so persisters can flush (see `post_commit`).
+    // This is the durability boundary: commit, then announce (see `post_commit`).
+    if (opts.history) {
+      try {
+        await opts.history.commit(messages);
+      } catch {
+        // The store logs its own failures; a failed write must not cost the
+        // turn — the caller's turn-end flush retries.
+      }
+    }
     await hooks.runAdvisory("post_commit", { messages });
   }
 }

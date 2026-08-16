@@ -1043,3 +1043,159 @@ describe("agentLoop · pre_request hook", () => {
     expect(JSON.stringify(result.messages)).toContain("[notification]");
   });
 });
+
+/**
+ * A port is the built-in FIRST node of its hook chain — the shape `createAgent`
+ * has always wired by hand. These tests pin that precedence, because it is what
+ * lets the ports land without changing any existing hook's behavior.
+ */
+describe("agentLoop · ports", () => {
+  const toolTurn: AssistantTurn = {
+    content: [
+      { type: "tool_use", id: "t1", name: "echo", input: { msg: "hi" } },
+    ],
+    stopReason: "tool_use",
+  };
+  const doneTurn: AssistantTurn = {
+    content: [{ type: "text", text: "done" }],
+    stopReason: "end_turn",
+  };
+
+  describe("compactor", () => {
+    it("short-circuits the pre_compact chain when it compacts", async () => {
+      const hooks = new HookRegistry();
+      const hook = vi.fn(() => undefined);
+      hooks.on("pre_compact", hook);
+      const boundary: MessageParam = { role: "user", content: "[compacted]" };
+
+      const result = await agentLoop({
+        ...baseOpts(hooks),
+        model: mockModel([doneTurn]),
+        executeTool: makeExecutor(),
+        compactor: {
+          view: (m) => m,
+          compact: async (m) => [...m, boundary],
+        },
+      });
+
+      expect(hook).not.toHaveBeenCalled();
+      expect(result.messages[1]).toBe(boundary);
+    });
+
+    it("lets the pre_compact chain run when it declines", async () => {
+      const hooks = new HookRegistry();
+      const hook = vi.fn(() => undefined);
+      hooks.on("pre_compact", hook);
+
+      await agentLoop({
+        ...baseOpts(hooks),
+        model: mockModel([doneTurn]),
+        executeTool: makeExecutor(),
+        // Same reference back = "nothing to do".
+        compactor: { view: (m) => m, compact: async (m) => m },
+      });
+
+      expect(hook).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("permission", () => {
+    it("denies without consulting the pre_tool_use chain", async () => {
+      const hooks = new HookRegistry();
+      const hook = vi.fn(() => undefined);
+      hooks.on("pre_tool_use", hook);
+      const exec = vi.fn();
+
+      const result = await agentLoop({
+        ...baseOpts(hooks),
+        model: mockModel([toolTurn, doneTurn]),
+        executeTool: makeExecutor(exec),
+        permission: {
+          check: async () => ({ granted: false, reason: "rule blocked" }),
+        },
+      });
+
+      expect(hook).not.toHaveBeenCalled();
+      expect(exec).not.toHaveBeenCalled();
+      expect(JSON.stringify(result.messages)).toContain("Permission denied: rule blocked");
+    });
+
+    it("still lets a hook deny what the gate granted", async () => {
+      const hooks = new HookRegistry();
+      hooks.on("pre_tool_use", () => ({ allow: false as const, reason: "hook says no" }));
+      const gate = vi.fn(async () => ({ granted: true }));
+
+      const result = await agentLoop({
+        ...baseOpts(hooks),
+        model: mockModel([toolTurn, doneTurn]),
+        executeTool: makeExecutor(),
+        permission: { check: gate },
+      });
+
+      expect(gate).toHaveBeenCalledTimes(1);
+      expect(JSON.stringify(result.messages)).toContain("Permission denied: hook says no");
+    });
+
+    it("passes the tool_use block and tool context to the gate", async () => {
+      const hooks = new HookRegistry();
+      const seen: { name: string; id: string; cwd: string }[] = [];
+
+      await agentLoop({
+        ...baseOpts(hooks),
+        model: mockModel([toolTurn, doneTurn]),
+        executeTool: makeExecutor(),
+        permission: {
+          check: async (use, ctx) => {
+            seen.push({ name: use.name, id: use.id, cwd: ctx.cwd });
+            return { granted: true };
+          },
+        },
+      });
+
+      expect(seen).toEqual([{ name: "echo", id: "t1", cwd: "/tmp" }]);
+    });
+  });
+
+  describe("history", () => {
+    it("commits the sealed array at each durability boundary, before post_commit", async () => {
+      const hooks = new HookRegistry();
+      const order: string[] = [];
+      const committed: MessageParam[][] = [];
+      hooks.on("post_commit", () => {
+        order.push("post_commit");
+      });
+
+      await agentLoop({
+        ...baseOpts(hooks),
+        model: mockModel([toolTurn, doneTurn]),
+        executeTool: makeExecutor(),
+        history: {
+          commit: async (messages) => {
+            order.push("commit");
+            committed.push(messages);
+          },
+        },
+      });
+
+      expect(order).toEqual(["commit", "post_commit"]);
+      // The committed array is the sealed one: every tool_use has its result.
+      expect(JSON.stringify(committed[0])).toContain("echo:hi");
+    });
+
+    it("survives a failing commit", async () => {
+      const hooks = new HookRegistry();
+      const result = await agentLoop({
+        ...baseOpts(hooks),
+        model: mockModel([toolTurn, doneTurn]),
+        executeTool: makeExecutor(),
+        history: {
+          commit: async () => {
+            throw new Error("disk full");
+          },
+        },
+      });
+
+      expect(result.stopReason).toBe("end_turn");
+    });
+  });
+});
