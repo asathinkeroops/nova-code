@@ -99,8 +99,8 @@ function makeDeps(
     getModel: () => model,
     getToolDefinitions: () => [echoTool, writeDef, editDef, bashDef, subagentDef],
     dispatch: echoExecutor(),
-    checkPermission: async () => ({ granted: true }),
-    compactor: async (m) => m,
+    permission: { check: async () => ({ granted: true }) },
+    compactor: { view: (m) => m, compact: async (m) => m },
     fileLedger: {
       recordRead: () => {},
       recordWrite: () => {},
@@ -226,9 +226,9 @@ describe("createSubAgentTool", () => {
       seen,
     );
     const dispatch = vi.fn(echoExecutor());
-    const checkPermission = vi.fn(async () => ({ granted: true }));
+    const check = vi.fn(async () => ({ granted: true }));
     const tool = createSubAgentTool(
-      makeDeps(model, tmp, { dispatch, checkPermission }),
+      makeDeps(model, tmp, { dispatch, permission: { check } }),
     );
 
     const result = await tool.run(
@@ -239,7 +239,7 @@ describe("createSubAgentTool", () => {
     expect(result.isError).toBeFalsy();
     // The wrapper denies `write` before it reaches the shared dispatch / parent check.
     expect(dispatch).not.toHaveBeenCalled();
-    expect(checkPermission).not.toHaveBeenCalledWith("write", expect.anything());
+    expect(check).not.toHaveBeenCalled();
   });
 
   it("runs the parent dispatcher for tool calls and returns the closing text", async () => {

@@ -11,10 +11,11 @@ import {
   type ToolResultBlock,
   type ToolUseBlock,
 } from "@nova/core";
-import { Transcript } from "@nova/runtime";
+import { Transcript, type Logger } from "@nova/runtime";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { createAgent, type AgentDeps } from "./agent.js";
+import { assembleAgent, type AssembleAgentOptions } from "./assemble.js";
+import { createMemoryPrompt } from "./ports.js";
 import type { HookPoint } from "@nova/core";
 import { emptyCursor, loadMessages, type PersistCursor } from "./persistence.js";
 
@@ -65,36 +66,48 @@ const silentLogger = {
   debug: vi.fn(),
   fatal: vi.fn(),
   trace: vi.fn(),
-} as unknown as AgentDeps["getLogger"] extends () => infer L ? L : never;
+} as unknown as Logger;
 
-function makeDeps(overrides: Partial<AgentDeps> & {
-  model: ModelClient;
-  messagesPath: string;
-  transcriptPath: string;
-}): AgentDeps {
+/**
+ * The real port wiring, end to end — a `Transcript` on disk, the real
+ * `messages.jsonl` store, the real tool host. These tests exercise
+ * `@nova/core`'s `createAgent` THROUGH the assembly, which is the combination
+ * that ships.
+ */
+function makeOptions(
+  overrides: Partial<AssembleAgentOptions> & {
+    model: ModelClient;
+    messagesPath: string;
+    transcriptPath: string;
+  },
+): AssembleAgentOptions {
   const messagesStore: { value: MessageParam[] } = { value: [] };
   const cursorStore: { value: PersistCursor } = { value: emptyCursor };
   const transcript = new Transcript(overrides.transcriptPath);
 
   return {
     workspace: "/tmp/ws",
-    getMemory: () => ({ system: "", sources: [] }),
-    skillsBlock: "",
     getSessionId: () => "test-session",
+    getLogger: () => silentLogger,
+    systemPrompt: createMemoryPrompt({
+      workspace: "/tmp/ws",
+      getMemory: () => ({ system: "", sources: [] }),
+      skillsBlock: "",
+      getSessionId: () => "test-session",
+    }),
     getMessagesPath: () => overrides.messagesPath,
     getTranscript: () => transcript,
-    getLogger: () => silentLogger,
     getPersistCursor: () => cursorStore.value,
     setPersistCursor: (c) => {
       cursorStore.value = c;
     },
     getModel: () => overrides.model,
     getThinkingBudget: () => 0,
-    getSettings: () => ({ maxTokens: 1024, maxTurns: 5, noTranscript: false }),
+    getSettings: () => ({ maxTokens: 1024, maxTurns: 5 }),
     getTools: () => [echoTool],
     dispatch: echoExecutor(),
-    checkPermission: async () => ({ granted: true }),
-    compactor: async (m) => m,
+    permission: { check: async () => ({ granted: true }) },
+    compactor: { view: (m) => m, compact: async (m) => m },
     fileLedger: {
       recordRead: () => {},
       recordWrite: () => {},
@@ -127,7 +140,7 @@ describe("createAgent.runTurn", () => {
         usage: { inputTokens: 1, outputTokens: 1 },
       },
     ]);
-    const agent = createAgent(makeDeps({ model, messagesPath, transcriptPath }));
+    const agent = assembleAgent(makeOptions({ model, messagesPath, transcriptPath }));
     const order: HookPoint[] = [];
     // post_messages fires first (immediate sync of the appended user message),
     // pre_request fires before each model.call, post_request after, post_turn
@@ -163,7 +176,7 @@ describe("createAgent.runTurn", () => {
         usage: { inputTokens: 1, outputTokens: 1 },
       },
     ]);
-    const agent = createAgent(makeDeps({ model, messagesPath, transcriptPath }));
+    const agent = assembleAgent(makeOptions({ model, messagesPath, transcriptPath }));
 
     const result = await agent.runTurn("hello");
     expect(result.ok).toBe(true);
@@ -197,7 +210,7 @@ describe("createAgent.runTurn", () => {
         throw new Error("connection reset");
       },
     };
-    const agent = createAgent(makeDeps({ model, messagesPath, transcriptPath }));
+    const agent = assembleAgent(makeOptions({ model, messagesPath, transcriptPath }));
 
     const result = await agent.runTurn("run echo");
     expect(result.ok).toBe(false);
@@ -220,7 +233,7 @@ describe("createAgent.runTurn", () => {
         throw new Error("aborted");
       },
     };
-    const agent = createAgent(makeDeps({ model, messagesPath, transcriptPath }));
+    const agent = assembleAgent(makeOptions({ model, messagesPath, transcriptPath }));
     // The CLI's screen store is fed by post_messages and is what the NEXT turn
     // builds on, so the marker has to reach it or the following write reads as a
     // divergence and rewrites the marker away.
@@ -254,7 +267,7 @@ describe("createAgent.runTurn", () => {
         usage: { inputTokens: 1, outputTokens: 1 },
       },
     ]);
-    const agent = createAgent(makeDeps({ model, messagesPath, transcriptPath }));
+    const agent = assembleAgent(makeOptions({ model, messagesPath, transcriptPath }));
     // pre_continue fires AFTER post_user_message, so nothing else would record
     // this — same blind spot as compaction summaries and background notifications.
     agent.on("pre_continue", () => ({
@@ -289,7 +302,7 @@ describe("createAgent.runTurn", () => {
         throw new Error("aborted");
       },
     };
-    const agent = createAgent(makeDeps({ model, messagesPath, transcriptPath }));
+    const agent = assembleAgent(makeOptions({ model, messagesPath, transcriptPath }));
 
     await agent.runTurn("hello", { signal: controller.signal });
 
@@ -307,7 +320,7 @@ describe("createAgent.runTurn", () => {
         usage: { inputTokens: 1, outputTokens: 1 },
       },
     ]);
-    const agent = createAgent(makeDeps({ model, messagesPath, transcriptPath }));
+    const agent = assembleAgent(makeOptions({ model, messagesPath, transcriptPath }));
     // Throwing here unwinds the loop after the tool_use block has been revealed
     // but before any result exists. An unpaired tool_use on disk would make the
     // session unresumable — the next request is rejected before the model sees it.
@@ -333,7 +346,7 @@ describe("createAgent.runTurn", () => {
     expect(pending.size).toBe(0);
   });
 
-  it("reads memory fresh each turn via getMemory, so a session-boundary reload is visible", async () => {
+  it("picks up a memory reload when the session boundary advances the prompt epoch", async () => {
     const messagesPath = join(tmp, "messages.jsonl");
     const transcriptPath = join(tmp, "transcript.jsonl");
     const seenSystems: string[] = [];
@@ -347,20 +360,76 @@ describe("createAgent.runTurn", () => {
         };
       },
     };
-    // Mutable bundle: the CLI swaps ctx.memory at a session boundary; getMemory
-    // reads it live, so turn 2 must see the new text without rebuilding the agent.
+    // `switchToSession` reloads ctx.memory AND swaps ctx.session — so the epoch
+    // moves with the bundle, which is the only time the prompt may change.
     let bundle = { system: "MEMORY-BEFORE-RELOAD", sources: [] };
-    const agent = createAgent(
-      makeDeps({ model, messagesPath, transcriptPath, getMemory: () => bundle }),
+    let sessionId = "session-1";
+    const agent = assembleAgent(
+      makeOptions({
+        model,
+        messagesPath,
+        transcriptPath,
+        getSessionId: () => sessionId,
+        systemPrompt: createMemoryPrompt({
+          workspace: "/tmp/ws",
+          getMemory: () => bundle,
+          skillsBlock: "",
+          getSessionId: () => sessionId,
+        }),
+      }),
     );
 
     await agent.runTurn("hi");
-    bundle = { system: "MEMORY-AFTER-RELOAD", sources: [] }; // simulate switchToSession reload
+    bundle = { system: "MEMORY-AFTER-RELOAD", sources: [] };
+    sessionId = "session-2";
     await agent.runTurn("hi again");
 
     expect(seenSystems[0]).toContain("MEMORY-BEFORE-RELOAD");
     expect(seenSystems[0]).not.toContain("MEMORY-AFTER-RELOAD");
     expect(seenSystems[1]).toContain("MEMORY-AFTER-RELOAD");
+  });
+
+  /**
+   * The prefix-cache contract, now enforced rather than documented: `system` is
+   * byte 0 of every request, so changing it mid-session would collapse the
+   * common prefix and re-prefill the entire history on every later turn.
+   */
+  it("freezes the system prompt within an epoch, keeping the first value", async () => {
+    const messagesPath = join(tmp, "messages.jsonl");
+    const transcriptPath = join(tmp, "transcript.jsonl");
+    const seenSystems: string[] = [];
+    const model: ModelClient = {
+      async call(opts) {
+        seenSystems.push(opts.system);
+        return {
+          content: [{ type: "text", text: "ok" }],
+          stopReason: "end_turn",
+          usage: { inputTokens: 1, outputTokens: 1 },
+        };
+      },
+    };
+    let bundle = { system: "MEMORY-BEFORE-RELOAD", sources: [] };
+    const agent = assembleAgent(
+      makeOptions({
+        model,
+        messagesPath,
+        transcriptPath,
+        systemPrompt: createMemoryPrompt({
+          workspace: "/tmp/ws",
+          getMemory: () => bundle,
+          skillsBlock: "",
+          // Epoch never advances — a mid-session memory swap must not land.
+          getSessionId: () => "session-1",
+        }),
+      }),
+    );
+
+    await agent.runTurn("hi");
+    bundle = { system: "MEMORY-AFTER-RELOAD", sources: [] };
+    await agent.runTurn("hi again");
+
+    expect(seenSystems[1]).toBe(seenSystems[0]);
+    expect(seenSystems[1]).not.toContain("MEMORY-AFTER-RELOAD");
   });
 
   it("currentSignal returns the in-flight signal and undefined when idle", async () => {
@@ -377,7 +446,7 @@ describe("createAgent.runTurn", () => {
         };
       },
     };
-    const agent = createAgent(makeDeps({ model, messagesPath, transcriptPath }));
+    const agent = assembleAgent(makeOptions({ model, messagesPath, transcriptPath }));
 
     expect(agent.currentSignal()).toBeUndefined();
     await agent.runTurn("hello");
@@ -400,7 +469,7 @@ describe("createAgent.runTurn", () => {
         throw new Error("interrupted by user");
       },
     };
-    const agent = createAgent(makeDeps({ model, messagesPath, transcriptPath }));
+    const agent = assembleAgent(makeOptions({ model, messagesPath, transcriptPath }));
 
     const result = await agent.runTurn("hello", { signal: controller.signal });
     expect(result.ok).toBe(false);
@@ -429,7 +498,7 @@ describe("createAgent · hooks", () => {
         usage: { inputTokens: 1, outputTokens: 1 },
       },
     ]);
-    const agent = createAgent(makeDeps({ model, messagesPath, transcriptPath }));
+    const agent = assembleAgent(makeOptions({ model, messagesPath, transcriptPath }));
     const survivor = vi.fn();
     agent.on("post_turn", () => {
       throw new Error("first hook is broken");
@@ -451,7 +520,7 @@ describe("createAgent · hooks", () => {
         usage: { inputTokens: 1, outputTokens: 1 },
       },
     ]);
-    const agent = createAgent(makeDeps({ model, messagesPath, transcriptPath }));
+    const agent = assembleAgent(makeOptions({ model, messagesPath, transcriptPath }));
     const fn = vi.fn();
     const off = agent.on("post_turn", fn);
     off();
@@ -476,7 +545,7 @@ describe("createAgent · hooks", () => {
         };
       },
     };
-    const agent = createAgent(makeDeps({ model, messagesPath, transcriptPath }));
+    const agent = assembleAgent(makeOptions({ model, messagesPath, transcriptPath }));
     agent.on("pre_user_prompt", ({ input }) => ({ input: `[rewritten] ${input}` }));
 
     const result = await agent.runTurn("hi");
@@ -493,7 +562,7 @@ describe("createAgent · hooks", () => {
       usage: { inputTokens: 1, outputTokens: 1 },
     }));
     const model: ModelClient = { call: modelCall };
-    const agent = createAgent(makeDeps({ model, messagesPath, transcriptPath }));
+    const agent = assembleAgent(makeOptions({ model, messagesPath, transcriptPath }));
     agent.on("pre_user_prompt", () => ({ abort: true, reason: "blocked by policy" }));
     const turnEnded = vi.fn();
     agent.on("post_turn", turnEnded);
@@ -531,7 +600,7 @@ describe("createAgent · hooks", () => {
       },
     ]);
     const dispatch = vi.fn(echoExecutor());
-    const agent = createAgent(makeDeps({ model, messagesPath, transcriptPath, dispatch }));
+    const agent = assembleAgent(makeOptions({ model, messagesPath, transcriptPath, dispatch }));
     agent.on("pre_tool_use", ({ use }) => {
       if (use.name === "echo") return { allow: false, reason: "echo is blocked" };
     });
@@ -566,7 +635,7 @@ describe("createAgent · hooks", () => {
         };
       },
     };
-    const agent = createAgent(makeDeps({ model, messagesPath, transcriptPath }));
+    const agent = assembleAgent(makeOptions({ model, messagesPath, transcriptPath }));
     agent.on("pre_request", ({ system }) => ({ system: `${system}\n[injected]` }));
 
     const result = await agent.runTurn("hi");
@@ -602,7 +671,7 @@ describe("createAgent · hooks", () => {
         };
       },
     };
-    const agent = createAgent(makeDeps({ model, messagesPath, transcriptPath }));
+    const agent = assembleAgent(makeOptions({ model, messagesPath, transcriptPath }));
     agent.on("post_tool_use", ({ result }) => ({
       result: { ...result, content: "[REDACTED]" },
     }));
@@ -612,7 +681,7 @@ describe("createAgent · hooks", () => {
     expect(modelSawSecondTurnResult).toBe("[REDACTED]");
   });
 
-  it("post_compact does not fire when deps.compactor returns the same array reference", async () => {
+  it("post_compact does not fire when the compactor returns the same array reference", async () => {
     const messagesPath = join(tmp, "messages.jsonl");
     const transcriptPath = join(tmp, "transcript.jsonl");
     const model = mockModel([
@@ -624,16 +693,21 @@ describe("createAgent · hooks", () => {
     ]);
     // No-op compactor: returns the same array reference, so the loop sees
     // "no change" and skips post_compact.
-    const compactor = vi.fn(async (msgs: MessageParam[]) => msgs);
-    const agent = createAgent(
-      makeDeps({ model, messagesPath, transcriptPath, compactor }),
+    const compact = vi.fn(async (msgs: MessageParam[]) => msgs);
+    const agent = assembleAgent(
+      makeOptions({
+        model,
+        messagesPath,
+        transcriptPath,
+        compactor: { view: (m) => m, compact },
+      }),
     );
     const compactEnd = vi.fn();
     agent.on("post_compact", compactEnd);
 
     const result = await agent.runTurn("hello");
     expect(result.ok).toBe(true);
-    expect(compactor).toHaveBeenCalled();
+    expect(compact).toHaveBeenCalled();
     expect(compactEnd).not.toHaveBeenCalled();
   });
 
@@ -647,7 +721,7 @@ describe("createAgent · hooks", () => {
         usage: { inputTokens: 1, outputTokens: 1 },
       },
     ]);
-    const agent = createAgent(makeDeps({ model, messagesPath, transcriptPath }));
+    const agent = assembleAgent(makeOptions({ model, messagesPath, transcriptPath }));
     const secondHook = vi.fn();
     agent.on("pre_user_prompt", () => ({ abort: true, reason: "first" }));
     agent.on("pre_user_prompt", secondHook);

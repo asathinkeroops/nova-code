@@ -1,12 +1,13 @@
 import { join, resolve } from "node:path";
 import {
   AgentRegistry,
-  createAgent,
+  assembleAgent,
+  createMemoryPrompt,
   createSubAgentTool,
   emptyCursor,
+  sliceFromLastCompacted,
   loadMemory,
   loadMessages,
-  sliceFromLastCompacted,
   type Agent,
   type AgentDefinition,
 } from "@nova/agent";
@@ -664,6 +665,7 @@ export async function createContext(
     fileLedger,
     permission: null as unknown as PermissionEngine,
     checkPermission: null as unknown as CliContext["checkPermission"],
+    permissionGate: null as unknown as CliContext["permissionGate"],
     compactor: null as unknown as CliContext["compactor"],
     agent: null as unknown as Agent,
     buildLogger,
@@ -904,6 +906,12 @@ export async function createContext(
     }
   };
 
+  // The permission engine as a port: same decisions, addressed by tool_use block
+  // so the gate can correlate with the pre_/post_permission events.
+  (ctx as { permissionGate: CliContext["permissionGate"] }).permissionGate = {
+    check: (use) => ctx.checkPermission(use.name, use.input),
+  };
+
   (ctx as { compactor: CliContext["compactor"] }).compactor = buildCompactor({
     settings,
     // Non-streaming client (trackTokens=false): the summarizer's output must
@@ -942,14 +950,21 @@ export async function createContext(
     return await ctx.screen.askUser(req, signal ? { signal } : undefined);
   };
 
-  (ctx as { agent: Agent }).agent = createAgent({
+  (ctx as { agent: Agent }).agent = assembleAgent({
     workspace,
-    getMemory: () => ctx.memory,
-    skillsBlock,
     getSessionId: () => ctx.session.id,
-    getMessagesPath: () => ctx.session.messagesPath,
-    getTranscript: () => ctx.transcript,
     getLogger: () => ctx.logger,
+    systemPrompt: createMemoryPrompt({
+      workspace,
+      getMemory: () => ctx.memory,
+      skillsBlock,
+      // Doubles as the prefix epoch: the session id is the only thing whose
+      // change licenses a new system prompt (see freezeSystemPrompt).
+      getSessionId: () => ctx.session.id,
+      getLanguage: () => ctx.settings.language,
+    }),
+    getMessagesPath: () => ctx.session.messagesPath,
+    ...(ctx.noTranscript ? {} : { getTranscript: () => ctx.transcript }),
     getPersistCursor: () => ctx.persistCursor,
     setPersistCursor: (c) => {
       ctx.persistCursor = c;
@@ -963,15 +978,13 @@ export async function createContext(
       maxTokens: resolveMaxTokens(ctx.settings, ctx.settings.model),
       maxTurns: ctx.settings.maxTurns,
       maxTokensContinuations: ctx.settings.maxTokensContinuations,
-      noTranscript: ctx.noTranscript,
       toolConcurrency: ctx.settings.toolConcurrency,
       modelModalities: resolveModelModalities(ctx.settings, ctx.settings.model),
-      language: ctx.settings.language,
       effort: ctx.thinkingLevel,
     }),
     getTools: () => ctx.tools.definitions(),
     dispatch: ctx.dispatch,
-    checkPermission: ctx.checkPermission,
+    permission: ctx.permissionGate,
     compactor: ctx.compactor,
     fileLedger,
     askUser,
@@ -1026,8 +1039,8 @@ export async function createContext(
         getToolDefinitions: () =>
           ctx.tools.definitions().filter((d) => !PLAN_MODE_TOOL_NAMES.has(d.name)),
         dispatch: (use, c) => ctx.dispatch(use, c),
-        checkPermission: (tool, input) => ctx.checkPermission(tool, input),
-        compactor: (messages) => ctx.compactor(messages),
+        permission: ctx.permissionGate,
+        compactor: ctx.compactor,
         fileLedger,
         askUser,
         getLogger: () => ctx.logger,
@@ -1051,11 +1064,11 @@ export async function createContext(
         // fill level. Resume recovery reads the sub-agent transcripts too (see
         // restoreUsageFromTranscript), so this stays consistent after `--resume`.
         onUsage: (usage) => ctx.screen.addUsage(usage),
+        noTranscript: ctx.noTranscript,
         getSettings: () => ({
           maxTokens: ctx.settings.subagent.maxTokens,
           maxTurns: ctx.settings.subagent.maxTurns,
           maxTokensContinuations: ctx.settings.maxTokensContinuations,
-          noTranscript: ctx.noTranscript,
           toolConcurrency: ctx.settings.toolConcurrency,
           modelModalities: resolveModelModalities(ctx.settings, ctx.settings.model),
         }),

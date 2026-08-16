@@ -2,20 +2,24 @@ import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import { createAgent, type AgentSettingsSlice, type TurnResult } from "./agent.js";
+import { assembleAgent } from "./assemble.js";
+import type { AgentSettingsSlice } from "./ports.js";
 import { emptyCursor } from "./persistence.js";
 import type { MemoryBundle } from "./memory.js";
 import {
   blocksOf,
   extractText,
+  staticPrompt,
   type AskUserFn,
+  type Compactor,
   type FileAccessLedger,
   type MessageParam,
   type ModelClient,
-  type PermissionResult,
+  type PermissionGate,
   type ToolDefinition,
   type ToolExecutor,
   type ToolHandler,
+  type TurnResult,
 } from "@nova/core";
 import { Transcript, type Logger } from "@nova/runtime";
 import type { AgentDefinition, AgentRegistry } from "./definitions.js";
@@ -137,15 +141,19 @@ export interface SubAgentDeps {
   getToolDefinitions: () => ToolDefinition[];
   /** Shared dispatcher — the sub-agent reuses the parent's tool implementations. */
   dispatch: ToolExecutor;
-  checkPermission: (tool: string, input: unknown) => Promise<PermissionResult>;
-  compactor: (messages: MessageParam[]) => Promise<MessageParam[]>;
+  /** The host's permission gate; narrowed per spawn to the sub-agent's tool set. */
+  permission: PermissionGate;
+  /** Shared with the host — a sub-agent compacts on the same terms its parent does. */
+  compactor: Compactor;
   fileLedger: FileAccessLedger;
   askUser: AskUserFn;
   getLogger: () => Logger;
   /** Directory for per-sub-agent transcript/message logs (debug aid). */
   getLogDir: () => string;
-  /** maxTurns / maxTokens / noTranscript slice for the sub-agent loop. */
+  /** maxTurns / maxTokens slice for the sub-agent loop. */
   getSettings: () => AgentSettingsSlice;
+  /** When true, sub-agents write no transcript either (mirrors `--no-transcript`). */
+  noTranscript?: boolean;
   /**
    * Optional sink for live progress details (thinking / tool_use / final),
    * keyed by the parent `tool_use` id so the host can attach them to the right
@@ -209,13 +217,15 @@ export function createSubAgentTool(deps: SubAgentDeps): ToolHandler {
       // layer too (covers read-only mutating tools, non-allow-listed tools, and
       // createSubAgent in case any reach dispatch another way).
       const allowedNames = new Set(childTools.map((d) => d.name));
-      const checkPermission: SubAgentDeps["checkPermission"] = async (tool, toolInput) =>
-        allowedNames.has(tool)
-          ? deps.checkPermission(tool, toolInput)
-          : {
-              granted: false,
-              reason: `"${def.name}" sub-agent is not permitted to use ${tool}`,
-            };
+      const permission: PermissionGate = {
+        check: async (use, toolCtx) =>
+          allowedNames.has(use.name)
+            ? deps.permission.check(use, toolCtx)
+            : {
+                granted: false,
+                reason: `"${def.name}" sub-agent is not permitted to use ${use.name}`,
+              },
+      };
 
       // Per-definition loop-limit overrides on top of the host's settings slice.
       const getSettings: SubAgentDeps["getSettings"] = () => {
@@ -230,30 +240,32 @@ export function createSubAgentTool(deps: SubAgentDeps): ToolHandler {
       let cursor = emptyCursor;
       const transcript = new Transcript(join(logDir, `${id}.transcript.jsonl`));
 
-      const agent = createAgent({
+      const agent = assembleAgent({
         workspace: deps.workspace,
-        getMemory: deps.getMemory,
-        skillsBlock: deps.skillsBlock,
         getSessionId: () => id,
-        getMessagesPath: () => join(logDir, `${id}.messages.jsonl`),
-        getTranscript: () => transcript,
         getLogger: deps.getLogger,
-        getPersistCursor: () => cursor,
-        setPersistCursor: (c) => {
-          cursor = c;
-        },
+        // A sub-agent lives for one task, so its epoch never advances and its
+        // prompt is fixed at spawn — memory is snapshotted here by design.
+        systemPrompt: staticPrompt(
+          buildSubAgentSystemPrompt(deps.workspace, deps.getMemory(), deps.skillsBlock, def),
+          id,
+        ),
         getModel: () => deps.getModel(def),
         getThinkingBudget: () => 0,
         getSettings,
         getTools: () => childTools,
         dispatch: deps.dispatch,
-        checkPermission,
-        compactor: deps.compactor,
         fileLedger: deps.fileLedger,
         askUser: deps.askUser,
         getMessages: () => [],
-        getSystemPrompt: () =>
-          buildSubAgentSystemPrompt(deps.workspace, deps.getMemory(), deps.skillsBlock, def),
+        getMessagesPath: () => join(logDir, `${id}.messages.jsonl`),
+        getPersistCursor: () => cursor,
+        setPersistCursor: (c) => {
+          cursor = c;
+        },
+        ...(deps.noTranscript ? {} : { getTranscript: () => transcript }),
+        permission,
+        compactor: deps.compactor,
       });
 
       // Stream live progress (thinking / tool_use) out to the host, capped at

@@ -1,5 +1,10 @@
 import { autoCompact, shouldAutoCompact, sliceFromLastCompacted } from "@nova/agent";
-import { resolveProfile, type MessageParam, type ModelClient } from "@nova/core";
+import {
+  resolveProfile,
+  type Compactor,
+  type MessageParam,
+  type ModelClient,
+} from "@nova/core";
 import { resolveContextWindowSize, type Settings } from "@nova/runtime";
 
 export interface BuildCompactorOptions {
@@ -27,8 +32,8 @@ export interface BuildCompactorOptions {
 }
 
 export interface ManualCompactOptions {
-  settings: Settings;
-  getModel: () => ModelClient;
+  /** The session's compaction port — the same one the loop consults. */
+  compactor: Compactor;
   focus?: string;
 }
 
@@ -51,63 +56,74 @@ export async function manualCompact(
   messages: MessageParam[],
   opts: ManualCompactOptions,
 ): Promise<ManualCompactResult> {
-  const auto = opts.settings.compact.auto;
-  const view = sliceFromLastCompacted(messages);
-  const result = await autoCompact(view, {
-    model: opts.getModel(),
+  const before = opts.compactor.view(messages).length;
+  const next = await opts.compactor.compact(messages, {
+    reason: "manual",
     ...(opts.focus ? { focus: opts.focus } : {}),
-    ...(auto.maxSummaryTokens !== undefined ? { maxSummaryTokens: auto.maxSummaryTokens } : {}),
   });
   return {
-    messages: [...messages, ...result.messages],
-    before: view.length,
-    after: result.messages.length,
+    messages: next,
+    before,
+    after: opts.compactor.view(next).length,
   };
 }
 
-export function buildCompactor(
-  opts: BuildCompactorOptions,
-): (messages: MessageParam[]) => Promise<MessageParam[]> {
+export function buildCompactor(opts: BuildCompactorOptions): Compactor {
   const { settings, getModel, getOverheadTokens, onPreCompact, onAutoCompact } = opts;
   const auto = settings.compact.auto;
 
-  return async (messages) => {
-    // Returning the SAME reference signals "no compaction" to the pre_compact
-    // hook (see packages/agent/src/agent.ts), so every no-op path below must
+  const compact: Compactor["compact"] = async (messages, req) => {
+    // Returning the SAME reference signals "no compaction" and lets the
+    // pre_compact hook chain have its turn, so every no-op path below must
     // return `messages` unchanged.
-    if (!auto.enabled) return messages;
+    if (req.reason === "auto" && !auto.enabled) return messages;
 
     // Auto-compaction triggers on the MODEL VIEW (the post-boundary slice that
     // is actually sent), not the full retained history — otherwise the ever-
     // growing archive would re-trigger on every turn.
     const view = sliceFromLastCompacted(messages);
-    const trigger = shouldAutoCompact(
-      view,
-      {
-        // Read live: follows the active model tier's window after a /model switch.
-        contextWindowSize: resolveContextWindowSize(settings, settings.model),
-        ...(auto.thresholdTokens !== undefined ? { thresholdTokens: auto.thresholdTokens } : {}),
-        ...(auto.contextWindowPercent !== undefined
-          ? { contextWindowPercent: auto.contextWindowPercent }
-          : {}),
-        // System prompt + tool schemas ride on every request; the threshold has
-        // to see them or it fires only once the real prompt is already over.
-        ...(getOverheadTokens ? { overheadTokens: getOverheadTokens() } : {}),
-      },
-      resolveProfile(settings.provider).tokenEstimate,
-    );
-    if (!trigger) return messages;
+    if (req.reason === "auto") {
+      const trigger = shouldAutoCompact(
+        view,
+        {
+          // Read live: follows the active model tier's window after a /model switch.
+          contextWindowSize: resolveContextWindowSize(settings, settings.model),
+          ...(auto.thresholdTokens !== undefined ? { thresholdTokens: auto.thresholdTokens } : {}),
+          ...(auto.contextWindowPercent !== undefined
+            ? { contextWindowPercent: auto.contextWindowPercent }
+            : {}),
+          // System prompt + tool schemas ride on every request; the threshold has
+          // to see them or it fires only once the real prompt is already over.
+          ...(req.overheadTokens !== undefined
+            ? { overheadTokens: req.overheadTokens }
+            : getOverheadTokens
+              ? { overheadTokens: getOverheadTokens() }
+              : {}),
+        },
+        resolveProfile(settings.provider).tokenEstimate,
+      );
+      if (!trigger) return messages;
+    }
 
     const before = view.length;
-    const pre = await onPreCompact?.({ before });
-    if (pre?.block) return messages;
+    // `/compact` is the user asking directly; only the automatic path is
+    // vetoable by a PreCompact hook.
+    if (req.reason === "auto") {
+      const pre = await onPreCompact?.({ before });
+      if (pre?.block) return messages;
+    }
     const result = await autoCompact(view, {
       model: getModel(),
+      ...(req.focus ? { focus: req.focus } : {}),
       ...(auto.maxSummaryTokens !== undefined ? { maxSummaryTokens: auto.maxSummaryTokens } : {}),
     });
     // Append the boundary to the full history — never replace it.
     const next = [...messages, ...result.messages];
-    await onAutoCompact?.({ before, after: result.messages.length });
+    if (req.reason === "auto") {
+      await onAutoCompact?.({ before, after: result.messages.length });
+    }
     return next;
   };
+
+  return { view: sliceFromLastCompacted, compact };
 }

@@ -1,13 +1,19 @@
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import {
-  createAgent,
+  assembleAgent,
   emptyCursor,
   sliceFromLastCompacted,
   SUBAGENT_TOOL_NAME,
 } from "@nova/agent";
-import { blocksOf, extractText, type AskUserFn, type MessageParam } from "@nova/core";
-import { resolveMaxTokens, resolveModelModalities, Transcript } from "@nova/runtime";
+import {
+  blocksOf,
+  extractText,
+  staticPrompt,
+  type AskUserFn,
+  type MessageParam,
+} from "@nova/core";
+import { resolveMaxTokens, resolveModelModalities } from "@nova/runtime";
 import type { CliContext } from "./context.js";
 import {
   buildGoalEvalPrompt,
@@ -52,24 +58,25 @@ export async function evaluateGoalWithAgent(
   // must not spawn its own sub-agents.
   const tools = ctx.tools.definitions().filter((d) => d.name !== SUBAGENT_TOOL_NAME);
 
-  // Throwaway transcript/message paths: noTranscript keeps the transcript
-  // unwritten, and the messages file is a per-eval scratch file under the
+  // Throwaway message path: no event sink is wired (so nothing reaches a
+  // transcript), and the messages file is a per-eval scratch file under the
   // session dir (overwritten each run), so the evaluator never pollutes the
   // canonical session history.
-  const transcript = new Transcript(join(ctx.session.dir, "goal-eval.transcript.jsonl"));
   let cursor = emptyCursor;
 
   const askUser: AskUserFn = (req) =>
     ctx.screen.askUser(req, signal ? { signal } : {});
 
-  const evaluator = createAgent({
+  const evaluator = assembleAgent({
     workspace: ctx.workspace,
-    getMemory: () => ctx.memory,
-    skillsBlock: ctx.skillsBlock,
     getSessionId: () => id,
-    getMessagesPath: () => join(ctx.session.dir, "goal-eval.messages.jsonl"),
-    getTranscript: () => transcript,
     getLogger: () => ctx.logger,
+    // A fixed evaluator role prompt, not the session's memory bundle. Its epoch
+    // is the eval id, so the prompt is constant for the run by construction.
+    systemPrompt: staticPrompt(GOAL_EVAL_SYSTEM, id),
+    getMessagesPath: () => join(ctx.session.dir, "goal-eval.messages.jsonl"),
+    // No event sink: the evaluator is internal machinery and must not land in
+    // the session transcript.
     getPersistCursor: () => cursor,
     setPersistCursor: (c) => {
       cursor = c;
@@ -80,18 +87,16 @@ export async function evaluateGoalWithAgent(
       maxTokens: resolveMaxTokens(ctx.settings, evalModelName),
       maxTurns: ctx.settings.goal.maxEvalTurns,
       maxTokensContinuations: ctx.settings.maxTokensContinuations,
-      noTranscript: true,
       toolConcurrency: ctx.settings.toolConcurrency,
       modelModalities: resolveModelModalities(ctx.settings, evalModelName),
     }),
     getTools: () => tools,
     dispatch: ctx.dispatch,
-    checkPermission: ctx.checkPermission,
+    permission: ctx.permissionGate,
     compactor: ctx.compactor,
     fileLedger: ctx.fileLedger,
     askUser,
     getMessages: () => [],
-    getSystemPrompt: () => GOAL_EVAL_SYSTEM,
   });
 
   // Evaluate against the model-facing view (post-<compacted> slice), matching

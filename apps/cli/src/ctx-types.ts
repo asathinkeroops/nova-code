@@ -1,8 +1,9 @@
 import type { Agent, AgentRegistry, MemoryBundle, PersistCursor } from "@nova/agent";
 import type {
+  Compactor,
   FileAccessLedger,
-  MessageParam,
   ModelClient,
+  PermissionGate,
   ThinkingLevel,
   ToolExecutor,
 } from "@nova/core";
@@ -210,7 +211,14 @@ export interface CliContext {
     tool: string,
     input: unknown,
   ) => Promise<{ granted: boolean; reason?: string }>;
-  readonly compactor: (messages: MessageParam[]) => Promise<MessageParam[]>;
+  /**
+   * `checkPermission` as the port the agent and its sub-agents consume. Same
+   * engine, addressed by `tool_use` block so a gate can correlate with the
+   * permission events.
+   */
+  readonly permissionGate: PermissionGate;
+  /** Model-facing view (`view`) plus the boundary-appending summarizer (`compact`). */
+  readonly compactor: Compactor;
 
   // ===== Factory closures (close over apiKey / settings, etc.) =====
   readonly buildLogger: (destination: string) => Logger;

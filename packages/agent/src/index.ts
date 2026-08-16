@@ -1,20 +1,33 @@
+export { assembleAgent, type AssembleAgentOptions } from "./assemble.js";
 export {
-  createAgent,
-  type Agent,
-  type AgentDeps,
+  createMemoryPrompt,
+  createOptions,
+  createSessionStore,
+  createToolHost,
+  forwardLogger,
+  forwardModel,
+  transcriptSink,
   type AgentSettingsSlice,
-  type TurnResult,
-} from "./agent.js";
-// Hooks live in @nova/core; re-export the symbols agent consumers need so
-// they don't have to import from two packages.
+  type MemoryPromptOptions,
+  type SessionStoreOptions,
+  type ToolHostOptions,
+} from "./ports.js";
+// The agent abstraction and its hooks live in @nova/core; re-export the symbols
+// consumers need so they don't have to import from two packages.
 export {
   HookRegistry,
   isBlockingPoint,
+  staticPrompt,
+  type Agent,
+  type AgentContext,
+  type Compactor,
   type HookDecision,
   type HookFn,
   type HookPayload,
   type HookPoint,
   type HookSpec,
+  type PermissionGate,
+  type TurnResult,
 } from "@nova/core";
 export { buildSystemPrompt } from "./system-prompt.js";
 export {

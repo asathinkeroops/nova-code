@@ -27,12 +27,10 @@ export async function handleCompact(ctx: CliContext, focus: string): Promise<voi
       );
       return;
     }
+    // The session's own compaction port — the same instance the loop consults,
+    // so manual and automatic compaction cannot drift apart.
     const result = await manualCompact(current, {
-      settings: ctx.settings,
-      // Non-streaming client so the summarizer's tokens don't stream into the
-      // live draft / spinner as a phantom assistant turn (it's internal; the
-      // result is surfaced via the card below). Follows /model switches.
-      getModel: () => ctx.buildModel(ctx.settings.model, false),
+      compactor: ctx.compactor,
       ...(focus ? { focus } : {}),
     });
     await ctx.userHooks.fire("PostCompact", {
