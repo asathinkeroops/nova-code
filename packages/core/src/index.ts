@@ -16,6 +16,25 @@ export {
   resolveBudget,
   type ThinkingLevel,
 } from "./thinking.js";
+export {
+  AppendOnlyViolationError,
+  SystemPromptDriftError,
+  assertAppendOnly,
+  freezeSystemPrompt,
+  staticPrompt,
+  type Compactor,
+  type CompactRequest,
+  type EventSink,
+  type FreezeOptions,
+  type HistoryPort,
+  type Logger,
+  type OptionsProvider,
+  type PermissionGate,
+  type SystemPromptDrift,
+  type SystemPromptProvider,
+  type ToolHost,
+  type TurnOptions,
+} from "./ports.js";
 export { decide, type StopDecision } from "./stop-reason.js";
 export {
   DEFAULT_TOKEN_ESTIMATE,
