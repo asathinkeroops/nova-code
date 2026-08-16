@@ -5,7 +5,6 @@ import {
   createMemoryPrompt,
   createSubAgentTool,
   emptyCursor,
-  sliceFromLastCompacted,
   loadMemory,
   loadMessages,
   type Agent,
@@ -160,24 +159,6 @@ function registerInterject(agent: Agent, fn: InterjectFn): void {
     if (!msgs || msgs.length === 0) return undefined;
     return { messages: msgs };
   });
-}
-
-/**
- * Wrap a model client so every request is sliced to the model-facing view —
- * from the last `<compacted>` boundary onward (see `sliceFromLastCompacted`).
- *
- * This is the one place the append-only full history (rendered by the TUI,
- * persisted verbatim to messages.jsonl) diverges from what the model receives:
- * compaction APPENDS a `<compacted>` boundary rather than truncating history,
- * and the model reads only the post-boundary slice. The transform is a pure
- * projection at the wire — the loop's canonical `messages` array is untouched,
- * so append-only persistence and full-history rendering both keep working.
- * Only the agent's model is wrapped; the summarizer's client stays raw.
- */
-function withCompactionSlice(base: ModelClient): ModelClient {
-  return {
-    call: (req) => base.call({ ...req, messages: sliceFromLastCompacted(req.messages) }),
-  };
 }
 
 export async function createContext(
@@ -969,10 +950,9 @@ export async function createContext(
     setPersistCursor: (c) => {
       ctx.persistCursor = c;
     },
-    // Slice to the model-facing view at the wire (post-<compacted> boundary).
-    // ctx.model may be rebuilt on /model switch, so wrap the live binding each
-    // turn rather than capturing it once.
-    getModel: () => withCompactionSlice(ctx.model),
+    // Live binding: ctx.model is rebuilt on /model switch. Slicing to the
+    // model-facing view is the loop's job now (compactor.view).
+    getModel: () => ctx.model,
     getThinkingBudget: () => currentThinkingBudget(ctx),
     getSettings: () => ({
       maxTokens: resolveMaxTokens(ctx.settings, ctx.settings.model),

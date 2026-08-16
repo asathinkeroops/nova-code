@@ -184,10 +184,20 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
       await hooks.runAdvisory("post_messages", { messages });
     }
 
+    // The model-facing view: everything from the last compaction boundary
+    // onward. This is the ONE place the append-only canonical history (rendered
+    // in full by the UI, persisted verbatim) diverges from what the model reads.
+    // A pure projection at the wire — `messages` is untouched, so append-only
+    // persistence and full-history rendering both keep working.
+    const wireMessages = opts.compactor
+      ? opts.compactor.view(finalRequest.messages)
+      : finalRequest.messages;
+
     let res: AssistantTurn;
     try {
       res = await opts.model.call({
         ...finalRequest,
+        messages: wireMessages,
         ...(opts.toolContext.signal ? { signal: opts.toolContext.signal } : {}),
       });
     } catch (err) {
