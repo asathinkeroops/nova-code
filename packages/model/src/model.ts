@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { zodToJsonSchema } from "zod-to-json-schema";
+import { toWireMessages, toWireTools, type ModelClient, type ModelRequest } from "@nova/core";
+import { isCjkCodePoint } from "@nova/runtime";
 import { type ProviderProfile } from "./providers/index.js";
 import {
   RETRY_LIMITS,
@@ -7,33 +8,7 @@ import {
   isMalformedToolJsonError,
   isTransientNetworkError,
 } from "./retry.js";
-import { toWireMessages } from "./messages.js";
-import { isCjkCodePoint } from "./tokens.js";
-import type {
-  AssistantTurn,
-  ContentBlock,
-  MessageParam,
-  StopReason,
-  ToolDefinition,
-} from "./types.js";
-
-export interface ModelClient {
-  call(req: ModelRequest): Promise<AssistantTurn>;
-}
-
-export interface ModelRequest {
-  system: string;
-  messages: MessageParam[];
-  tools: ToolDefinition[];
-  maxTokens: number;
-  signal?: AbortSignal;
-  /**
-   * When > 0, enables extended thinking with the given token budget. Anthropic
-   * requires `max_tokens > budget_tokens`; if the configured `maxTokens` is
-   * too small the adapter auto-bumps it (budget + 8192) rather than failing.
-   */
-  thinkingBudgetTokens?: number;
-}
+import type { AssistantTurn, ContentBlock, StopReason } from "@nova/core";
 
 export interface AnthropicModelConfig {
   apiKey: string;
@@ -127,47 +102,6 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
       reject(signal?.reason);
     };
     signal?.addEventListener("abort", onAbort, { once: true });
-  });
-}
-
-/** A tool serialized to the exact wire shape sent to the model. */
-export interface WireTool {
-  name: string;
-  description: string;
-  input_schema: Record<string, unknown>;
-}
-
-/**
- * Serialized form per tool definition. Definitions are stable objects (the
- * registry hands back the same ones every call), so the zod → JSON Schema
- * conversion below runs once per tool instead of once per model call — it was
- * re-deriving every schema on every request, including each sub-agent's. Keyed
- * weakly so re-registered tools (an MCP server reconnecting) don't accumulate.
- */
-const wireToolCache = new WeakMap<ToolDefinition, WireTool>();
-
-/**
- * Serialize tool definitions to the `tools` payload sent to the model: each
- * tool's `input_schema` is its `inputJsonSchema` when present (MCP servers
- * publish native JSON Schema) or derived from its zod `inputSchema` otherwise.
- * Exported so callers can size the tool schemas against the exact bytes the
- * model receives — the CLI's `/context` breakdown estimates this way.
- */
-export function toWireTools(tools: ToolDefinition[]): WireTool[] {
-  return tools.map((t) => {
-    const hit = wireToolCache.get(t);
-    if (hit) return hit;
-    const wire: WireTool = {
-      name: t.name,
-      description: t.description,
-      input_schema: (t.inputJsonSchema ??
-        zodToJsonSchema(t.inputSchema, {
-          target: "jsonSchema7",
-          $refStrategy: "none",
-        })) as Record<string, unknown>,
-    };
-    wireToolCache.set(t, wire);
-    return wire;
   });
 }
 

@@ -70,6 +70,7 @@
     "@nova/core": "workspace:*",
     "@nova/lsp": "workspace:*",
     "@nova/mcp": "workspace:*",
+    "@nova/model": "workspace:*",
     "@nova/runtime": "workspace:*",
     "@nova/safety": "workspace:*",
     "@nova/tools": "workspace:*",

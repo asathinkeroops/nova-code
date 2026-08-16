@@ -8,9 +8,13 @@ export const THINKING_BUDGETS = {
   max: 32_000,
 } as const;
 
-export type ThinkingLevel = keyof typeof THINKING_BUDGETS;
+/**
+ * The level union is the config schema's (`thinkingLevelSchema`) — this module
+ * only maps it to a token budget, so the two can never drift.
+ */
+export type { ThinkingLevel } from "./config.js";
 
-export const THINKING_LEVELS: readonly ThinkingLevel[] = [
+export const THINKING_LEVELS: readonly (keyof typeof THINKING_BUDGETS)[] = [
   "off",
   "low",
   "medium",
@@ -18,7 +22,7 @@ export const THINKING_LEVELS: readonly ThinkingLevel[] = [
   "max",
 ];
 
-export function isThinkingLevel(value: string): value is ThinkingLevel {
+export function isThinkingLevel(value: string): value is keyof typeof THINKING_BUDGETS {
   return (THINKING_LEVELS as readonly string[]).includes(value);
 }
 
@@ -27,7 +31,10 @@ export function isThinkingLevel(value: string): value is ThinkingLevel {
  * always wins over the level mapping, letting power users dial in a custom
  * value without inventing a new level.
  */
-export function resolveBudget(level: ThinkingLevel, override?: number): number {
+export function resolveBudget(
+  level: keyof typeof THINKING_BUDGETS,
+  override?: number,
+): number {
   if (typeof override === "number" && override > 0) return Math.floor(override);
   return THINKING_BUDGETS[level];
 }

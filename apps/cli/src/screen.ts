@@ -3,7 +3,9 @@ import { render } from "ink";
 import type { AskUserRequest, AskUserResponse, MessageParam } from "@nova/core";
 import type { Task, Todo } from "@nova/tools";
 import type { ModelRates } from "@nova/runtime";
-import type { AccountBalance } from "@nova/core";
+import type {
+  AccountBalance,
+} from "@nova/model";
 import type { SubAgentDetail } from "@nova/agent";
 import type { PermissionDecision, PermissionInput } from "@nova/safety";
 import { App } from "./ui/app.js";

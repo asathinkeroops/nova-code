@@ -1,5 +1,5 @@
 {
-  "name": "@nova/core",
+  "name": "@nova/model",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -30,7 +30,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "zod": "^3.23.0",
-    "zod-to-json-schema": "^3.23.0"
+    "@anthropic-ai/sdk": "^0.111.0",
+    "@nova/core": "workspace:*",
+    "@nova/runtime": "workspace:*",
+    "zod": "^3.23.0"
   }
 }

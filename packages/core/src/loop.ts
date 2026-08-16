@@ -7,7 +7,7 @@ import {
   userText,
   userToolResults,
 } from "./messages.js";
-import type { ModelClient } from "./model.js";
+import type { ModelClient } from "./model-client.js";
 import {
   assertAppendOnly,
   type Compactor,

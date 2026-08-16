@@ -1,7 +1,11 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { frontMatterBool, frontMatterText, splitFrontMatter } from "@nova/core";
+import {
+  frontMatterBool,
+  frontMatterText,
+  splitFrontMatter,
+} from "@nova/runtime";
 
 export interface SkillListItem {
   name: string;

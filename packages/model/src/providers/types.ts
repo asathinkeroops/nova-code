@@ -12,6 +12,7 @@
  * top of that, not a whole alternate transport.
  */
 
+import type { TokenEstimate } from "@nova/runtime";
 import type { ProviderError } from "./error.js";
 
 /** Wire params for the thinking knob, plus any `max_tokens` floor the format imposes. */
@@ -53,21 +54,6 @@ export interface AccountBalance {
   total: number;
   /** Whether the account can currently be charged. */
   available: boolean;
-}
-
-/**
- * Char→token ratios for a tokenizer-free rough estimate, split by script:
- * `cjk` weights CJK ideographs / kana / hangul (which pack fewer chars per
- * token), `other` weights everything else (Latin, digits, JSON punctuation).
- * A provider carries these because the ratio is a property of its tokenizer;
- * the estimate feeds compaction thresholds and the `/context` breakdown, not
- * billing, so approximate values are fine. See `estimateTextTokens`.
- */
-export interface TokenEstimate {
-  /** Tokens per CJK/kana/hangul character. */
-  cjk: number;
-  /** Tokens per non-CJK character. */
-  other: number;
 }
 
 /** Inputs for a balance probe — the live endpoint and credential from settings. */

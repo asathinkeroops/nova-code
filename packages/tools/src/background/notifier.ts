@@ -1,10 +1,12 @@
 import {
   markSynthetic,
-  xmlAttr,
-  xmlEscape,
   type MessageParam,
   type ToolDefinition,
 } from "@nova/core";
+import {
+  xmlAttr,
+  xmlEscape,
+} from "@nova/runtime";
 import type { CompletionNotice, BackgroundCommandManager } from "./manager.js";
 
 interface PreRequestPayload {

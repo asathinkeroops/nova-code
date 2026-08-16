@@ -1,7 +1,10 @@
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { Command } from "commander";
-import { isProviderId, PROVIDER_IDS } from "@nova/core";
+import {
+  isProviderId,
+  PROVIDER_IDS,
+} from "@nova/model";
 import {
   API_KEY_ENV,
   apiKeyFromEnv,

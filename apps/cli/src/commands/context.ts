@@ -1,5 +1,7 @@
 import { computeThreshold, estimateTokens, sliceFromLastCompacted } from "@nova/agent";
-import { resolveProfile } from "@nova/core";
+import {
+  resolveProfile,
+} from "@nova/model";
 import { resolveContextWindowSize } from "@nova/runtime";
 import { accent, ACCENT_HEX, blue, bold, cyan, dim, green, yellow, magenta } from "../colors.js";
 import type { CliContext } from "../context.js";

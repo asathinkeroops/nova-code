@@ -1,5 +1,12 @@
 import { z } from "zod";
-import { xmlAttr, xmlEscape, type ToolContext, type ToolHandler } from "@nova/core";
+import {
+  type ToolContext,
+  type ToolHandler,
+} from "@nova/core";
+import {
+  xmlAttr,
+  xmlEscape,
+} from "@nova/runtime";
 import {
   expandDollarArgs,
   expandMentions,

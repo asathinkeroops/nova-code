@@ -117,3 +117,22 @@ export {
   type PruneSessionsOptions,
   type PruneSessionsResult,
 } from "./session.js";
+
+// ── shared text / token utilities (moved out of @nova/core, which is now the
+// agent kernel only) ─────────────────────────────────────────────────────────
+export { xmlEscape, xmlAttr } from "./xml.js";
+export {
+  parseFrontMatter,
+  splitFrontMatter,
+  frontMatterText,
+  frontMatterBool,
+  frontMatterList,
+  type YamlValue,
+} from "./front-matter.js";
+export { THINKING_BUDGETS, THINKING_LEVELS, isThinkingLevel, resolveBudget } from "./thinking.js";
+export {
+  DEFAULT_TOKEN_ESTIMATE,
+  estimateTextTokens,
+  isCjkCodePoint,
+  type TokenEstimate,
+} from "./tokens.js";

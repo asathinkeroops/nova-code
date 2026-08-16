@@ -11,13 +11,15 @@ import {
   type AgentDefinition,
 } from "@nova/agent";
 import {
-  createAnthropicModel,
-  resolveProfile,
   userText,
   type AskUserFn,
   type ModelClient,
   type ToolExecutor,
 } from "@nova/core";
+import {
+  createAnthropicModel,
+  resolveProfile,
+} from "@nova/model";
 import { SlashRegistry } from "./slash-registry.js";
 import { LspManager, resolveServers } from "@nova/lsp";
 import {

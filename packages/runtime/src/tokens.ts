@@ -1,11 +1,25 @@
-import type { TokenEstimate } from "./providers/types.js";
+/**
+ * Char→token ratios for a tokenizer-free rough estimate, split by script:
+ * `cjk` weights CJK ideographs / kana / hangul (which pack fewer chars per
+ * token), `other` weights everything else (Latin, digits, JSON punctuation).
+ * A provider carries these because the ratio is a property of its tokenizer
+ * (see `@nova/model`'s `ProviderProfile`); the estimate feeds compaction
+ * thresholds and the `/context` breakdown, not billing, so approximate values
+ * are fine.
+ */
+export interface TokenEstimate {
+  /** Tokens per CJK/kana/hangul character. */
+  cjk: number;
+  /** Tokens per non-CJK character. */
+  other: number;
+}
 
 /**
  * Tokenizer-free token estimation. Nova doesn't ship a real tokenizer, so it
  * approximates token counts from character counts, weighting CJK characters
  * (which pack fewer chars per token) differently from everything else. The
  * per-script weights are a property of the active provider's tokenizer and
- * live on its {@link import("./providers/types.js").ProviderProfile} as a
+ * live on its provider profile as a
  * {@link TokenEstimate}; this module owns the shared *counting*, so the ranges
  * and the arithmetic exist in exactly one place (used by both the live
  * streaming counter in `model.ts` and the compaction/`/context` estimators in

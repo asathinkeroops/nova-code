@@ -1,5 +1,8 @@
 import { Command } from "commander";
-import { isThinkingLevel, type ThinkingLevel } from "@nova/core";
+import {
+  isThinkingLevel,
+  type ThinkingLevel,
+} from "@nova/runtime";
 import { API_KEY_ENV, DEFAULT_CONFIG_PATH, stripDefaultModels, type Settings } from "@nova/runtime";
 import { createContext } from "./context.js";
 import {

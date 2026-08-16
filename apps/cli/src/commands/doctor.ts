@@ -1,5 +1,13 @@
 import { buildSystemPrompt, estimateTokens, sliceFromLastCompacted } from "@nova/agent";
-import { estimateTextTokens, resolveProfile, toWireTools } from "@nova/core";
+import {
+  toWireTools,
+} from "@nova/core";
+import {
+  resolveProfile,
+} from "@nova/model";
+import {
+  estimateTextTokens,
+} from "@nova/runtime";
 import { resolveContextWindowSize, type SlashOutcome } from "@nova/runtime";
 import { ACCENT_HEX, bold, dim, green } from "../colors.js";
 import type { CliContext } from "../context.js";

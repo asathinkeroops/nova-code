@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { HookRegistry, type HookPoint } from "./hooks.js";
 import { agentLoop, LoopTerminatedError } from "./loop.js";
-import type { ModelClient } from "./model.js";
+import type { ModelClient } from "./model-client.js";
 import type {
   AssistantTurn,
   MessageParam,

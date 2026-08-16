@@ -1,5 +1,14 @@
 import { buildSystemPrompt } from "@nova/agent";
-import { estimateTextTokens, resolveProfile, toWireTools, type TokenEstimate } from "@nova/core";
+import {
+  toWireTools,
+} from "@nova/core";
+import {
+  resolveProfile,
+} from "@nova/model";
+import {
+  estimateTextTokens,
+  type TokenEstimate,
+} from "@nova/runtime";
 import type { CliContext } from "./ctx-types.js";
 
 /** MCP tools are namespaced; split out because they often dominate the schema budget. */

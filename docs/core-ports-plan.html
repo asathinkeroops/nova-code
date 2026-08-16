@@ -1,0 +1,805 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nova Core 端口化</title>
+<meta name="description" content="把 memory、compaction、权限、持久化收成 @nova/core 的具名端口，agent 包只负责装配 —— 含完整 loop 流程与七步迁移路线。">
+<style>
+  /* ── reset ────────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body, h1, h2, h3, p, ul, ol, pre, figure { margin: 0; }
+  ul, ol { padding: 0; }
+  img { max-width: 100%; display: block; }
+
+  :root {
+    --ground: #F5F8F6;
+    --surface: #FFFFFF;
+    --surface-2: #EDF2F0;
+    --ink: #12201D;
+    --ink-2: #354A45;
+    --muted: #677873;
+    --rule: #D9E3DF;
+    --rule-strong: #C2D0CB;
+    --accent: #0B7A66;
+    --accent-ink: #06584A;
+    --accent-soft: #DDEFEA;
+    --warn: #8F5F12;
+    --warn-soft: #F6EEDD;
+    --danger: #9C3A31;
+    --danger-soft: #F7E8E6;
+    --code-bg: #EAF0EE;
+
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+      "Liberation Mono", "PingFang SC", monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0E1513;
+      --surface: #141C1A;
+      --surface-2: #19231F;
+      --ink: #E4EDE9;
+      --ink-2: #BACAC5;
+      --muted: #8B9C97;
+      --rule: #26302D;
+      --rule-strong: #35423E;
+      --accent: #45C2A6;
+      --accent-ink: #6FD6BD;
+      --accent-soft: #12302A;
+      --warn: #D5A257;
+      --warn-soft: #2E2618;
+      --danger: #DE8177;
+      --danger-soft: #33201E;
+      --code-bg: #1A2421;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground: #0E1513;
+    --surface: #141C1A;
+    --surface-2: #19231F;
+    --ink: #E4EDE9;
+    --ink-2: #BACAC5;
+    --muted: #8B9C97;
+    --rule: #26302D;
+    --rule-strong: #35423E;
+    --accent: #45C2A6;
+    --accent-ink: #6FD6BD;
+    --accent-soft: #12302A;
+    --warn: #D5A257;
+    --warn-soft: #2E2618;
+    --danger: #DE8177;
+    --danger-soft: #33201E;
+    --code-bg: #1A2421;
+  }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .shell {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 56px 24px 120px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0 48px;
+  }
+
+  /* ── masthead ─────────────────────────────────────────── */
+  .masthead { grid-column: 1 / -1; border-bottom: 1px solid var(--rule-strong); padding-bottom: 28px; margin-bottom: 44px; }
+  .kicker {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 14px;
+  }
+  h1 {
+    font-size: clamp(30px, 4.4vw, 42px);
+    line-height: 1.15;
+    letter-spacing: -0.015em;
+    font-weight: 660;
+    margin: 0 0 16px;
+    text-wrap: balance;
+  }
+  .standfirst { font-size: 17.5px; color: var(--ink-2); max-width: 62ch; margin: 0; }
+  .meta { display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 22px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .meta b { color: var(--ink-2); font-weight: 500; }
+
+  /* ── toc ──────────────────────────────────────────────── */
+  .toc { display: none; position: sticky; top: 40px; align-self: start; font-size: 13px; }
+  .toc ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+  .toc a { color: var(--muted); text-decoration: none; display: block; padding: 1px 0 1px 11px; border-left: 2px solid var(--rule); }
+  .toc a:hover { color: var(--accent); border-left-color: var(--accent); }
+  .toc a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+  /* 必须写在 .toc 的基础规则之后：同特异性下后来者生效。 */
+  @media (min-width: 1080px) {
+    .shell { grid-template-columns: 180px minmax(0, 1fr); }
+    .toc { display: block; }
+  }
+
+  /* ── sections ─────────────────────────────────────────── */
+  main { min-width: 0; }
+  section { margin-bottom: 60px; scroll-margin-top: 32px; }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 8px;
+  }
+  h2 { font-size: 25px; line-height: 1.25; letter-spacing: -0.01em; font-weight: 640; margin: 0 0 18px; text-wrap: balance; }
+  h3 { font-size: 16.5px; font-weight: 640; margin: 30px 0 10px; letter-spacing: -0.005em; }
+  p, li { max-width: 70ch; }
+  p { margin: 0 0 14px; }
+  ul, ol { margin: 0 0 16px; padding-left: 22px; }
+  li { margin-bottom: 6px; }
+  strong { font-weight: 640; }
+  a { color: var(--accent-ink); }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.875em;
+    background: var(--code-bg);
+    padding: 1.5px 5px;
+    border-radius: 3px;
+    color: var(--ink);
+  }
+  pre {
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.6;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 16px 18px;
+    overflow-x: auto;
+    margin: 0 0 20px;
+  }
+  pre code { background: none; padding: 0; font-size: inherit; }
+  .c { color: var(--muted); }
+  .k { color: var(--accent-ink); }
+
+  /* ── tables ───────────────────────────────────────────── */
+  .tw { overflow-x: auto; margin: 0 0 22px; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; min-width: 520px; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 500;
+    background: var(--surface-2);
+    white-space: nowrap;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  td code { font-size: 12.5px; white-space: nowrap; }
+  .num { font-variant-numeric: tabular-nums; font-family: var(--mono); color: var(--muted); width: 1%; white-space: nowrap; }
+
+  /* ── badges ───────────────────────────────────────────── */
+  .badge {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.06em;
+    padding: 1px 6px;
+    border-radius: 3px;
+    white-space: nowrap;
+    vertical-align: 1px;
+  }
+  .b-port { background: var(--accent); color: var(--surface); }
+  :root[data-theme="dark"] .b-port { color: #0B1614; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .b-port { color: #0B1614; } }
+  .b-block { border: 1px solid var(--accent); color: var(--accent-ink); }
+  .b-event { border: 1px solid var(--rule-strong); color: var(--muted); }
+  .b-assert { background: var(--warn-soft); color: var(--warn); border: 1px solid var(--warn); }
+  .b-new { background: var(--accent-soft); color: var(--accent-ink); }
+  .b-del { background: var(--danger-soft); color: var(--danger); }
+
+  /* ── flow ─────────────────────────────────────────────── */
+  .flow { list-style: none; padding: 0; margin: 0 0 24px; counter-reset: step; }
+  .flow > li {
+    max-width: none;
+    position: relative;
+    padding: 12px 16px 12px 52px;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    background: var(--surface);
+    margin-bottom: 8px;
+  }
+  .flow > li::before {
+    counter-increment: step;
+    content: counter(step);
+    position: absolute;
+    left: 16px;
+    top: 12px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .flow .title { font-weight: 620; font-size: 15px; }
+  .flow .body { font-size: 14px; color: var(--ink-2); margin-top: 4px; }
+  .flow .body code { font-size: 12.5px; }
+
+  /* ── callout ──────────────────────────────────────────── */
+  .note {
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--accent);
+    background: var(--surface);
+    border-radius: 0 6px 6px 0;
+    padding: 14px 18px;
+    margin: 0 0 22px;
+    font-size: 14.5px;
+  }
+  .note.warn { border-left-color: var(--warn); }
+  .note p:last-child { margin-bottom: 0; }
+  .note .lbl {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    display: block;
+    margin-bottom: 5px;
+  }
+
+  footer { grid-column: 1 / -1; border-top: 1px solid var(--rule-strong); padding-top: 20px; margin-top: 12px; font-size: 13px; color: var(--muted); font-family: var(--mono); }
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <header class="masthead">
+    <p class="kicker">packages/core · 重构方案</p>
+    <h1>Nova Core 端口化</h1>
+    <p class="standfirst">
+      把 memory、compaction、权限、持久化从「散落在 agent 与 CLI 的具体实现」收成 core 的具名端口，
+      让 <code>@nova/agent</code> 只负责装配。钩子机制一个点都不删。
+    </p>
+    <div class="meta">
+      <span><b>影响</b> core · agent · safety · cli</span>
+      <span><b>迁移</b> 7 步，每步独立可验</span>
+      <span><b>对外行为</b> 零变化</span>
+      <span><b>状态</b> 七步全部落地 · typecheck / 1739 测试 / lint 全绿</span>
+    </div>
+  </header>
+
+  <nav class="toc" aria-label="目录">
+    <ol>
+      <li><a href="#goal">目标</a></li>
+      <li><a href="#shape">最终形态</a></li>
+      <li><a href="#context">AgentContext</a></li>
+      <li><a href="#ports">端口清单</a></li>
+      <li><a href="#liveness">Liveness 规则</a></li>
+      <li><a href="#flow">Loop 流程</a></li>
+      <li><a href="#invariants">不变量</a></li>
+      <li><a href="#hooks">钩子机制</a></li>
+      <li><a href="#assembly">两组装配</a></li>
+      <li><a href="#steps">迁移路线</a></li>
+      <li><a href="#risk">代价</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <!-- ────────────────────────────────────────────── -->
+    <section id="goal">
+      <p class="eyebrow">目标</p>
+      <h2>core 定义 agent 是什么，agent 包决定装配出哪几种 agent</h2>
+      <p>
+        今天 <code>@nova/core</code> 是「标准 loop + 匿名钩子总线」，机制的所有权是模糊的：
+        <code>createAgent</code> 把 <code>checkPermission</code> 和 <code>compactor</code> 这两个明摆着的单一实现
+        转手注册成钩子（<code>agent.ts:199-209</code>），再靠「先注册的先返回」假装成默认值；
+        memory 经 <code>buildSystemPrompt()</code> 压成一个字符串就消失了，loop 完全不知道有记忆这回事；
+        模型视图切片藏在 CLI 的 <code>ModelClient</code> 装饰器里偷改传输层入参。
+      </p>
+      <p>改造后是三件事：</p>
+      <ul>
+        <li><strong>端口化</strong> —— 每个核心机制在 core 有一个具名接口、一个固定的调用位置、一处不变量断言。</li>
+        <li><strong>抽象上提</strong> —— turn 生命周期（<code>runTurn</code>/抢救/中断标记/持久化收尾）从 agent 搬进 core。</li>
+        <li><strong>单一入口</strong> —— core 只暴露一个 <code>createAgent(ctx: AgentContext)</code>，所有具体实现由 <code>AgentContext</code> 带进来。</li>
+      </ul>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="shape">
+      <p class="eyebrow">最终形态</p>
+      <h2>包结构与依赖方向</h2>
+      <pre><code>runtime, lsp   ──►  <span class="c">（叶子层）</span>
+core           ──►  zod  <span class="c">（无 @nova/* 依赖，无模型 SDK）</span>
+model          ──►  core(type-only) + runtime          <span class="c">← 新增，第 7 步</span>
+safety         ──►  core + runtime
+tools          ──►  core + runtime + lsp
+mcp            ──►  core + runtime
+agent          ──►  core + runtime
+cli            ──►  以上全部（唯一的装配根）</code></pre>
+
+      <div class="tw">
+        <table>
+          <thead>
+            <tr><th>包</th><th>改造后承担</th><th>体量变化</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>core</code></td>
+              <td>契约（types/ports）· 历史原语（messages）· 事件（hooks）· 编排（loop + agent）</td>
+              <td class="num">3184 → ~1830</td>
+            </tr>
+            <tr>
+              <td><code>agent</code></td>
+              <td>memory · 提示词 · 压缩 · 落盘 · 子代理 · <strong>端口适配 + 装配</strong></td>
+              <td class="num">~1300</td>
+            </tr>
+            <tr>
+              <td><code>model</code></td>
+              <td>Anthropic SDK 适配器 · provider 档案 · 重试<span class="badge b-new">新</span></td>
+              <td class="num">~1320</td>
+            </tr>
+            <tr><td><code>safety</code></td><td>权限引擎（+ <code>PermissionGate</code> 实现）· 沙箱 · 文件不变量</td><td class="num">不变</td></tr>
+            <tr><td><code>cli</code></td><td>装配根：把 <code>CliContext</code> 投影成 <code>AgentContext</code></td><td class="num">略减</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        core 的 3184 行里，只有约 1180 行是真正的内核。搬出去的是：
+        <code>model.ts</code> + <code>providers/*</code> + <code>retry.ts</code>（1319 行，唯一的重量级 SDK 依赖）、
+        <code>front-matter.ts</code> + <code>xml.ts</code>（497 行，core 内部一次都没 import 过）、
+        <code>thinking.ts</code> + <code>tokens.ts</code>（86 行，配置策略与文本工具）。
+        搬进来的是 agent 的 turn 编排（~420 行）与端口定义（~150 行）。
+      </p>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="context">
+      <p class="eyebrow">core 的公开面</p>
+      <h2>AgentContext：一个容器装齐所有实现</h2>
+      <pre><code><span class="c">// packages/core/src/agent.ts</span>
+<span class="k">export interface</span> AgentContext {
+  <span class="c">/* 必填 —— 没有它们 agent 跑不起来 */</span>
+  model:        ModelClient;            <span class="c">// 传输层</span>
+  systemPrompt: SystemPromptProvider;   <span class="c">// 记忆 + 技能 + 提示词，带 epoch()</span>
+  tools:        ToolHost;               <span class="c">// 清单 + 派发 + 单次调用上下文</span>
+  history:      HistoryPort;            <span class="c">// 起始缓冲 + 提交落盘</span>
+  options:      OptionsProvider;        <span class="c">// 每轮模型参数</span>
+
+  <span class="c">/* 可选 —— 缺省即退化为 no-op */</span>
+  compactor?:   Compactor;              <span class="c">// 缺省：不压缩，view 恒等</span>
+  permission?:  PermissionGate;         <span class="c">// 缺省：全放行</span>
+  logger?:      Logger;                 <span class="c">// 缺省：静默</span>
+  events?:      EventSink;              <span class="c">// 缺省：不写 transcript</span>
+  hooks?:       HookRegistry;           <span class="c">// 缺省：core 自建</span>
+}
+
+<span class="k">export function</span> createAgent(ctx: AgentContext): Agent;</code></pre>
+
+      <p>
+        现有 <code>AgentDeps</code> 的 17 个字段收敛到 10 个，每个都是一个具名能力：
+      </p>
+
+      <div class="tw">
+        <table>
+          <thead><tr><th>旧字段</th><th>新家</th></tr></thead>
+          <tbody>
+            <tr><td><code>workspace</code></td><td><code>ToolContext.cwd</code> + provider 闭包</td></tr>
+            <tr><td><code>getMemory</code> · <code>skillsBlock</code></td><td><code>SystemPromptProvider</code></td></tr>
+            <tr><td><code>getSessionId</code></td><td><code>ToolContext.sessionId</code> + <code>systemPrompt.epoch()</code></td></tr>
+            <tr><td><code>getMessagesPath</code> · <code>get/setPersistCursor</code></td><td><code>HistoryPort</code>（落盘游标不再出现在 core 的接口面；仍由 <code>assembleAgent</code> 转交给 store，因为 <code>/resume</code> 要用加载结果给它播种）</td></tr>
+            <tr><td><code>getTranscript</code></td><td><code>EventSink</code></td></tr>
+            <tr><td><code>getLogger</code></td><td><code>Logger</code></td></tr>
+            <tr><td><code>checkPermission</code></td><td><code>PermissionGate</code></td></tr>
+            <tr><td><code>compactor</code></td><td><code>Compactor</code></td></tr>
+            <tr><td><code>getTools</code> · <code>dispatch</code> · <code>fileLedger</code> · <code>askUser</code></td><td><code>ToolHost</code></td></tr>
+            <tr><td><code>getMessages</code></td><td><code>HistoryPort.current()</code></td></tr>
+            <tr><td><code>getSystemPrompt?</code></td><td><span class="badge b-del">删除</span> 子代理改传自己的 provider</td></tr>
+            <tr><td><code>getSettings.language</code></td><td>随 <code>SystemPromptProvider</code> 走</td></tr>
+            <tr><td><code>getSettings.noTranscript</code></td><td>不挂 <code>EventSink</code> 即可</td></tr>
+            <tr><td><code>getSettings.modelModalities</code> · <code>effort</code></td><td><code>ToolContext</code>（本就属于它）</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="note">
+        <span class="lbl">命名</span>
+        <p>
+          <code>ToolContext</code>（单次工具调用）保留原义；<code>AgentContext</code> 是新的容器；
+          CLI 自己的 <code>CliContext</code> 不动 —— <code>AgentContext</code> 是它的一个窄投影。
+          三者不重名。
+        </p>
+      </div>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="ports">
+      <p class="eyebrow">端口</p>
+      <h2>十个端口与它们的实现落点</h2>
+
+      <div class="tw">
+        <table>
+          <thead><tr><th>端口</th><th>关键方法</th><th>实现落点</th><th>状态</th></tr></thead>
+          <tbody>
+            <tr><td><code>ModelClient</code></td><td><code>call()</code></td><td><code>@nova/model</code></td><td>接口已在 core，<strong>实现要迁出</strong></td></tr>
+            <tr><td><code>SystemPromptProvider</code></td><td><code>system()</code> · <code>epoch()</code></td><td><code>agent/ports/system-prompt.ts</code></td><td><span class="badge b-new">新</span> 内部调现有 <code>buildSystemPrompt</code></td></tr>
+            <tr><td><code>ToolHost</code></td><td><code>list()</code> · <code>execute()</code> · <code>contextFor()</code></td><td><code>@nova/tools</code> + cli</td><td>已是端口，只是合并</td></tr>
+            <tr><td><code>HistoryPort</code></td><td><code>current()</code> · <code>commit()</code></td><td><code>agent/persistence.ts</code></td><td><span class="badge b-new">新</span> 吸收 <code>persistChain</code></td></tr>
+            <tr><td><code>OptionsProvider</code></td><td><code>turn()</code></td><td>cli</td><td><span class="badge b-new">新</span></td></tr>
+            <tr><td><code>Compactor</code></td><td><code>view()</code> · <code>compact()</code></td><td><code>cli/compactor.ts</code> + <code>agent/compact.ts</code></td><td>是 deps 字段，未上提</td></tr>
+            <tr><td><code>PermissionGate</code></td><td><code>check()</code></td><td><code>@nova/safety</code></td><td><code>PermissionResult</code> 已在 core</td></tr>
+            <tr><td><code>Logger</code></td><td><code>info/warn/error</code></td><td>pino（结构上直接满足）</td><td><span class="badge b-new">新</span></td></tr>
+            <tr><td><code>EventSink</code></td><td><code>append()</code> · <code>flush()</code></td><td><code>runtime/Transcript</code> + 三行适配器</td><td><span class="badge b-new">新</span></td></tr>
+            <tr><td><code>FileAccessLedger</code> · <code>SandboxBridge</code> · <code>InvariantsCheck</code></td><td>—</td><td><code>@nova/safety</code></td><td>已是端口 ✅</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>SystemPromptProvider</h3>
+      <p>
+        它对应今天 <code>agent.ts:352-362</code> 内联的那一坨：<code>buildSystemPrompt(workspace, memory, sessionId, skillsBlock, language)</code>
+        —— 行为规则正文 → 技能清单 → 四层记忆 → <code>&lt;memory-instructions&gt;</code> → 语言守卫 → <code>&lt;identity&gt;</code>/<code>&lt;system-info&gt;</code>/<code>&lt;session&gt;</code> 标签。
+      </p>
+      <p>不做成一个 string 的三个理由：</p>
+      <ul>
+        <li><code>epoch()</code> 是前缀冻结校验的锚点 —— 传字符串就没地方挂「本会话内不许变」这条校验。</li>
+        <li>必须晚绑定：memory 在 <code>/clear</code>、<code>/resume</code> 时重载，<code>skillsBlock</code> 在技能加载后才有。</li>
+        <li>主 agent 拼六段、子代理是固定角色提示词 —— 让它们成为两个实现，而不是一个 <code>if</code>。</li>
+      </ul>
+      <p>
+        顺手修掉一个隐患：<code>buildSystemPrompt</code> 里的 <code>today</code> 是每轮现算的（日粒度），
+        <strong>跨午夜的会话会静默失效一次前缀缓存</strong>，整段历史重新 prefill。epoch 锁死后就没了。
+      </p>
+
+      <h3>三个合并出来的端口</h3>
+      <pre><code><span class="k">interface</span> ToolHost {
+  list(): ToolDefinition[];        <span class="c">// MCP 后连、plan mode 换注册表 → 必须是方法</span>
+  execute(use, ctx): Promise&lt;ToolResultBlock&gt;;
+  contextFor(): ToolContext;       <span class="c">// 每轮取一次，signal 由 core 填</span>
+}
+
+<span class="k">interface</span> HistoryPort {
+  current(): MessageParam[];       <span class="c">// 本轮起始缓冲（子代理返回 []）</span>
+  commit(messages): Promise&lt;void&gt;;
+}
+
+<span class="k">interface</span> OptionsProvider {
+  turn(): TurnOptions;             <span class="c">// maxTokens / maxTurns / continuations /</span>
+}                                  <span class="c">// toolConcurrency / thinkingBudget</span></code></pre>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="liveness">
+      <p class="eyebrow">规则</p>
+      <h2>让「传一次对象」安全的唯一条件</h2>
+      <p>今天所有东西都藏在 getter 后面是有原因的 —— 这些东西会话中途会变：</p>
+      <div class="tw">
+        <table>
+          <thead><tr><th>变的东西</th><th>触发</th><th>端口里怎么表达</th></tr></thead>
+          <tbody>
+            <tr><td>模型</td><td><code>/model</code></td><td><code>model</code> 传一个转发壳，稳定对象、活的行为</td></tr>
+            <tr><td>思考预算 · effort</td><td><code>/think</code> · <code>/effort</code></td><td><code>options.turn()</code> 每轮调用</td></tr>
+            <tr><td>工具清单</td><td>MCP 后连接 · plan mode</td><td><code>tools.list()</code> 是方法</td></tr>
+            <tr><td>设置</td><td><code>/config</code></td><td><code>options.turn()</code></td></tr>
+            <tr><td>sessionId</td><td><code>/resume</code> · <code>/clear</code></td><td><code>systemPrompt.epoch()</code></td></tr>
+            <tr><td>记忆</td><td><strong>只在会话边界</strong></td><td><code>systemPrompt.system()</code>，且被 <code>freezeSystemPrompt</code> 锁住</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note warn">
+        <span class="lbl">写进 ports.ts 的文件头</span>
+        <p>
+          <strong>容器本身是一次性构造的稳定对象；一切会变的东西藏在端口的方法背后，绝不做成字段读取。</strong>
+          违反这条的表现很隐蔽：不是崩溃，是 <code>/model</code> 切了不生效，或者功能一切正常但前缀缓存全失效。
+        </p>
+      </div>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="flow">
+      <p class="eyebrow">流程</p>
+      <h2>端口化之后的 agent loop</h2>
+      <p style="margin-bottom:20px">
+        <span class="badge b-port">端口</span> 单一实现 ·
+        <span class="badge b-block">阻断钩子</span> 首个非 undefined 生效 ·
+        <span class="badge b-event">通知钩子</span> 广播、吞异常 ·
+        <span class="badge b-assert">断言</span> core 校验
+      </p>
+
+      <h3>第 0 层 · turn 边界</h3>
+      <pre><code>runTurn(input)
+  <span class="k">1.</span> 【阻断】pre_user_prompt      → 改写 input，或否决整个 turn
+  <span class="k">2.</span> base = history.current() + userText(input)
+  <span class="k">3.</span> 【通知】post_messages         → TUI 立刻回显用户气泡
+  <span class="k">4.</span> ──────► agentLoop(...) ◄──────
+  <span class="k">5.</span> 收尾（成功 / 中断 / 抛错，三条路都走）:
+       a. 抢救历史 pairingIsComplete(latest) ? latest : lastCommitted
+       b. 中断 → 追加 &lt;interrupted&gt; → 【通知】post_messages
+       c. 【端口】history.commit(final)
+       d. recordInjections → EventSink
+       e. 【通知】post_turn / error</code></pre>
+
+      <h3>第 1 层 · loop 入口（每 turn 一次）</h3>
+      <pre><code>system = <span class="k">await</span> systemPrompt.system()
+   └─ 【断言】freezeSystemPrompt：epoch() 未变 ⇒ 必须复用缓存值
+             变了 ⇒ 告警（默认）/ 抛错（strict）</code></pre>
+
+      <h3>第 2 层 · 迭代</h3>
+      <ol class="flow">
+        <li>
+          <div class="title">轮次兜底</div>
+          <div class="body">首次超限 → 追加「不要再调工具」提示并剥掉 tools；二次 → 抛错。</div>
+        </li>
+        <li>
+          <div class="title">压缩 <span class="badge b-port">Compactor</span> <span class="badge b-block">pre_compact</span> <span class="badge b-assert">append-only</span></div>
+          <div class="body">
+            <code>compactor.compact()</code> 排在钩子链<strong>链首</strong>：返回新数组则短路，返回同一引用则钩子链继续跑。
+            无论结果出自端口还是钩子，都过 <code>assertAppendOnly</code>。变了 → <code>post_messages</code> + <code>post_compact</code>。
+          </div>
+        </li>
+        <li>
+          <div class="title">组装请求 <span class="badge b-block">pre_request</span></div>
+          <div class="body">可覆盖 system / messages / tools / maxTokens / thinkingBudget。<code>messages</code> 覆盖会回写 canonical 历史 —— 后台通知、monitor 通知、plan-mode 提醒都走这条。</div>
+        </li>
+        <li>
+          <div class="title">视图切片 <span class="badge b-port">compactor.view()</span> <span class="badge b-new">新位置</span></div>
+          <div class="body">从 CLI 的 <code>withCompactionSlice</code> 装饰器移进 loop，位于 <code>pre_request</code> 之后、<code>model.call</code> 之前，<strong>不回写</strong> canonical 历史。</div>
+        </li>
+        <li>
+          <div class="title">模型调用 <span class="badge b-port">ModelClient</span> <span class="badge b-event">post_request</span></div>
+          <div class="body">抛错也发 <code>post_request{error}</code> 再向上抛；成功则累加 usage。</div>
+        </li>
+        <li>
+          <div class="title">assistant 落地 <span class="badge b-event">post_assistant</span> <span class="badge b-event">post_messages</span></div>
+          <div class="body">先追加去掉 <code>tool_use</code> 的内容 —— 渐进揭示第一步。</div>
+        </li>
+        <li>
+          <div class="title">停止原因裁决 <code>decide()</code></div>
+          <div class="body">
+            error → 抛 <code>LoopTerminatedError</code>；return → 返回；pause_turn → 下一轮；
+            truncated 且无工具调用 → 预算内追加「接着写」提示，耗尽则抛；无 tool_use → <code>end_turn</code> 返回。
+          </div>
+        </li>
+        <li>
+          <div class="title">工具 · 阶段一：逐个揭示 + 授权 <span class="badge b-port">PermissionGate</span> <span class="badge b-block">pre_tool_use</span></div>
+          <div class="body">
+            每个 <code>tool_use</code> 先揭示进 assistant 消息（卡片逐个亮起），再 <code>pre_permission</code> →
+            <code>permission.check()</code>（链首，拒绝即短路）→ <code>pre_tool_use</code> 钩子链 → <code>post_permission</code>。
+            结束后把 assistant 恢复成模型原始块序。
+          </div>
+        </li>
+        <li>
+          <div class="title">工具 · 阶段二：并发执行 <span class="badge b-block">post_tool_use</span> <span class="badge b-assert">配对</span></div>
+          <div class="body">受 <code>toolConcurrency</code> 限流；每个结果都可被 <code>post_tool_use</code> 整体替换；末尾兜底补齐任何缺失的 <code>tool_result</code>。</div>
+        </li>
+        <li>
+          <div class="title">提交边界 <span class="badge b-port">history.commit()</span> <span class="badge b-event">post_commit</span></div>
+          <div class="body"><code>post_user_message</code> → <code>pre_continue</code> 注入 → <strong>core 亲自调 <code>history.commit()</code></strong> → 发 <code>post_commit</code> 给 transcript / TUI → 回到 ①。</div>
+        </li>
+      </ol>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="invariants">
+      <p class="eyebrow">收益</p>
+      <h2>三条口头契约变成机器校验</h2>
+      <div class="tw">
+        <table>
+          <thead><tr><th>不变量</th><th>检查点</th><th>今天靠什么守</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><code>system</code> 在纪元内字节冻结</td>
+              <td>loop 入口 · <code>freezeSystemPrompt</code></td>
+              <td>CLAUDE.md 一段 200 字警告 + 「只准在 <code>reloadMemory()</code> 里改」的口头约定</td>
+            </tr>
+            <tr>
+              <td>压缩结果 append-only</td>
+              <td>迭代 ② · <code>assertAppendOnly</code></td>
+              <td>文档；且<strong>钩子返回的数组完全没人检查</strong></td>
+            </tr>
+            <tr>
+              <td>切片只作用于 wire，不回写 canonical</td>
+              <td>迭代 ④</td>
+              <td>分散在 CLI 装饰器 + <code>agent/compact.ts</code> 两处</td>
+            </tr>
+            <tr>
+              <td><code>tool_use</code> ↔ <code>tool_result</code> 全配对</td>
+              <td>迭代 ⑨ 末尾</td>
+              <td>已有 ✅</td>
+            </tr>
+            <tr>
+              <td>只在提交边界持久化</td>
+              <td>迭代 ⑩</td>
+              <td>「请不要挂在 <code>post_messages</code> 上」的劝告</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        第二条尤其值钱：一旦有人把压缩写成 truncate，<code>persistMessages</code> 的 append 快路径会静默掉进全量重写，
+        <code>messages.jsonl</code> 与 <code>transcript.jsonl</code> 开始对不上账 —— 而这条路今天对钩子是完全敞开的。
+      </p>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="hooks">
+      <p class="eyebrow">兼容</p>
+      <h2>钩子机制：16 个点一个不删</h2>
+      <p>
+        端口不是钩子的替代品，而是<strong>钩子链上永远排在最前面的那个内置节点</strong> ——
+        这正是今天 <code>createAgent</code> 的做法（「Register first so user hooks registered later can override the defaults」）。
+        所以执行语义零变化，只是那个匿名闭包变成了具名、带类型、被 core 校验的节点。
+      </p>
+      <pre><code><span class="c">// 权限</span>
+permission.check(use, ctx)          <span class="c">← 端口，链首</span>
+  ├─ 拒绝 → 短路，跳过后续钩子
+  └─ 放行 → pre_tool_use 钩子链继续，任一返回 {allow:false} 即拒
+
+<span class="c">// 压缩</span>
+compactor.compact(messages, ctx)    <span class="c">← 端口，链首</span>
+  ├─ 返回新数组 → 短路
+  └─ 返回同一引用 → pre_compact 钩子链继续
+最终结果无论出自哪条路，都过 assertAppendOnly</code></pre>
+
+      <div class="tw">
+        <table>
+          <thead><tr><th>类别</th><th>点</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><span class="badge b-block">阻断</span> 6 个，不变</td>
+              <td><code>pre_user_prompt</code> · <code>pre_request</code> · <code>pre_tool_use</code> · <code>post_tool_use</code> · <code>pre_continue</code> · <code>pre_compact</code></td>
+            </tr>
+            <tr>
+              <td><span class="badge b-event">通知</span> 10 个，不变</td>
+              <td><code>post_assistant</code> · <code>post_request</code> · <code>pre_permission</code> · <code>post_permission</code> · <code>post_user_message</code> · <code>post_messages</code> · <code>post_commit</code> · <code>post_stop</code> · <code>post_compact</code> · <code>post_turn</code> · <code>error</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>现在挂在上面的东西全部不受影响：</p>
+      <ul>
+        <li>transcript 写入器 —— 7 个点（改造后由 core 的 <code>attachRecorder</code> 推给 <code>EventSink</code>）</li>
+        <li><code>cli/hooks.ts</code> 声明式 shell 钩子桥 —— 9 个点</li>
+        <li><code>cli/headless-events.ts</code> —— 3 个点</li>
+        <li><code>cli/context.ts</code> 注入器 —— <code>pre_request</code>×2、<code>pre_continue</code>×2、<code>pre_user_prompt</code></li>
+        <li><code>subagent.ts</code> 流式转发 —— <code>post_assistant</code>、<code>post_tool_use</code></li>
+      </ul>
+      <div class="note">
+        <span class="lbl">已核实</span>
+        <p><code>agent.on(...)</code> 签名不变，所有 payload 形状不变，所有短路语义不变。CLI 侧零改动。</p>
+      </div>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="assembly">
+      <p class="eyebrow">结果</p>
+      <h2>主 agent 与子 agent 是同一个 createAgent 的两组装配</h2>
+      <div class="tw">
+        <table>
+          <thead><tr><th>端口</th><th>主 agent（cli/context.ts）</th><th>子 agent（agent/subagent.ts）</th></tr></thead>
+          <tbody>
+            <tr><td><code>model</code></td><td><code>ctx.model</code> 转发壳（装饰器已删）</td><td><code>deps.getModel(def)</code> 按定义选模型</td></tr>
+            <tr><td><code>systemPrompt</code></td><td><code>createMemoryPrompt(...)</code> 六段拼装</td><td><code>staticPrompt(buildSubAgentSystemPrompt(...))</code></td></tr>
+            <tr><td><code>·epoch()</code></td><td><code>sessionId</code>，随 <code>/clear</code>、<code>/resume</code> 变</td><td>子代理 id，一次性，永不变</td></tr>
+            <tr><td><code>compactor</code></td><td><code>createCompactor(...)</code></td><td><strong>同一个实例</strong>，直接透传</td></tr>
+            <tr><td><code>permission</code></td><td>完整权限引擎</td><td><code>narrowTo(allowedNames, hostGate)</code> 装饰器</td></tr>
+            <tr><td><code>history</code></td><td>会话 <code>messages.jsonl</code> / screen store</td><td><code>{childId}.messages.jsonl</code> / <code>current() → []</code></td></tr>
+            <tr><td><code>events</code></td><td>会话 <code>transcript.jsonl</code></td><td><code>{childId}.transcript.jsonl</code></td></tr>
+            <tr><td><code>tools</code></td><td>全量注册表</td><td>过滤：剔 <code>createSubAgent</code>、readOnly 时剔写工具、再过 allow-list</td></tr>
+            <tr><td><code>options</code></td><td>设置切片</td><td>设置切片 + <code>def.maxTurns/maxTokens</code> 覆盖；思考预算 0</td></tr>
+            <tr><td><code>hooks</code></td><td>CLI 挂 9 个点</td><td>只挂 2 个点转发流式细节</td></tr>
+            <tr><td>驱动</td><td><code>runTurn(用户输入)</code> / <code>continueTurn()</code></td><td><code>runTurn(任务)</code> 一次，取末条文本</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>由此得到的三个结果：</p>
+      <ul>
+        <li><strong><code>subagent.ts</code> 从「第二套 agent 实现」降级成一个工具</strong> —— 341 行里真正跟 agent 构造有关的只有 <code>212-257</code> 那 45 行，改造后是一个配置对象。</li>
+        <li><strong>权限收窄从「重新实现一遍」变成「装饰一个端口」</strong> —— 同样的手法可以用在任何端口上。</li>
+        <li><strong><code>getSystemPrompt?</code> 这个后门消失</strong> —— 抽象层不再为子代理开特例。</li>
+      </ul>
+      <p>
+        需要说清楚的是：CLI 里的 <code>goal-eval.ts</code>、<code>auto-classify.ts</code>、<code>predict.ts</code> 和压缩用的 summarizer
+        <strong>不属于</strong>这一类 —— 它们是裸的 <code>ModelClient.call()</code> 单次调用，没有工具、没有多轮，套 agent 是过度抽象。保持现状。
+      </p>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="steps">
+      <p class="eyebrow">执行</p>
+      <h2>七步迁移，每步独立可验</h2>
+      <div class="tw">
+        <table>
+          <thead><tr><th>步</th><th>内容</th><th>风险 / 验证</th></tr></thead>
+          <tbody>
+            <tr>
+              <td class="num">1</td>
+              <td>core 新增 <code>ports.ts</code>（10 个端口 + liveness 规则注释）、<code>freezeSystemPrompt</code>、<code>assertAppendOnly</code>、<code>staticPrompt</code>。<strong>不接任何调用方。</strong></td>
+              <td>纯新增，零风险；typecheck + 全量测试</td>
+            </tr>
+            <tr>
+              <td class="num">2</td>
+              <td>loop 接受端口，插各自钩子链链首；端口缺省 = 今天的行为</td>
+              <td>行为零变化；<code>loop.test.ts</code> 全绿</td>
+            </tr>
+            <tr>
+              <td class="num">3</td>
+              <td><strong><code>agent.ts</code> 整体搬进 core</strong>，<code>AgentDeps</code> 重构成 <code>AgentContext</code>；<code>attachRecorder</code> 一并搬</td>
+              <td>最大一次搬迁，但是纯移动 + 改名。<code>agent.test.ts</code> 659 行跟着搬进 core 当回归网 —— 这是最好的安全绳</td>
+            </tr>
+            <tr>
+              <td class="num">4</td>
+              <td>agent 侧实现各端口 + <code>assembleAgent()</code>；<code>subagent.ts</code> 与 <code>cli/context.ts</code> 改接口</td>
+              <td>改动集中在两个装配点</td>
+            </tr>
+            <tr>
+              <td class="num">5</td>
+              <td><code>view()</code> 切片收进 loop，删 <code>cli/context.ts:176</code> 装饰器</td>
+              <td>需同步改 6 处直接调 <code>sliceFromLastCompacted</code> 的地方</td>
+            </tr>
+            <tr>
+              <td class="num">6</td>
+              <td>接上 <code>assertAppendOnly</code>（压缩链 + <code>pre_request</code> 覆盖两处）</td>
+              <td>暴露了 2 个陈旧用例：<code>loop.test.ts</code> 里仍按"替换式压缩"写的 <code>pre_compact</code> 测试，已改成 append-only 并补了一个截断必抛的用例</td>
+            </tr>
+            <tr>
+              <td class="num">7</td>
+              <td>（正交）迁出 <code>@nova/model</code>；顺带把 <code>front-matter</code>/<code>xml</code>/<code>thinking</code>/<code>tokens</code> 移进 runtime</td>
+              <td>core 的 <code>package.json</code> 从此没有 <code>@anthropic-ai/sdk</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note">
+        <span class="lbl">护栏</span>
+        <p>
+          做完后加机器约束，否则边界会慢慢烂回去：core 的 eslint 加 <code>no-restricted-imports</code> 禁掉 <code>@nova/*</code> 与 <code>@anthropic-ai/sdk</code>，
+          或写一个断言 <code>packages/core/package.json</code> 依赖白名单的小测试。比在 CLAUDE.md 里多写一句话有效得多。
+        </p>
+      </div>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="risk">
+      <p class="eyebrow">代价</p>
+      <h2>要认的三笔账</h2>
+      <ul>
+        <li>
+          <strong>推翻 CLAUDE.md 现有的两条契约。</strong>
+          「单一扩展点 HookRegistry，没有独立的 observer / compactor / permission 选项」要重写成端口清单 + 钩子职责；
+          「保持七个包」要放行第八个包 <code>@nova/model</code>。不改文档，下一个任务会拿旧规则来「修复」你。
+        </li>
+        <li>
+          <strong>core 不再是机制无关的通用 loop。</strong>
+          任何使用者都得理解 compaction / systemPrompt 这些概念，哪怕全传 no-op。这是这次改造要的方向，但账要认。
+        </li>
+        <li>
+          <strong>覆盖语义收紧。</strong>
+          今天用户钩子靠「后注册 + first-non-undefined-wins」覆盖内置权限 / 压缩；端口化后覆盖只能是替换端口实现。
+          已核实 CLI 侧无人这么用，仅 <code>agent.test.ts:314/535</code> 两个用例在测这个语义 —— 而它们在「端口=链首」的设计下依然成立。
+        </li>
+      </ul>
+      <p>
+        换来的是：三条最容易被后人破坏、且破坏后只表现为性能塌陷或数据静默不一致的不变量，从文档变成断言；
+        机制的实现从散落在 agent / cli / safety 三处，收拢成「core 编排 + 各包实现一个接口」。
+      </p>
+    </section>
+  </main>
+
+  <footer>方案基于 478b6a0 的源码核实 · 所有行号引用均指向该提交</footer>
+</div>
+
+</body>
+</html>

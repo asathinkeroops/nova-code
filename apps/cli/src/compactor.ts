@@ -1,10 +1,12 @@
 import { autoCompact, shouldAutoCompact, sliceFromLastCompacted } from "@nova/agent";
 import {
-  resolveProfile,
   type Compactor,
   type MessageParam,
   type ModelClient,
 } from "@nova/core";
+import {
+  resolveProfile,
+} from "@nova/model";
 import { resolveContextWindowSize, type Settings } from "@nova/runtime";
 
 export interface BuildCompactorOptions {

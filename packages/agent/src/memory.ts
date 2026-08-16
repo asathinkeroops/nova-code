@@ -1,7 +1,10 @@
 import { readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
-import { xmlAttr, xmlEscape } from "@nova/core";
+import {
+  xmlAttr,
+  xmlEscape,
+} from "@nova/runtime";
 import { DEFAULT_AUTO_MEMORY_MAX_ENTRIES, DEFAULT_MEMORY_FILENAMES } from "@nova/runtime";
 
 export type MemoryLayer = "global" | "user" | "project" | "auto";

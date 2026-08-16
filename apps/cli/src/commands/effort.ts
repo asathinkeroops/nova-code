@@ -1,4 +1,8 @@
-import { isThinkingLevel, THINKING_LEVELS, type ThinkingLevel } from "@nova/core";
+import {
+  isThinkingLevel,
+  THINKING_LEVELS,
+  type ThinkingLevel,
+} from "@nova/runtime";
 import { saveModelProfileOverride } from "@nova/runtime";
 import { ACCENT_HEX, dim, type Rgb } from "../colors.js";
 import { thinkingLevelLabel, refreshBanner, type CliContext } from "../context.js";

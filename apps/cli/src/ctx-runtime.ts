@@ -1,6 +1,11 @@
 import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
-import { resolveBudget, resolveProfile } from "@nova/core";
+import {
+  resolveProfile,
+} from "@nova/model";
+import {
+  resolveBudget,
+} from "@nova/runtime";
 import { resolveContextWindowSize, resolveModelId } from "@nova/runtime";
 import { accent } from "./colors.js";
 import { TOOL_SPINNER_DELAY_MS } from "./constants.js";

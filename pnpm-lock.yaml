@@ -117,6 +117,9 @@ importers:
       '@nova/mcp':
         specifier: workspace:*
         version: link:../../packages/mcp
+      '@nova/model':
+        specifier: workspace:*
+        version: link:../../packages/model
       '@nova/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
@@ -150,9 +153,6 @@ importers:
 
   packages/core:
     dependencies:
-      '@anthropic-ai/sdk':
-        specifier: ^0.111.0
-        version: 0.111.0(zod@3.25.76)
       zod:
         specifier: ^3.23.0
         version: 3.25.76
@@ -167,6 +167,21 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.29.0(zod@3.25.76)
+      '@nova/core':
+        specifier: workspace:*
+        version: link:../core
+      '@nova/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
+
+  packages/model:
+    dependencies:
+      '@anthropic-ai/sdk':
+        specifier: ^0.111.0
+        version: 0.111.0(zod@3.25.76)
       '@nova/core':
         specifier: workspace:*
         version: link:../core

@@ -1,5 +1,12 @@
 import { create, type StoreApi, type UseBoundStore } from "zustand";
-import type { AccountBalance, AskUserRequest, AskUserResponse, MessageParam } from "@nova/core";
+import type {
+  AskUserRequest,
+  AskUserResponse,
+  MessageParam,
+} from "@nova/core";
+import type {
+  AccountBalance,
+} from "@nova/model";
 import type { Task, Todo } from "@nova/tools";
 import type { ModelRates } from "@nova/runtime";
 import type { SubAgentDetail } from "@nova/agent";

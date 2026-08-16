@@ -1,7 +1,7 @@
 import { HookRegistry, type HookFn, type HookPoint } from "./hooks.js";
 import { agentLoop } from "./loop.js";
 import { blocksOf, markSynthetic, userText } from "./messages.js";
-import type { ModelClient } from "./model.js";
+import type { ModelClient } from "./model-client.js";
 import {
   freezeSystemPrompt,
   type Compactor,

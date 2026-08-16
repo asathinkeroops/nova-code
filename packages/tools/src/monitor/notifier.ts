@@ -1,10 +1,12 @@
 import {
   markSynthetic,
-  xmlAttr,
-  xmlEscape,
   type MessageParam,
   type ToolDefinition,
 } from "@nova/core";
+import {
+  xmlAttr,
+  xmlEscape,
+} from "@nova/runtime";
 import type { MonitorEvents, MonitorManager } from "./manager.js";
 
 interface PreRequestPayload {

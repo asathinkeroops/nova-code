@@ -4,9 +4,11 @@ import type {
   FileAccessLedger,
   ModelClient,
   PermissionGate,
-  ThinkingLevel,
   ToolExecutor,
 } from "@nova/core";
+import type {
+  ThinkingLevel,
+} from "@nova/runtime";
 import type { McpManager } from "@nova/mcp";
 import type { SlashRegistry } from "./slash-registry.js";
 import type { LspManager } from "@nova/lsp";

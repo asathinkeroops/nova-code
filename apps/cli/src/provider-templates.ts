@@ -1,4 +1,6 @@
-import type { ProviderId } from "@nova/core";
+import type {
+  ProviderId,
+} from "@nova/model";
 import { DEFAULT_GOAL, DEFAULT_MODEL_TIER } from "@nova/runtime";
 
 /**

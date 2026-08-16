@@ -1,11 +1,13 @@
 import {
-  DEFAULT_TOKEN_ESTIMATE,
-  estimateTextTokens,
   markSynthetic,
   type MessageParam,
   type ModelClient,
-  type TokenEstimate,
 } from "@nova/core";
+import {
+  DEFAULT_TOKEN_ESTIMATE,
+  estimateTextTokens,
+  type TokenEstimate,
+} from "@nova/runtime";
 
 export const COMPACT_MARKER = "[compacted]";
 
