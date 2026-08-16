@@ -8,7 +8,12 @@ import {
   userToolResults,
 } from "./messages.js";
 import type { ModelClient } from "./model.js";
-import type { Compactor, HistoryPort, PermissionGate } from "./ports.js";
+import {
+  assertAppendOnly,
+  type Compactor,
+  type HistoryPort,
+  type PermissionGate,
+} from "./ports.js";
 import { decide } from "./stop-reason.js";
 import type {
   AssistantTurn,
@@ -147,14 +152,20 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
 
     // ── compaction: port first, then the pre_compact chain ────────────────
     let compactDecision: { messages: MessageParam[] } | undefined;
+    let compactSource = "the compactor";
     if (opts.compactor) {
       const compacted = await opts.compactor.compact(messages, { reason: "auto" });
       if (compacted !== messages) compactDecision = { messages: compacted };
     }
     if (!compactDecision) {
       compactDecision = await hooks.runBlocking("pre_compact", { messages });
+      compactSource = "a pre_compact hook";
     }
     if (compactDecision && compactDecision.messages !== messages) {
+      // Compaction APPENDS a boundary; it never replaces or truncates. The
+      // persister append-fast-paths on exactly that, so a silent truncation
+      // desynchronizes messages.jsonl from the transcript.
+      assertAppendOnly(messages, compactDecision.messages, compactSource);
       const before = messages.length;
       messages = compactDecision.messages;
       await hooks.runAdvisory("post_messages", { messages });
@@ -180,6 +191,9 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
     // per-request. Identity returns (same array reference) are treated as a
     // no-op so a hook can probe payload.messages without forcing a re-emit.
     if (requestOverride?.messages && requestOverride.messages !== messages) {
+      // Same contract as compaction: an override may only APPEND (notifications,
+      // reminders). Rewriting history here would corrupt the replayable log.
+      assertAppendOnly(messages, requestOverride.messages, "a pre_request hook");
       messages = requestOverride.messages;
       await hooks.runAdvisory("post_messages", { messages });
     }

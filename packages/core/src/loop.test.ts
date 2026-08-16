@@ -732,14 +732,14 @@ describe("agentLoop · pre_compact hook", () => {
       },
     };
 
-    const compactor = vi.fn(({ messages }: { messages: MessageParam[] }) => {
-      // Always replace with a single placeholder.
-      void messages;
-      return { messages: [{ role: "user" as const, content: "[compacted]" }] };
-    });
+    // Compaction is append-only: the boundary is APPENDED to the retained
+    // history, and only the model's *view* (compactor.view) is shortened.
+    const compactor = vi.fn(({ messages }: { messages: MessageParam[] }) => ({
+      messages: [...messages, { role: "user" as const, content: "[compacted]" }],
+    }));
     hooks.on("pre_compact", compactor);
 
-    await agentLoop({
+    const result = await agentLoop({
       ...baseOpts(hooks),
       messages: [
         { role: "user", content: "1" },
@@ -750,7 +750,27 @@ describe("agentLoop · pre_compact hook", () => {
       executeTool: makeExecutor(),
     });
     expect(compactor).toHaveBeenCalledTimes(1);
-    expect(seen).toEqual([1]);
+    expect(seen).toEqual([4]);
+    expect(result.messages[3]?.content).toBe("[compacted]");
+  });
+
+  it("rejects a pre_compact hook that truncates the history", async () => {
+    const hooks = new HookRegistry();
+    hooks.on("pre_compact", () => ({
+      messages: [{ role: "user" as const, content: "[compacted]" }],
+    }));
+
+    await expect(
+      agentLoop({
+        ...baseOpts(hooks),
+        messages: [
+          { role: "user", content: "1" },
+          { role: "user", content: "2" },
+        ],
+        model: mockModel([{ content: [{ type: "text", text: "ok" }], stopReason: "end_turn" }]),
+        executeTool: makeExecutor(),
+      }),
+    ).rejects.toThrow(/append-only/);
   });
 
   it("fires post_compact with before/after counts when pre_compact swaps the array", async () => {
@@ -758,8 +778,8 @@ describe("agentLoop · pre_compact hook", () => {
     const model = mockModel([
       { content: [{ type: "text", text: "ok" }], stopReason: "end_turn" },
     ]);
-    hooks.on("pre_compact", () => ({
-      messages: [{ role: "user" as const, content: "[compacted]" }],
+    hooks.on("pre_compact", ({ messages }) => ({
+      messages: [...messages, { role: "user" as const, content: "[compacted]" }],
     }));
     await agentLoop({
       ...baseOpts(hooks),
@@ -773,11 +793,11 @@ describe("agentLoop · pre_compact hook", () => {
     });
     const compactEnds = events.filter((e) => e.kind === "post_compact");
     expect(compactEnds).toHaveLength(1);
-    expect(compactEnds[0]?.payload).toEqual({ before: 3, after: 1 });
+    expect(compactEnds[0]?.payload).toEqual({ before: 3, after: 4 });
     const idxMsg = events.findIndex(
       (e) =>
         e.kind === "post_messages" &&
-        (e.payload as { messages: MessageParam[] }).messages.length === 1,
+        (e.payload as { messages: MessageParam[] }).messages.length === 4,
     );
     const idxCompact = events.findIndex((e) => e.kind === "post_compact");
     expect(idxMsg).toBeGreaterThanOrEqual(0);
