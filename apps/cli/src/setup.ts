@@ -6,7 +6,7 @@ import {
   DEFAULT_CONFIG_PATH,
   saveSettings,
   type Settings,
-} from "@nova/runtime";
+} from "@nova/base";
 import { accent, ACCENT_HEX, BLUE_RGB, dim, rgbFg } from "./colors.js";
 import { t } from "./i18n/index.js";
 import { PROVIDER_TEMPLATES, type ProviderTemplate } from "./provider-templates.js";

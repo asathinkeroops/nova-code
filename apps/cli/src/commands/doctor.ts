@@ -7,8 +7,8 @@ import {
 } from "@nova/model";
 import {
   estimateTextTokens,
-} from "@nova/runtime";
-import { resolveContextWindowSize, type SlashOutcome } from "@nova/runtime";
+} from "@nova/base";
+import { resolveContextWindowSize, type SlashOutcome } from "@nova/base";
 import { ACCENT_HEX, bold, dim, green } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { buildFixPrompt, diagnoseConfig, formatIssues, summarizeReport } from "../doctor.js";

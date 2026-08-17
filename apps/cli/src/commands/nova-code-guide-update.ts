@@ -1,4 +1,4 @@
-import type { SlashOutcome } from "@nova/runtime";
+import type { SlashOutcome } from "@nova/base";
 import { dim } from "../colors.js";
 import { stopSpinner, type CliContext } from "../context.js";
 import { ensureFresh, resolveGuideSourceDir } from "../guide/provisioner.js";

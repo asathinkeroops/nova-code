@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { ToolResultBlock, ToolUseBlock } from "@nova/core";
-import type { Settings } from "@nova/runtime";
+import type { Settings } from "@nova/base";
 import {
   UserHooks,
   parseHookOutput,

@@ -5,7 +5,7 @@ import type {
   ToolResultBlock,
   ToolUseBlock,
 } from "@nova/core";
-import type { Logger } from "@nova/runtime";
+import type { Logger } from "@nova/base";
 import type { ZodError } from "zod";
 import type { ToolRegistry } from "./registry.js";
 

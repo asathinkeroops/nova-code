@@ -1,4 +1,4 @@
-import { DEFAULT_TOKEN_ESTIMATE } from "@nova/runtime";
+import { DEFAULT_TOKEN_ESTIMATE } from "@nova/base";
 import type { ProviderProfile } from "./types.js";
 
 /**

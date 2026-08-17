@@ -108,6 +108,9 @@ importers:
       '@nova/agent':
         specifier: workspace:*
         version: link:../../packages/agent
+      '@nova/base':
+        specifier: workspace:*
+        version: link:../../packages/base
       '@nova/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -120,9 +123,6 @@ importers:
       '@nova/model':
         specifier: workspace:*
         version: link:../../packages/model
-      '@nova/runtime':
-        specifier: workspace:*
-        version: link:../../packages/runtime
       '@nova/safety':
         specifier: workspace:*
         version: link:../../packages/safety
@@ -141,12 +141,24 @@ importers:
 
   packages/agent:
     dependencies:
+      '@nova/base':
+        specifier: workspace:*
+        version: link:../base
       '@nova/core':
         specifier: workspace:*
         version: link:../core
-      '@nova/runtime':
-        specifier: workspace:*
-        version: link:../runtime
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
+
+  packages/base:
+    dependencies:
+      pino:
+        specifier: ^9.0.0
+        version: 9.14.0
+      pino-pretty:
+        specifier: ^11.0.0
+        version: 11.3.0
       zod:
         specifier: ^3.23.0
         version: 3.25.76
@@ -167,12 +179,12 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.29.0(zod@3.25.76)
+      '@nova/base':
+        specifier: workspace:*
+        version: link:../base
       '@nova/core':
         specifier: workspace:*
         version: link:../core
-      '@nova/runtime':
-        specifier: workspace:*
-        version: link:../runtime
       zod:
         specifier: ^3.23.0
         version: 3.25.76
@@ -182,24 +194,12 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.111.0
         version: 0.111.0(zod@3.25.76)
+      '@nova/base':
+        specifier: workspace:*
+        version: link:../base
       '@nova/core':
         specifier: workspace:*
         version: link:../core
-      '@nova/runtime':
-        specifier: workspace:*
-        version: link:../runtime
-      zod:
-        specifier: ^3.23.0
-        version: 3.25.76
-
-  packages/runtime:
-    dependencies:
-      pino:
-        specifier: ^9.0.0
-        version: 9.14.0
-      pino-pretty:
-        specifier: ^11.0.0
-        version: 11.3.0
       zod:
         specifier: ^3.23.0
         version: 3.25.76
@@ -209,24 +209,24 @@ importers:
       '@anthropic-ai/sandbox-runtime':
         specifier: 0.0.52
         version: 0.0.52
+      '@nova/base':
+        specifier: workspace:*
+        version: link:../base
       '@nova/core':
         specifier: workspace:*
         version: link:../core
-      '@nova/runtime':
-        specifier: workspace:*
-        version: link:../runtime
 
   packages/tools:
     dependencies:
+      '@nova/base':
+        specifier: workspace:*
+        version: link:../base
       '@nova/core':
         specifier: workspace:*
         version: link:../core
       '@nova/lsp':
         specifier: workspace:*
         version: link:../lsp
-      '@nova/runtime':
-        specifier: workspace:*
-        version: link:../runtime
       '@vscode/ripgrep':
         specifier: ^1.18.0
         version: 1.18.0

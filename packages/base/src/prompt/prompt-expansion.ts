@@ -2,10 +2,10 @@
  * Shared expansion stages for authored prompt text — slash-command `.md`
  * bodies and `SKILL.md` bodies alike.
  *
- * These live in `@nova/runtime` rather than `@nova/core` because they touch the
+ * These live in `@nova/base` rather than `@nova/core` because they touch the
  * filesystem and spawn subprocesses, and `core` is deliberately free of
  * `node:*` imports. Both consumers (`apps/cli`'s slash-command loader, and
- * `@nova/tools` for skills) already depend on runtime, so this is the one place
+ * `@nova/tools` for skills) already depend on base, so this is the one place
  * both can reach without inverting the dependency graph.
  *
  * Every stage is independently callable: the two consumers compose different

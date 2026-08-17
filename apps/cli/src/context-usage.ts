@@ -8,7 +8,7 @@ import {
 import {
   estimateTextTokens,
   type TokenEstimate,
-} from "@nova/runtime";
+} from "@nova/base";
 import type { CliContext } from "./ctx-types.js";
 
 /** MCP tools are namespaced; split out because they often dominate the schema budget. */

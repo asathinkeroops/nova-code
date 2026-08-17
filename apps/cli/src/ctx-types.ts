@@ -8,7 +8,7 @@ import type {
 } from "@nova/core";
 import type {
   ThinkingLevel,
-} from "@nova/runtime";
+} from "@nova/base";
 import type { McpManager } from "@nova/mcp";
 import type { SlashRegistry } from "./slash-registry.js";
 import type { LspManager } from "@nova/lsp";
@@ -20,7 +20,7 @@ import type {
   TodoStore,
   ToolRegistry,
 } from "@nova/tools";
-import type { Logger, Session, Settings, Transcript } from "@nova/runtime";
+import type { Logger, Session, Settings, Transcript } from "@nova/base";
 import type { PermissionEngine, SandboxControl } from "@nova/safety";
 import type { GoalState } from "./goal.js";
 import type { CronScheduler } from "./cron-scheduler.js";

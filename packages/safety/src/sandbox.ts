@@ -5,7 +5,7 @@ import {
 } from "@anthropic-ai/sandbox-runtime";
 import type { SandboxBridge } from "@nova/core";
 
-/** Minimal logger shape (a subset of @nova/runtime's Logger), passed in by the caller. */
+/** Minimal logger shape (a subset of @nova/base's Logger), passed in by the caller. */
 export interface SandboxLogger {
   info(obj: unknown, msg?: string): void;
   warn(obj: unknown, msg?: string): void;

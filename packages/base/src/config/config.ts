@@ -224,7 +224,8 @@ export type ModelModalities = z.infer<typeof modelModalitiesSchema>;
 
 /** Discrete extended-thinking levels, shared by the global `thinking.level`
  *  setting and the per-tier `thinking` override in a model profile. Mirrors
- *  @nova/core's THINKING_LEVELS (runtime is a leaf and can't import core). */
+ *  the keys of `text/thinking.ts`'s THINKING_BUDGETS, which maps each level to
+ *  a token budget and re-exports this union as its `ThinkingLevel`. */
 export const thinkingLevelSchema = z.enum(["off", "low", "medium", "high", "max"]);
 
 export type ThinkingLevel = z.infer<typeof thinkingLevelSchema>;
@@ -415,7 +416,7 @@ const settingsObjectSchema = z.object({
   // this cap queue and start as slots free up. 1 = fully sequential.
   toolConcurrency: z.number().int().positive().default(3),
   // Schema only — concrete tool-name defaults live with the layer that
-  // registers those tools (apps/cli/src/permissions.ts). @nova/runtime must
+  // registers those tools (apps/cli/src/permissions.ts). @nova/base must
   // not know about specific tool identifiers.
   permissions: z
     .object({

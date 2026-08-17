@@ -1,5 +1,5 @@
 {
-  "name": "@nova/runtime",
+  "name": "@nova/base",
   "version": "0.1.0",
   "private": true,
   "type": "module",

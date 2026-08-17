@@ -1,8 +1,8 @@
-// Path canonicalization lives in @nova/runtime so both the CLI permission gate
+// Path canonicalization lives in @nova/base so both the CLI permission gate
 // and the @nova/tools invariants ledger share one notion of "the real file".
 // Re-exported here for the CLI's existing call sites; PATH_INPUT_TOOLS stays
-// CLI-local because @nova/runtime must not know specific tool identifiers.
-export { canonicalizePath, canonicalizeRoots } from "@nova/runtime";
+// CLI-local because @nova/base must not know specific tool identifiers.
+export { canonicalizePath, canonicalizeRoots } from "@nova/base";
 
 /**
  * Tools whose `path` input is canonicalized (resolve + realpath) before a

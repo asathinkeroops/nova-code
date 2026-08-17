@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 
-import type { Logger, PluginSource } from "@nova/runtime";
+import type { Logger, PluginSource } from "@nova/base";
 
 import { MANIFEST_DIRS, MANIFEST_FILE, pluginManifestSchema } from "./manifest.js";
 

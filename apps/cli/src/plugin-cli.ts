@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { loadSettings, saveSettings, type Settings } from "@nova/runtime";
+import { loadSettings, saveSettings, type Settings } from "@nova/base";
 import { cyan, dim, green, red, yellow } from "./colors.js";
 import {
   DEFAULT_PLUGIN_CACHE_DIR,

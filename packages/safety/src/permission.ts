@@ -1,6 +1,6 @@
 import { isAbsolute, relative } from "node:path";
-import type { PermissionRule } from "@nova/runtime";
-import { isDangerousBash } from "@nova/runtime";
+import type { PermissionRule } from "@nova/base";
+import { isDangerousBash } from "@nova/base";
 
 export type PermissionEffect = "allow" | "deny" | "ask";
 

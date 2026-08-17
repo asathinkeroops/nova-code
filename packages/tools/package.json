@@ -32,7 +32,7 @@
   "dependencies": {
     "@nova/core": "workspace:*",
     "@nova/lsp": "workspace:*",
-    "@nova/runtime": "workspace:*",
+    "@nova/base": "workspace:*",
     "@vscode/ripgrep": "^1.18.0",
     "execa": "^9.0.0",
     "fast-glob": "^3.3.3",

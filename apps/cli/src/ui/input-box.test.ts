@@ -321,7 +321,7 @@ describe("matchingFiles", () => {
   const files = [
     "src/config.ts",
     "src/ui/input-box.tsx",
-    "packages/runtime/src/config.ts",
+    "packages/base/src/config/config.ts",
     "README.md",
   ];
 
@@ -329,11 +329,11 @@ describe("matchingFiles", () => {
     const out = matchingFiles("config", files, 10);
     // both config.ts files match on basename prefix; the shorter path wins ties
     expect(out[0]).toBe("src/config.ts");
-    expect(out).toContain("packages/runtime/src/config.ts");
+    expect(out).toContain("packages/base/src/config/config.ts");
   });
 
   it("matches on a path substring when the basename does not", () => {
-    expect(matchingFiles("runtime", files, 10)).toEqual(["packages/runtime/src/config.ts"]);
+    expect(matchingFiles("packages", files, 10)).toEqual(["packages/base/src/config/config.ts"]);
   });
 
   it("is case-insensitive", () => {

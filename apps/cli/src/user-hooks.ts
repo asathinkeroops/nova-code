@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import { execa, type ExecaError } from "execa";
 import type { Agent } from "@nova/agent";
 import type { ToolResultBlock, ToolUseBlock } from "@nova/core";
-import type { HookCommandConfig, Settings } from "@nova/runtime";
+import type { HookCommandConfig, Settings } from "@nova/base";
 
 /**
  * Bridge user-declared shell hooks (`settings.hooks`) onto the agent's in-code
@@ -27,7 +27,7 @@ import type { HookCommandConfig, Settings } from "@nova/runtime";
  * - `hookSpecificOutput.additionalContext` — appended to the model-facing text
  *   for PostToolUse / UserPromptSubmit (replaces raw stdout when present).
  *
- * Event semantics (see the `hooks` schema in `@nova/runtime`):
+ * Event semantics (see the `hooks` schema in `@nova/base`):
  * - PreToolUse      → consulted by the CLI's permission gate via
  *                     `evaluatePreToolUse(...)` (NOT a loop hook), so a hook can
  *                     deny / allow (bypass) / ask (force a prompt). non-zero exit

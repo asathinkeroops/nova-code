@@ -1,4 +1,4 @@
-import type { SlashCommandKind } from "@nova/runtime";
+import type { SlashCommandKind } from "@nova/base";
 import { accent, ACCENT_HEX, cyan, dim } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { t } from "../i18n/index.js";

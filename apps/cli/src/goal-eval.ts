@@ -13,7 +13,7 @@ import {
   type AskUserFn,
   type MessageParam,
 } from "@nova/core";
-import { resolveMaxTokens, resolveModelModalities } from "@nova/runtime";
+import { resolveMaxTokens, resolveModelModalities } from "@nova/base";
 import type { CliContext } from "./context.js";
 import {
   buildGoalEvalPrompt,

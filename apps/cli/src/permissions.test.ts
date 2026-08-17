@@ -1,4 +1,4 @@
-import { parseSettings } from "@nova/runtime";
+import { parseSettings } from "@nova/base";
 import { PermissionEngine } from "@nova/safety";
 import { describe, expect, it } from "vitest";
 import {

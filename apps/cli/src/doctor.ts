@@ -15,7 +15,7 @@ import {
   resolveApiKey,
   resolveLanguage,
   type Settings,
-} from "@nova/runtime";
+} from "@nova/base";
 import { bold, dim, green, red, yellow } from "./colors.js";
 import { t } from "./i18n/index.js";
 

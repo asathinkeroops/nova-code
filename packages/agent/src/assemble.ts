@@ -12,7 +12,7 @@ import {
   type ToolDefinition,
   type ToolExecutor,
 } from "@nova/core";
-import type { Logger as RuntimeLogger, Transcript } from "@nova/runtime";
+import type { Logger as RuntimeLogger, Transcript } from "@nova/base";
 import type { PersistCursor } from "./persistence.js";
 import {
   createOptions,

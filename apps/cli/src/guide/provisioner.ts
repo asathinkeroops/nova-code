@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { promisify } from "node:util";
 
-import type { Logger } from "@nova/runtime";
+import type { Logger } from "@nova/base";
 
 const execFileP = promisify(execFile);
 

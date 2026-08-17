@@ -4,8 +4,8 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 import {
   xmlAttr,
   xmlEscape,
-} from "@nova/runtime";
-import { DEFAULT_AUTO_MEMORY_MAX_ENTRIES, DEFAULT_MEMORY_FILENAMES } from "@nova/runtime";
+} from "@nova/base";
+import { DEFAULT_AUTO_MEMORY_MAX_ENTRIES, DEFAULT_MEMORY_FILENAMES } from "@nova/base";
 
 export type MemoryLayer = "global" | "user" | "project" | "auto";
 

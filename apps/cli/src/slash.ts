@@ -1,5 +1,5 @@
 import { getSkill, getSkillList, renderSkillPayload } from "@nova/tools";
-import type { Logger, Settings, SlashCommand } from "@nova/runtime";
+import type { Logger, Settings, SlashCommand } from "@nova/base";
 import { SlashRegistry, fileCommandToSlash, loadFileCommands } from "./slash-registry.js";
 import { pluginSkillRoots } from "./plugins/loader.js";
 import type { LoadedPlugin } from "./plugins/loader.js";

@@ -1,4 +1,4 @@
-import { createSession } from "@nova/runtime";
+import { createSession } from "@nova/base";
 import { refreshBanner, type CliContext } from "../context.js";
 import { t } from "../i18n/index.js";
 import { switchToSession } from "../session.js";

@@ -7,7 +7,7 @@ import {
 import {
   resolveProfile,
 } from "@nova/model";
-import { resolveContextWindowSize, type Settings } from "@nova/runtime";
+import { resolveContextWindowSize, type Settings } from "@nova/base";
 
 export interface BuildCompactorOptions {
   settings: Settings;

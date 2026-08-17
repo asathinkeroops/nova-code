@@ -1,7 +1,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { settingsSchema, type Settings } from "@nova/runtime";
+import { settingsSchema, type Settings } from "@nova/base";
 import { afterEach, describe, expect, it } from "vitest";
 import { createContext } from "./context.js";
 import { HeadlessScreen } from "./headless-screen.js";

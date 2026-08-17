@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { MessageParam } from "@nova/core";
-import { createSession } from "@nova/runtime";
+import { createSession } from "@nova/base";
 import { buildSessionRows } from "./session.js";
 
 let root: string;

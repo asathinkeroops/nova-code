@@ -5,7 +5,7 @@ import {
   frontMatterBool,
   frontMatterText,
   splitFrontMatter,
-} from "@nova/runtime";
+} from "@nova/base";
 
 export interface SkillListItem {
   name: string;

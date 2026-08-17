@@ -1,4 +1,4 @@
-import type { PermissionRule, Settings } from "@nova/runtime";
+import type { PermissionRule, Settings } from "@nova/base";
 import { isWithin } from "@nova/safety";
 
 /**
@@ -97,7 +97,7 @@ export function resolveModeDecision(
  * to `ask`. glob/grep used to be flat `allow`, which let the model enumerate or
  * search arbitrary out-of-tree files; fencing their search root closes that.
  *
- * @nova/runtime ships a schema-only default of `rules: []` so the runtime
+ * @nova/base ships a schema-only default of `rules: []` so the runtime
  * package stays free of tool-identifier knowledge.
  */
 export const DEFAULT_PERMISSION_RULES: readonly PermissionRule[] = [

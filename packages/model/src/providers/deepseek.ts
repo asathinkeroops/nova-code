@@ -1,5 +1,5 @@
 import { backoffMs } from "../retry.js";
-import { THINKING_BUDGETS } from "@nova/runtime";
+import { THINKING_BUDGETS } from "@nova/base";
 import { ProviderError, type ProviderErrorInfo } from "./error.js";
 import type { AccountBalance, BalanceProbe, ProviderProfile } from "./types.js";
 

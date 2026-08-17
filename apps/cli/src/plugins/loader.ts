@@ -4,7 +4,7 @@ import { dirname, join, resolve } from "node:path";
 
 import type { McpServerSpec } from "@nova/mcp";
 import type { ServerConfig } from "@nova/lsp";
-import { hooksConfigSchema, type HooksConfig, type Logger, type SlashCommand } from "@nova/runtime";
+import { hooksConfigSchema, type HooksConfig, type Logger, type SlashCommand } from "@nova/base";
 import { fileCommandToSlash, loadFileCommands } from "../slash-registry.js";
 import { loadAgentDefinitions, type AgentDefinition } from "@nova/agent";
 

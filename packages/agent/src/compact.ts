@@ -7,7 +7,7 @@ import {
   DEFAULT_TOKEN_ESTIMATE,
   estimateTextTokens,
   type TokenEstimate,
-} from "@nova/runtime";
+} from "@nova/base";
 
 export const COMPACT_MARKER = "[compacted]";
 

@@ -1,7 +1,7 @@
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parseSettings } from "@nova/runtime";
+import { parseSettings } from "@nova/base";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TOOL_SPINNER_DELAY_MS } from "./constants.js";
 import {

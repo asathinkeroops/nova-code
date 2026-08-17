@@ -11,7 +11,7 @@ import {
   type ToolResultBlock,
   type ToolUseBlock,
 } from "@nova/core";
-import { Transcript, type Logger } from "@nova/runtime";
+import { Transcript, type Logger } from "@nova/base";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { assembleAgent, type AssembleAgentOptions } from "./assemble.js";

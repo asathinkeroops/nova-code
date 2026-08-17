@@ -2,7 +2,7 @@ import { join } from "node:path";
 import type { MessageMeta } from "@nova/core";
 import { sliceFromLastCompacted } from "@nova/agent";
 import { bashTool } from "@nova/tools";
-import { resolveModelModalities } from "@nova/runtime";
+import { resolveModelModalities } from "@nova/base";
 import { accent, dim, green } from "./colors.js";
 import { t } from "./i18n/index.js";
 import { refreshBalance, stopSpinner, type CliContext } from "./context.js";

@@ -1,7 +1,7 @@
 import { mkdtempSync, mkdirSync, existsSync, readFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { canonicalizePath, settingsSchema, type Settings } from "@nova/runtime";
+import { canonicalizePath, settingsSchema, type Settings } from "@nova/base";
 import { describe, expect, it } from "vitest";
 import { isWorkspaceTrusted, trustWorkspace } from "./workspace-trust.js";
 

@@ -3,7 +3,7 @@
  *
  * This is host surface, so it lives in the CLI rather than in a package. The
  * *types* it works with (`SlashCommand` & friends) live in
- * `@nova/runtime`'s `slash-types.ts` instead, because `@nova/mcp` bridges each
+ * `@nova/base`'s `slash-types.ts` instead, because `@nova/mcp` bridges each
  * MCP prompt into a `SlashCommand` and a package must not import the app.
  */
 import { readFile, readdir, stat } from "node:fs/promises";
@@ -17,7 +17,7 @@ import {
   type SlashCommand,
   type SlashCommandKind,
   type SlashRunCtx,
-} from "@nova/runtime";
+} from "@nova/base";
 
 export interface FileCommandRaw {
   name: string;
@@ -293,7 +293,7 @@ export function expandPlaceholders(
  * consumed them, they are appended as an `ARGUMENTS:` line rather than dropped
  * — a command with no placeholders should still see what the user typed.
  *
- * Stages 2-4 are shared with the `SKILL.md` loader via `@nova/runtime`, so both
+ * Stages 2-4 are shared with the `SKILL.md` loader via `@nova/base`, so both
  * surfaces expand identically.
  */
 export async function expandCommandBody(

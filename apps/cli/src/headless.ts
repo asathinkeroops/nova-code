@@ -1,5 +1,5 @@
 import type { MessageParam } from "@nova/core";
-import type { Settings } from "@nova/runtime";
+import type { Settings } from "@nova/base";
 import { createContext, type CliRuntimeOptions } from "./context.js";
 import { emitInit, registerHeadlessStream } from "./headless-events.js";
 import { HeadlessScreen, type HeadlessApprovalPolicy } from "./headless-screen.js";

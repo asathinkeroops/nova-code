@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { canonicalizePath, saveSettings, type Settings } from "@nova/runtime";
+import { canonicalizePath, saveSettings, type Settings } from "@nova/base";
 import { isWithin } from "@nova/safety";
 import { ACCENT_HEX, dim } from "./colors.js";
 import { t } from "./i18n/index.js";

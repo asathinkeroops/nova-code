@@ -2,8 +2,8 @@ import { Command } from "commander";
 import {
   isThinkingLevel,
   type ThinkingLevel,
-} from "@nova/runtime";
-import { API_KEY_ENV, DEFAULT_CONFIG_PATH, stripDefaultModels, type Settings } from "@nova/runtime";
+} from "@nova/base";
+import { API_KEY_ENV, DEFAULT_CONFIG_PATH, stripDefaultModels, type Settings } from "@nova/base";
 import { createContext } from "./context.js";
 import {
   buildDoctorCommand,

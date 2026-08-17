@@ -1,7 +1,7 @@
 import type {
   ProviderId,
 } from "@nova/model";
-import { DEFAULT_GOAL, DEFAULT_MODEL_TIER } from "@nova/runtime";
+import { DEFAULT_GOAL, DEFAULT_MODEL_TIER } from "@nova/base";
 
 /**
  * A built-in provider preset surfaced in the first-run setup picker. Choosing
@@ -24,7 +24,7 @@ export interface ProviderTemplate {
    * `baseURL` and `provider` for a usable out-of-the-box config.
    *
    * Note what is NOT here: the `models` tier table. It lives in
-   * `BUILTIN_PROVIDER_MODELS` (`@nova/runtime`), keyed by this `provider`, and
+   * `BUILTIN_PROVIDER_MODELS` (`@nova/base`), keyed by this `provider`, and
    * is layered in at parse time rather than persisted — so a shipped model /
    * price / limit update reaches installs that were set up long ago.
    */

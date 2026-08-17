@@ -1,6 +1,6 @@
 /**
  * Transport-agnostic server specs consumed by the MCP manager. These mirror the
- * shape of `settings.mcp.servers[*]` (see @nova/runtime config) minus the
+ * shape of `settings.mcp.servers[*]` (see @nova/base config) minus the
  * `enabled` flag, but are declared here so this module stays decoupled from the
  * settings schema — the CLI maps validated config onto these.
  */
@@ -38,7 +38,7 @@ export interface McpOAuthSpec {
 
 export type McpServerSpec = McpStdioServerSpec | McpHttpServerSpec;
 
-/** Minimal logger surface — structurally compatible with @nova/runtime's Logger. */
+/** Minimal logger surface — structurally compatible with @nova/base's Logger. */
 export interface McpLogger {
   debug(obj: unknown, msg?: string): void;
   info(obj: unknown, msg?: string): void;

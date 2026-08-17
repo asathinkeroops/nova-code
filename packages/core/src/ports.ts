@@ -286,7 +286,7 @@ export interface ToolHost {
 
 /**
  * Structural subset of a pino logger — declared here so core stays a leaf and
- * never imports `@nova/runtime`. A pino `Logger` satisfies it as-is.
+ * never imports `@nova/base`. A pino `Logger` satisfies it as-is.
  */
 export interface Logger {
   info(obj: object, msg?: string): void;

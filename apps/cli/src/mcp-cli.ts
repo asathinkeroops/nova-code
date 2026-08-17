@@ -7,7 +7,7 @@ import {
   loadSettings,
   mcpServerSchema,
   type McpServerConfig,
-} from "@nova/runtime";
+} from "@nova/base";
 import { bold, cyan, dim, green, red, yellow } from "./colors.js";
 import { buildMcpManager } from "./mcp.js";
 import { FileOAuthStore, openBrowser, startCallbackServer } from "./mcp-oauth.js";

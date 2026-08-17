@@ -25,14 +25,14 @@ import type {
   ToolHost,
   TurnOptions,
 } from "@nova/core";
-import type { Logger as RuntimeLogger, Transcript } from "@nova/runtime";
+import type { Logger as RuntimeLogger, Transcript } from "@nova/base";
 import type { MemoryBundle } from "./memory.js";
 import { buildSystemPrompt } from "./system-prompt.js";
 import { persistMessages, type PersistCursor } from "./persistence.js";
 
 /**
  * Per-turn knobs the agent reads from settings. A slice rather than the full
- * `@nova/runtime` Settings type so the agent stays uncoupled from the schema.
+ * `@nova/base` Settings type so the agent stays uncoupled from the schema.
  *
  * `language` lives on the system-prompt provider and `noTranscript` is expressed
  * by simply not wiring an event sink, so neither appears here.

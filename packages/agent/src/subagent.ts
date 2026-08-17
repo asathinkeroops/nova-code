@@ -21,7 +21,7 @@ import {
   type ToolHandler,
   type TurnResult,
 } from "@nova/core";
-import { Transcript, type Logger } from "@nova/runtime";
+import { Transcript, type Logger } from "@nova/base";
 import type { AgentDefinition, AgentRegistry } from "./definitions.js";
 import { buildSubAgentSystemPrompt } from "./subagent-system-prompt.js";
 

@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { loadSettings } from "@nova/runtime";
+import { loadSettings } from "@nova/base";
 import { fetchLatestVersion, isNewerVersion, runUpgrade } from "./update.js";
 import { readCliPackage } from "./version.js";
 

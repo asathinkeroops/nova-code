@@ -9,7 +9,7 @@ import {
   type OAuthStore,
   type StoredOAuth,
 } from "@nova/mcp";
-import type { Settings } from "@nova/runtime";
+import type { Settings } from "@nova/base";
 
 /** Directory holding one `<server>.json` OAuth blob per authenticated server. */
 function authDir(): string {

@@ -8,7 +8,7 @@ import type {
   AccountBalance,
 } from "@nova/model";
 import type { Task, Todo } from "@nova/tools";
-import type { ModelRates } from "@nova/runtime";
+import type { ModelRates } from "@nova/base";
 import type { SubAgentDetail } from "@nova/agent";
 import type { PermissionDecision, PermissionInput } from "@nova/safety";
 import type { BannerProps } from "./render-item.js";

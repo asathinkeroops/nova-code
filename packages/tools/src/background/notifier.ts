@@ -6,7 +6,7 @@ import {
 import {
   xmlAttr,
   xmlEscape,
-} from "@nova/runtime";
+} from "@nova/base";
 import type { CompletionNotice, BackgroundCommandManager } from "./manager.js";
 
 interface PreRequestPayload {

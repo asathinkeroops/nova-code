@@ -1,5 +1,5 @@
 import { loadAgentDefinitions, type AgentLoadOptions, type AgentLoadResult } from "@nova/agent";
-import type { Logger, Settings } from "@nova/runtime";
+import type { Logger, Settings } from "@nova/base";
 
 /**
  * Build the agent-definition loader options from settings. Shared by the

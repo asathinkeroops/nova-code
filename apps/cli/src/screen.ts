@@ -2,7 +2,7 @@ import React from "react";
 import { render } from "ink";
 import type { AskUserRequest, AskUserResponse, MessageParam } from "@nova/core";
 import type { Task, Todo } from "@nova/tools";
-import type { ModelRates } from "@nova/runtime";
+import type { ModelRates } from "@nova/base";
 import type {
   AccountBalance,
 } from "@nova/model";

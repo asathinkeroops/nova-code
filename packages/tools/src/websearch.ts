@@ -53,7 +53,7 @@ const SETTING_KEY: Record<ConcreteProvider, string> = {
  * Provider API keys from `settings.websearch` (`~/.nova/nova.config.json`).
  * Injected by the CLI. The config file is the stored default; the matching env
  * var overrides it per shell — the same precedence the model `apiKey` uses
- * (`resolveApiKey` in @nova/runtime), so there is one rule to remember.
+ * (`resolveApiKey` in @nova/base), so there is one rule to remember.
  */
 export interface WebsearchKeys {
   brave?: string | undefined;

@@ -12,7 +12,7 @@
  * top of that, not a whole alternate transport.
  */
 
-import type { TokenEstimate } from "@nova/runtime";
+import type { TokenEstimate } from "@nova/base";
 import type { ProviderError } from "./error.js";
 
 /** Wire params for the thinking knob, plus any `max_tokens` floor the format imposes. */
@@ -44,7 +44,7 @@ export type ErrorDecision =
  * A provider account's spendable balance, surfaced on the status line. Returned
  * by {@link ProviderProfile.probeBalance} for providers that expose a balance
  * endpoint. `currency` is the union the built-in providers bill in (kept local
- * to `@nova/core` — this layer can't import `@nova/runtime`'s `Currency`,
+ * to `@nova/core` — this layer can't import `@nova/base`'s `Currency`,
  * but the two are structurally identical so it stays compatible with `formatMoney`).
  */
 export interface AccountBalance {

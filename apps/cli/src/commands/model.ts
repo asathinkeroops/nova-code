@@ -3,7 +3,7 @@ import {
   resolveModelId,
   resolveThinkingLevel,
   saveSettings,
-} from "@nova/runtime";
+} from "@nova/base";
 import { accent, ACCENT_HEX, dim, green } from "../colors.js";
 import { refreshBanner, thinkingLevelLabel, type CliContext } from "../context.js";
 import { t } from "../i18n/index.js";

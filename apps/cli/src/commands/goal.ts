@@ -1,4 +1,4 @@
-import type { SlashOutcome } from "@nova/runtime";
+import type { SlashOutcome } from "@nova/base";
 import { dim, green } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { clearGoal, saveGoal, type GoalState } from "../goal.js";

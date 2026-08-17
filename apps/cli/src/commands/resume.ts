@@ -1,4 +1,4 @@
-import { listSessions, type Session } from "@nova/runtime";
+import { listSessions, type Session } from "@nova/base";
 import { ACCENT_HEX, dim, green } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { pickerArrow } from "../ui/picker.js";

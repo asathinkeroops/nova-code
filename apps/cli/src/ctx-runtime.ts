@@ -5,8 +5,8 @@ import {
 } from "@nova/model";
 import {
   resolveBudget,
-} from "@nova/runtime";
-import { resolveContextWindowSize, resolveModelId } from "@nova/runtime";
+} from "@nova/base";
+import { resolveContextWindowSize, resolveModelId } from "@nova/base";
 import { accent } from "./colors.js";
 import { TOOL_SPINNER_DELAY_MS } from "./constants.js";
 import { t } from "./i18n/index.js";

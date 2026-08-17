@@ -12,7 +12,7 @@ export const THINKING_BUDGETS = {
  * The level union is the config schema's (`thinkingLevelSchema`) — this module
  * only maps it to a token budget, so the two can never drift.
  */
-export type { ThinkingLevel } from "./config.js";
+export type { ThinkingLevel } from "../config/config.js";
 
 export const THINKING_LEVELS: readonly (keyof typeof THINKING_BUDGETS)[] = [
   "off",

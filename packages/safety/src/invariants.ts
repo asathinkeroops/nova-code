@@ -11,7 +11,7 @@
  */
 import { stat } from "node:fs/promises";
 import type { FileAccessLedger, InvariantsCheck, ToolContext, ToolUseBlock } from "@nova/core";
-import { canonicalizePath } from "@nova/runtime";
+import { canonicalizePath } from "@nova/base";
 
 /**
  * In-memory file access ledger. One instance per session — the CLI constructs
@@ -19,7 +19,7 @@ import { canonicalizePath } from "@nova/runtime";
  * reads (with mtime) and consult them on subsequent edits/writes.
  *
  * Keys are absolute, symlink-resolved paths (canonicalizePath from
- * @nova/runtime — the same canonicalization the permission gate uses). This
+ * @nova/base — the same canonicalization the permission gate uses). This
  * makes read and edit/write agree on a single key even when one call reaches a
  * file through a symlink or path alias and another through its real path, so
  * read-before-edit and mtime-drift compare like for like.

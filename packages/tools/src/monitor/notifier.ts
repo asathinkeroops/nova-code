@@ -6,7 +6,7 @@ import {
 import {
   xmlAttr,
   xmlEscape,
-} from "@nova/runtime";
+} from "@nova/base";
 import type { MonitorEvents, MonitorManager } from "./manager.js";
 
 interface PreRequestPayload {

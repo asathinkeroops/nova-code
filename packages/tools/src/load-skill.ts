@@ -6,14 +6,14 @@ import {
 import {
   xmlAttr,
   xmlEscape,
-} from "@nova/runtime";
+} from "@nova/base";
 import {
   expandDollarArgs,
   expandMentions,
   expandShell,
   expandVars,
   type PromptCommandRunner,
-} from "@nova/runtime";
+} from "@nova/base";
 import { bashTool } from "./bash.js";
 
 const inputSchema = z.object({

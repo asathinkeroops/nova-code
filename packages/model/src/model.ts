@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { toWireMessages, toWireTools, type ModelClient, type ModelRequest } from "@nova/core";
-import { isCjkCodePoint } from "@nova/runtime";
+import { isCjkCodePoint } from "@nova/base";
 import { type ProviderProfile } from "./providers/index.js";
 import {
   RETRY_LIMITS,

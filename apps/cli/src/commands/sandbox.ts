@@ -1,4 +1,4 @@
-import { saveSettings } from "@nova/runtime";
+import { saveSettings } from "@nova/base";
 import { dim, green, red } from "../colors.js";
 import { stopSpinner, type CliContext } from "../context.js";
 import { t } from "../i18n/index.js";

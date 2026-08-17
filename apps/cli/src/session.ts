@@ -7,7 +7,7 @@ import {
   pruneSessions,
   Transcript,
   type Session,
-} from "@nova/runtime";
+} from "@nova/base";
 import { red } from "./colors.js";
 import { refreshBanner, type CliContext } from "./context.js";
 import { loadDisplaySidecar } from "./display-sidecar.js";

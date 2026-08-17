@@ -2,7 +2,7 @@ import { computeThreshold, estimateTokens, sliceFromLastCompacted } from "@nova/
 import {
   resolveProfile,
 } from "@nova/model";
-import { resolveContextWindowSize } from "@nova/runtime";
+import { resolveContextWindowSize } from "@nova/base";
 import { accent, ACCENT_HEX, blue, bold, cyan, dim, green, yellow, magenta } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { measureFixedOverhead } from "../context-usage.js";

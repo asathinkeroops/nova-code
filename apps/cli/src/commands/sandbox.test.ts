@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Settings } from "@nova/runtime";
+import type { Settings } from "@nova/base";
 import type { CliContext } from "../context.js";
 
 const saveSettings = vi.fn(async (_patch: Partial<Settings>) => {});
-vi.mock("@nova/runtime", async (importActual) => ({
-  ...(await importActual<typeof import("@nova/runtime")>()),
+vi.mock("@nova/base", async (importActual) => ({
+  ...(await importActual<typeof import("@nova/base")>()),
   saveSettings,
 }));
 

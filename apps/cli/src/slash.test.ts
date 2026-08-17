@@ -2,7 +2,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SlashRegistry } from "./slash-registry.js";
-import { settingsSchema, type Logger, type Settings } from "@nova/runtime";
+import { settingsSchema, type Logger, type Settings } from "@nova/base";
 import { describe, expect, it } from "vitest";
 import { loadSkillCommandsInto } from "./slash.js";
 

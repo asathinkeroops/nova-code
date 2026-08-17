@@ -48,7 +48,7 @@ import {
   Transcript,
   type Logger,
   type Settings,
-} from "@nova/runtime";
+} from "@nova/base";
 import {
   createInvariants,
   createSandbox,

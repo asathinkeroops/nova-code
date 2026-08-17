@@ -71,7 +71,7 @@
     "@nova/lsp": "workspace:*",
     "@nova/mcp": "workspace:*",
     "@nova/model": "workspace:*",
-    "@nova/runtime": "workspace:*",
+    "@nova/base": "workspace:*",
     "@nova/safety": "workspace:*",
     "@nova/tools": "workspace:*",
     "@types/react": "^18.3.0",
