@@ -42,7 +42,7 @@
 - in-code `HookRegistry`（`packages/core/src/loop.ts` 唯一扩展点）
 - subagent（`packages/agent/src/subagent.ts`）
 - OS 级 sandbox（Seatbelt / bubblewrap，`packages/safety/src/sandbox.ts`）
-- observability（transcript + cost，`packages/runtime`）
+- observability（transcript + cost，`packages/base`）
 - 模型：Anthropic SDK 客户端 + `baseURL` 覆盖，thinking 格式支持 `anthropic` | `deepseek`
 
 ## 二、关键缺口（按对日常使用的影响排序）
@@ -71,7 +71,7 @@
 
 `HookRegistry` 是**代码内**扩展点；settings 无 `PreToolUse` / `PostToolUse` / `UserPromptSubmit` 这类"事件上跑 shell 命令"的声明式配置。无法配置"写完文件自动 format / lint"。
 
-- **取舍**：在 `packages/runtime/src/config.ts` 加 zod schema，在 `apps/cli/src/hooks.ts` 把用户 hooks 桥接到现有 `HookRegistry`。内核不动，纯外围。
+- **取舍**：在 `packages/base/src/config/config.ts` 加 zod schema，在 `apps/cli/src/hooks.ts` 把用户 hooks 桥接到现有 `HookRegistry`。内核不动，纯外围。
 - **建议**：实现。
 - **已落地**：`settings.hooks` 支持 8 个事件——工具/对话事件 `PreToolUse` / `PostToolUse` / `UserPromptSubmit` / `Stop`，以及生命周期事件 `SessionStart` / `SessionEnd` / `PreCompact` / `PostCompact`；每条 `{ matcher?, command, timeout_ms? }`。桥接在 `apps/cli/src/user-hooks.ts`（`UserHooks` 类：`register()` 接 3 个 loop 事件，`fire()`/`firePreCompact()`/`runStop()` 由 CLI 在 REPL 启停 / session 切换 / 压缩点直接触发生命周期与 Stop 事件）。命令走 `bash` 工具同款沙箱，上下文经 **stdin 上的单个 JSON 对象**传入(对齐 CC 约定:公共字段 `hook_event_name`/`session_id`/`transcript_path`/`cwd` + 事件特定字段,用 `jq` 取)。`PreToolUse` 非 0 退出拒绝工具、`PostToolUse` 的 stdout 回灌给模型、`UserPromptSubmit` 非 0 中止本轮。**阻断语义**(对齐 CC 的 exit 2 约定):`PreCompact` exit 2 跳过本次压缩(auto/manual 两路);`Stop` exit 2 强制本轮继续(stderr 作为下一轮 prompt,带 payload `stop_continuation` 计数 + 硬上限 8);其余生命周期事件 advisory。**stdout JSON 控制**(`parseHookOutput`,可选,优先于退出码):`decision:"block"`+`reason`、`hookSpecificOutput.permissionDecision:"deny"/"allow"/"ask"`(仅 PreToolUse)、`additionalContext`(回灌文本);非法 JSON 自动回退到退出码语义。**PreToolUse 全量对齐**:不走 loop 钩子,而是由 CLI 权限门 `checkPermission` 在最前一步调 `userHooks.evaluatePreToolUse()`——`deny` 拒绝、`allow` 绕过权限模式+规则、`ask` 复用 `askWithSignal` 强制确认;**无需改 `@nova/core`**(决定类型仍只表达 deny,allow/ask 在权限门内解析为 grant 或交互),subagent 工具因委托同一 `checkPermission` 一并生效。**项目级累加**:除全局配置外,hook 还可声明在工作区 `.nova/hooks.json`(随仓库提交)与 `.nova/hooks.local.json`(本地),三源按 全局→项目→local 累加并按 `(matcher, command)` 去重(`loadProjectHooks` / `mergeHooks`),启动时弹卡片提示已加载的项目 hook 文件。用法见 guide [§19 `hooks`](guide.md#hooks用户事件-shell-钩子)。
 

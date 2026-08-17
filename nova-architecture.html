@@ -529,8 +529,8 @@
   <div class="eyebrow">Nova Coding Agent · Loop-Centric Architecture</div>
   <h1>Nova <span class="accent">Coding Agent</span> 架构</h1>
   <p class="subtitle">
-    Nova 是一个深度面向 DeepSeek 调优的终端编码 agent。所有模块都附着在同一个 Agent Loop 之上——这张图展示每个模块在循环中的位置：它在哪个阶段介入、做什么、依赖谁。
-  </p>
+    Nova 是一个深度面向 DeepSeek 调优的终端编码 agent。所有模块都附着在同一个 Agent Loop 之上，靠两种机制接进来——<strong>port</strong>（每个 agent 恰好一个实现：model / systemPrompt / tools / history / options / compactor / permission / logger / events）与 <strong>hook</strong>（0..N 个订阅者，只观察或轻改）。这张图展示每个模块在循环中的位置：它在哪个阶段介入、做什么、依赖谁。
+</p>
 
   <!-- ============================================================ -->
   <!-- LAYER 1: Context Injection — feeds INTO the loop             -->
@@ -552,12 +552,12 @@
         <div class="mod-chip">
           <div class="mc-id">agent/compact</div>
           <div class="mc-name">Compaction</div>
-          <div class="mc-func">microCompact / autoCompact —— 经 pre_compact hook 整段重写 messages[] 防溢出</div>
+          <div class="mc-func">autoCompact 走 Compactor port（pre_compact hook 排在其后）。<strong>append-only</strong>：只追加一条 &lt;compacted&gt; 边界，不截断历史；模型只看 compactor.view() 从边界起的切片，由 loop 在 model.call 前投影</div>
         </div>
         <div class="mod-chip">
           <div class="mc-id">deepseek/prefix-cache</div>
           <div class="mc-name">Prompt Cache</div>
-          <div class="mc-func">DeepSeek 服务端自动前缀缓存；命中/写入 token 计入 usage，由 runtime/cost 统计命中率</div>
+          <div class="mc-func">DeepSeek 服务端自动前缀缓存；命中/写入 token 计入 usage，由 base/config/cost 统计命中率</div>
         </div>
       </div>
     </div>
@@ -566,7 +566,7 @@
   <!-- Connector: Context → Loop -->
   <div class="conn-down">
     <div class="conn-line"></div>
-    <div class="conn-label">注入 system prompt / messages[] / cache breakpoints</div>
+    <div class="conn-label">注入 system prompt（按 epoch 冻结）/ messages[]（append-only）</div>
     <div class="conn-arrow"></div>
   </div>
 
@@ -578,7 +578,7 @@
     <!-- LEFT: External Interface -->
     <div class="mid-left">
       <span class="flow-h from-left">ext/* → ② tool defs ↗</span>
-      <div class="pcard" style="height:100%;">
+      <div class="pcard">
         <div class="pc-head">
           <span class="pc-icon">G</span>
           <span class="pc-name">外部接入</span>
@@ -594,12 +594,38 @@
           <div class="mod-chip">
             <div class="mc-id">cli/slash-registry</div>
             <div class="mc-name">Slash Commands</div>
-            <div class="mc-func">.commands/*.md 用户工作流（实现在 apps/cli；类型契约在 runtime/slash-types，供 mcp 桥接 prompt 复用）</div>
+            <div class="mc-func">.commands/*.md 用户工作流（实现在 apps/cli；类型契约在 base/prompt/slash-types，供 mcp 桥接 prompt 复用）</div>
           </div>
           <div class="mod-chip">
-            <div class="mc-id">ext/skills</div>
+            <div class="mc-id">tools/skills · load-skill</div>
             <div class="mc-name">Skills</div>
-            <div class="mc-func">SKILL.md 索引 → 模型调用 load-skill 工具时按需返回内容（渐进披露）</div>
+            <div class="mc-func">SKILL.md 索引 → 模型调用 loadSkill 工具时按需返回内容（渐进披露）</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pcard" style="flex:1;">
+        <div class="pc-head">
+          <span class="pc-icon">M</span>
+          <span class="pc-name">模型适配</span>
+        </div>
+        <span class="pc-attach">附着点 → ② ModelClient port 的唯一实现</span>
+        <div class="pc-desc">core 只认 ModelClient 接口；把它接到真实 wire 上的是 @nova/model —— 全仓唯一 import @anthropic-ai/sdk 的包</div>
+        <div class="mods">
+          <div class="mod-chip">
+            <div class="mc-id">model/model</div>
+            <div class="mc-name">Anthropic 兼容适配器</div>
+            <div class="mc-func">流式 · thinking · usage 回传；system 原样作为请求前缀的 byte 0（不设显式 cache_control，走 DeepSeek 自动前缀缓存）</div>
+          </div>
+          <div class="mod-chip">
+            <div class="mc-id">model/providers</div>
+            <div class="mc-name">Provider Profiles</div>
+            <div class="mc-func">deepseek · moonshot · other —— 各家的 thinking 预算 / token 估算 / 错误翻译差异收在这里</div>
+          </div>
+          <div class="mod-chip">
+            <div class="mc-id">model/retry</div>
+            <div class="mc-name">Retry</div>
+            <div class="mc-func">按错误类型退避重试，对 loop 透明</div>
           </div>
         </div>
       </div>
@@ -609,8 +635,8 @@
     <div class="mid-center">
       <div class="loop-nucleus" style="width:100%;">
         <div class="loop-header">
-          <span class="lh-label">A · 执行核心 — Agent Loop</span>
-          <span class="lh-mods">core/loop · core/model · core/messages · core/hooks　|　@nova/agent 装配默认 hook</span>
+          <span class="lh-label">A · agent kernel — Loop + Turn</span>
+          <span class="lh-mods">core/loop · core/agent(turn) · core/ports · core/hooks · core/messages　|　@nova/agent 实现 ports 并 assembleAgent</span>
         </div>
         <div class="loop-steps">
           <div class="lstep lit">
@@ -622,7 +648,7 @@
           <div class="lstep lit">
             <div class="ls-num">②</div>
             <div class="ls-name">Model Call</div>
-            <div class="ls-hint">model.call() · DeepSeek（Anthropic 兼容 wire）· 流式 + thinking</div>
+            <div class="ls-hint">ModelClient port → @nova/model 适配 DeepSeek / Moonshot（Anthropic 兼容 wire）· 流式 + thinking</div>
           </div>
           <div class="larrow">↓</div>
           <div class="lstep lit">
@@ -633,8 +659,8 @@
           <div class="larrow">↓</div>
           <div class="lstep lit">
             <div class="ls-num">④</div>
-            <div class="ls-name">Tool Result</div>
-            <div class="ls-hint">每个 tool_use 必配一个 tool_result → messages[]</div>
+            <div class="ls-name">Tool Result &amp; Commit</div>
+            <div class="ls-hint">每个 tool_use 必配一个 tool_result → messages[] → history.commit() → post_commit（持久化边界）</div>
           </div>
         </div>
         <div class="loop-return" style="flex-wrap:wrap; row-gap:6px;">
@@ -649,26 +675,37 @@
           <span class="pill">refusal</span> → 终止
         </div>
 
-<pre style="margin:16px 0 0;background:#0e0e10;color:#e6e6e6;border-radius:12px;padding:18px 20px;font-family:var(--mono);font-size:12px;line-height:1.65;overflow-x:auto;"><span style="color:#7a7a7a">// 唯一扩展点：hooks。权限 / 压缩 / transcript / UI 全部挂在这里。</span>
-<span style="color:#ff9d7a">async function</span> <span style="color:#9ec5ff">runLoop</span>(messages, { model, tools, hooks }) {
+<pre style="margin:16px 0 0;background:#0e0e10;color:#e6e6e6;border-radius:12px;padding:18px 20px;font-family:var(--mono);font-size:12px;line-height:1.65;overflow-x:auto;"><span style="color:#7a7a7a">// 两种扩展机制：port（每个 agent 恰好一个实现）+ hook（0..N 个订阅者）。</span>
+<span style="color:#7a7a7a">// port 就是它那条 hook 链的内建首节点 —— compactor.compact 排在 pre_compact 之前。</span>
+<span style="color:#ff9d7a">async function</span> <span style="color:#9ec5ff">agentLoop</span>(messages, ctx <span style="color:#7a7a7a">/* AgentContext：9 个 port */</span>) {
+  <span style="color:#ff9d7a">const</span> system = <span style="color:#ff9d7a">await</span> ctx.systemPrompt.<span style="color:#9ec5ff">system</span>();  <span style="color:#7a7a7a">// 按 epoch() 冻结 = 前缀缓存的 byte 0</span>
   <span style="color:#ff9d7a">while</span> (<span style="color:#ff9d7a">true</span>) {
-    messages = <span style="color:#ff9d7a">await</span> hooks.runBlocking(<span style="color:#b6e3a0">"pre_compact"</span>, messages);   <span style="color:#7a7a7a">// 整段替换历史</span>
-    <span style="color:#ff9d7a">await</span> hooks.runBlocking(<span style="color:#b6e3a0">"pre_request"</span>, { messages });
+    <span style="color:#ff9d7a">const</span> next = <span style="color:#ff9d7a">await</span> ctx.compactor?.<span style="color:#9ec5ff">compact</span>(messages, req); <span style="color:#7a7a7a">// 只追加 &lt;compacted&gt; 边界</span>
+    <span style="color:#9ec5ff">assertAppendOnly</span>(messages, next ?? messages);            <span style="color:#7a7a7a">// 截断/原地改 → throw</span>
+    messages = next ?? messages;
+    <span style="color:#ff9d7a">await</span> hooks.<span style="color:#9ec5ff">runBlocking</span>(<span style="color:#b6e3a0">"pre_request"</span>, { messages });
 
-    <span style="color:#ff9d7a">const</span> turn = <span style="color:#ff9d7a">await</span> model.<span style="color:#9ec5ff">call</span>({ system, messages, tools });  <span style="color:#7a7a7a">// DeepSeek</span>
+    <span style="color:#ff9d7a">const</span> view = ctx.compactor?.<span style="color:#9ec5ff">view</span>(messages) ?? messages;  <span style="color:#7a7a7a">// 纯投影，不写回</span>
+    <span style="color:#ff9d7a">const</span> turn = <span style="color:#ff9d7a">await</span> ctx.model.<span style="color:#9ec5ff">call</span>({
+      system, messages: view, tools: ctx.tools.<span style="color:#9ec5ff">list</span>(),  <span style="color:#7a7a7a">// 每轮重取：MCP 连接 / plan mode 才生效</span>
+      ...ctx.options.<span style="color:#9ec5ff">turn</span>(),                              <span style="color:#7a7a7a">// /think · /effort · /config（/model 走转发式 ModelClient）</span>
+    });
     messages = <span style="color:#9ec5ff">appendMessage</span>(messages, turn.message);          <span style="color:#7a7a7a">// append-only</span>
 
     <span style="color:#ff9d7a">const</span> d = <span style="color:#9ec5ff">decide</span>(turn.stopReason);
-    <span style="color:#ff9d7a">if</span> (d.kind === <span style="color:#b6e3a0">"return"</span>) <span style="color:#ff9d7a">return</span>;                          <span style="color:#7a7a7a">// end_turn / stop_sequence</span>
+    <span style="color:#ff9d7a">if</span> (d.kind === <span style="color:#b6e3a0">"return"</span>) <span style="color:#ff9d7a">break</span>;                           <span style="color:#7a7a7a">// end_turn / stop_sequence</span>
     <span style="color:#ff9d7a">if</span> (d.kind === <span style="color:#b6e3a0">"error"</span>) <span style="color:#ff9d7a">throw</span> <span style="color:#ff9d7a">new</span> LoopTerminatedError(d); <span style="color:#7a7a7a">// refusal</span>
     <span style="color:#ff9d7a">if</span> (d.kind === <span style="color:#b6e3a0">"truncated"</span> &amp;&amp; noToolCalls(turn))         <span style="color:#7a7a7a">// max_tokens：可恢复</span>
       { <span style="color:#ff9d7a">if</span> (++cont &gt; maxTokensContinuations) <span style="color:#ff9d7a">throw</span> …; <span style="color:#ff9d7a">continue</span>; }
 
-    <span style="color:#7a7a7a">// tool_use —— 每个 tool_use 必产出一个配对 tool_result（throw / 拒绝亦然）</span>
+    <span style="color:#7a7a7a">// tool_use —— 每个 tool_use 必产出一个配对 tool_result（throw / 权限拒绝亦然）</span>
     <span style="color:#ff9d7a">const</span> results = <span style="color:#ff9d7a">await</span> Promise.all(
-      toolUses(turn).map(use =&gt; dispatch(use, { hooks }))     <span style="color:#7a7a7a">// 必经 pre_tool_use</span>
+      toolUses(turn).map(use =&gt; ctx.tools.<span style="color:#9ec5ff">execute</span>(use, tc))  <span style="color:#7a7a7a">// permission.check → pre_tool_use</span>
     );
     messages = <span style="color:#9ec5ff">appendMessage</span>(messages, { role: <span style="color:#b6e3a0">"user"</span>, content: results });
+
+    <span style="color:#ff9d7a">await</span> ctx.history.<span style="color:#9ec5ff">commit</span>(messages);                       <span style="color:#7a7a7a">// 持久化边界</span>
+    <span style="color:#ff9d7a">await</span> hooks.<span style="color:#9ec5ff">run</span>(<span style="color:#b6e3a0">"post_commit"</span>, { messages });          <span style="color:#7a7a7a">// 此时每条消息才终局</span>
   }
 }</pre>
       </div>
@@ -695,9 +732,9 @@
             <div class="mc-func">校验 + 归一化输入（withAliases: filePath/file→path）→ pre_tool_use 钩子 → run；schema/解析错误转 is_error tool_result</div>
           </div>
           <div class="mod-chip">
-            <div class="mc-id">tools/builtin</div>
+            <div class="mc-id">tools/*（平铺，无 builtin/ 一层）</div>
             <div class="mc-name">Built-in Tools</div>
-            <div class="mc-func">bash · read / write / edit · glob / grep · lsp · webfetch / websearch · notebook-edit · ask-user · skills / load-skill · todo* · task* · run（long-running）</div>
+            <div class="mc-func">bash（含 run_in_background）· read / write / edit · glob / grep · lsp · webfetch / websearch · askUserQuestion · loadSkill · todo* · task* · cron* · killBackground · monitor / stopMonitor · enter/exitPlanMode</div>
           </div>
           <div class="mod-chip">
             <div class="mc-id">safety/invariants</div>
@@ -717,22 +754,22 @@
           <span class="pc-icon">!</span>
           <span class="pc-name">安全拦截器 Safety</span>
         </div>
-        <span class="pc-attach">附着点 → 以 hook 形式挂上 loop，非 dispatcher 内嵌</span>
+        <span class="pc-attach">附着点 → PermissionGate port（排在 pre_tool_use 钩子链之首），非 dispatcher 内嵌</span>
         <div class="mods">
           <div class="mod-chip">
-            <div class="mc-id">safe/permission</div>
+            <div class="mc-id">safety/permission</div>
             <div class="mc-name">Permission &amp; Approval</div>
-            <div class="mc-func">allow / deny / ask 规则机（canonicalizePath 归一）→ 命中 ask 触发交互（yes / no / always）。@nova/agent 把它接成 pre_tool_use 钩子</div>
+            <div class="mc-func">allow / deny / ask 规则机（canonicalizePath 归一）→ 命中 ask 触发交互（yes / no / always）。apps/cli 把它接成 PermissionGate port</div>
           </div>
           <div class="mod-chip">
-            <div class="mc-id">core/hooks · safe/hooks</div>
-            <div class="mc-name">HookRegistry</div>
-            <div class="mc-func">loop 唯一扩展点。阻塞钩子（pre_request · pre_tool_use · post_tool_use · pre_compact · pre_continue · pre_user_prompt）可改判，首个非 undefined 决定生效；其余 advisory。safe/hooks 转译用户 hook 配置</div>
+            <div class="mc-id">core/hooks · cli/user-hooks</div>
+            <div class="mc-name">HookRegistry · 17 个点</div>
+            <div class="mc-func">port 之外的 0..N 订阅者。阻塞钩子（pre_user_prompt · pre_request · pre_permission · pre_tool_use · post_tool_use · pre_continue · pre_compact）可改判，首个非 undefined 生效；post_* / post_messages 为 advisory，异常被吞且不能改状态。cli/user-hooks 转译 .nova/hooks.json</div>
           </div>
           <div class="mod-chip">
-            <div class="mc-id">safe/sandbox-fs</div>
-            <div class="mc-name">FS &amp; Net Guard</div>
-            <div class="mc-func">工具级文件系统 / 网络访问白名单（与同包的 sandbox 面协同）</div>
+            <div class="mc-id">safety/invariants</div>
+            <div class="mc-name">契约在 core，执行在 safety</div>
+            <div class="mc-func">InvariantsCheck / FileAccessLedger / SandboxBridge 三个不透明契约都声明在 @nova/core —— 所以 tools <strong>不依赖</strong> safety，实例由 CLI 注入</div>
           </div>
         </div>
       </div>
@@ -770,9 +807,9 @@
           <div class="mc-func">跨会话任务图 —— 每任务一个 .json 持久化（~/.nova）· 依赖 + 提醒</div>
         </div>
         <div class="mod-chip">
-          <div class="mc-id">tools/background · monitor</div>
+          <div class="mc-id">tools/background · monitor · cron</div>
           <div class="mc-name">Long-running</div>
-          <div class="mc-func">run / kill / output —— 后台进程，输出回注 messages[]</div>
+          <div class="mc-func">bash run_in_background 起进程 · killBackground 收 · monitor 盯文件/命令 · cron 定时；输出经 notifier 作为 synthetic 消息回注 messages[]</div>
         </div>
       </div>
     </div>
@@ -784,12 +821,12 @@
         <span class="pc-name">多智能体</span>
       </div>
       <span class="pc-attach">附着点 → spawn 独立子 agent（独立 messages[] / system prompt）</span>
-      <div class="pc-desc">@nova/agent 装配 —— Task 工具 spawn 子 agent，摘要返回主 loop</div>
+      <div class="pc-desc">@nova/agent 实现 ports 并装配 —— 主 agent 与每个子 agent 都是同一个 createAgent，只是换了个容器</div>
       <div class="mods">
         <div class="mod-chip">
-          <div class="mc-id">agent/createAgent</div>
-          <div class="mc-name">Agent 装配层</div>
-          <div class="mc-func">把权限 / 压缩 / transcript / persistence 注册成默认 hook，并组装 system-prompt —— 主 loop 与 CLI 之间的接线层</div>
+          <div class="mc-id">agent/assemble · agent/ports</div>
+          <div class="mc-name">Ports 实现 + 装配</div>
+          <div class="mc-func">assembleAgent 把 CLI 的 getter 变成稳定 port 对象（/model、/think、MCP 连接等易变项必须藏在方法后面，否则静默失效），再交给 core 的 createAgent</div>
         </div>
         <div class="mod-chip">
           <div class="mc-id">agent/subagent</div>
@@ -811,7 +848,7 @@
         <span class="pc-name">隔离边界</span>
       </div>
       <span class="pc-attach">附着点 → 子进程工具（bash / run）的运行环境</span>
-      <div class="pc-desc">@nova/safety 的 sandbox 把子进程的文件写入限制在工作区 —— 默认开，不支持处降级 no-op</div>
+      <div class="pc-desc">@nova/safety 的 sandbox 把子进程的文件写入限制在工作区 —— <strong>默认关（opt-in）</strong>，开了在不支持的平台也降级 no-op</div>
       <div class="mods">
         <div class="mod-chip">
           <div class="mc-id">safety/sandbox</div>
@@ -820,8 +857,8 @@
         </div>
         <div class="mod-chip">
           <div class="mc-id">safety/sandbox 开关</div>
-          <div class="mc-name">Default-ON</div>
-          <div class="mc-func">settings.sandbox.enabled: false 可关；不支持的平台自动降级为 no-op</div>
+          <div class="mc-name">Default-OFF</div>
+          <div class="mc-func">settings.sandbox.enabled: true 才启用；不支持的平台自动降级为 no-op。monitorViolations 默认开，把被拦下的写入标注回命令输出</div>
         </div>
         <div class="mod-chip" style="border-style:dashed; opacity:0.85;">
           <div class="mc-id">iso/worktree</div>
@@ -839,7 +876,7 @@
   <!-- ============================================================ -->
   <div class="cross-frame">
     <span class="cf-tag">⇅ 横切 / 基础层</span>
-    <div class="cf-note">↑ 横切：观测以 hook 形式穿透每个面　·　↓ 基础：所有面都依赖 Runtime 提供 config / logging / session / path-safety</div>
+    <div class="cf-note">↑ 横切：观测以 EventSink port + advisory hook 穿透每个面　·　↓ 地基：所有面都依赖 @nova/base 提供 config / host / prompt / text</div>
 
     <!-- Observability (cross-cutting) -->
     <div class="obs-strip">
@@ -850,14 +887,14 @@
       </div>
       <div class="os-mods">
         <div class="mod-chip">
-          <div class="mc-id">runtime/cost</div>
+          <div class="mc-id">base/config/cost</div>
           <div class="mc-name">Cost Tracker</div>
           <div class="mc-func">读 ② usage —— uncached / cacheRead / cacheWrite token 分别计费，按会话/任务汇总</div>
         </div>
         <div class="mod-chip">
-          <div class="mc-id">runtime/transcript</div>
+          <div class="mc-id">base/host/transcript</div>
           <div class="mc-name">Transcript Log</div>
-          <div class="mc-func">以 advisory hook 把每个事件写进 transcript.jsonl</div>
+          <div class="mc-func">接成 EventSink port，把每个事件写进 transcript.jsonl；nova 自造的注入（压缩摘要 · todo/task 提醒 · 后台通知 · 中断标记）由 core 的 recordInjections 按 meta.synthetic 一并镜像进去。--no-transcript = 不接这个 port</div>
         </div>
         <div class="mod-chip">
           <div class="mc-id">metrics</div>
@@ -875,24 +912,24 @@
     <!-- Runtime Foundation (underneath all planes) -->
     <div class="runtime-strip">
       <div class="rs-head">
-        <span class="rs-label">Runtime Foundation</span>
-        <span class="rs-desc">无依赖、纯基础件 — 上方 A–H 全部建立在这一层之上</span>
+        <span class="rs-label">@nova/base — 地基层</span>
+        <span class="rs-desc">成员规则是依赖图规则而非主题：凡是不 import 任何 @nova/* 又不属于内核的，都在这里，按四个子目录分组</span>
       </div>
       <div class="rs-mods">
         <div class="mod-chip">
-          <div class="mc-id">rt/config</div>
-          <div class="mc-name">Config &amp; Settings</div>
-          <div class="mc-func">~/.nova/nova.config.json · zod schema —— 每个可配置项必须先进 schema（带默认）再被读取</div>
+          <div class="mc-id">base/config</div>
+          <div class="mc-name">Config · Models · Cost</div>
+          <div class="mc-func">~/.nova/nova.config.json · zod schema —— 每个可配置项必须先进 schema（带默认）再被读取；内置 provider 模型表叠在用户覆盖之下；cost 就着这张价格表计费</div>
         </div>
         <div class="mod-chip">
-          <div class="mc-id">rt/logging · path-safety</div>
-          <div class="mc-name">Logging &amp; Paths</div>
-          <div class="mc-func">结构化日志 + 路径归一/越界校验（path-safety）</div>
+          <div class="mc-id">base/host</div>
+          <div class="mc-name">Logger · Session · Transcript · Paths</div>
+          <div class="mc-func">碰进程和磁盘的那一簇：pino 日志 · ~/.nova/sessions/{id}/（transcript.jsonl + messages.jsonl · resume / fork · 按 mtime 过期清理，活动会话保护）· canonicalizePath 符号链接归一</div>
         </div>
         <div class="mod-chip">
-          <div class="mc-id">rt/session</div>
-          <div class="mc-name">Session</div>
-          <div class="mc-func">~/.nova/sessions/{id}/ · transcript.jsonl + messages.jsonl · resume / fork · 按 mtime 过期清理（活动会话保护）</div>
+          <div class="mc-id">base/prompt · base/text</div>
+          <div class="mc-name">Prompt 展开 · 纯文本工具</div>
+          <div class="mc-func">prompt/：SlashCommand 类型契约（供 mcp 桥接）+ $ARGUMENTS / @file / !cmd 展开，slash 与 skill 正文共用。text/：xml 转义 · front matter · token 估算 · thinking 预算</div>
         </div>
       </div>
     </div>
@@ -900,19 +937,20 @@
 
   <!-- Legend -->
   <div class="legend">
-    <span>A 执行核心</span><span>·</span>
+    <span>A agent kernel（loop + turn + ports）</span><span>·</span>
     <span>B 工具管线（含 LSP 代码智能）</span><span>·</span>
     <span>C 上下文管理</span><span>·</span>
     <span>D 任务编排</span><span>·</span>
-    <span>E 多智能体（agent 装配 + subagent）</span><span>·</span>
+    <span>E 多智能体（ports 实现 + 装配 + subagent）</span><span>·</span>
     <span>F 沙盒隔离</span><span>·</span>
     <span>G 外部接入</span><span>·</span>
+    <span>M 模型适配</span><span>·</span>
     <span>H 可观测性</span>
   </div>
 
   <footer>
-    <span>执行核心(loop) + Agent 装配层 · 7 个面(A–G) · 横切观测(H) · Runtime 基础</span>
-    <span>所有机制都以 hook 叠在同一个循环之上 — 而不动循环本身。</span>
+    <span>agent kernel(loop + turn) · 8 个面(A–G, M) · 横切观测(H) · @nova/base 地基</span>
+    <span>所有机制都以 port 或 hook 叠在同一个循环之上 — 而不动循环本身。</span>
   </footer>
 
   <!-- ============================================================ -->
@@ -925,8 +963,8 @@
     <h2 class="roadmap-title">工程目录<span class="accent">结构</span></h2>
     <p class="roadmap-sub">
       pnpm monorepo：库代码在 <code>packages/*</code>（<code>@nova/&lt;name&gt;</code>），可执行入口在
-      <code>apps/</code>，CLI 二进制为 <code>nova</code>。多数面一包对应，少数已合并 ——
-      任务编排进了 <code>tools/builtin</code>，多智能体拆成 <code>agent</code> + <code>subagent</code>，沙盒独立为 <code>sandbox</code>，并新增了代码智能 <code>lsp</code> 面。
+      <code>apps/</code>，CLI 二进制为 <code>nova</code>。<strong>八个包，刻意维持在八个</strong> —— 一个 200 行的关注点归属于拥有该主题的包，不单独成包：
+      任务编排在 <code>tools/</code>，子 agent 与记忆/压缩都在 <code>agent/</code>，沙盒在 <code>safety/</code>，slash 命令的实现在 <code>apps/cli</code>（只有类型契约留在 <code>base/prompt</code>）。
     </p>
   </div>
 
@@ -942,13 +980,14 @@
 │   └── vscode/                            <span class="cmt"># 占位                          <span class="deferred">[placeholder]</span></span>
 │
 ├── <span class="dir">packages/</span>                              <span class="cmt"># 库代码 @nova/&lt;name&gt; · 看图找代码</span>
-│   ├── core/             <span class="plane">[A]</span>             <span class="cmt"># 执行核心 — loop · model(DeepSeek) · messages · hooks · stop-reason · thinking</span>
-│   ├── runtime/          <span class="plane">[rt]</span>            <span class="cmt"># 基础 — config · logging · session · path-safety · transcript · cost（叶子）</span>
+│   ├── core/             <span class="plane">[A]</span>             <span class="cmt"># agent kernel — loop · turn(agent.ts) · ports · hooks · messages · stop-reason（叶子）</span>
+│   ├── base/             <span class="plane">[bs]</span>            <span class="cmt"># 地基 — config/ · host/ · prompt/ · text/（叶子）</span>
 │   ├── lsp/              <span class="plane">[L]</span>             <span class="cmt"># 代码智能 — LspManager 多路复用 language server（叶子）</span>
+│   ├── model/            <span class="plane">[M]</span>             <span class="cmt"># 模型适配 — Anthropic 兼容 wire · provider profiles · retry（唯一 import SDK）</span>
 │   ├── safety/           <span class="plane">[!]</span>             <span class="cmt"># 安全 — permission 引擎 · invariants(read-before-edit) · sandbox(写入隔离)</span>
-│   ├── tools/            <span class="plane">[B]</span>             <span class="cmt"># 工具管线 — registry · dispatcher · schema · builtin(含 todo/task/long-running)</span>
+│   ├── tools/            <span class="plane">[B]</span>             <span class="cmt"># 工具管线 — registry · dispatcher · schema · 工具平铺(含 todo/task/cron/long-running)</span>
 │   ├── mcp/              <span class="plane">[G]</span>             <span class="cmt"># 外部 — MCP client · tool/prompt/resource 桥接（slash 实现已移入 apps/cli）</span>
-│   └── agent/            <span class="plane">[E]</span>             <span class="cmt"># 装配 — createAgent · system-prompt · persistence · memory/compact · subagent</span>
+│   └── agent/            <span class="plane">[E]</span>             <span class="cmt"># ports 实现 + 装配 — assembleAgent · system-prompt · persistence · memory/compact · subagent</span>
 │
 ├── <span class="dir">eval/</span>                                  <span class="cmt"># obs/eval 回放黄金集（独立于主 eslint/tsconfig）</span>
 ├── <span class="dir">docs/</span>                                  <span class="cmt"># 架构 · 安全模型 · 指南</span>
@@ -961,34 +1000,38 @@
       <div class="pkg-card-head">
         <span class="pk-plane">A</span>
         <span class="pk-name">packages/core</span>
-        <span class="pk-tag">模型无关循环</span>
+        <span class="pk-tag">agent kernel · 叶子</span>
       </div>
 <pre class="pkg-tree">src/
-├── loop.ts          <span class="cmt"># 主循环 · 唯一扩展点 = hooks</span>
-├── model.ts         <span class="cmt"># DeepSeek（Anthropic 兼容 wire）</span>
-├── deepseek-errors.ts <span class="cmt"># 重试 / 错误翻译</span>
-├── thinking.ts      <span class="cmt"># thinking budget / effort</span>
-├── hooks.ts         <span class="cmt"># HookRegistry · HookSpec</span>
-├── messages.ts      <span class="cmt"># appendMessage（append-only）</span>
+├── loop.ts          <span class="cmt"># 主循环 · 视图投影 · commit</span>
+├── agent.ts         <span class="cmt"># createAgent · turn 生命周期 · 历史抢救</span>
+├── ports.ts         <span class="cmt"># 9 个 port 契约 · assertAppendOnly</span>
+├── hooks.ts         <span class="cmt"># HookRegistry · 17 个 hook 点</span>
+├── model-client.ts  <span class="cmt"># ModelClient 接口（实现在 @nova/model）</span>
+├── messages.ts      <span class="cmt"># appendMessage（append-only）· markSynthetic</span>
 ├── stop-reason.ts   <span class="cmt"># decide() 状态机</span>
-├── xml.ts · types.ts
-└── index.ts</pre>
+├── types.ts
+└── index.ts         <span class="cmt"># eslint 禁止 import 任何 @nova/* 与 SDK</span></pre>
     </div>
 
     <div class="pkg-card">
       <div class="pkg-card-head">
-        <span class="pk-plane">rt</span>
-        <span class="pk-name">packages/runtime</span>
+        <span class="pk-plane">bs</span>
+        <span class="pk-name">packages/base</span>
         <span class="pk-tag">叶子</span>
       </div>
-<pre class="pkg-tree">src/
-├── config.ts        <span class="cmt"># zod schema · ~/.nova/nova.config.json</span>
-├── logging.ts       <span class="cmt"># 结构化日志</span>
-├── session.ts       <span class="cmt"># session 目录 · resume / fork · 清理</span>
-├── path-safety.ts   <span class="cmt"># 路径归一 / 越界校验</span>
-├── slash-types.ts   <span class="cmt"># SlashCommand 契约（纯类型，供 mcp 复用）</span>
-├── transcript.ts    <span class="cmt"># transcript.jsonl writer</span>
-├── cost.ts          <span class="cmt"># uncached / cacheRead / cacheWrite 计费</span>
+<pre class="pkg-tree">src/                 <span class="cmt"># 四个互不引用的组，靠目录说明各是什么</span>
+├── config/
+│   ├── config.ts    <span class="cmt"># zod schema · ~/.nova/nova.config.json</span>
+│   ├── models.ts    <span class="cmt"># 内置 provider 模型表</span>
+│   └── cost.ts      <span class="cmt"># uncached / cacheRead / cacheWrite 计费</span>
+├── host/            <span class="cmt"># 碰进程和磁盘的那一簇</span>
+│   ├── logging.ts · session.ts
+│   └── transcript.ts · path-safety.ts
+├── prompt/
+│   ├── slash-types.ts   <span class="cmt"># SlashCommand 契约（纯类型，供 mcp 复用）</span>
+│   └── prompt-expansion.ts <span class="cmt"># $ARGUMENTS · @file · !cmd</span>
+├── text/            <span class="cmt"># 纯函数：xml · front-matter · tokens · thinking</span>
 └── index.ts         <span class="cmt"># 无 @nova 源码 import</span></pre>
     </div>
 
@@ -1008,9 +1051,23 @@
 
     <div class="pkg-card">
       <div class="pkg-card-head">
+        <span class="pk-plane">M</span>
+        <span class="pk-name">packages/model</span>
+        <span class="pk-tag">→ core · base</span>
+      </div>
+<pre class="pkg-tree">src/
+├── model.ts         <span class="cmt"># ModelClient 实现 · 流式 · thinking</span>
+├── providers/       <span class="cmt"># deepseek · moonshot · other</span>
+│   └── error.ts     <span class="cmt"># 各家错误翻译</span>
+├── retry.ts         <span class="cmt"># 退避重试</span>
+└── index.ts         <span class="cmt"># 全仓唯一 import @anthropic-ai/sdk</span></pre>
+    </div>
+
+    <div class="pkg-card">
+      <div class="pkg-card-head">
         <span class="pk-plane">!</span>
         <span class="pk-name">packages/safety</span>
-        <span class="pk-tag">→ core · runtime</span>
+        <span class="pk-tag">→ core · base</span>
       </div>
 <pre class="pkg-tree">src/
 ├── permission.ts    <span class="cmt"># allow / deny / ask 规则机</span>
@@ -1023,7 +1080,7 @@
       <div class="pkg-card-head">
         <span class="pk-plane">B</span>
         <span class="pk-name">packages/tools</span>
-        <span class="pk-tag">→ core · lsp</span>
+        <span class="pk-tag">→ core · base · lsp</span>
       </div>
 <pre class="pkg-tree">src/                 <span class="cmt"># 工具平铺，无 builtin/ 一层</span>
 ├── registry.ts · dispatcher.ts
@@ -1034,14 +1091,14 @@
 ├── skills · load-skill · plan-mode
 ├── todo/ · task/ · cron/   <span class="cmt"># 编排面</span>
 ├── background/ · monitor/  <span class="cmt"># 长时进程</span>
-└── index.ts         <span class="cmt"># builtinTools() 工厂</span></pre>
+└── index.ts         <span class="cmt"># builtinTools() 工厂 · 刻意不依赖 safety</span></pre>
     </div>
 
     <div class="pkg-card">
       <div class="pkg-card-head">
         <span class="pk-plane">G</span>
         <span class="pk-name">packages/mcp</span>
-        <span class="pk-tag">→ core · runtime（均 type-only）</span>
+        <span class="pk-tag">→ core · base（均 type-only）</span>
       </div>
 <pre class="pkg-tree">src/
 ├── client.ts · stdio.ts · http.ts <span class="cmt"># stdio / HTTP / SSE</span>
@@ -1056,10 +1113,11 @@
       <div class="pkg-card-head">
         <span class="pk-plane">E</span>
         <span class="pk-name">packages/agent</span>
-        <span class="pk-tag">→ core · runtime</span>
+        <span class="pk-tag">→ core · base</span>
       </div>
-<pre class="pkg-tree">src/
-├── agent.ts         <span class="cmt"># createAgent · 接默认 hook</span>
+<pre class="pkg-tree">src/                 <span class="cmt"># 不再自己实现 agent —— 只实现 ports 再装配</span>
+├── assemble.ts      <span class="cmt"># assembleAgent → core 的 createAgent</span>
+├── ports.ts         <span class="cmt"># 各 port 的实现（getter → 稳定对象）</span>
 ├── system-prompt.ts <span class="cmt"># 组装 system prompt</span>
 ├── persistence.ts   <span class="cmt"># messages.jsonl append-fast-path</span>
 ├── memory.ts        <span class="cmt"># NOVA.md &gt; CLAUDE.md &gt; AGENTS.md 加载</span>
@@ -1076,13 +1134,14 @@
 <pre class="deps-block"><span class="cmt"># 依赖方向（按实际 source import · 绝不能反向）</span>
 <span class="cmt"># 注：每个 package.json 的依赖声明与真实 source import 一致（叶子层三个包已无 @nova/* 依赖）</span>
 
-  <span class="tag">[rt]</span> runtime     <span class="arr">─→</span>  <span class="cmt">∅　（config · session · logging · transcript · cost）</span>
+  <span class="tag">[bs]</span> base        <span class="arr">─→</span>  <span class="cmt">∅　（config/ · host/ · prompt/ · text/）</span>
   <span class="tag">[A]</span> core         <span class="arr">─→</span>  <span class="cmt">∅　（叶子层 · 不 import 任何 @nova/*，包括 SDK / 工具实现 / UI）</span>
   <span class="tag">[L]</span> lsp          <span class="arr">─→</span>  <span class="cmt">∅</span>
-  <span class="tag">[!]</span> safety       <span class="arr">─→</span>  core · runtime   <span class="cmt"># core 侧 type-only（SandboxBridge）</span>
-  <span class="tag">[B]</span> tools        <span class="arr">─→</span>  core · runtime · lsp   <span class="cmt"># 注意：不依赖 safety</span>
-  <span class="tag">[G]</span> mcp          <span class="arr">─→</span>  core · runtime   <span class="cmt"># type-only</span>
-  <span class="tag">[E]</span> agent        <span class="arr">─→</span>  core · runtime   <span class="cmt"># 含 memory/compact 与 subagent</span>
+  <span class="tag">[!]</span> safety       <span class="arr">─→</span>  core · base      <span class="cmt"># core 侧 type-only（SandboxBridge）</span>
+  <span class="tag">[B]</span> tools        <span class="arr">─→</span>  core · base · lsp      <span class="cmt"># 注意：不依赖 safety</span>
+  <span class="tag">[G]</span> mcp          <span class="arr">─→</span>  core · base      <span class="cmt"># type-only</span>
+  <span class="tag">[E]</span> agent        <span class="arr">─→</span>  core · base      <span class="cmt"># 含 memory/compact 与 subagent</span>
+  <span class="tag">[M]</span> model        <span class="arr">─→</span>  core · base      <span class="cmt"># 全仓唯一 import @anthropic-ai/sdk</span>
   <span class="tag">apps/cli</span>          <span class="arr">─→</span>  <span class="cmt"># 唯一活跃入口 · 消费以上全部包，并接线权限 / 沙盒 / hook</span></pre>
 
 </div>

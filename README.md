@@ -201,7 +201,7 @@ nova upgrade                       # 更新到最新版本（启动时也会自�
 
 ## 🏗️ 架构
 
-Nova 的核心是一个模型循环（`agentLoop`），只有**一个扩展点** —— 类型化的 `HookRegistry`。权限闸门、上下文压缩、transcript 写入、UI 刷新都以 hook 的形式挂在具名生命周期点上；`@nova/core` 本身不导入任何模型 SDK、工具实现或 UI。阻塞型 hook（◆）可改写 / 否决某一步，通知型 hook（○）只观察。
+Nova 的内核是 `@nova/core`：模型循环（`agentLoop`）加上包在外面的 turn 生命周期。扩展它有**两种机制**，界线很清楚——**port** 是「每个 agent 恰好一个实现」的机制位（模型、system prompt、工具、历史、压缩、权限、日志、事件），**hook** 是挂在 17 个具名生命周期点上的 0..N 个订阅者，只观察或轻改。port 就是它那条 hook 链的内建首节点：`compactor.compact` 排在 `pre_compact` 之前，`permission.check` 排在 `pre_tool_use` 之前。`@nova/core` 自己不导入任何 workspace 包、模型 SDK、工具实现或 UI（由 eslint 强制）——需要什么就声明一个 port，交给 `@nova/agent` 实现并装配。阻塞型 hook（◆）可改写 / 否决某一步，通知型 hook（○）只观察。
 
 <div align="center">
   <img src="docs/agent-loop.svg" alt="Nova agent loop 与 hook 机制" width="100%">
@@ -211,17 +211,14 @@ Nova 的核心是一个模型循环（`agentLoop`），只有**一个扩展点**
 
 ```
 packages/
-  core           agent loop · model client · HookRegistry · message/stop-reason 类型
-  agent          createAgent：按 turn 跑的驱动 + 持久化 + transcript 接线
-  runtime        settings (zod) · pino logger · session 存储
+  core           agent kernel：port/hook 契约 · agent loop · turn 生命周期 · message 类型
+  base           地基（叶子）：config 设置 schema + 模型表 + 计费 · host logger/session/transcript/路径安全 · prompt slash 契约 + 展开 · text 字符串工具
+  model          Anthropic 兼容适配器 · provider profile · 重试
+  agent          port 实现 + 装配（assembleAgent）· 三层记忆 + auto compact · 子 agent
   tools          ToolRegistry · dispatcher · 内置工具
-  subagent       createSubAgent 工具 · 子 agent 定义/注册表/加载器
-  context        三层记忆（NOVA.md > CLAUDE.md > AGENTS.md）· auto compact
-  safety         PermissionEngine · approval 提示
-  sandbox        OS 级命令沙箱（文件写入隔离）
+  safety         PermissionEngine · 文件访问不变量 · OS 级写入沙箱
+  mcp            MCP 客户端（stdio / HTTP / SSE）
   lsp            LSP 客户端/管理器（JSON-RPC over stdio）
-  external       SlashRegistry · .md 命令加载 · MCP 客户端
-  observability  Transcript (JSONL)
 apps/
   cli            `nova` 二进制入口（Ink/React REPL，唯一在跑的应用）
   http, vscode   占位，未实现
@@ -229,7 +226,7 @@ eval/            replay harness + 黄金 case（不走主构建）
 docs/            设计笔记 & 使用手册
 ```
 
-依赖方向单向不可逆：`runtime` / `core` / `observability` / `lsp` 是叶子层（不 import `@nova/*` 源码）；`safety` → `runtime`；`context` → `core` + `runtime`；`tools` → `core` + `runtime` + `lsp`；`sandbox` / `external` → `core`（type-only）；`agent` → `core` + `runtime` + `context` + `observability`；`subagent` → `agent` + `context` + `core` + `observability` + `runtime`；`cli` 在最上层，依赖以上全部。
+依赖方向单向不可逆：`base` / `core` / `lsp` 是叶子层（不 import `@nova/*` 源码）；`safety` / `mcp` / `agent` / `model` → `core` + `base`；`tools` → `core` + `base` + `lsp`；`cli` 在最上层，依赖以上全部。
 
 <br>
 

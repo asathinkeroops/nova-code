@@ -21,7 +21,7 @@
 - **Skill-as-subagent**：把 skill 当成隔离子 loop 跑，是另一个独立 feature，单独排期。
 - **每个 skill 单独的 permission rule**：未来可叠在 `permissions.rules` 上用 `skill:<name>` 形式，先不做。
 - **Skill 远程分发 / 版本管理 / 签名**：纯本地文件。
-- ~~**Markdown 模板占位符 / 参数化 skill body**~~：**已实现**。正文支持 `${*_SKILL_DIR}` / `${*_PROJECT_DIR}` 变量、`@path` 内嵌、`` !`cmd` `` 插值，用户经 `/{name} 参数` 调用时还会绑定 `$ARGUMENTS` / `$1`..`$N`。展开阶段与 slash 命令共用 `@nova/runtime` 的 `prompt-expansion`。
+- ~~**Markdown 模板占位符 / 参数化 skill body**~~：**已实现**。正文支持 `${*_SKILL_DIR}` / `${*_PROJECT_DIR}` 变量、`@path` 内嵌、`` !`cmd` `` 插值，用户经 `/{name} 参数` 调用时还会绑定 `$ARGUMENTS` / `$1`..`$N`。展开阶段与 slash 命令共用 `@nova/base` 的 `prompt-expansion`。
 
 ---
 
@@ -263,7 +263,7 @@ CLI 启动时根据 `getSkillList().length > 0` 决定是否注册 `loadSkillToo
 
 ## 7. Settings schema
 
-`packages/runtime/src/config.ts` 在 `slash` 旁边加：
+`packages/base/src/config/config.ts` 在 `slash` 旁边加：
 
 ```ts
 skills: z
@@ -323,8 +323,8 @@ packages/tools/src/
 packages/external/src/
   (不动) slash.ts、index.ts 保持原状，front-matter parser 不外抽
 
-packages/runtime/src/
-  config.ts                [改] 加 settings.skills schema
+packages/base/src/
+  config/config.ts         [改] 加 settings.skills schema
 
 apps/cli/src/
   system-prompt.ts         [改] 新增 skillsBlock 参数，拼到 base 与 memory 之间

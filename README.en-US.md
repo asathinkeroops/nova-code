@@ -201,7 +201,7 @@ Tools the model can call — covering read/write, search, execution, code intell
 
 ## 🏗️ Architecture
 
-At Nova's core is a single model loop (`agentLoop`) with **one extension point** — a typed `HookRegistry`. Permission gating, compaction, transcript writing, and UI updates all attach as hooks at named lifecycle points; `@nova/core` itself imports no model SDK, tool implementation, or UI. Blocking hooks (◆) can rewrite or veto a step; advisory hooks (○) only observe.
+Nova's kernel is `@nova/core`: the model loop (`agentLoop`) plus the turn lifecycle wrapped around it. It has **two extension mechanisms**, and the line between them matters — a **port** is a mechanism with exactly one implementation per agent (model, system prompt, tools, history, compaction, permission, logger, event sink); a **hook** is 0..N subscribers attached to 17 named lifecycle points that observe or lightly amend. A port is simply the built-in first node of its hook chain: `compactor.compact` runs before `pre_compact`, `permission.check` before `pre_tool_use`. `@nova/core` imports no workspace package, model SDK, tool implementation, or UI (enforced by eslint) — if it needs one, it declares a port and `@nova/agent` implements and assembles it. Blocking hooks (◆) can rewrite or veto a step; advisory hooks (○) only observe.
 
 <div align="center">
   <img src="docs/agent-loop.svg" alt="Nova agent loop & hook mechanism" width="100%">
@@ -211,17 +211,14 @@ At Nova's core is a single model loop (`agentLoop`) with **one extension point**
 
 ```
 packages/
-  core           agent loop · model client · HookRegistry · message/stop-reason types
-  agent          createAgent: per-turn driver + persistence + transcript wiring
-  runtime        settings (zod) · pino logger · session storage
+  core           agent kernel: port/hook contracts · agent loop · turn lifecycle · message types
+  base           leaf foundation: config settings schema + model tables + cost · host logger/session/transcript/path-safety · prompt slash contract + expansion · text string utils
+  model          Anthropic-compatible adapter · provider profiles · retry
+  agent          port implementations + assembly (assembleAgent) · 3-layer memory + auto compact · sub-agents
   tools          ToolRegistry · dispatcher · built-in tools
-  subagent       createSubAgent tool · sub-agent definitions/registry/loader
-  context        3-layer memory (NOVA.md > CLAUDE.md > AGENTS.md) · auto compact
-  safety         PermissionEngine · approval prompts
-  sandbox        OS-level command sandbox (write isolation)
+  safety         PermissionEngine · file-access invariants · OS-level write sandbox
+  mcp            MCP client (stdio / HTTP / SSE)
   lsp            LSP client/manager (JSON-RPC over stdio)
-  external       SlashRegistry · .md command loader · MCP client
-  observability  Transcript (JSONL)
 apps/
   cli            the `nova` binary (Ink/React REPL, only active app)
   http, vscode   placeholders, not yet implemented
@@ -229,7 +226,7 @@ eval/            replay harness + golden cases (excluded from main build)
 docs/            design notes & user manual
 ```
 
-Dependency direction: `runtime` / `core` / `observability` / `lsp` are leaves (no `@nova/*` source imports); `safety` → `runtime`; `context` → `core` + `runtime`; `tools` → `core` + `runtime` + `lsp`; `sandbox` / `external` → `core` (type-only); `agent` → `core` + `runtime` + `context` + `observability`; `subagent` → `agent` + `context` + `core` + `observability` + `runtime`; `cli` depends on all of the above.
+Dependency direction: `base` / `core` / `lsp` are leaves (no `@nova/*` source imports); `safety` / `mcp` / `agent` / `model` → `core` + `base`; `tools` → `core` + `base` + `lsp`; `cli` depends on all of the above.
 
 <br>
 

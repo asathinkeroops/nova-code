@@ -18,7 +18,7 @@
 
   <!-- ============ HEADER ============ -->
   <text x="48" y="52" font-size="29" font-weight="700" fill="#1e293b">Nova · Agent Loop<tspan font-weight="400" fill="#475569"> &amp; Hook 扩展机制</tspan></text>
-  <text x="48" y="78" font-size="13.5" fill="#64748b">packages/core · agentLoop (loop.ts) 在每个生命周期点触发具名事件 → HookRegistry → 订阅者。循环唯一的扩展点就是 hooks。</text>
+  <text x="48" y="78" font-size="13.5" fill="#64748b">packages/core · agentLoop (loop.ts) 在每个生命周期点触发具名事件 → HookRegistry → 订阅者。扩展有两种：port（每种机制恰好一个实现）与 hook（0..N 订阅者）。</text>
 
   <!-- legend -->
   <g>
@@ -40,7 +40,7 @@
   <!-- S1 pre_compact -->
   <g filter="url(#sh)"><rect x="130" y="224" width="280" height="46" rx="9" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.2"/></g>
   <text x="142" y="244" font-size="12.5" font-weight="700" fill="#1e293b">compact history</text>
-  <text x="142" y="260" font-size="10.5"><tspan fill="#4f46e5" font-weight="600">◆ pre_compact</tspan><tspan fill="#64748b">  替换工作历史 → </tspan><tspan fill="#0d9488" font-weight="600">○ post_compact</tspan></text>
+  <text x="142" y="260" font-size="10.5"><tspan fill="#4f46e5" font-weight="600">◆ pre_compact</tspan><tspan fill="#64748b">  追加边界，不截断 → </tspan><tspan fill="#0d9488" font-weight="600">○ post_compact</tspan></text>
 
   <!-- S2 pre_request -->
   <g filter="url(#sh)"><rect x="130" y="282" width="280" height="46" rx="9" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.2"/></g>
@@ -86,7 +86,7 @@
   <!-- exit: post_turn / error -->
   <g filter="url(#sh)"><rect x="130" y="794" width="280" height="46" rx="9" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.4"/></g>
   <text x="142" y="814" font-size="12.5" font-weight="700" fill="#1e293b">turn end</text>
-  <text x="142" y="830" font-size="10.5"><tspan fill="#0d9488" font-weight="600">○ post_turn</tspan><tspan fill="#64748b"> · </tspan><tspan fill="#0d9488" font-weight="600">○ error</tspan><tspan fill="#94a3b8">   由 @nova/agent 包裹 loop 触发</tspan></text>
+  <text x="142" y="830" font-size="10.5"><tspan fill="#0d9488" font-weight="600">○ post_turn</tspan><tspan fill="#64748b"> · </tspan><tspan fill="#0d9488" font-weight="600">○ error</tspan><tspan fill="#94a3b8">   turn 生命周期在 core/agent.ts</tspan></text>
 
   <!-- ===== flow down-arrows ===== -->
   <g stroke="#64748b" stroke-width="1.6" fill="none">
@@ -131,7 +131,7 @@
   <!-- ============ HOOK REGISTRY (center) ============ -->
   <g filter="url(#sh)"><rect x="556" y="326" width="222" height="336" rx="14" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1.6"/></g>
   <text x="667" y="358" font-size="16" font-weight="700" fill="#6d28d9" text-anchor="middle">HookRegistry</text>
-  <text x="667" y="376" font-size="10" fill="#7c3aed" text-anchor="middle">循环唯一扩展点 · 类型化 pub/sub</text>
+  <text x="667" y="376" font-size="10" fill="#7c3aed" text-anchor="middle">port 之外的扩展点 · 类型化 pub/sub</text>
 
   <!-- runBlocking -->
   <rect x="572" y="392" width="190" height="92" rx="10" fill="#eef2ff" stroke="#c7d2fe" stroke-width="1.3"/>
@@ -161,27 +161,27 @@
   <text x="830" y="232" font-size="15" font-weight="700" fill="#1e293b">Subscribers <tspan font-size="11" font-weight="400" fill="#94a3b8">监听具体 hook point 的回调</tspan></text>
 
   <!-- Group A: defaults -->
-  <text x="830" y="262" font-size="11.5" font-weight="700" fill="#475569">默认 · @nova/agent createAgent() 装配</text>
+  <text x="830" y="262" font-size="11.5" font-weight="700" fill="#475569">默认 · @nova/agent 装配（port 排在同名 hook 之首）</text>
   <g font-size="11">
     <rect x="828" y="272" width="194" height="56" rx="9" fill="#f8fafc" stroke="#e2e8f0"/>
     <circle cx="842" cy="290" r="4" fill="#4f46e5"/>
     <text x="854" y="294" font-weight="700" fill="#1e293b">权限闸门</text>
-    <text x="840" y="316" font-size="10" fill="#4f46e5">◆ pre_tool_use</text>
+    <text x="840" y="316" font-size="10" fill="#4f46e5">permission → ◆ pre_tool_use</text>
 
     <rect x="1040" y="272" width="194" height="56" rx="9" fill="#f8fafc" stroke="#e2e8f0"/>
     <circle cx="1054" cy="290" r="4" fill="#4f46e5"/>
     <text x="1066" y="294" font-weight="700" fill="#1e293b">上下文压缩</text>
-    <text x="1052" y="316" font-size="10" fill="#4f46e5">◆ pre_compact</text>
+    <text x="1052" y="316" font-size="10" fill="#4f46e5">compactor → ◆ pre_compact</text>
 
     <rect x="828" y="336" width="194" height="56" rx="9" fill="#f8fafc" stroke="#e2e8f0"/>
     <circle cx="842" cy="354" r="4" fill="#0d9488"/>
     <text x="854" y="358" font-weight="700" fill="#1e293b">Transcript 写入</text>
-    <text x="840" y="380" font-size="10" fill="#0d9488">○ post_*  → transcript.jsonl</text>
+    <text x="840" y="380" font-size="10" fill="#0d9488">EventSink → transcript.jsonl</text>
 
     <rect x="1040" y="336" width="194" height="56" rx="9" fill="#f8fafc" stroke="#e2e8f0"/>
     <circle cx="1054" cy="354" r="4" fill="#0d9488"/>
-    <text x="1066" y="358" font-weight="700" fill="#1e293b">TUI / UI 渲染</text>
-    <text x="1052" y="380" font-size="10" fill="#0d9488">○ post_messages</text>
+    <text x="1066" y="358" font-weight="700" fill="#1e293b">会话持久化</text>
+    <text x="1052" y="380" font-size="10" fill="#0d9488">○ post_commit → messages.jsonl</text>
   </g>
 
   <!-- Group B: custom -->
@@ -211,13 +211,13 @@
   <!-- ambient note -->
   <rect x="828" y="584" width="406" height="68" rx="10" fill="#f5f3ff" stroke="#ddd6fe"/>
   <text x="844" y="606" font-size="11" font-weight="700" fill="#6d28d9">环境事件</text>
-  <text x="844" y="624" font-size="10.5"><tspan fill="#0d9488" font-weight="600">○ post_messages</tspan><tspan fill="#475569"> 在 messages 每次变更时触发；历史</tspan></text>
-  <text x="844" y="640" font-size="10.5" fill="#475569">严格 append-only，仅 pre_compact 可整体替换。</text>
+  <text x="844" y="624" font-size="10.5"><tspan fill="#0d9488" font-weight="600">○ post_messages</tspan><tspan fill="#475569"> 每次中间变更都触发，末条仍在改写；</tspan></text>
+  <text x="844" y="640" font-size="10.5" fill="#475569">要持久化请用 post_commit。历史严格 append-only，压缩也是。</text>
 
   <text x="830" y="690" font-size="10.5" fill="#94a3b8">阻塞钩子：pre_user_prompt · pre_compact · pre_request · pre_tool_use ·</text>
   <text x="830" y="706" font-size="10.5" fill="#94a3b8">post_tool_use · pre_continue。其余均为 advisory（只读观察）。</text>
   <text x="830" y="730" font-size="10.5" fill="#94a3b8">每个 tool_use 必配对一个 tool_result（dispatcher + loop 兜底回填）。</text>
 
   <!-- footer -->
-  <text x="48" y="866" font-size="11" fill="#94a3b8">@nova/core 模型无关：不导入任何模型 SDK / 工具实现 / UI —— 它们全部经由 HookRegistry 在外层装配。</text>
+  <text x="48" y="866" font-size="11" fill="#94a3b8">@nova/core 是叶子：不导入任何 workspace 包 / 模型 SDK / 工具实现 / UI —— 它们全部经由 port 注入，hook 只在此之上追加订阅者。</text>
 </svg>
