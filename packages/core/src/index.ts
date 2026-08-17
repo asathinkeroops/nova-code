@@ -35,7 +35,6 @@ export {
   type WireTool,
 } from "./model-client.js";
 export { decide, type StopDecision } from "./stop-reason.js";
-export { agentLoop, LoopTerminatedError, type AgentLoopOptions, type LoopResult } from "./loop.js";
 export {
   createAgent,
   type Agent,
