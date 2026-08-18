@@ -1,7 +1,6 @@
 import { resolve } from "node:path";
 import { execa, type ExecaError } from "execa";
-import type { Agent } from "@nova/agent";
-import type { ToolResultBlock, ToolUseBlock } from "@nova/core";
+import type { Agent, ToolResultBlock, ToolUseBlock } from "@nova/core";
 import type { HookCommandConfig, Settings } from "@nova/base";
 
 /**

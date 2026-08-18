@@ -7,10 +7,10 @@ import {
   fixedOverheadTotal,
   loadMemory,
   loadMessages,
-  type Agent,
 } from "@nova/agent";
 import {
   userText,
+  type Agent,
   type AskUserFn,
   type ModelClient,
   type ToolExecutor,

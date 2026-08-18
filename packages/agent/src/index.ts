@@ -1,105 +1,42 @@
-export { assembleAgent, type AssembleAgentOptions } from "./assemble.js";
-export {
-  assembleSession,
-  type AssembleSessionOptions,
-  type AssembleSessionResult,
-  type SessionMemoryOptions,
-  type SubAgentSessionOptions,
-} from "./session.js";
-export {
-  createMemoryPrompt,
-  createOptions,
-  createSessionStore,
-  createToolHost,
-  forwardLogger,
-  forwardModel,
-  transcriptSink,
-  type AgentSettingsSlice,
-  type MemoryPromptOptions,
-  type SessionStoreOptions,
-  type ToolHostOptions,
-} from "./ports.js";
-// The agent abstraction and its hooks live in @nova/core; re-export the symbols
-// consumers need so they don't have to import from two packages.
-export {
-  HookRegistry,
-  isBlockingPoint,
-  staticPrompt,
-  type Agent,
-  type AgentContext,
-  type Compactor,
-  type HookDecision,
-  type HookFn,
-  type HookPayload,
-  type HookPoint,
-  type HookSpec,
-  type PermissionGate,
-  type TurnResult,
-} from "@nova/core";
+/**
+ * The package's public API — and nothing else.
+ *
+ * Two rules keep this list short. **Export only what a consumer imports**: an
+ * export nothing imports is dead weight exactly as a declared dependency
+ * nothing imports is, and it invites reaching past the entry points into the
+ * implementation. Everything below has a live call site outside this package;
+ * add a symbol when something needs it, not in anticipation. **One symbol, one
+ * path**: the agent abstraction and its hooks belong to `@nova/core` and are
+ * imported from there, not forwarded through here — a re-export just makes the
+ * same type reachable two ways and hides which package owns it.
+ *
+ * The port implementations (`ports.ts`), the sub-agent tool, and the summarizer
+ * are deliberately absent: `assembleSession` / `assembleAgent` / `buildCompactor`
+ * are how a host reaches them.
+ */
+
+// ── assembly: what a host calls to build an agent ─────────────────────────
+export { assembleSession } from "./session.js";
+export { assembleAgent } from "./assemble.js";
+
+// ── system prompt and memory ──────────────────────────────────────────────
 export { buildSystemPrompt } from "./system-prompt.js";
-export {
-  persistMessages,
-  loadMessages,
-  emptyCursor,
-  type PersistCursor,
-} from "./persistence.js";
+export { loadMemory, type MemoryBundle } from "./memory.js";
 
-// ── context: the memory bundle and the compaction boundary ────────────────
-export {
-  loadMemory,
-  MEMORY_INDEX_FILENAME,
-  type MemoryBundle,
-  type MemoryLayer,
-  type MemorySource,
-  type LoadMemoryOptions,
-} from "./memory.js";
+// ── history persistence ───────────────────────────────────────────────────
+export { loadMessages, emptyCursor, type PersistCursor } from "./persistence.js";
 
+// ── compaction: the boundary, the threshold, the port ─────────────────────
 export {
-  COMPACT_MARKER,
   isCompactionMarker,
   sliceFromLastCompacted,
   estimateTokens,
   computeThreshold,
-  shouldAutoCompact,
-  autoCompact,
-  type ThresholdOptions,
-  type CompactTriggerOptions,
-  type AutoCompactOptions,
-  type AutoCompactResult,
 } from "./compact.js";
+export { buildCompactor, manualCompact } from "./compactor.js";
+export { measureFixedOverhead, fixedOverheadTotal, type FixedOverhead } from "./overhead.js";
 
-export {
-  buildCompactor,
-  manualCompact,
-  type AutoCompactPolicy,
-  type BuildCompactorOptions,
-  type ManualCompactOptions,
-  type ManualCompactResult,
-} from "./compactor.js";
-
-export {
-  measureFixedOverhead,
-  fixedOverheadTotal,
-  type FixedOverhead,
-  type FixedOverheadInput,
-} from "./overhead.js";
-
-// ── sub-agents: the Task tool, its registry and its definition loader ──────
-export {
-  createSubAgentTool,
-  SUBAGENT_TOOL_NAME,
-  type SubAgentDeps,
-  type SubAgentDetail,
-} from "./subagent.js";
-export { buildSubAgentSystemPrompt } from "./subagent-system-prompt.js";
-export {
-  AgentRegistry,
-  BUILTIN_AGENTS,
-  type AgentDefinition,
-} from "./definitions.js";
-export {
-  loadAgentDefinitions,
-  type AgentLoadOptions,
-  type AgentLoadResult,
-  type AgentsLogger,
-} from "./loader.js";
+// ── sub-agents: the registry and its definition loader ────────────────────
+export { SUBAGENT_TOOL_NAME, type SubAgentDetail } from "./subagent.js";
+export { AgentRegistry, type AgentDefinition } from "./definitions.js";
+export { loadAgentDefinitions, type AgentLoadOptions, type AgentLoadResult } from "./loader.js";

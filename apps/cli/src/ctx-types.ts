@@ -1,5 +1,6 @@
-import type { Agent, AgentRegistry, MemoryBundle, PersistCursor } from "@nova/agent";
+import type { AgentRegistry, MemoryBundle, PersistCursor } from "@nova/agent";
 import type {
+  Agent,
   Compactor,
   FileAccessLedger,
   ModelClient,
