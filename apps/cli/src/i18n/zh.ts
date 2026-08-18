@@ -87,6 +87,8 @@ export const zh: DeepPartial<Catalog> = {
     redacted: "（已隐去）",
     showLess: "… 收起",
     moreLines: (n: number): string => `… 还有 ${n} 行`,
+    linesTruncated: (n: number): string => `…（还有 ${n} 行已截断）`,
+    collapsedHint: (n: number): string => `…（还有 ${n} 行已隐藏，完成后折叠）`,
     noOutput: "（无输出）",
     batchSearched: (n: number): string => `搜索了 ${n} 个模式`,
     batchRead: (n: number): string => `读取了 ${n} 个文件`,

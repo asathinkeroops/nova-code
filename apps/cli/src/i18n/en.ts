@@ -109,6 +109,11 @@ export const en = {
     redacted: "(redacted)",
     showLess: "… show less",
     moreLines: (n: number): string => `… +${n} lines`,
+    /** Diff / file-preview truncation notice (`ui/diff.ts`). */
+    linesTruncated: (n: number): string => `… (${n} more line${n === 1 ? "" : "s"} truncated)`,
+    /** Collapsed tool-body hint (`ui/diff.ts` `compactBody`). */
+    collapsedHint: (n: number): string =>
+      `… (${n} more line${n === 1 ? "" : "s"} hidden — collapsed after completion)`,
     noOutput: "(no output)",
     // Folded tool-batch summary segments; the first keeps its capital, the join
     // lowercases the leading char of later segments (a no-op for non-Latin text).

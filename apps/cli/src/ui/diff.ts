@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { highlight, supportsLanguage } from "cli-highlight";
 import { dim, useColor } from "../colors.js";
+import { t } from "../i18n/index.js";
 import { highlightMarkdownSource } from "./markdown.js";
 
 const MAX_CONTENT_LINES = 300;
@@ -134,7 +135,7 @@ export function renderDiff(oldText: string, newText: string, path: string | unde
   const shown = oldShown.length + newShown.length;
   if (shown >= total) return rendered.join("\n");
   const hidden = total - shown;
-  return `${rendered.join("\n")}\n${dim(`… (${hidden} more line${hidden === 1 ? "" : "s"} truncated)`)}`;
+  return `${rendered.join("\n")}\n${dim(t.render.linesTruncated(hidden))}`;
 }
 
 export function compactBody(body: string): string {
@@ -142,7 +143,7 @@ export function compactBody(body: string): string {
   if (lines.length <= COMPACT_MAX_LINES) return body;
   const hidden = lines.length - COMPACT_MAX_LINES;
   const shown = lines.slice(0, COMPACT_MAX_LINES).join("\n");
-  return `${shown}\n${dim(`… (${hidden} more line${hidden === 1 ? "" : "s"} hidden — collapsed after completion)`)}`;
+  return `${shown}\n${dim(t.render.collapsedHint(hidden))}`;
 }
 
 export function readExisting(path: string): string | null {
@@ -171,5 +172,5 @@ export function renderFileContent(content: string, path: string | undefined): st
 
   if (!truncated) return rendered.join("\n");
   const hidden = allLines.length - MAX_CONTENT_LINES;
-  return `${rendered.join("\n")}\n${dim(`… (${hidden} more line${hidden === 1 ? "" : "s"} truncated)`)}`;
+  return `${rendered.join("\n")}\n${dim(t.render.linesTruncated(hidden))}`;
 }
