@@ -92,6 +92,18 @@ export interface ExpandArgsResult {
   text: string;
   /** True if any placeholder actually consumed an argument. */
   bound: boolean;
+  /**
+   * The typed arguments no reference consumed, ready for the caller to append
+   * as an `ARGUMENTS:` line; empty when the body took everything. Tracked per
+   * token, so `Greet $1` invoked with `Alice Bob` reports `Bob` rather than
+   * treating the whole string as consumed — a partial binding used to drop the
+   * remainder silently.
+   *
+   * A whole-string reference (`$ARGUMENTS`, or a `$name` whose token span the
+   * caller resolved) consumes everything. When nothing bound at all, this is
+   * the raw trimmed input verbatim, inner spacing intact.
+   */
+  unconsumed: string;
 }
 
 /**
@@ -106,7 +118,8 @@ export interface ExpandArgsResult {
  * Out-of-range positionals and indexes expand to empty, so a template never
  * leaks a raw `$2` into the prompt when the user supplied one argument — but
  * they do not set `bound`, which reports only whether a reference actually
- * consumed one of the supplied arguments.
+ * consumed one of the supplied arguments. Whatever no reference took comes
+ * back as `unconsumed`, for the caller to append rather than drop.
  */
 export function expandArgs(
   body: string,
@@ -128,6 +141,10 @@ export function expandArgs(
   );
 
   let bound = false;
+  // Which tokens actually made it into the prompt. `all` is the whole-string
+  // case ($ARGUMENTS, or a named value, whose token span we cannot attribute).
+  const consumed = new Set<number>();
+  let consumedAll = false;
   /**
    * Substitute `value`, reporting `bound` only when something was actually
    * consumed. A reference that resolves to nothing — an out-of-range `$2`, an
@@ -136,10 +153,15 @@ export function expandArgs(
    * into the prompt, so the caller's `ARGUMENTS:` fallback still has to fire.
    * Marking it bound is how typed arguments used to vanish entirely (`Fix $2`
    * with one argument produced `Fix ` and nothing else).
+   *
+   * `index` is the token the value came from, when it came from exactly one;
+   * omitting it means the reference swallowed the whole argument string.
    */
-  const take = (value: string | undefined): string => {
+  const take = (value: string | undefined, index?: number): string => {
     if (value === undefined || value === "") return "";
     bound = true;
+    if (index === undefined) consumedAll = true;
+    else consumed.add(index);
     return value;
   };
 
@@ -148,11 +170,23 @@ export function expandArgs(
       take(named[name]),
     );
   }
-  text = text.replace(/\$ARGUMENTS\[(\d+)\]/g, (_m, n: string) => take(tokens[Number(n)]));
-  text = text.replace(/\$(\d+)(?!\w)/g, (_m, n: string) => take(tokens[Number(n) - 1]));
+  text = text.replace(/\$ARGUMENTS\[(\d+)\]/g, (_m, n: string) =>
+    take(tokens[Number(n)], Number(n)),
+  );
+  text = text.replace(/\$(\d+)(?!\w)/g, (_m, n: string) =>
+    take(tokens[Number(n) - 1], Number(n) - 1),
+  );
   text = text.replaceAll("$ARGUMENTS", () => take(trimmed));
 
-  return { text: text.replaceAll(ESCAPE_SENTINEL, "$"), bound };
+  const unconsumed = consumedAll
+    ? ""
+    : // Nothing bound at all: hand back the raw input rather than a rejoin, so
+      // the untouched-body case keeps the user's own spacing byte for byte.
+      consumed.size === 0
+      ? trimmed
+      : tokens.filter((_t, i) => !consumed.has(i)).join(" ");
+
+  return { text: text.replaceAll(ESCAPE_SENTINEL, "$"), bound, unconsumed };
 }
 
 /** {@link expandArgs}, returning just the text. */

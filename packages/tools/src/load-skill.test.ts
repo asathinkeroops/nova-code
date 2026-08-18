@@ -219,6 +219,36 @@ describe("expandSkillBody — arguments", () => {
   it("blanks placeholders on an explicit empty arg string", async () => {
     expect(await at("run $ARGUMENTS", "")).toBe("run ");
   });
+
+  // Most SKILL.md files are standing instructions with no `$ARGUMENTS` in them,
+  // so without this the request typed after `/{name}` reached the model as
+  // nothing at all — it saw the manual and asked what the user wanted.
+  it("appends an ARGUMENTS line when the body consumed nothing", async () => {
+    expect(await at("Query the warehouse.", "yesterday's ticket GMV")).toBe(
+      "Query the warehouse.\n\nARGUMENTS: yesterday's ticket GMV",
+    );
+  });
+
+  it("appends only the tokens the body left over", async () => {
+    expect(await at("check $1", "alpha beta")).toBe("check alpha\n\nARGUMENTS: beta");
+  });
+
+  it("does not append when the body consumed everything", async () => {
+    expect(await at("run $ARGUMENTS", "alpha beta")).toBe("run alpha beta");
+    expect(await at("check $1 and $2", "alpha beta")).toBe("check alpha and beta");
+  });
+
+  it("appends when the only dollar reference was escaped", async () => {
+    expect(await at("print \\$1", "v")).toBe("print $1\n\nARGUMENTS: v");
+  });
+
+  it("does not append on the loadSkill path, which supplies no args at all", async () => {
+    expect(await at("Query the warehouse.")).toBe("Query the warehouse.");
+  });
+
+  it("does not append when the user typed only whitespace", async () => {
+    expect(await at("Query the warehouse.", "   ")).toBe("Query the warehouse.");
+  });
 });
 
 describe("createLoadSkillTool — expansion wiring", () => {

@@ -220,6 +220,13 @@ describe("expandCommandBody — Claude Code syntax", () => {
     expect(r).toEqual({ ok: "do it" });
   });
 
+  it("appends the tokens a partial $ binding left over", async () => {
+    // `$1` took `alpha`; dropping `beta` on the floor is how a typed argument
+    // used to vanish from a command that binds only its first.
+    const r = await expandCommandBody("do $1", [], "alpha beta", { cwd });
+    expect(r).toEqual({ ok: "do alpha\n\nARGUMENTS: beta" });
+  });
+
   it("does not append when a {{}} placeholder consumed the args", async () => {
     const r = await expandCommandBody("do {{args}}", [], "it", { cwd });
     expect(r).toEqual({ ok: "do it" });

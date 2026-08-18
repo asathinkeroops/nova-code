@@ -9,7 +9,7 @@ import {
   xmlEscape,
 } from "@nova/base";
 import {
-  expandDollarArgs,
+  expandArgs,
   expandMentions,
   expandShell,
   expandVars,
@@ -108,7 +108,10 @@ export interface ExpandSkillOptions {
   /**
    * Raw argument string for `$ARGUMENTS` / `$1`..`$N`. Only the user-invoked
    * `/{name} args` path supplies this; the model reaches a skill through
-   * `loadSkill`, which takes a name and nothing else.
+   * `loadSkill`, which takes a name and nothing else. Absent (the `loadSkill`
+   * route) and empty (`/{name}` with nothing after it) differ: only the former
+   * skips the argument stage entirely, so `$1` in the body still blanks out
+   * rather than leaking when the user typed no arguments.
    */
   args?: string;
   /** Absent → `` !`cmd` `` is left verbatim. Injected so execution stays sandbox-confined. */
@@ -136,10 +139,20 @@ export function bashRunnerFor(ctx: ToolContext): PromptCommandRunner {
  * slash-command path (`expandCommandBody`): variables, then arguments, then
  * `@path`, then `` !`cmd` `` — each stage can feed the next, so
  * `@${NOVA_SKILL_DIR}/ref.md` and ``!`grep $1 file` `` both work.
+ *
+ * Arguments the body declares no placeholder for are appended as an
+ * `ARGUMENTS:` line, exactly as `expandCommandBody` does. Most SKILL.md files
+ * are written as standing instructions with no `$ARGUMENTS` in them, so
+ * dropping the unconsumed text would hand the model a skill manual and no
+ * request — the user's `/{name} do the thing` would arrive as `/{name}`.
  */
 export async function expandSkillBody(body: string, opts: ExpandSkillOptions): Promise<string> {
   let text = expandVars(body, skillVars(opts));
-  if (opts.args !== undefined) text = expandDollarArgs(text, opts.args);
+  if (opts.args !== undefined) {
+    const expanded = expandArgs(text, opts.args);
+    text = expanded.text;
+    if (expanded.unconsumed.length > 0) text += `\n\nARGUMENTS: ${expanded.unconsumed}`;
+  }
   text = await expandMentions(text, opts.cwd);
   if (opts.disableShellExecution) return expandShell(text, { disabled: true });
   return expandShell(text, opts.runCommand ? { runCommand: opts.runCommand } : {});

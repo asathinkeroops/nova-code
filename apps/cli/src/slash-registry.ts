@@ -289,9 +289,12 @@ export function expandPlaceholders(
  *   4. `` !`cmd` `` — shell interpolation via the host-injected, sandbox-confined
  *      `ctx.runCommand` (left verbatim when no runner is wired).
  *
- * If arguments were typed but *no* placeholder in either argument stage
- * consumed them, they are appended as an `ARGUMENTS:` line rather than dropped
- * — a command with no placeholders should still see what the user typed.
+ * Arguments no placeholder in either argument stage consumed are appended as
+ * an `ARGUMENTS:` line rather than dropped — a command with no placeholders
+ * should still see what the user typed. Tracked per token, so `Fix $1` invoked
+ * with two arguments surfaces the second instead of swallowing it; stage 1 is
+ * all-or-nothing because a declared spec list always claims every token (the
+ * last spec slurps the remainder), so any `{{}}` substitution suppresses it.
  *
  * Stages 2-4 are shared with the `SKILL.md` loader via `@nova/base`, so both
  * surfaces expand identically.
@@ -306,9 +309,8 @@ export async function expandCommandBody(
   if ("error" in placeheld) return placeheld;
   const expanded = expandArgs(placeheld.ok, rawArgs, { named: placeheld.values });
   let text = expanded.text;
-  const trimmed = rawArgs.trim();
-  if (trimmed.length > 0 && !expanded.bound && placeheld.ok === body) {
-    text += `\n\nARGUMENTS: ${trimmed}`;
+  if (expanded.unconsumed.length > 0 && placeheld.ok === body) {
+    text += `\n\nARGUMENTS: ${expanded.unconsumed}`;
   }
   text = await expandMentions(text, ctx.cwd);
   text = await expandShell(text, ctx.runCommand ? { runCommand: ctx.runCommand } : {});

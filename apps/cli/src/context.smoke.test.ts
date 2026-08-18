@@ -38,6 +38,9 @@ function isolatedSettings(sessionDir: string): Settings {
     // Auto-memory writes under ~/.nova by design; keep the test off the real
     // store (see the auto-memory-is-personal note in the memory docs).
     memory: { auto: { enabled: false } },
+    // Same reason: the default scan walks the real `~/.nova/skills`, so an
+    // installed skill would leak into the block this file asserts is empty.
+    skills: { userPaths: [] },
     lsp: { enabled: false },
     sandbox: { enabled: false },
     plugins: { enabled: false },

@@ -14,7 +14,10 @@ const logger = {
 } as unknown as Logger;
 
 function settings(): Settings {
-  return settingsSchema.parse({});
+  // Empty `userPaths` pins the scan to the temp workspace. Left at its default
+  // the loader also walks the real `~/.nova/skills`, so `added` counts whatever
+  // the developer happens to have installed and the assertions drift.
+  return settingsSchema.parse({ skills: { userPaths: [] } });
 }
 
 function workspaceWithSkill(name: string, description = "a skill", body = "Do the thing."): string {
@@ -63,6 +66,36 @@ describe("loadSkillCommandsInto", () => {
     const text = await invoke(registry, cwd, "/greet Alice Bob");
     expect(text).toContain("Greet Alice warmly.");
     expect(text).toContain("All args: Alice Bob");
+  });
+
+  it("carries the typed request into a body that declares no placeholder", async () => {
+    // The common SKILL.md shape: standing instructions, no `$ARGUMENTS`. Without
+    // the fallback the model received the manual and none of the request, and
+    // answered `/report last week's numbers` by asking what to report.
+    const cwd = workspaceWithSkill("report", "a skill", "Query the warehouse and answer.");
+    const registry = new SlashRegistry();
+    loadSkillCommandsInto(registry, { cwd, settings: settings(), logger });
+
+    const text = await invoke(registry, cwd, "/report last week's numbers");
+    expect(text).toContain("ARGUMENTS: last week's numbers");
+  });
+
+  it("appends only what the body's placeholders left over", async () => {
+    const cwd = workspaceWithSkill("greet", "a skill", "Greet $1.");
+    const registry = new SlashRegistry();
+    loadSkillCommandsInto(registry, { cwd, settings: settings(), logger });
+
+    const text = await invoke(registry, cwd, "/greet Alice Bob");
+    expect(text).toContain("Greet Alice.");
+    expect(text).toContain("ARGUMENTS: Bob");
+  });
+
+  it("does not append when the body consumed everything", async () => {
+    const cwd = workspaceWithSkill("greet", "a skill", "Greet $ARGUMENTS.");
+    const registry = new SlashRegistry();
+    loadSkillCommandsInto(registry, { cwd, settings: settings(), logger });
+
+    expect(await invoke(registry, cwd, "/greet Alice Bob")).not.toContain("ARGUMENTS:");
   });
 
   it("blanks argument placeholders when invoked with no args", async () => {

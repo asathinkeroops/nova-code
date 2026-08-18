@@ -1061,7 +1061,7 @@
           <tr><td><code>${CLAUDE_PLUGIN_ROOT}</code> / <code>${NOVA_PLUGIN_ROOT}</code></td><td>技能所属插件的根目录（仅插件提供的技能有）</td></tr>
           <tr><td><code>${CLAUDE_SESSION_ID}</code> / <code>${NOVA_SESSION_ID}</code></td><td>当前会话 ID</td></tr>
           <tr><td><code>${CLAUDE_EFFORT}</code> / <code>${NOVA_EFFORT}</code></td><td>当前思考等级（<code>off</code>/<code>low</code>/<code>medium</code>/<code>high</code>/<code>max</code>），随 <code>/effort</code> 变化</td></tr>
-          <tr><td><code>$ARGUMENTS</code> / <code>$ARGUMENTS[n]</code> / <code>$1</code>..<code>$N</code></td><td>你在 <code>/{name}</code> 后面敲的内容；模型走 <code>loadSkill</code> 时这些占位符<strong>原样保留</strong>（没有参数可绑）</td></tr>
+          <tr><td><code>$ARGUMENTS</code> / <code>$ARGUMENTS[n]</code> / <code>$1</code>..<code>$N</code></td><td>你在 <code>/{name}</code> 后面敲的内容；正文没写占位符（或只绑走了一部分）时，剩下的会以 <code>ARGUMENTS: ...</code> 追加到末尾，不会丢；模型走 <code>loadSkill</code> 时这些占位符<strong>原样保留</strong>（没有参数可绑）</td></tr>
           <tr><td><code>@相对路径</code></td><td>内嵌该文件内容（上限 100KB，超出截断）；解析不到文件就原样保留，所以邮箱和 <code>@scope/pkg</code> 安全</td></tr>
           <tr><td><code>!`命令`</code></td><td>执行并内嵌输出，走 bash 工具和沙箱；设 <code>skills.disableShellExecution: true</code> 后替换为一行提示且不执行</td></tr>
         </tbody></table></div>
@@ -1081,7 +1081,7 @@
           <li>每个 <code>*.md</code> 文件名即命令名（<code>deploy.md</code> → <code>/deploy</code>）。</li>
           <li>文件前置 frontmatter 声明 <code>description</code> / arg hint / 参数；正文做占位符替换后，作为下一轮 prompt 发给模型。</li>
           <li>正文支持的参数写法：<code>{{name}}</code> / <code>{{name|默认值}}</code>（Nova 原生）、<code>$ARGUMENTS</code>、<code>$ARGUMENTS[n]</code>（<strong>0 起</strong>）、<code>$1</code>..<code>$N</code>（<strong>1 起</strong>，<code>$1</code> 是第一个）、<code>$name</code>（取 <code>args:</code> 声明的具名参数，和 <code>{{name}}</code> 同源同值）、<code>\$</code> 转义。另外还有 <code>@路径</code> 内嵌文件和 <code>!`命令`</code> 插值。</li>
-          <li><strong>敲了参数但正文里一个占位符都没命中</strong>时，参数会以 <code>ARGUMENTS: ...</code> 追加到末尾，而不是被丢掉。</li>
+          <li><strong>没被占位符消耗掉的参数</strong>会以 <code>ARGUMENTS: ...</code> 追加到末尾，而不是被丢掉——按 token 逐个算账：正文只写了 <code>$1</code>、你敲了两个词，第二个词照样会追加上去。（<code>{{name}}</code> 声明式参数例外：声明列表总会吃掉全部参数，所以只要 <code>{{}}</code> 命中过就不再追加。）</li>
           <li><strong>优先级</strong>：内置命令永远赢；项目层覆盖用户层（同名时）。</li>
           <li>改了文件后用 <code>/commands reload</code> 重新扫盘，<code>/commands</code>（或 <code>/help</code>）查看当前注册了哪些。</li>
         </ul>

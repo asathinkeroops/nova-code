@@ -146,6 +146,61 @@ describe("expandArgs — bound only on a real substitution", () => {
   });
 });
 
+// `unconsumed` is what the caller appends as an `ARGUMENTS:` line. It is
+// tracked per token: a body that binds some arguments must still surface the
+// ones it did not, or a partial binding silently eats the remainder.
+describe("expandArgs — unconsumed", () => {
+  it("returns the raw input when no reference took anything", () => {
+    expect(expandArgs("no placeholders", "a b").unconsumed).toBe("a b");
+  });
+
+  it("preserves the caller's spacing when nothing bound", () => {
+    expect(expandArgs("no placeholders", "  find  the   bug  ").unconsumed).toBe(
+      "find  the   bug",
+    );
+  });
+
+  it("returns only the tokens left over after a partial binding", () => {
+    const r = expandArgs("Greet $1", "Alice Bob");
+    expect(r.text).toBe("Greet Alice");
+    expect(r.unconsumed).toBe("Bob");
+  });
+
+  it("skips consumed tokens wherever they sit, keeping the rest in order", () => {
+    const r = expandArgs("$2", "a b c d");
+    expect(r.unconsumed).toBe("a c d");
+  });
+
+  it("counts $ARGUMENTS[n] against the same token set as $N", () => {
+    // $ARGUMENTS[0] and $1 are the same token — it must not come back as left over.
+    expect(expandArgs("$ARGUMENTS[0] $1", "a b").unconsumed).toBe("b");
+  });
+
+  it("is empty when $ARGUMENTS swallowed everything", () => {
+    expect(expandArgs("all: $ARGUMENTS", "a b").unconsumed).toBe("");
+  });
+
+  it("is empty when a named reference swallowed the input", () => {
+    // A named value's token span is the caller's to know, so it counts as all.
+    expect(expandArgs("$path", "src/a.ts", { named: { path: "src/a.ts" } }).unconsumed).toBe("");
+  });
+
+  it("is empty when nothing was typed", () => {
+    expect(expandArgs("Fix $ARGUMENTS", "").unconsumed).toBe("");
+    expect(expandArgs("no placeholders", "   ").unconsumed).toBe("");
+  });
+
+  it("does not treat an out-of-range reference as consuming a token", () => {
+    expect(expandArgs("Fix $2", "foo").unconsumed).toBe("foo");
+  });
+
+  it("does not let an escaped reference consume anything", () => {
+    const r = expandArgs("escaped \\$1", "a b");
+    expect(r.text).toBe("escaped $1");
+    expect(r.unconsumed).toBe("a b");
+  });
+});
+
 describe("expandMentions", () => {
   it("embeds a readable file", async () => {
     const dir = fixture();

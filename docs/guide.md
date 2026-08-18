@@ -599,7 +599,7 @@ Skill 是「按需加载的专长说明书」。把 `SKILL.md` 放在：
 | `${CLAUDE_PLUGIN_ROOT}` / `${NOVA_PLUGIN_ROOT}` | 技能所属插件的根目录（仅插件提供的技能有） |
 | `${CLAUDE_SESSION_ID}` / `${NOVA_SESSION_ID}` | 当前会话 ID |
 | `${CLAUDE_EFFORT}` / `${NOVA_EFFORT}` | 当前思考等级（`off`/`low`/`medium`/`high`/`max`），随 `/effort` 变化 |
-| `$ARGUMENTS` / `$ARGUMENTS[n]` / `$1`..`$N` | 你在 `/{name}` 后面敲的内容；模型走 `loadSkill` 时这些占位符**原样保留**（没有参数可绑） |
+| `$ARGUMENTS` / `$ARGUMENTS[n]` / `$1`..`$N` | 你在 `/{name}` 后面敲的内容；正文没写占位符（或只绑走了一部分）时，剩下的会以 `ARGUMENTS: ...` 追加到末尾，不会丢；模型走 `loadSkill` 时这些占位符**原样保留**（没有参数可绑） |
 | `@相对路径` | 内嵌该文件内容（上限 100KB，超出截断）；解析不到文件就原样保留，所以邮箱和 `@scope/pkg` 安全 |
 | `` !`命令` `` | 执行并内嵌输出，走 bash 工具和沙箱；设 `skills.disableShellExecution: true` 后替换为一行提示且不执行 |
 
@@ -619,7 +619,7 @@ Skill 是「按需加载的专长说明书」。把 `SKILL.md` 放在：
 - 每个 `*.md` 文件名即命令名（`deploy.md` → `/deploy`）。
 - 文件前置 frontmatter 声明 `description` / arg hint / 参数；正文做占位符替换后，作为下一轮 prompt 发给模型。
 - 正文支持的参数写法：`{{name}}` / `{{name|默认值}}`（Nova 原生）、`$ARGUMENTS`、`$ARGUMENTS[n]`（**0 起**）、`$1`..`$N`（**1 起**，`$1` 是第一个）、`$name`（取 `args:` 声明的具名参数，和 `{{name}}` 同源同值）、`\$` 转义。另外还有 `@路径` 内嵌文件和 `` !`命令` `` 插值。
-- **敲了参数但正文里一个占位符都没命中**时，参数会以 `ARGUMENTS: ...` 追加到末尾，而不是被丢掉。
+- **没被占位符消耗掉的参数**会以 `ARGUMENTS: ...` 追加到末尾，而不是被丢掉——按 token 逐个算账：正文只写了 `$1`、你敲了两个词，第二个词照样会追加上去。（`{{name}}` 声明式参数例外：声明列表总会吃掉全部参数，所以只要 `{{}}` 命中过就不再追加。）
 - **优先级**：内置命令永远赢；项目层覆盖用户层（同名时）。
 - 改了文件后用 `/commands reload` 重新扫盘，`/commands`（或 `/help`）查看当前注册了哪些。
 
