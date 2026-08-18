@@ -11,9 +11,15 @@ import { otherProfile } from "./providers/other.js";
 // queue `streamEvents` to be replayed to listeners when finalMessage resolves.
 const mockCreate = vi.fn();
 let streamEvents: unknown[] = [];
+// Constructor options of every client the adapter built, so tests can assert
+// what reached the SDK before any request (baseURL, defaultHeaders, …).
+const clientOptions: Record<string, unknown>[] = [];
 vi.mock("@anthropic-ai/sdk", () => {
   return {
     default: class {
+      constructor(opts: Record<string, unknown>) {
+        clientOptions.push(opts);
+      }
       messages = {
         stream: (...args: unknown[]) => {
           const listeners: ((event: unknown) => void)[] = [];
@@ -429,5 +435,37 @@ describe("createAnthropicModel thinking backfill", () => {
     const m = createAnthropicModel({ apiKey: "x", model: "deepseek-chat", provider: deepseekProfile });
     const res = await m.call({ ...baseReq });
     expect(res.content[0]).toEqual({ type: "thinking", thinking: "", signature: "" });
+  });
+});
+
+describe("createAnthropicModel client options", () => {
+  beforeEach(() => {
+    clientOptions.length = 0;
+  });
+
+  it("forwards configured headers to the SDK as defaultHeaders", () => {
+    createAnthropicModel({
+      apiKey: "x",
+      model: "deepseek-chat",
+      provider: deepseekProfile,
+      baseURL: "https://gw.example.com/anthropic",
+      headers: { "User-Agent": "nova/1.2.3", "X-Tenant": "acme" },
+    });
+    expect(clientOptions[0]).toMatchObject({
+      baseURL: "https://gw.example.com/anthropic",
+      defaultHeaders: { "User-Agent": "nova/1.2.3", "X-Tenant": "acme" },
+    });
+  });
+
+  it("omits defaultHeaders when no headers are configured", () => {
+    createAnthropicModel({ apiKey: "x", model: "deepseek-chat", provider: deepseekProfile });
+    createAnthropicModel({
+      apiKey: "x",
+      model: "deepseek-chat",
+      provider: deepseekProfile,
+      headers: {},
+    });
+    expect(clientOptions[0]).not.toHaveProperty("defaultHeaders");
+    expect(clientOptions[1]).not.toHaveProperty("defaultHeaders");
   });
 });

@@ -174,6 +174,26 @@ describe("model tiers", () => {
     ).toThrow(/not a configured tier/);
   });
 
+  it("keeps configured request headers verbatim", () => {
+    const s = parseSettings({
+      headers: { "User-Agent": "nova/1.0 (+corp-proxy)", "X-Tenant": "acme" },
+    });
+    expect(s.headers).toEqual({ "User-Agent": "nova/1.0 (+corp-proxy)", "X-Tenant": "acme" });
+  });
+
+  it("leaves headers undefined when unset", () => {
+    expect(parseSettings({}).headers).toBeUndefined();
+  });
+
+  it("rejects a malformed header name or a value with CR/LF", () => {
+    expect(() => settingsSchema.parse({ headers: { "Bad Name": "v" } })).toThrow(
+      /invalid HTTP header name/,
+    );
+    expect(() => settingsSchema.parse({ headers: { "X-A": "v\r\nX-B: injected" } })).toThrow(
+      /invalid HTTP header value/,
+    );
+  });
+
   it("accepts a `model` that names a configured tier", () => {
     const s = parseSettings({ model: "pro", models: tiers() });
     expect(s.model).toBe("pro");

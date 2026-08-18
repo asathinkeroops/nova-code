@@ -781,6 +781,7 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 | `model` | `"pro"` | 当前**档位**：`models` 表中的 key（`lite`/`pro`/`max`），**永远不是裸模型 id** |
 | `models` | `{}` | 命名的模型档位表，value 为**档位对象**，每档带自己的 `id`、`maxTokens`、`contextWindowSize`、`thinking`、`modalities`、`pricing`、可选 `description`。非空时**必须含 `lite`/`pro`/`max` 三档**（schema 强制）。默认表按 `provider` 内置在代码里、加载时层叠进来（**不写进配置文件**，见 [§3](#3-首次配置向导)）；这里只写覆盖项 |
 | `baseURL` | （无） | Anthropic 兼容端点 URL（provider 模板写入；缺省则用 SDK 默认端点） |
+| `headers` | （无） | 附加在**每个模型请求**上的 HTTP 头，形如 `{"User-Agent": "nova/1.0", "X-Tenant": "acme"}`。会并入 SDK 的默认头，同名时以这里为准（`authorization` / `x-api-key` 也可覆盖，供网关用非标准鉴权头）；只作用于模型端点，余额探测 / MCP / websearch 各有自己的传输层。头名按 HTTP token 校验、头值不允许 CR/LF，写错在加载配置时就报错 |
 | `sessionDir` | （无→ `~/.nova/sessions`） | session 存放目录 |
 | `language` | `"auto"` | **模型回复语言**（注入 system prompt），同时也是 TUI 界面语言的默认来源；`auto` 跟随系统 locale（`$LC_ALL`/`$LANG`/`$LANGUAGE`，macOS 还读 `AppleLocale`），否则填 BCP-47 标签如 `en`/`zh-CN`。加载时 `auto` 会被解析成具体标签 |
 | `locale` | `"auto"` | **仅 TUI 静态文案**的语言覆盖（菜单/提示/状态行）；`auto` = 跟随 `language`。内置 zh-CN 与 EN，其它标签回落英文。两者可不同（中文界面 + 英文回复），见 [§5](#5-交互式界面tui) |

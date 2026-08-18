@@ -15,6 +15,14 @@ export interface AnthropicModelConfig {
   model: string;
   baseURL?: string;
   /**
+   * Extra HTTP headers merged into every request this client makes (a custom
+   * `User-Agent`, a gateway's tenant/routing header). Handed to the SDK as
+   * `defaultHeaders`, so an entry here overrides the SDK's own value for that
+   * name — auth headers included. Comes from `settings.headers`; the CLI
+   * validates names/values at config load.
+   */
+  headers?: Record<string, string>;
+  /**
    * Provider profile driving thinking-param and error/retry behavior. Required:
    * the caller resolves it once from `settings.provider` (see `resolveProfile`)
    * and passes a concrete profile — the adapter never guesses from the model name.
@@ -109,6 +117,9 @@ export function createAnthropicModel(config: AnthropicModelConfig): ModelClient 
   const client = new Anthropic({
     apiKey: config.apiKey,
     ...(config.baseURL ? { baseURL: config.baseURL } : {}),
+    ...(config.headers && Object.keys(config.headers).length > 0
+      ? { defaultHeaders: config.headers }
+      : {}),
   });
   const provider = config.provider;
 

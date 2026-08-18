@@ -600,6 +600,7 @@ export async function createContext(
       model,
       provider: resolveProfile(settings.provider),
       ...(settings.baseURL ? { baseURL: settings.baseURL } : {}),
+      ...(settings.headers ? { headers: settings.headers } : {}),
       ...(trackTokens
         ? { onStreamProgress: pushSpinnerTokens, onStreamText: pushLiveText, onRetry }
         : {}),

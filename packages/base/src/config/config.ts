@@ -211,6 +211,24 @@ export const DEFAULT_MAX_TOKENS = 32768;
  *  magnitude (1M = 1024 × 1024), matching how the UI renders token counts. */
 export const DEFAULT_CONTEXT_WINDOW_SIZE = 1_048_576;
 
+/** An HTTP header NAME, validated as an RFC 7230 token so a typo (a stray
+ *  colon, a space, a newline) fails at config load rather than deep inside the
+ *  SDK on the first request. */
+export const httpHeaderNameSchema = z
+  .string()
+  .regex(/^[A-Za-z0-9!#$%&'*+.^_`|~-]+$/, "invalid HTTP header name");
+
+/** An HTTP header VALUE: single-line printable text. Rejecting CR/LF is what
+ *  keeps a config value from smuggling extra headers into the request. */
+export const httpHeaderValueSchema = z
+  .string()
+  .regex(/^[\t\x20-\x7e\x80-\xff]*$/, "invalid HTTP header value (no CR/LF or control chars)");
+
+/** Extra HTTP headers attached to every model request. */
+export const httpHeadersSchema = z.record(httpHeaderNameSchema, httpHeaderValueSchema);
+
+export type HttpHeaders = z.infer<typeof httpHeadersSchema>;
+
 /** Supported input/output modalities for a model tier. */
 export const modelModalitiesSchema = z.object({
   input: z
@@ -374,6 +392,15 @@ const settingsObjectSchema = z.object({
   // `config.baseURL ? …` guards in model.ts / context.ts. The DeepSeek setup
   // template writes its own endpoint explicitly (see provider-templates.ts).
   baseURL: z.string().url().optional(),
+  // Extra HTTP headers sent with EVERY model request (a custom `User-Agent`, a
+  // gateway's tenant/routing header, a corporate proxy token). Merged into the
+  // SDK client's own default headers, so an entry here wins for that header
+  // name — including `authorization` / `x-api-key`, which some gateways want in
+  // a non-standard shape; nothing is stripped or reserved. Applies to the model
+  // endpoint only (the balance probe, MCP and websearch have their own
+  // transports). Names/values are validated at load, so a malformed header is a
+  // config error rather than a first-request crash.
+  headers: httpHeadersSchema.optional(),
   // Which provider profile drives thinking-param and error/retry behavior.
   // "deepseek" — DeepSeek's Anthropic-compatible endpoint (effort knob,
   // translated error diagnostics, transient-status retry). "other" — any generic
