@@ -20,7 +20,7 @@ export { assembleSession } from "./session.js";
 export { assembleAgent } from "./assemble.js";
 
 // ── system prompt and memory ──────────────────────────────────────────────
-export { buildSystemPrompt } from "./system-prompt.js";
+export { buildSystemPrompt, type SystemPromptInput } from "./system-prompt.js";
 export { loadMemory, type MemoryBundle } from "./memory.js";
 
 // ── history persistence ───────────────────────────────────────────────────
@@ -37,6 +37,6 @@ export { buildCompactor, manualCompact } from "./compactor.js";
 export { measureFixedOverhead, fixedOverheadTotal, type FixedOverhead } from "./overhead.js";
 
 // ── sub-agents: the registry and its definition loader ────────────────────
-export { SUBAGENT_TOOL_NAME, type SubAgentDetail } from "./subagent.js";
+export { SUBAGENT_TOOL_NAME, SUBAGENT_PROMPT, type SubAgentDetail } from "./subagent.js";
 export { AgentRegistry, type AgentDefinition } from "./definitions.js";
 export { loadAgentDefinitions, type AgentLoadOptions, type AgentLoadResult } from "./loader.js";

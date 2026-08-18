@@ -16,7 +16,14 @@
  * and every UI callback are still passed in.
  */
 
-import type { Agent, Compactor, ModelClient, PermissionGate, ToolHandler } from "@nova/core";
+import type {
+  Agent,
+  Compactor,
+  ModelClient,
+  PermissionGate,
+  ToolDefinition,
+  ToolHandler,
+} from "@nova/core";
 import { join } from "node:path";
 import { assembleAgent, type AssembleAgentOptions } from "./assemble.js";
 import { sliceFromLastCompacted } from "./compact.js";
@@ -36,8 +43,22 @@ const SUBAGENT_LOG_DIR = "subagents";
  */
 export interface SessionMemoryOptions {
   getMemory: () => MemoryBundle;
-  /** Skills index block embedded in both the main and the sub-agent prompt. */
-  skillsBlock: string;
+  /**
+   * The main agent's tool-guidance block. Bound as a getter so the host can set
+   * it once its registry is final, NOT so it can track the live tool set — see
+   * `MemoryPromptOptions.getToolsGuidance`.
+   */
+  getToolsGuidance?: () => string;
+  /**
+   * Renders the same block for an arbitrary tool set — used per sub-agent,
+   * whose set is the parent's minus what `readOnly` / `allowTools` /
+   * `excludeTools` dropped. A child that cannot write must not be told how to.
+   *
+   * The host owns it because gathering the sections needs `@nova/tools`
+   * (`renderToolPrompts`) plus whatever the host contributes itself, and this
+   * package depends on neither. Must be pure and deterministic.
+   */
+  renderToolsGuidance?: (tools: ToolDefinition[]) => string;
   /** Resolved response language ("en", "zh-CN", …). */
   getLanguage?: () => string | undefined;
 }
@@ -145,7 +166,7 @@ export function assembleSession(opts: AssembleSessionOptions): AssembleSessionRe
     systemPrompt: createMemoryPrompt({
       workspace: opts.workspace,
       getMemory: memory.getMemory,
-      skillsBlock: memory.skillsBlock,
+      ...(memory.getToolsGuidance ? { getToolsGuidance: memory.getToolsGuidance } : {}),
       // Doubles as the prefix epoch: the session id is the only thing whose
       // change licenses a new system prompt (see freezeSystemPrompt).
       getSessionId: opts.getSessionId,
@@ -158,7 +179,7 @@ export function assembleSession(opts: AssembleSessionOptions): AssembleSessionRe
   const subAgentTool = createSubAgentTool({
     workspace: opts.workspace,
     getMemory: memory.getMemory,
-    skillsBlock: memory.skillsBlock,
+    ...(memory.renderToolsGuidance ? { renderToolsGuidance: memory.renderToolsGuidance } : {}),
     getAgentRegistry: subagent.getAgentRegistry,
     getModel: subAgentModelResolver(subagent),
     // The parent's own tool list, minus what a child may never see. Withholding

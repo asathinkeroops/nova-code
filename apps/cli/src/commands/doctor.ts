@@ -29,13 +29,13 @@ function contextUsageLines(ctx: CliContext): string[] {
   const weights = resolveProfile(ctx.settings.provider).tokenEstimate;
   const estimateChars = (s: string): number => estimateTextTokens(s, weights);
   const systemTokens = estimateChars(
-    buildSystemPrompt(
-      ctx.workspace,
-      ctx.memory,
-      ctx.session.id,
-      ctx.skillsBlock,
-      ctx.settings.language,
-    ),
+    buildSystemPrompt({
+      workspace: ctx.workspace,
+      memory: ctx.memory,
+      sessionId: ctx.session.id,
+      toolsGuidance: ctx.toolsGuidance,
+      language: ctx.settings.language,
+    }),
   );
   const wire = toWireTools(ctx.tools.definitions());
   const toolsTokens = wire.length ? estimateChars(JSON.stringify(wire)) : 0;

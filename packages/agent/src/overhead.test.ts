@@ -21,7 +21,7 @@ function measure(
     workspace: "/w",
     memory: EMPTY_MEMORY,
     sessionId: "s1",
-    skillsBlock: "",
+    toolsGuidance: "",
     tools: [],
     ...over,
   });
@@ -38,7 +38,10 @@ describe("measureFixedOverhead", () => {
     const memory: MemoryBundle = { system: "m".repeat(4000), sources: [] };
     const skillsBlock = "s".repeat(2000);
     const bare = measure();
-    const full = measure({ memory, skillsBlock });
+    // The skills index is a SLICE of the tool-guidance block — that block is
+    // what the prompt embeds, `skillsBlock` only says how much of it to
+    // attribute to skills. Pass both, exactly as the host does.
+    const full = measure({ memory, toolsGuidance: skillsBlock, skillsBlock });
 
     expect(full.memoryTokens).toBeGreaterThan(0);
     expect(full.skillsTokens).toBeGreaterThan(0);
@@ -47,6 +50,15 @@ describe("measureFixedOverhead", () => {
     // compaction trigger fires early.
     expect(Math.abs(full.systemTokens - bare.systemTokens)).toBeLessThan(10);
     expect(fixedOverheadTotal(full)).toBeGreaterThan(fixedOverheadTotal(bare));
+  });
+
+  it("folds tool guidance that is not the skills index into systemTokens", () => {
+    // Guidance bullets are part of the system prompt and have no row of their
+    // own, so they must show up in systemTokens rather than vanish.
+    const bare = measure();
+    const guided = measure({ toolsGuidance: "- some tool guidance\n".repeat(100) });
+    expect(guided.skillsTokens).toBe(0);
+    expect(guided.systemTokens).toBeGreaterThan(bare.systemTokens);
   });
 
   it("sizes tool schemas as the wire payload", () => {

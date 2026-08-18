@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   type ToolContext,
   type ToolHandler,
+  type ToolPromptSection,
 } from "@nova/core";
 import {
   xmlAttr,
@@ -15,6 +16,20 @@ import {
   type PromptCommandRunner,
 } from "@nova/base";
 import { bashTool } from "./bash.js";
+import { staticSection } from "./prompt.js";
+
+/**
+ * That skills exist at all. The INDEX of them (`<available-skills>`) is a
+ * separate, host-built section: its byte budget depends on settings and the
+ * active model, and the scan itself belongs to the host — see
+ * `renderSkillsBlock` in the CLI.
+ */
+export const LOAD_SKILL_PROMPT: ToolPromptSection = staticSection({
+  id: "load-skill",
+  order: 50,
+  requires: ["loadSkill"],
+  text: "- Load specialized knowledge with loadSkill.",
+});
 
 const inputSchema = z.object({
   name: z.string().min(1).describe("Skill name as shown in <available-skills>."),

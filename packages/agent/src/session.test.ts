@@ -55,7 +55,7 @@ function makeOptions(
     workspace: "/ws",
     getSessionId: () => "sess-1",
     getLogger: () => silentLogger,
-    memory: { getMemory: () => ({ system: "", sources: [] }), skillsBlock: "" },
+    memory: { getMemory: () => ({ system: "", sources: [] }) },
     getModel: () => model,
     getSettings: () => ({ maxTokens: 1024, maxTurns: 3 }),
     getThinkingBudget: () => 0,
@@ -111,7 +111,7 @@ describe("assembleSession", () => {
       makeOptions(model, dir, {
         memory: {
           getMemory: () => ({ system: "<memory>PROJECT RULE</memory>", sources: [] }),
-          skillsBlock: "<available-skills>demo</available-skills>",
+          getToolsGuidance: () => "<tool-guidance>\n- demo guidance\n</tool-guidance>",
           getLanguage: () => "zh-CN",
         },
       }),
@@ -121,7 +121,7 @@ describe("assembleSession", () => {
 
     expect(seen).toHaveLength(1);
     expect(seen[0]?.system).toContain("PROJECT RULE");
-    expect(seen[0]?.system).toContain("<available-skills>demo</available-skills>");
+    expect(seen[0]?.system).toContain("<tool-guidance>\n- demo guidance\n</tool-guidance>");
     expect(seen[0]?.system).toContain("zh-CN");
     // The session id is the prefix epoch the prompt is frozen against.
     expect(seen[0]?.system).toContain("sess-1");

@@ -94,7 +94,6 @@ function makeDeps(
   return {
     workspace: "/tmp/ws",
     getMemory: () => ({ system: "", sources: [] }),
-    skillsBlock: "",
     getAgentRegistry: () => new AgentRegistry(),
     getModel: () => model,
     getToolDefinitions: () => [echoTool, writeDef, editDef, bashDef, subagentDef],
@@ -209,6 +208,60 @@ describe("createSubAgentTool", () => {
       expect(names).not.toContain(SUBAGENT_TOOL_NAME);
     },
   );
+
+  it.each(["general-purpose", "explore"] as const)(
+    "renders %s's tool guidance from the CHILD's tool set, not the parent's",
+    async (type) => {
+      // A read-only child must not be taught the tools it was denied — so the
+      // renderer sees childTools, after readOnly/allowTools/excludeTools.
+      const seenTools: string[][] = [];
+      const seenSystems: string[] = [];
+      const model = recordingModel([textTurn("ok")], []);
+      const tool = createSubAgentTool(
+        makeDeps(model, tmp, {
+          renderToolsGuidance: (tools) => {
+            const names = tools.map((d) => d.name);
+            seenTools.push(names);
+            return `<tool-guidance>\n${names.join(",")}\n</tool-guidance>`;
+          },
+        }),
+      );
+      const originalCall = model.call.bind(model);
+      model.call = async (opts) => {
+        seenSystems.push(opts.system);
+        return originalCall(opts);
+      };
+
+      await tool.run({ description: "x", prompt: "y", type }, { cwd: tmp });
+
+      const rendered = seenTools[0] ?? [];
+      expect(rendered).not.toContain(SUBAGENT_TOOL_NAME);
+      if (type === "explore") {
+        expect(rendered).not.toContain("write");
+        // The block itself, not the whole prompt — the read-only role bullets
+        // legitimately mention write/edit/bash to say the child has none.
+        expect(seenSystems[0]).toContain("<tool-guidance>\necho\n</tool-guidance>");
+      } else {
+        expect(rendered).toContain("write");
+      }
+      expect(seenSystems[0]).toContain("<tool-guidance>");
+    },
+  );
+
+  it("gives a sub-agent no tool guidance when the host renders none", async () => {
+    const seenSystems: string[] = [];
+    const model = recordingModel([textTurn("ok")], []);
+    const tool = createSubAgentTool(makeDeps(model, tmp));
+    const originalCall = model.call.bind(model);
+    model.call = async (opts) => {
+      seenSystems.push(opts.system);
+      return originalCall(opts);
+    };
+
+    await tool.run({ description: "x", prompt: "y", type: "general-purpose" }, { cwd: tmp });
+
+    expect(seenSystems[0]).not.toContain("<tool-guidance>");
+  });
 
   it("read-only sub-agent denies a mutating tool at the permission layer", async () => {
     const seen: ToolDefinition[][] = [];

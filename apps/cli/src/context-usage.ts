@@ -9,7 +9,7 @@ const isMcpTool = (name: string): boolean => name.startsWith(`${MCP_TOOL_PREFIX}
 
 /**
  * Bind the CLI session to `@nova/agent`'s overhead measurement — the live tool
- * registry, memory bundle, skills block, and the active provider's tokenizer
+ * registry, memory bundle, tool-guidance block, and the active provider's tokenizer
  * ratios. The measurement itself lives beside the compaction threshold that
  * consumes it; only this mapping is CLI-shaped.
  */
@@ -18,6 +18,9 @@ export function measureCtxOverhead(ctx: CliContext, weights?: TokenEstimate): Fi
     workspace: ctx.workspace,
     memory: ctx.memory,
     sessionId: ctx.session.id,
+    toolsGuidance: ctx.toolsGuidance,
+    // A slice of toolsGuidance, passed separately only so the skills index keeps
+    // its own row in `/context`.
     skillsBlock: ctx.skillsBlock,
     ...(ctx.settings.language !== undefined ? { language: ctx.settings.language } : {}),
     tools: ctx.tools.definitions(),

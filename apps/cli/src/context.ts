@@ -7,13 +7,16 @@ import {
   fixedOverheadTotal,
   loadMemory,
   loadMessages,
+  SUBAGENT_PROMPT,
 } from "@nova/agent";
 import {
   userText,
   type Agent,
   type AskUserFn,
   type ModelClient,
+  type ToolDefinition,
   type ToolExecutor,
+  type ToolPromptSection,
 } from "@nova/core";
 import {
   createAnthropicModel,
@@ -58,6 +61,7 @@ import {
   type SandboxControl,
 } from "@nova/safety";
 import {
+  BUILTIN_TOOL_PROMPTS,
   CronStore,
   ToolRegistry,
   builtinTools,
@@ -65,6 +69,8 @@ import {
   createPlanModeTools,
   getSkillList,
   PLAN_MODE_TOOL_NAMES,
+  renderToolPrompts,
+  staticSection,
   type SkillsOptions,
 } from "@nova/tools";
 import { CronScheduler } from "./cron-scheduler.js";
@@ -278,6 +284,22 @@ export async function createContext(
       logger.info({ count: skillItems.length }, "skills loaded");
     }
   }
+
+  // Every system-prompt section that is tied to a tool, in one list: the
+  // builtins' own, `createSubAgent`'s (owned by @nova/agent), and the skills
+  // index — which only the host can build, since its byte budget comes from
+  // settings and the active model. The list is inert until rendered against the
+  // final registry; see `ctx.toolsGuidance`.
+  const toolPromptSections: ToolPromptSection[] = [
+    ...BUILTIN_TOOL_PROMPTS,
+    SUBAGENT_PROMPT,
+    // Ordered last so the index sits after the guidance bullets that explain
+    // what to do with it. Gated on loadSkill so `permissions.deny` removing the
+    // tool also removes the index it advertises.
+    staticSection({ id: "skills", order: 200, requires: ["loadSkill"], text: skillsBlock }),
+  ];
+  const renderToolsGuidance = (tools: ToolDefinition[]): string =>
+    renderToolPrompts(tools, toolPromptSections).text;
 
   // Sub-agent definitions: built-ins (general-purpose / explore / plan) are
   // always seeded; custom defs from .nova/agents / .claude/agents are layered
@@ -625,6 +647,9 @@ export async function createContext(
     memory,
     reloadMemory: null as unknown as CliContext["reloadMemory"],
     skillsBlock,
+    // Rendered once the registry is final — see the assignment after
+    // applyToolDenylist, and the field's doc comment.
+    toolsGuidance: "",
     version,
     noTranscript,
     noPretty,
@@ -942,7 +967,11 @@ export async function createContext(
     getLogger: () => ctx.logger,
     memory: {
       getMemory: () => ctx.memory,
-      skillsBlock,
+      // Read late (the block is rendered below, after every registration), but
+      // constant from the first turn on — never a live view of the registry.
+      getToolsGuidance: () => ctx.toolsGuidance,
+      // Sub-agents render their own from their filtered tool set.
+      renderToolsGuidance,
       getLanguage: () => ctx.settings.language,
     },
     getMessagesPath: () => ctx.session.messagesPath,
@@ -1072,6 +1101,13 @@ export async function createContext(
   for (const name of denylist.missing) {
     logger.warn({ tool: name }, "permissions.deny lists an unknown tool (ignored)");
   }
+
+  // THE snapshot point. Everything that adds or removes a tool has now run —
+  // builtins, MCP, createSubAgent, the plan-mode pair, permissions.deny — so
+  // this is the first and only moment the set is final. Rendering earlier would
+  // advertise denied tools; re-rendering later would drift the system prompt
+  // inside an epoch, which freezeSystemPrompt discards with a warning.
+  ctx.toolsGuidance = renderToolsGuidance(ctx.tools.definitions());
 
   registerUiHooks(ctx);
 

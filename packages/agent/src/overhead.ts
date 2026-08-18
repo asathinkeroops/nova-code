@@ -14,12 +14,15 @@ import { buildSystemPrompt } from "./system-prompt.js";
 
 /**
  * The part of every request that is NOT conversation: the system prompt (core
- * instructions + memory bundle + skills block) and the tool schemas. It is
+ * instructions + memory bundle + tool guidance) and the tool schemas. It is
  * re-sent verbatim on every call, so it occupies the context window just as
  * surely as the messages do.
  */
 export interface FixedOverhead {
-  /** Base prompt + language guard + glue, with memory/skills attributed separately. */
+  /**
+   * Base prompt + tool guidance + language guard + glue, with memory and the
+   * skills index attributed separately.
+   */
   systemTokens: number;
   memoryTokens: number;
   skillsTokens: number;
@@ -41,7 +44,14 @@ export interface FixedOverheadInput {
   workspace: string;
   memory: MemoryBundle;
   sessionId: string;
-  skillsBlock: string;
+  /** The rendered tool-guidance block, exactly as `buildSystemPrompt` receives it. */
+  toolsGuidance: string;
+  /**
+   * The skills-index section's own text, a slice of {@link toolsGuidance}. Passed
+   * separately only so the host can report it as its own row — it dominates the
+   * block whenever a user has many skills. Omit to fold it into `systemTokens`.
+   */
+  skillsBlock?: string;
   /** Resolved response language; defaults to `buildSystemPrompt`'s own default. */
   language?: string;
   /** The tool definitions the next request will carry. */
@@ -77,15 +87,15 @@ export function measureFixedOverhead(input: FixedOverheadInput): FixedOverhead {
   const weights = input.tokenEstimate ?? DEFAULT_TOKEN_ESTIMATE;
   const est = (s: string): number => estimateTextTokens(s, weights);
 
-  const fullSystem = buildSystemPrompt(
-    input.workspace,
-    input.memory,
-    input.sessionId,
-    input.skillsBlock,
-    input.language,
-  );
+  const fullSystem = buildSystemPrompt({
+    workspace: input.workspace,
+    memory: input.memory,
+    sessionId: input.sessionId,
+    toolsGuidance: input.toolsGuidance,
+    ...(input.language !== undefined ? { language: input.language } : {}),
+  });
   const memoryTokens = est(input.memory.system);
-  const skillsTokens = est(input.skillsBlock);
+  const skillsTokens = input.skillsBlock ? est(input.skillsBlock) : 0;
   // Memory and skills are embedded in the prompt, so subtract them out rather
   // than double-counting; clamped because the estimate is not exactly additive.
   const systemTokens = Math.max(0, est(fullSystem) - memoryTokens - skillsTokens);

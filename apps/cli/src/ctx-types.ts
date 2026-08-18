@@ -162,10 +162,24 @@ export interface CliContext {
   readonly apiKey: string;
   readonly workspace: string;
   /**
-   * Pre-rendered `<available-skills>` block injected into the system prompt.
-   * Empty string when skills are disabled or no SKILL.md files were found.
+   * Pre-rendered `<available-skills>` block. Not injected on its own — it is
+   * one section of {@link toolsGuidance}; kept here so `/context` can report the
+   * skills index as its own row. Empty when skills are disabled or no SKILL.md
+   * files were found.
    */
   readonly skillsBlock: string;
+  /**
+   * The `<tool-guidance>` block injected into the system prompt: every
+   * `ToolPromptSection` whose tools survived into the final registry, the
+   * skills index included.
+   *
+   * Assigned ONCE in `finalizeContext`, after MCP, `createSubAgent`, the
+   * plan-mode pair and `permissions.deny` have all had their say — that is the
+   * only moment the tool set is final. Mutable purely because that moment comes
+   * after the context object exists; nothing may rewrite it later, since the
+   * system prompt is frozen for the epoch and byte 0 of the request prefix.
+   */
+  toolsGuidance: string;
   readonly version: string;
   readonly noTranscript: boolean;
   readonly noPretty: boolean;

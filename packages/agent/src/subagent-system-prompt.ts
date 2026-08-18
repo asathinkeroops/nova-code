@@ -13,12 +13,16 @@ import type { AgentDefinition } from "./definitions.js";
  * discipline, identity, system-info — is fixed so every sub-agent behaves
  * consistently regardless of type.
  */
-export function buildSubAgentSystemPrompt(
-  workspace: string,
-  memory: MemoryBundle,
-  skillsBlock: string,
-  def: Pick<AgentDefinition, "name" | "roleLine" | "guidance">,
-): string {
+export interface SubAgentSystemPromptInput {
+  workspace: string;
+  memory: MemoryBundle;
+  /** Guidance for the CHILD's tool set, already gated by the caller. */
+  toolsGuidance?: string;
+  def: Pick<AgentDefinition, "name" | "roleLine" | "guidance">;
+}
+
+export function buildSubAgentSystemPrompt(input: SubAgentSystemPromptInput): string {
+  const { workspace, memory, toolsGuidance = "", def } = input;
   const trimmedGuidance = def.guidance.trim();
   const extra = trimmedGuidance ? `${trimmedGuidance}\n` : "";
   const base = `You are a Nova sub-agent: ${def.roleLine}.
@@ -37,7 +41,7 @@ Act, don't explain.
 
 <system-info platform="${process.platform}"></system-info>
 `;
-  const skills = skillsBlock ? `\n${skillsBlock}\n` : "";
-  if (!memory.system) return `${base}${skills}`;
-  return `${base}${skills}\n${memory.system}\n`;
+  const tools = toolsGuidance ? `\n${toolsGuidance}\n` : "";
+  if (!memory.system) return `${base}${tools}`;
+  return `${base}${tools}\n${memory.system}\n`;
 }

@@ -92,7 +92,6 @@ function makeOptions(
     systemPrompt: createMemoryPrompt({
       workspace: "/tmp/ws",
       getMemory: () => ({ system: "", sources: [] }),
-      skillsBlock: "",
       getSessionId: () => "test-session",
     }),
     getMessagesPath: () => overrides.messagesPath,
@@ -373,7 +372,6 @@ describe("createAgent.runTurn", () => {
         systemPrompt: createMemoryPrompt({
           workspace: "/tmp/ws",
           getMemory: () => bundle,
-          skillsBlock: "",
           getSessionId: () => sessionId,
         }),
       }),
@@ -417,7 +415,6 @@ describe("createAgent.runTurn", () => {
         systemPrompt: createMemoryPrompt({
           workspace: "/tmp/ws",
           getMemory: () => bundle,
-          skillsBlock: "",
           // Epoch never advances — a mid-session memory swap must not land.
           getSessionId: () => "session-1",
         }),

@@ -1,4 +1,4 @@
-import type { ToolHandler } from "@nova/core";
+import type { ToolHandler, ToolPromptSection } from "@nova/core";
 import type { LspManager } from "@nova/lsp";
 import { askUserQuestionTool } from "./ask-user.js";
 import { bashTool, createBashTool } from "./bash.js";
@@ -6,25 +6,32 @@ import { editTool } from "./edit.js";
 import { globTool } from "./glob.js";
 import { grepTool } from "./grep.js";
 import { createLspTool } from "./lsp.js";
-import { createLoadSkillTool } from "./load-skill.js";
+import { createLoadSkillTool, LOAD_SKILL_PROMPT } from "./load-skill.js";
+import { PLAN_MODE_PROMPT } from "./plan-mode.js";
 import { readTool } from "./read.js";
 import { getSkill, getSkillList, type SkillsOptions } from "./skills.js";
 import { type TaskStore } from "./task/store.js";
-import { createTaskTools } from "./task/index.js";
+import { createTaskTools, TASK_PROMPT } from "./task/index.js";
 import { type CronStore } from "./cron/store.js";
 import { createCronTools } from "./cron/index.js";
 import { TodoStore } from "./todo/store.js";
-import { createTodoTools } from "./todo/index.js";
+import { createTodoTools, TODO_PROMPT } from "./todo/index.js";
 import { type BackgroundCommandManager } from "./background/manager.js";
-import { createBackgroundCommandTools } from "./background/index.js";
+import { createBackgroundCommandTools, BACKGROUND_PROMPT } from "./background/index.js";
 import { type MonitorManager } from "./monitor/manager.js";
-import { createMonitorTools } from "./monitor/index.js";
+import { createMonitorTools, MONITOR_PROMPT } from "./monitor/index.js";
 import { webfetchTool } from "./webfetch.js";
 import { createWebsearchTool, websearchTool, type WebsearchOptions } from "./websearch.js";
 import { writeTool } from "./write.js";
 
 export { ToolRegistry } from "./registry.js";
 export { createDispatcher, type DispatcherDeps } from "./dispatcher.js";
+export {
+  renderToolPrompts,
+  staticSection,
+  presentList,
+  type RenderedToolPrompts,
+} from "./prompt.js";
 export { withAliases, aliasedPath, PATH_ALIASES } from "./schema.js";
 export {
   askUserQuestionTool,
@@ -46,6 +53,7 @@ export {
   updateTodoTool,
   clearTodoListTool,
   createTodoTools,
+  TODO_PROMPT,
 } from "./todo/index.js";
 export { TodoStore, TodoError, type Todo, type TodoStatus } from "./todo/store.js";
 export {
@@ -60,6 +68,7 @@ export {
   getTaskListTool,
   clearTaskListTool,
   createTaskTools,
+  TASK_PROMPT,
 } from "./task/index.js";
 export {
   TaskStore,
@@ -96,6 +105,7 @@ export {
   killBackgroundTool,
   createBackgroundCommandTools,
   makeBackgroundNotifier,
+  BACKGROUND_PROMPT,
   type BackgroundNotifierHook,
 } from "./background/index.js";
 export {
@@ -105,6 +115,7 @@ export {
   stopMonitorTool,
   createMonitorTools,
   makeMonitorNotifier,
+  MONITOR_PROMPT,
   type MonitorNotifierHook,
   type MonitorRecord,
   type MonitorStatus,
@@ -133,6 +144,7 @@ export {
   expandSkillBody,
   renderSkillPayload,
   bashRunnerFor,
+  LOAD_SKILL_PROMPT,
   type GetSkillFn,
   type LoadSkillOptions,
   type ExpandSkillOptions,
@@ -143,9 +155,32 @@ export {
   ENTER_PLAN_MODE_TOOL,
   EXIT_PLAN_MODE_TOOL,
   PLAN_MODE_TOOL_NAMES,
+  PLAN_MODE_PROMPT,
   type PlanExitDecision,
   type PlanModeDeps,
 } from "./plan-mode.js";
+
+/**
+ * System-prompt guidance for the builtin tools, one section per family.
+ *
+ * A LIST, not a derivation of {@link builtinTools}: the gate is the final tool
+ * set the host renders against — which includes tools this package never sees
+ * (`createSubAgent`, MCP) and excludes ones `permissions.deny` removed. The
+ * host concatenates its own sections onto this and calls
+ * {@link renderToolPrompts}.
+ *
+ * A family whose guidance belongs in its tool description instead (read, glob,
+ * websearch, lsp, cron) contributes nothing here — a section earns its place
+ * only when it spans several tools or teaches a tradeoff between them.
+ */
+export const BUILTIN_TOOL_PROMPTS: readonly ToolPromptSection[] = [
+  TODO_PROMPT,
+  TASK_PROMPT,
+  BACKGROUND_PROMPT,
+  MONITOR_PROMPT,
+  LOAD_SKILL_PROMPT,
+  PLAN_MODE_PROMPT,
+];
 
 /**
  * Build the default set of builtin tools.

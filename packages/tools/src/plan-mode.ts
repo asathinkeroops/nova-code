@@ -1,5 +1,6 @@
 import { z } from "zod";
-import type { ToolHandler } from "@nova/core";
+import type { ToolHandler, ToolPromptSection } from "@nova/core";
+import { staticSection } from "./prompt.js";
 
 export const ENTER_PLAN_MODE_TOOL = "enterPlanMode";
 export const EXIT_PLAN_MODE_TOOL = "exitPlanMode";
@@ -13,6 +14,24 @@ export const PLAN_MODE_TOOL_NAMES: ReadonlySet<string> = new Set([
   ENTER_PLAN_MODE_TOOL,
   EXIT_PLAN_MODE_TOOL,
 ]);
+
+/**
+ * When to enter plan mode, and that only the tool lifts it.
+ *
+ * Gated on both tools: guidance about a mode the model cannot leave on its own
+ * is worse than none. The host registers the pair only when
+ * `settings.planMode.agentTools` is on, so this follows that setting without
+ * reading it.
+ */
+export const PLAN_MODE_PROMPT: ToolPromptSection = staticSection({
+  id: "plan-mode",
+  order: 70,
+  requires: [ENTER_PLAN_MODE_TOOL, EXIT_PLAN_MODE_TOOL],
+  text: [
+    `- Call ${ENTER_PLAN_MODE_TOOL} BEFORE you start investigating whenever the ask is for a plan, an approach, or a design rather than the change itself — "how would you do X", "what's your plan", "don't touch anything yet", in any language — or when the work is big or risky enough to agree on before touching files. Intending not to edit anything is not the same as ${ENTER_PLAN_MODE_TOOL}: it makes the session read-only, so the promise is enforced rather than remembered, and it hands the user an explicit approve step. Skip it only for work you were already told to just do.`,
+    `- Once plan mode is on, only ${EXIT_PLAN_MODE_TOOL} lifts it — if the user then tells you to go ahead, call ${EXIT_PLAN_MODE_TOOL} before your first write/edit/bash, not after one gets denied.`,
+  ].join("\n"),
+});
 
 /** Outcome of asking the user to leave plan mode. */
 export interface PlanExitDecision {

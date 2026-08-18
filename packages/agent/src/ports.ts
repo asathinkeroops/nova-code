@@ -65,25 +65,32 @@ export interface MemoryPromptOptions {
    * prefix. A session-boundary reload is fine — that advances the epoch.
    */
   getMemory: () => MemoryBundle;
-  skillsBlock: string;
+  /**
+   * The host's rendered tool-guidance block (see `SystemPromptInput.toolsGuidance`).
+   * A getter only so the host can bind it after its registry is complete — it
+   * MUST NOT re-read the live tool set per turn: `freezeSystemPrompt` would
+   * discard the new value and warn, and without the freeze a mid-session tool
+   * change would collapse the prefix cache.
+   */
+  getToolsGuidance?: () => string;
   /** Doubles as the prefix epoch: a new session is the only time the prompt may change. */
   getSessionId: () => string;
   /** Resolved response language ("en", "zh-CN", …). */
   getLanguage?: () => string | undefined;
 }
 
-/** The main agent's system prompt: workspace + memory + skills + language. */
+/** The main agent's system prompt: workspace + memory + tool guidance + language. */
 export function createMemoryPrompt(opts: MemoryPromptOptions): SystemPromptProvider {
   return {
     epoch: () => opts.getSessionId(),
     system: () =>
-      buildSystemPrompt(
-        opts.workspace,
-        opts.getMemory(),
-        opts.getSessionId(),
-        opts.skillsBlock,
-        opts.getLanguage?.(),
-      ),
+      buildSystemPrompt({
+        workspace: opts.workspace,
+        memory: opts.getMemory(),
+        sessionId: opts.getSessionId(),
+        toolsGuidance: opts.getToolsGuidance?.() ?? "",
+        ...(opts.getLanguage?.() !== undefined ? { language: opts.getLanguage() as string } : {}),
+      }),
   };
 }
 

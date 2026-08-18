@@ -163,6 +163,54 @@ export interface ToolDefinition {
   inputJsonSchema?: Record<string, unknown>;
 }
 
+/** What a {@link ToolPromptSection} may look at when it renders. */
+export interface ToolPromptContext {
+  /**
+   * Tool names present in the snapshot this block is being rendered for —
+   * already past the host's denylist and, for a sub-agent, past its
+   * `readOnly` / `allowTools` filter.
+   */
+  present: ReadonlySet<string>;
+}
+
+/**
+ * A chunk of system-prompt text that only makes sense when certain tools are
+ * in play — the todo discipline, the background-vs-monitor tradeoff, the skills
+ * index. Sections are declared NEXT TO the tools they describe (a tool family's
+ * factory exports its own) and gathered by the host, which owns the final tool
+ * set.
+ *
+ * Deliberately N:M with tools, not 1:1 — one section usually spans a whole
+ * family, and cross-tool guidance ("use X, not Y") belongs to neither tool
+ * alone. Per-tool "how to call this" text stays in `ToolDefinition.description`,
+ * which travels with the schema and tracks the live registry.
+ *
+ * ── TWO RULES, BOTH LOAD-BEARING ───────────────────────────────────────────
+ *
+ * 1. `render` must be PURE and BYTE-DETERMINISTIC: the same tool set must
+ *    always produce the same bytes. The result lands in the system prompt,
+ *    which is byte 0 of the request prefix and frozen for an epoch
+ *    (`freezeSystemPrompt`) — a section that varies renders the freeze into a
+ *    silent no-op and, without it, would collapse the prefix cache.
+ * 2. A section reads the tool set SNAPSHOT it is handed, never live state. The
+ *    block is rendered once per epoch; anything that changes mid-session
+ *    (an MCP server disconnecting, a skill installed by `/plugin`) does not
+ *    reach it until the next session boundary. Guidance that genuinely has to
+ *    react mid-turn belongs in an injected message (`pre_request`) instead.
+ */
+export interface ToolPromptSection {
+  /** Stable dedup key — `"todo"`, `"skills"`. Later duplicates are dropped. */
+  id: string;
+  /** Ascending; ties keep input order. Default 100. */
+  order?: number;
+  /** Emit only when EVERY name is present. */
+  requires?: readonly string[];
+  /** Emit only when AT LEAST ONE name is present. Combined with `requires` via AND. */
+  requiresAny?: readonly string[];
+  /** The section's text. Return `""` to emit nothing. */
+  render(ctx: ToolPromptContext): string;
+}
+
 export interface AskUserQuestionSpec {
   question: string;
   header: string;

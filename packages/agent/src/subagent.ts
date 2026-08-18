@@ -19,6 +19,7 @@ import {
   type ToolDefinition,
   type ToolExecutor,
   type ToolHandler,
+  type ToolPromptSection,
   type TurnResult,
 } from "@nova/core";
 import { Transcript, type Logger } from "@nova/base";
@@ -26,6 +27,22 @@ import type { AgentDefinition, AgentRegistry } from "./definitions.js";
 import { buildSubAgentSystemPrompt } from "./subagent-system-prompt.js";
 
 export const SUBAGENT_TOOL_NAME = "createSubAgent";
+
+/**
+ * When to delegate. Lives here rather than in `@nova/tools` because this is the
+ * package that owns the tool; the host folds it in with the builtin sections.
+ *
+ * Gated on the tool, so a session with `settings.subagent.enabled: false` (or
+ * the tool denied) stops advertising it — and a sub-agent, which never gets
+ * `createSubAgent`, is not told to spawn children it cannot spawn.
+ */
+export const SUBAGENT_PROMPT: ToolPromptSection = {
+  id: "subagent",
+  order: 60,
+  requires: [SUBAGENT_TOOL_NAME],
+  render: () =>
+    `- Delegate focused subtasks to parallel sub-agents with ${SUBAGENT_TOOL_NAME} (type: explore = read-only retrieval, plan = read-only planning, general-purpose = full tools).`,
+};
 
 /**
  * A single display-only detail entry streamed out of a running sub-agent so the
@@ -114,8 +131,13 @@ export interface SubAgentDeps {
   workspace: string;
   /** Read per-spawn so a session-boundary memory reload reaches new sub-agents. */
   getMemory: () => MemoryBundle;
-  /** Skills index block embedded in the sub-agent's system prompt. */
-  skillsBlock: string;
+  /**
+   * Renders the tool-guidance block from the CHILD's tool set (see
+   * `SessionMemoryOptions.renderToolsGuidance`). Called once per spawn, after the
+   * set has been filtered — so a read-only sub-agent is never taught the tools
+   * it was denied. Omit to give sub-agents no tool guidance at all.
+   */
+  renderToolsGuidance?: (tools: ToolDefinition[]) => string;
   /**
    * Registry of available sub-agent definitions (built-ins + custom). Read
    * per-invocation so `/agents reload` is honored on the next spawn.
@@ -262,7 +284,14 @@ export function createSubAgentTool(deps: SubAgentDeps): ToolHandler {
         // A sub-agent lives for one task, so its epoch never advances and its
         // prompt is fixed at spawn — memory is snapshotted here by design.
         systemPrompt: staticPrompt(
-          buildSubAgentSystemPrompt(deps.workspace, deps.getMemory(), deps.skillsBlock, def),
+          buildSubAgentSystemPrompt({
+            workspace: deps.workspace,
+            memory: deps.getMemory(),
+            // Gated on childTools, not the parent's set: the whole point of
+            // withholding a tool is that the child never learns to reach for it.
+            toolsGuidance: deps.renderToolsGuidance?.(childTools) ?? "",
+            def,
+          }),
           id,
         ),
         getModel: () => deps.getModel(def),
