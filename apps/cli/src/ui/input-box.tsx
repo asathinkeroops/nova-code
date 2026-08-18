@@ -64,6 +64,31 @@ export interface DisplayLine {
 }
 
 const POPUP_MAX_ROWS = 5;
+
+/**
+ * Render one completion-popup row: selection arrow, the name padded out to the
+ * shared description column, then the description.
+ *
+ * Every row must occupy exactly one terminal line — `popupRows` (fed to
+ * `onMeasure`) counts one per visible match, so a wrapped row leaves the
+ * reserved height short and the popup paints over the frame. So the name is
+ * clipped first, the description is flattened (a command description may span
+ * several lines), and the assembled row is clipped again to the box width less
+ * the one-column margin `wrapBuffer` keeps — a row that would overflow ends in
+ * an ellipsis instead of spilling onto the next line.
+ */
+export function popupRow(
+  item: SlashCommand,
+  opts: { selected: boolean; nameWidth: number; width: number },
+): string {
+  const arrow = opts.selected ? "❯ " : "  ";
+  const label = truncateToWidth(item.name, Math.max(10, opts.width - 4));
+  // File rows carry no description, so they need no padding.
+  const desc = item.description.replace(/\s+/g, " ").trim();
+  const pad = desc ? " ".repeat(Math.max(1, opts.nameWidth + 2 - visibleWidth(label))) : "";
+  return truncateToWidth(`${arrow}${label}${pad}${desc}`, Math.max(1, opts.width - 1));
+}
+
 const QUEUED_MAX_ROWS = 5;
 /** Cap on file candidates fed to the mention popup before it scrolls. */
 const MENTION_MAX_CANDIDATES = 50;
@@ -880,6 +905,10 @@ export function InputBox({
     : findCursorPosition(lines, cursor);
 
   const popupVisible = Math.min(POPUP_MAX_ROWS, Math.max(0, matches.length - safeOffset));
+  // Column the descriptions align to, measured over the whole match list (not
+  // just the visible page) so scrolling never shifts them sideways.
+  const popupNameWidth =
+    matches.length > 0 ? Math.min(20, Math.max(...matches.map((m) => visibleWidth(m.name)))) : 0;
   const popupTopMore = matches.length > 0 && safeOffset > 0 ? 1 : 0;
   const popupBottomMore =
     matches.length > 0 && safeOffset + POPUP_MAX_ROWS < matches.length ? 1 : 0;
@@ -1011,24 +1040,10 @@ export function InputBox({
         <Text dimColor> ↑ {t.input.moreAbove(safeOffset)}</Text>
       ) : null}
       {matches.slice(safeOffset, safeOffset + POPUP_MAX_ROWS).map((m, i) => {
-        const absIndex = i + safeOffset;
-        const isSel = absIndex === effectivePopupCursor;
-        const arrow = isSel ? "❯ " : "  ";
-        // Truncate the name to the box width so a long file path never wraps
-        // (which would throw off the popup row count fed to onMeasure).
-        const label = truncateToWidth(m.name, Math.max(10, width - 4));
-        const nameWidth = Math.min(20, Math.max(...matches.map((mm) => visibleWidth(mm.name))));
-        // Pad to align descriptions (slash commands). File rows carry no
-        // description, so they need no padding.
-        const pad = m.description
-          ? " ".repeat(Math.max(1, nameWidth + 2 - visibleWidth(label)))
-          : "";
+        const isSel = i + safeOffset === effectivePopupCursor;
         return (
           <Text key={m.name} color={isSel ? ACCENT_HEX : undefined} dimColor={!isSel}>
-            {arrow}
-            {label}
-            {pad}
-            {m.description}
+            {popupRow(m, { selected: isSel, nameWidth: popupNameWidth, width })}
           </Text>
         );
       })}

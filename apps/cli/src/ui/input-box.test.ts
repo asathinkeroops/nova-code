@@ -6,6 +6,7 @@ import {
   historyRule,
   matchingFiles,
   mentionTokenAt,
+  popupRow,
   sanitizePastedText,
   sessionNameBadge,
   styledSpans,
@@ -13,6 +14,7 @@ import {
   type InputHitLayout,
   type SlashCommand,
 } from "./input-box.js";
+import { visibleWidth } from "./width.js";
 
 const cmds: SlashCommand[] = [
   { name: "/agent", description: "delegate a task to a named sub-agent" },
@@ -350,5 +352,47 @@ describe("matchingFiles", () => {
 
   it("honors the limit", () => {
     expect(matchingFiles("", files, 1)).toHaveLength(1);
+  });
+});
+
+describe("popupRow", () => {
+  const opts = { selected: false, nameWidth: 8, width: 40 };
+
+  it("aligns descriptions at the shared name column", () => {
+    expect(popupRow({ name: "/help", description: "show this help" }, opts)).toBe(
+      "  /help     show this help",
+    );
+  });
+
+  it("marks the selected row with an arrow", () => {
+    expect(popupRow({ name: "/help", description: "" }, { ...opts, selected: true })).toBe(
+      "\u276f /help",
+    );
+  });
+
+  it("clips a long description to one line, ending in an ellipsis", () => {
+    const row = popupRow({ name: "/fliggy", description: "x".repeat(200) }, opts);
+    expect(visibleWidth(row)).toBeLessThanOrEqual(opts.width - 1);
+    expect(row.endsWith("\u2026")).toBe(true);
+  });
+
+  it("flattens a multi-line description so it cannot wrap", () => {
+    const row = popupRow({ name: "/a", description: "first line\n\nsecond line" }, opts);
+    expect(row).not.toContain("\n");
+    expect(row).toContain("first line second line");
+  });
+
+  it("clips a long name too (file mentions carry no description)", () => {
+    const row = popupRow({ name: `src/${"deep/".repeat(30)}file.ts`, description: "" }, opts);
+    expect(visibleWidth(row)).toBeLessThanOrEqual(opts.width - 1);
+    expect(row.endsWith("\u2026")).toBe(true);
+  });
+
+  it("keeps CJK descriptions within the box width", () => {
+    const row = popupRow(
+      { name: "/trip", description: "\u98de\u732a\u5ea6\u5047\u6570\u636e".repeat(20) },
+      opts,
+    );
+    expect(visibleWidth(row)).toBeLessThanOrEqual(opts.width - 1);
   });
 });
