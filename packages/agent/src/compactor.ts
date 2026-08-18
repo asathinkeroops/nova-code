@@ -1,22 +1,56 @@
-import { autoCompact, shouldAutoCompact, sliceFromLastCompacted } from "@nova/agent";
-import {
-  type Compactor,
-  type MessageParam,
-  type ModelClient,
-} from "@nova/core";
-import {
-  resolveProfile,
-} from "@nova/model";
-import { resolveContextWindowSize, type Settings } from "@nova/base";
+/**
+ * The compaction PORT — the policy wrapper `@nova/core`'s loop consults.
+ *
+ * `compact.ts` owns the mechanics (the boundary, the model-facing slice, the
+ * threshold math, the summarizer call); this file owns the decisions built on
+ * top of them: whether auto-compaction is enabled, what the threshold is
+ * measured against, who may veto a pass, and who hears about one that ran.
+ *
+ * Everything that can change mid-session arrives as a getter — the port object
+ * is built once (see the liveness rule in `@nova/core`'s `ports.ts`), so a
+ * `/model` switch has to be visible through a method call, not a captured field.
+ */
+
+import type { Compactor, MessageParam, ModelClient } from "@nova/core";
+import type { TokenEstimate } from "@nova/base";
+import { autoCompact, shouldAutoCompact, sliceFromLastCompacted } from "./compact.js";
+
+/**
+ * Auto-compaction policy — the `compact.auto` slice of the settings schema,
+ * copied as plain values so the agent stays uncoupled from it (same reasoning as
+ * `AgentSettingsSlice`). Read once at build time: no runtime path changes these
+ * today; make it a getter if one appears.
+ */
+export interface AutoCompactPolicy {
+  /** Whether the automatic path may run at all. `/compact` ignores this. */
+  enabled: boolean;
+  /** Hard token ceiling. Wins over the percentage when set. */
+  thresholdTokens?: number;
+  /** Share of the context window that triggers compaction. */
+  contextWindowPercent?: number;
+  /** Cap on the summarizer's response. */
+  maxSummaryTokens?: number;
+}
 
 export interface BuildCompactorOptions {
-  settings: Settings;
-  /** Closes over the CLI's live model binding. */
+  auto: AutoCompactPolicy;
+  /** The summarizer's model. A getter: it follows the host's live binding. */
   getModel: () => ModelClient;
   /**
-   * Tokens the next request will spend on the system prompt and tool schemas.
-   * Counted against the compaction threshold alongside the messages, so the
-   * trigger measures the same thing `/context` displays.
+   * The active model tier's context window, which the percentage threshold is
+   * taken from. A getter because `/model` switches tiers mid-session.
+   */
+  getContextWindowSize: () => number;
+  /**
+   * The provider's tokenizer ratios, so a CJK-heavy conversation isn't
+   * under-counted (which would trip the trigger too late). A getter for the
+   * same reason as the window size. Omit for the default ratios.
+   */
+  getTokenEstimate?: () => TokenEstimate;
+  /**
+   * Tokens the next request will spend on the system prompt and tool schemas
+   * (see `measureFixedOverhead`). Counted against the threshold alongside the
+   * messages, so the trigger measures the same thing a context panel displays.
    *
    * A getter, not a value: MCP servers connect after startup and plan mode
    * swaps the tool registry, so the overhead changes within a session.
@@ -46,12 +80,12 @@ export interface ManualCompactResult {
 }
 
 /**
- * Unconditional compaction entry point for the `/compact` slash command —
+ * Unconditional compaction entry point for a `/compact`-style command —
  * bypasses `shouldAutoCompact` and always runs the summarizer.
  *
  * The summarizer sees only the current model view (`sliceFromLastCompacted`);
  * its `<compacted>` boundary is APPENDED to the full append-only history, which
- * is never truncated (the TUI keeps rendering it; only the model reads the
+ * is never truncated (a TUI keeps rendering it; only the model reads the
  * post-boundary slice). `before`/`after` report the model-view compression.
  */
 export async function manualCompact(
@@ -71,8 +105,8 @@ export async function manualCompact(
 }
 
 export function buildCompactor(opts: BuildCompactorOptions): Compactor {
-  const { settings, getModel, getOverheadTokens, onPreCompact, onAutoCompact } = opts;
-  const auto = settings.compact.auto;
+  const { auto, getModel, getContextWindowSize, getTokenEstimate, getOverheadTokens } = opts;
+  const { onPreCompact, onAutoCompact } = opts;
 
   const compact: Compactor["compact"] = async (messages, req) => {
     // Returning the SAME reference signals "no compaction" and lets the
@@ -89,7 +123,7 @@ export function buildCompactor(opts: BuildCompactorOptions): Compactor {
         view,
         {
           // Read live: follows the active model tier's window after a /model switch.
-          contextWindowSize: resolveContextWindowSize(settings, settings.model),
+          contextWindowSize: getContextWindowSize(),
           ...(auto.thresholdTokens !== undefined ? { thresholdTokens: auto.thresholdTokens } : {}),
           ...(auto.contextWindowPercent !== undefined
             ? { contextWindowPercent: auto.contextWindowPercent }
@@ -102,7 +136,7 @@ export function buildCompactor(opts: BuildCompactorOptions): Compactor {
               ? { overheadTokens: getOverheadTokens() }
               : {}),
         },
-        resolveProfile(settings.provider).tokenEstimate,
+        getTokenEstimate?.(),
       );
       if (!trigger) return messages;
     }

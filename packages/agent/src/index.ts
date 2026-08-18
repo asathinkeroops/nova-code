@@ -61,6 +61,22 @@ export {
   type AutoCompactResult,
 } from "./compact.js";
 
+export {
+  buildCompactor,
+  manualCompact,
+  type AutoCompactPolicy,
+  type BuildCompactorOptions,
+  type ManualCompactOptions,
+  type ManualCompactResult,
+} from "./compactor.js";
+
+export {
+  measureFixedOverhead,
+  fixedOverheadTotal,
+  type FixedOverhead,
+  type FixedOverheadInput,
+} from "./overhead.js";
+
 // ── sub-agents: the Task tool, its registry and its definition loader ──────
 export {
   createSubAgentTool,

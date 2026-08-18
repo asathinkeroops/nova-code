@@ -1,5 +1,5 @@
+import { manualCompact } from "@nova/agent";
 import { dim } from "../colors.js";
-import { manualCompact } from "../compactor.js";
 import { persist, stopSpinner, type CliContext } from "../context.js";
 import { t } from "../i18n/index.js";
 

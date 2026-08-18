@@ -2,9 +2,11 @@ import { join, resolve } from "node:path";
 import {
   AgentRegistry,
   assembleAgent,
+  buildCompactor,
   createMemoryPrompt,
   createSubAgentTool,
   emptyCursor,
+  fixedOverheadTotal,
   loadMemory,
   loadMessages,
   type Agent,
@@ -40,6 +42,7 @@ import {
   loadProjectHooks,
   mergeHooks,
   resolveAutoMemoryDir,
+  resolveContextWindowSize,
   resolveMaxTokens,
   resolveModelId,
   resolveSkillsIndexBudget,
@@ -69,8 +72,7 @@ import {
 } from "@nova/tools";
 import { CronScheduler } from "./cron-scheduler.js";
 import { dim } from "./colors.js";
-import { buildCompactor } from "./compactor.js";
-import { fixedOverheadTotal, measureFixedOverhead } from "./context-usage.js";
+import { measureCtxOverhead } from "./context-usage.js";
 import { loadGoal } from "./goal.js";
 import { buildMcpManager } from "./mcp.js";
 import { canonicalizePath, canonicalizeRoots, PATH_INPUT_TOOLS } from "./path-safety.js";
@@ -896,13 +898,17 @@ export async function createContext(
   };
 
   (ctx as { compactor: CliContext["compactor"] }).compactor = buildCompactor({
-    settings,
+    auto: settings.compact.auto,
     // Non-streaming client (trackTokens=false): the summarizer's output must
     // not leak into the live draft / spinner like a normal turn — it's internal
     // machinery, surfaced only via the post_compact card. Built from the live
     // model name so it still follows /model switches.
     getModel: () => ctx.buildModel(ctx.settings.model, false),
-    getOverheadTokens: () => fixedOverheadTotal(measureFixedOverhead(ctx)),
+    // Both read live so the threshold follows a /model switch to another tier
+    // (different window) or another provider (different tokenizer ratios).
+    getContextWindowSize: () => resolveContextWindowSize(ctx.settings, ctx.settings.model),
+    getTokenEstimate: () => resolveProfile(ctx.settings.provider).tokenEstimate,
+    getOverheadTokens: () => fixedOverheadTotal(measureCtxOverhead(ctx)),
     onPreCompact: async ({ before }) => {
       const r = await ctx.userHooks.firePreCompact({
         subject: "auto",

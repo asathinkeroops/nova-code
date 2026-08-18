@@ -5,7 +5,7 @@ import {
 import { resolveContextWindowSize } from "@nova/base";
 import { accent, ACCENT_HEX, blue, bold, cyan, dim, green, yellow, magenta } from "../colors.js";
 import type { CliContext } from "../context.js";
-import { measureFixedOverhead } from "../context-usage.js";
+import { measureCtxOverhead } from "../context-usage.js";
 import { t } from "../i18n/index.js";
 import { contextBar, formatPercent, formatTokenCount } from "../ui/status-format.js";
 
@@ -42,7 +42,7 @@ export async function handleContext(ctx: CliContext): Promise<void> {
   // auto-compaction trigger uses — the panel and the trigger have to agree on
   // what fills the window, or the gauge lies about when compaction fires.
   const { systemTokens, memoryTokens, skillsTokens, toolsTokens, mcpTokens } =
-    measureFixedOverhead(ctx, weights);
+    measureCtxOverhead(ctx, weights);
 
   // The model only receives the slice from the last <compacted> boundary; the
   // retained pre-boundary history stays on disk / in the TUI but costs no
