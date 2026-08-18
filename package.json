@@ -2,7 +2,7 @@
   "name": "nova",
   "version": "0.1.0",
   "private": true,
-  "description": "A terminal coding agent, deeply tuned for DeepSeek.",
+  "description": "A terminal coding agent for Chinese LLMs — a finished product, not a framework kit.",
   "engines": {
     "node": ">=20"
   },

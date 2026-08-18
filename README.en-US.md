@@ -4,14 +4,16 @@
 
 <h1>NOVA&nbsp;CODE</h1>
 
-<p><b>The terminal coding agent purpose-built for DeepSeek</b></p>
+<p><b>The Claude Code for Chinese LLMs</b></p>
+
+<p>A finished product, not a framework kit — and the same task costs you the fewest tokens.</p>
 
 <p><code>95%+ cache hits</code> · <code>OS-sandboxed</code> · <code>tool-complete</code> · <code>install-and-go</code></p>
 
 <p>
   <a href="https://www.npmjs.com/package/@asathinkeroops/nova-code"><img src="https://img.shields.io/npm/v/@asathinkeroops/nova-code?style=for-the-badge&logo=npm&logoColor=white&label=npm&color=CB3837" alt="npm version"></a>
   <img src="https://img.shields.io/badge/Node-%E2%89%A5%2020-339933?style=for-the-badge&logo=node.js&logoColor=white" alt="Node ≥ 20">
-  <img src="https://img.shields.io/badge/Built_for-DeepSeek-4D6BFE?style=for-the-badge&logoColor=white" alt="Built for DeepSeek">
+  <img src="https://img.shields.io/badge/Built_for-Chinese_LLMs-4D6BFE?style=for-the-badge&logoColor=white" alt="Built for Chinese LLMs">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-3DA639?style=for-the-badge" alt="MIT License"></a>
 </p>
 
@@ -43,7 +45,7 @@
 
 <br>
 
-Nova reads code, runs commands, edits files — and drives your task to done through tool use. It's built around **DeepSeek**: thinking maps to effort (not `budget_tokens`), error codes are translated into plain language, and balance and pricing are built in — with the entire request pipeline tuned so DeepSeek's automatic context cache keeps hitting. Every provider speaks the Anthropic-compatible protocol; a **provider profile** (selected by `settings.provider`) absorbs the per-vendor quirks — thinking shape, error tables, balance probe. DeepSeek is the primary target, Kimi (Moonshot) has a dedicated profile (beta), and any other endpoint falls back to the generic `other` tier.
+Nova reads code, runs commands, edits files — and drives your task to done through tool use. It's a **finished product**, not a kit you assemble yourself: permissions, sandbox, LSP, MCP, Skills, plugins, and replayable sessions are all in place — install, drop in a key, get to work. The model layer targets **Chinese LLMs**: every provider speaks the Anthropic-compatible protocol, and a **provider profile** (selected by `settings.provider`) absorbs the per-vendor quirks — thinking shape, error tables, balance probe. DeepSeek and Kimi (Moonshot, beta) have dedicated profiles; any other endpoint falls back to the generic `other` tier. The whole request pipeline is designed around server-side automatic prefix caching, so the same work costs fewer tokens.
 
 <br>
 
@@ -53,14 +55,14 @@ Nova reads code, runs commands, edits files — and drives your task to done thr
 <tr>
 <td width="50%" valign="top">
 
-### ⚡ DeepSeek-native, zero config
+### ⚡ Native to Chinese LLMs, zero config
 
-No `cache_control` to tweak, no error-code docs to dig through. Install, drop in your key, go. Thinking maps to DeepSeek's `effort` (not `budget_tokens`), HTTP error codes are translated into plain language, and your account balance shows live on the status line — all tuned for DeepSeek out of the box.
+No `cache_control` to tweak, no error-code docs to dig through. Install, drop in your key, go. Thinking maps to each vendor's own wire shape (DeepSeek's `effort`, Kimi's `thinking.type` — rather than forcing `budget_tokens` everywhere), HTTP error codes are translated into plain language with a top-up / new-key link attached, and your account balance shows live on the status line.
 
 </td>
 <td width="50%" valign="top">
 
-### 🎚️ More than DeepSeek: three-tier ladder
+### 🎚️ Multi-provider, three-tier ladder
 
 Three built-in provider profiles — DeepSeek, Moonshot (Kimi), and generic Anthropic-compatible — each with its own error-code table, rate-limit retries, and balance probe. Models are configured across `lite` / `pro` / `max` tiers, each with its own id, thinking level, and pricing. `/model` and `--model` switch the tier, not a raw provider id.
 
@@ -71,7 +73,7 @@ Three built-in provider profiles — DeepSeek, Moonshot (Kimi), and generic Anth
 
 ### 🚀 Cache-friendly by design
 
-History is append-only and the request body stays byte-stable (internal `meta` fields are stripped before sending so they never pollute the prefix); memory and skills are rebuilt only at session boundaries, never mid-turn — keeping DeepSeek's server-side prefix cache hitting every turn. Auto-compaction fires at half the context window and only appends a `<compacted>` boundary.
+History is append-only and the request body stays byte-stable (internal `meta` fields are stripped before sending so they never pollute the prefix); memory and skills are rebuilt only at session boundaries, never mid-turn — keeping the server-side automatic prefix cache (DeepSeek and Kimi both use one) hitting every turn. Auto-compaction fires at half the context window and only appends a `<compacted>` boundary.
 
 </td>
 <td width="50%" valign="top">
@@ -103,7 +105,7 @@ Define custom sub-agents, slash commands, skills, or lifecycle hooks — drop a 
 
 ### 🔄 Bring your habits, not a manual
 
-Nova closely mirrors the Claude Code workflow — the same slash commands, keybindings, approval prompts, three-layer memory files, and replayable sessions. If you've used Claude Code there's nothing new to learn: install and keep working the way you already do, just on an engine tuned for DeepSeek underneath.
+Nova closely mirrors the Claude Code workflow — the same slash commands, keybindings, approval prompts, three-layer memory files, and replayable sessions. If you've used Claude Code there's nothing new to learn: install and keep working the way you already do, just on an engine tuned for Chinese LLMs and designed around token cost underneath.
 
 </td>
 </tr>
@@ -280,7 +282,7 @@ New contributors should start with:
   <a href="https://www.npmjs.com/package/@asathinkeroops/nova-code">📦 npm</a>
 </p>
 
-<sub>Purpose-built for DeepSeek ❤️</sub>
+<sub>Built for Chinese LLMs ❤️</sub>
 
 <br><br>
 

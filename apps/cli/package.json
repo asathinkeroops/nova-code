@@ -1,7 +1,7 @@
 {
   "name": "@asathinkeroops/nova-code",
   "version": "0.3.0",
-  "description": "A terminal coding agent, deeply tuned for DeepSeek.",
+  "description": "A terminal coding agent for Chinese LLMs — a finished product, not a framework kit.",
   "type": "module",
   "license": "MIT",
   "homepage": "https://github.com/asathinkeroops/nova-code#readme",

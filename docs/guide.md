@@ -1,6 +1,6 @@
 # Nova 使用手册
 
-> Nova（命令行二进制 `nova`，本手册中也称 *nova-code*）是一个跑在终端里的编码 agent —— 它读代码、跑命令、改文件，通过工具调用把一项任务推到完成。内部消息走 Anthropic 格式，模型层围绕 **DeepSeek** 深度调优，同时兼容其它 Anthropic 兼容端点。
+> Nova（命令行二进制 `nova`，本手册中也称 *nova-code*）是一个跑在终端里的编码 agent —— 它读代码、跑命令、改文件，通过工具调用把一项任务推到完成。内部消息走 Anthropic 格式，模型层面向**国产大模型**：DeepSeek 与 Kimi（Moonshot）有专用 provider profile，其余 Anthropic 兼容端点走通用档。
 
 本手册面向 **使用者**：怎么装、怎么配、怎么在日常里把它用顺。如果你想了解内部架构（loop 契约、包依赖、扩展点），请读 `CLAUDE.md` 与仓库根的 `README.md`。
 
@@ -43,7 +43,7 @@
 - **多语言** —— 模型回复语言（`language`）与 TUI 界面语言（`locale`，内置 zh-CN / EN）分开配置，默认都跟随系统 locale。
 - **权限与沙箱** —— 工作区信任门 + 基于规则的拦截 + OS 级文件写入隔离，三层防护。
 - **可恢复会话** —— append-only 持久化，随时 `--resume` / `--continue`，`/rewind` 回到更早节点。
-- **DeepSeek 深度定制** —— thinking 映射到 DeepSeek 的 `output_config.effort`，请求结构对自动上下文缓存友好，错误码翻译与瞬时重试。
+- **国产模型深度定制** —— thinking 按各家 wire 形状映射（DeepSeek 的 `output_config.effort`、Kimi 的 `thinking.type`），请求结构对自动上下文缓存友好，错误码翻译与瞬时重试。
 
 ---
 

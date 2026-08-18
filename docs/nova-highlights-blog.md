@@ -195,4 +195,4 @@ If you're building on DeepSeek, need fine-grained safety guarantees, or want a c
 
 ---
 
-*Nova is open source under the Apache 2.0 license. [github.com/nova-ai/nova-code](https://github.com/nova-ai/nova-code)*
+*Nova is open source under the MIT license. [github.com/nova-ai/nova-code](https://github.com/nova-ai/nova-code)*

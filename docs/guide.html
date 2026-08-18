@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="description" content="Nova-Code 使用手册 — 安装、配置、Slash 命令、工具与权限、沙箱、记忆、Skills、MCP、LSP、插件与完整配置参考。">
-<title>Nova-Code 使用手册 · 为 DeepSeek 而生的终端编程 Agent</title>
+<title>Nova-Code 使用手册 · 面向国产大模型的终端编程 Agent</title>
 <link rel="icon" href="./app-icon-v2.webp" type="image/webp">
 <link rel="preload" href="./nova-galaxy-hero.webp" as="image" type="image/webp">
 <script>
@@ -394,7 +394,7 @@
       <img class="brand-mark" src="./app-icon-v2.webp" alt="" width="34" height="34">
       <span class="flex flex-col justify-center leading-none gap-0.5">
         <span class="brand-word">Nova-Code</span>
-        <span class="brand-sub hidden lg:inline">一个专为 DeepSeek 打造的编码智能体</span>
+        <span class="brand-sub hidden lg:inline">一个面向国产大模型的编码智能体</span>
       </span>
     </a>
 
@@ -436,12 +436,12 @@
   <div class="doc-hero-inner max-w-[1600px] mx-auto px-6 sm:px-10 lg:px-16">
     <div class="max-w-3xl fade-in">
       <h1>Nova-Code <span class="hl">使用手册</span></h1>
-      <p><strong>Nova</strong>（命令行二进制 <code>nova</code>）是一个跑在终端里的编码 agent —— 它读代码、跑命令、改文件，通过工具调用把一项任务推到完成。内部消息走 Anthropic 格式，模型层默认使用 <strong>DeepSeek</strong>（<code>deepseek-v4-pro</code>），同时兼容其它 Anthropic 兼容端点。</p>
+      <p><strong>Nova</strong>（命令行二进制 <code>nova</code>）是一个跑在终端里的编码 agent —— 它读代码、跑命令、改文件，通过工具调用把一项任务推到完成。内部消息走 Anthropic 格式，模型层面向<strong>国产大模型</strong>：DeepSeek（默认 <code>deepseek-v4-pro</code>）与 Kimi（Moonshot）有专用 provider profile，其余 Anthropic 兼容端点走通用档。</p>
       <p>本手册面向<strong>使用者</strong>：怎么装、怎么配、怎么在日常里把它用顺。若想了解内部架构（loop 契约、包依赖、扩展点），请读仓库根的 <code>CLAUDE.md</code> 与 <code>README.md</code>。</p>
       <div class="doc-hero-meta">
         <span>21 章 · 单文件文档</span>
-        <span>DeepSeek 深度定制</span>
-        <span>Apache 2.0</span>
+        <span>国产模型深度定制</span>
+        <span>MIT</span>
       </div>
       <div class="doc-jump">
         <a href="#sec-2"><span class="n">02</span>安装与环境</a>
@@ -510,7 +510,7 @@
           <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>多语言</strong> —— 模型回复语言（<code>language</code>）与 TUI 界面语言（<code>locale</code>，内置 zh-CN / EN）分开配置，默认都跟随系统 locale。</span></li>
           <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>权限与沙箱</strong> —— 工作区信任门 + 基于规则的拦截 + OS 级文件写入隔离，三层防护。危险 bash 模式（rm -rf /、fork bomb、mkfs 等）直接拒绝，不可绕过。</span></li>
           <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>可恢复会话</strong> —— append-only 持久化，随时 <code>--resume</code> / <code>--continue</code>，<code>/rewind</code> 回到更早节点（含文件改动预览确认）。</span></li>
-          <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>DeepSeek 深度定制</strong> —— thinking 映射到 DeepSeek 的 <code>output_config.effort</code>，请求结构对自动上下文缓存友好，错误码翻译与瞬时重试。模型按 <code>lite</code>/<code>pro</code>/<code>max</code> 三档配置（DeepSeek 内置默认：<code>lite</code>→<code>deepseek-v4-flash</code>，<code>pro</code>/<code>max</code>→<code>deepseek-v4-pro</code>，各档 thinking 深度不同），默认档位 <code>pro</code>，支持 <code>/model</code> 运行时切换。</span></li>
+          <li class="flex gap-3"><span class="text-brand-500 mt-1">◆</span><span><strong>国产模型深度定制</strong> —— thinking 按各家 wire 形状映射（DeepSeek 的 <code>output_config.effort</code>、Kimi 的 <code>thinking.type</code>），请求结构对自动上下文缓存友好，错误码翻译与瞬时重试。模型按 <code>lite</code>/<code>pro</code>/<code>max</code> 三档配置（DeepSeek 内置默认：<code>lite</code>→<code>deepseek-v4-flash</code>，<code>pro</code>/<code>max</code>→<code>deepseek-v4-pro</code>，各档 thinking 深度不同），默认档位 <code>pro</code>，支持 <code>/model</code> 运行时切换。</span></li>
         </ul>
       </section>
 
@@ -1468,7 +1468,7 @@
 
       <div class="mt-16 pt-8 border-t border-line text-sm text-mute">
         <p class="m-0">本手册依据当前代码生成。如对内部架构、loop 契约或扩展点感兴趣，请进一步阅读仓库根的 <code>CLAUDE.md</code> 与 <code>README.md</code>。</p>
-        <p class="mt-3 text-xs">Nova · 终端编码 Agent · 模型层围绕 DeepSeek 深度调优 · 单文件文档</p>
+        <p class="mt-3 text-xs">Nova · 终端编码 Agent · 模型层面向国产大模型调优 · 单文件文档</p>
       </div>
 
     </div>
@@ -1519,8 +1519,8 @@
     <div class="foot-meta">
       <a href="./index.html">首页</a>
       <a href="https://github.com/asathinkeroops/nova-code" target="_blank" rel="noopener">GitHub</a>
-      <span>Apache 2.0</span>
-      <span>Built for DeepSeek</span>
+      <span>MIT</span>
+      <span>Built for Chinese LLMs</span>
       <span>© 2026 Nova-Code</span>
     </div>
   </div>

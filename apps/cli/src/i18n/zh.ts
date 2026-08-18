@@ -82,7 +82,7 @@ export const zh: DeepPartial<Catalog> = {
 
   render: {
     tagline:
-      "专为 DeepSeek 打造的编程智能体 —— 95%+ 缓存命中 · 系统级沙箱 · 工具齐备 · 开箱即用。 ",
+      "面向国产大模型的编程智能体 —— 95%+ 缓存命中 · 系统级沙箱 · 工具齐备 · 开箱即用。 ",
     thinking: "思考",
     redacted: "（已隐去）",
     showLess: "… 收起",
@@ -623,7 +623,7 @@ export const zh: DeepPartial<Catalog> = {
   },
 
   setup: {
-    tagline: "专为 DeepSeek 打造的编程智能体 —— 95%+ 缓存命中 · 系统级沙箱 · 工具齐备",
+    tagline: "面向国产大模型的编程智能体 —— 95%+ 缓存命中 · 系统级沙箱 · 工具齐备",
     welcome: "欢迎使用 Nova！",
     missing: (n: number): string => `还缺 ${n} 项设置 —— 我们来配置一下。（Ctrl+C 取消）`,
     configSavedTo: (path: string): string => `配置将保存到：${path}`,

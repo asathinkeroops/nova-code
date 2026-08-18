@@ -4,14 +4,16 @@
 
 <h1>NOVA&nbsp;CODE</h1>
 
-<p><b>为 DeepSeek 量身打造的终端编程代理</b></p>
+<p><b>面向国产大模型的 Claude Code</b></p>
+
+<p>开箱即用的成品，不是拼装框架；同样的任务，token 花得最少。</p>
 
 <p><code>95%+ 缓存命中</code> · <code>OS 级沙箱</code> · <code>工具齐全</code> · <code>开箱即用</code></p>
 
 <p>
   <a href="https://www.npmjs.com/package/@asathinkeroops/nova-code"><img src="https://img.shields.io/npm/v/@asathinkeroops/nova-code?style=for-the-badge&logo=npm&logoColor=white&label=npm&color=CB3837" alt="npm 版本"></a>
   <img src="https://img.shields.io/badge/Node-%E2%89%A5%2020-339933?style=for-the-badge&logo=node.js&logoColor=white" alt="Node ≥ 20">
-  <img src="https://img.shields.io/badge/Built_for-DeepSeek-4D6BFE?style=for-the-badge&logoColor=white" alt="Built for DeepSeek">
+  <img src="https://img.shields.io/badge/Built_for-Chinese_LLMs-4D6BFE?style=for-the-badge&logoColor=white" alt="Built for Chinese LLMs">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-3DA639?style=for-the-badge" alt="MIT 许可证"></a>
 </p>
 
@@ -43,7 +45,7 @@
 
 <br>
 
-Nova 读代码、跑命令、改文件 —— 通过工具调用把任务推到完成。模型层围绕 **DeepSeek** 构建：thinking 映射到 effort（而非 `budget_tokens`）、错误码翻成人话、余额与定价内建，整个请求管线为 DeepSeek 的自动上下文缓存做了调优，让缓存持续命中。各家 provider 都走 Anthropic 兼容协议，差异（thinking 形状、错误码、余额探针）由 **provider profile**（按 `settings.provider` 选择）吸收 —— DeepSeek 是第一优先级，Kimi（Moonshot）有专用适配（beta），其余端点走通用 `other` 档。
+Nova 读代码、跑命令、改文件 —— 通过工具调用把任务推到完成。它是**开箱即用的成品**，不是需要自己拼装的框架：权限、沙箱、LSP、MCP、Skills、插件、可重放会话都已就位，装好填 key 就能干活。模型层面向**国产大模型**：各家 provider 都走 Anthropic 兼容协议，差异（thinking 形状、错误码、余额探针）由 **provider profile**（按 `settings.provider` 选择）吸收 —— DeepSeek 与 Kimi（Moonshot，beta）有专用适配，其余端点走通用 `other` 档。整个请求管线围绕服务端自动前缀缓存设计，让同一件事花更少的 token。
 
 <br>
 
@@ -53,14 +55,14 @@ Nova 读代码、跑命令、改文件 —— 通过工具调用把任务推到�
 <tr>
 <td width="50%" valign="top">
 
-### ⚡ DeepSeek 原生适配，零配置
+### ⚡ 国产模型原生适配，零配置
 
-不用调 `cache_control`、不用翻错误码文档。装好，填 key，开干。thinking 映射到 DeepSeek 的 `effort`（不是 `budget_tokens`）、HTTP 错误码翻成人话、状态行实时显示账户余额 —— 全部围绕 DeepSeek 调过，开箱即用。
+不用调 `cache_control`、不用翻错误码文档。装好，填 key，开干。thinking 按各家的 wire 形状映射（DeepSeek 的 `effort`、Kimi 的 `thinking.type`，而不是到处套 `budget_tokens`）、HTTP 错误码翻成人话并附上充值 / 建 key 的链接、状态行实时显示账户余额。
 
 </td>
 <td width="50%" valign="top">
 
-### 🎚️ 不止 DeepSeek：多 provider，三档阶梯
+### 🎚️ 多 provider，三档阶梯
 
 内置 DeepSeek、Moonshot（Kimi）、通用 Anthropic 兼容三套 provider profile，各带错误码表、限流重试与余额探测。模型按 `lite` / `pro` / `max` 三档配置，每档独立设 id、thinking 等级和定价；`/model`、`--model` 切的是档位而非裸 provider id。
 
@@ -71,7 +73,7 @@ Nova 读代码、跑命令、改文件 —— 通过工具调用把任务推到�
 
 ### 🚀 缓存友好刻在骨子里
 
-历史 append-only，请求体逐字节稳定（内部 `meta` 字段发送前剥除，不污染前缀），记忆与 skills 只在会话边界重建、绝不中途变动 —— 让 DeepSeek 的服务端前缀缓存每轮命中，响应更快、token 更省。auto 压缩默认在上下文用到窗口一半时触发，且只追加一条 `<compacted>` 边界。
+历史 append-only，请求体逐字节稳定（内部 `meta` 字段发送前剥除，不污染前缀），记忆与 skills 只在会话边界重建、绝不中途变动 —— 让服务端自动前缀缓存每轮命中（DeepSeek、Kimi 均为此类缓存），响应更快、token 更省。auto 压缩默认在上下文用到窗口一半时触发，且只追加一条 `<compacted>` 边界。
 
 </td>
 <td width="50%" valign="top">
@@ -103,7 +105,7 @@ Nova 读代码、跑命令、改文件 —— 通过工具调用把任务推到�
 
 ### 🔄 使用习惯无缝迁移
 
-高度复刻 Claude Code 的交互方式 —— 同样的 slash 命令、快捷键、审批弹窗、三层记忆文件、可重放会话。用过 Claude Code 就零学习成本：装好继续按原有习惯干活，只是底层换成了为 DeepSeek 量身调优的引擎。
+高度复刻 Claude Code 的交互方式 —— 同样的 slash 命令、快捷键、审批弹窗、三层记忆文件、可重放会话。用过 Claude Code 就零学习成本：装好继续按原有习惯干活，只是底层换成了为国产大模型调优、按 token 成本设计的引擎。
 
 </td>
 </tr>
@@ -280,7 +282,7 @@ pnpm format / pnpm format:check
   <a href="https://www.npmjs.com/package/@asathinkeroops/nova-code">📦 npm</a>
 </p>
 
-<sub>为 DeepSeek 量身打造 ❤️</sub>
+<sub>为国产大模型打造 ❤️</sub>
 
 <br><br>
 
