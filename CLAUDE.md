@@ -68,7 +68,7 @@ cli (apps/cli)   ──► every package above
 
 - **Gate on the final tool set, never on settings.** The CLI renders once, at ONE point (`apps/cli/src/context.ts`, right after `applyToolDenylist`) — after MCP connects, after `createSubAgent` and the plan-mode pair register, after `permissions.deny` removes tools. Re-deriving the same conditions from settings is how the prompt ends up advertising a tool that is not there.
 - **`render` must be pure and byte-deterministic, and read only the snapshot it is handed.** The block lands in the frozen, prefix-cached system prompt: a section that varies makes `freezeSystemPrompt` discard the new value and warn. Anything that changes mid-session (an MCP disconnect, a skill installed by `/plugin`) does NOT reach it until the next session boundary — that is intended, not a bug to fix.
-- **Sub-agents render their own** from the child's filtered tool set (`renderToolsBlock` in `SubAgentDeps`), so a read-only child is never taught the tools it was denied.
+- **Sub-agents render their own** from the child's filtered tool set (`renderToolsGuidance` in `SubAgentDeps`), so a read-only child is never taught the tools it was denied.
 
 Which channel a piece of text belongs to: per-tool "how to call this" → `ToolDefinition.description` (travels with the schema, tracks the live registry); cross-tool workflow or tradeoff → a section; anything that must react mid-turn → an injected message via `pre_request` (see `apps/cli/src/plan-mode-reminder.ts`).
 

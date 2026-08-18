@@ -409,7 +409,7 @@ Output: … — read or grep it if you need the command's output.</background-no
 - **默认放行（只读或仅登记元数据的）**：`read`/`glob`/`grep`（限定在工作区内，见下）、`webfetch`、`websearch`、`askUserQuestion`、`lsp`、`loadSkill`、`createSubAgent`、`killBackground`、**todo 全套**、**task 全套**（含写操作 create/update/clear）、**cron 全套**（`cronCreate`/`cronList`/`cronDelete`）、`enterPlanMode`/`exitPlanMode`。task/cron 的写只改自己的清单/排程，payload 真正动手时仍走权限门，所以放行它们不越权；plan 两件套同理——进只收权，出自带一道确认。
 - **默认询问（会改文件 / 跑命令的）**：`write`、`edit`、`bash`（前台和 `run_in_background` 一视同仁）——落到 `defaultEffect`（默认 `ask`）。
 
-> `permissions.deny`（裸工具名数组）是更强的一档：列进去的工具会在启动时从注册表**摘除**，模型根本看不到、也调不了（区别于 `rules` 里 `effect: "deny"`——后者仍把工具报给模型、只在调用时拒）。
+> `permissions.deny`（裸工具名数组）是更强的一档：列进去的工具会在启动时从注册表**摘除**，模型根本看不到、也调不了（区别于 `rules` 里 `effect: "deny"`——后者仍把工具报给模型、只在调用时拒）。**系统提示里与这些工具绑定的那段说明也会一并消失**——摘掉 `loadSkill` 就不再注入 skills 索引，摘掉 todo 那套就不再讲清单纪律。模型不会被教着去用一个它没有的工具。
 
 ### 权限模式（Shift+Tab 切换）
 
@@ -559,7 +559,7 @@ Skill 是「按需加载的专长说明书」。把 `SKILL.md` 放在：
 - 项目层：`.nova/skills/<name>/`（兼容 `.claude/skills/<name>/`）
 - 用户层：`~/.nova/skills/<name>/`（兼容 `~/.claude/skills/<name>/`）
 
-启动时 Nova 扫描这些目录，把每个 skill 的 **name + description 索引**注入 system prompt（只占很少 token），并暴露 `loadSkill` 工具。当某个任务匹配到某个 skill 时，模型才用 `loadSkill` 拉取完整正文。
+启动时 Nova 扫描这些目录，把每个 skill 的 **name + description 索引**注入 system prompt（只占很少 token），并暴露 `loadSkill` 工具。当某个任务匹配到某个 skill 时，模型才用 `loadSkill` 拉取完整正文。索引与工具是绑在一起的：`skills.enabled: false`、一个 skill 都没扫到、或把 `loadSkill` 写进 `permissions.deny`，索引和工具都会同时消失，不会出现「提示里列着技能、却没有工具去加载」的情况。
 
 - 用 `/skills` 查看发现了哪些、各自来自哪里。
 - 索引预算：默认取**当前模型上下文窗口的 1%**（按 4 字节/token 折算），`skills.indexBudgetFraction` 可调。200k 窗口约 8000 字节，1M 窗口自动放大到 40000。想钉死一个绝对值就设 `skills.maxIndexBytes`，它优先于比例。
@@ -797,7 +797,7 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 |------|------|------|
 | `defaultEffect` | `"ask"` | 无规则命中时的兜底（`allow`/`deny`/`ask`） |
 | `rules` | `[]` | 规则数组（首个匹配生效），见 [§10](#10-权限与安全) |
-| `deny` | `[]` | 裸工具名黑名单：启动时从注册表摘除，模型看不到也调不了（比 `rules` 的 `deny` 更硬），见 [§10](#10-权限与安全) |
+| `deny` | `[]` | 裸工具名黑名单：启动时从注册表摘除，模型看不到也调不了（比 `rules` 的 `deny` 更硬），系统提示里与之绑定的说明同步消失，见 [§10](#10-权限与安全) |
 | `additionalDirectories` | `[]` | 工作区之外、读工具可免询问触及的目录 |
 | `autoMode.llmClassifier` | `true` | `auto` 模式下把规则判不定的命令交给 LLM 风险分类器；关掉则一律弹确认 |
 | `autoMode.model` | （无→ 便宜档） | 分类器用的模型（裸 id 或档位名），独立于 `/model` |

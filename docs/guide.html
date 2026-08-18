@@ -898,7 +898,7 @@
         <ul class="space-y-2">
           <li><strong>默认放行（只读或仅登记元数据的）</strong>：<code>read</code>/<code>glob</code>/<code>grep</code>（限定在工作区内）、<code>webfetch</code>、<code>websearch</code>、<code>askUserQuestion</code>、<code>lsp</code>、<code>loadSkill</code>、<code>createSubAgent</code>、<code>killBackground</code>、<strong>todo 全套</strong>、<strong>task 全套</strong>（含写操作）、<strong>cron 全套</strong>（<code>cronCreate</code>/<code>cronList</code>/<code>cronDelete</code>）、<code>enterPlanMode</code>/<code>exitPlanMode</code>。task/cron 的写只改自己的清单 / 排程，payload 真正动手时仍走权限门；plan 两件套同理 —— 进只收权，出自带一道确认。</li>
           <li><strong>默认询问（会改文件 / 跑命令的）</strong>：<code>write</code>、<code>edit</code>、<code>bash</code>（前台和 <code>run_in_background</code> 一视同仁） —— 落到 <code>defaultEffect</code>（默认 <code>ask</code>）。</li>
-          <li><strong><code>permissions.deny</code></strong>（裸工具名数组）更硬一档：列进去的工具启动时从注册表<strong>摘除</strong>，模型看不到也调不了（区别于 <code>rules</code> 里 <code>effect: "deny"</code> —— 后者仍把工具报给模型、只在调用时拒）。</li>
+          <li><strong><code>permissions.deny</code></strong>（裸工具名数组）更硬一档：列进去的工具启动时从注册表<strong>摘除</strong>，模型看不到也调不了（区别于 <code>rules</code> 里 <code>effect: "deny"</code> —— 后者仍把工具报给模型、只在调用时拒）。<strong>系统提示里与这些工具绑定的那段说明也会一并消失</strong> —— 摘掉 <code>loadSkill</code> 就不再注入 skills 索引，摘掉 todo 那套就不再讲清单纪律。模型不会被教着去用一个它没有的工具。</li>
         </ul>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">读操作被限定在工作区</h3>
@@ -1029,7 +1029,7 @@
           <li>项目层：<code>.nova/skills/&lt;name&gt;/</code>（兼容 <code>.claude/skills/&lt;name&gt;/</code>）</li>
           <li>用户层：<code>~/.nova/skills/&lt;name&gt;/</code>（兼容 <code>~/.claude/skills/&lt;name&gt;/</code>）</li>
         </ul>
-        <p>启动时 Nova 扫描这些目录，把每个 skill 的 <strong>name + description 索引</strong>注入 system prompt（只占很少 token），并暴露 <code>loadSkill</code> 工具。当某个任务匹配到某个 skill 时，模型才用 <code>loadSkill</code> 拉取完整正文。</p>
+        <p>启动时 Nova 扫描这些目录，把每个 skill 的 <strong>name + description 索引</strong>注入 system prompt（只占很少 token），并暴露 <code>loadSkill</code> 工具。当某个任务匹配到某个 skill 时，模型才用 <code>loadSkill</code> 拉取完整正文。索引与工具是绑在一起的：<code>skills.enabled: false</code>、一个 skill 都没扫到、或把 <code>loadSkill</code> 写进 <code>permissions.deny</code>，索引和工具都会同时消失，不会出现「提示里列着技能、却没有工具去加载」的情况。</p>
         <ul class="space-y-2">
           <li>用 <code>/skills</code> 查看发现了哪些、各自来自哪里。</li>
           <li>索引预算：默认取<strong>当前模型上下文窗口的 1%</strong>（按 4 字节 / token 折算），<code>skills.indexBudgetFraction</code> 可调。200k 窗口约 8000 字节，1M 窗口自动放大到 40000。想钉死一个绝对值就设 <code>skills.maxIndexBytes</code>，它优先于比例。</li>
@@ -1249,7 +1249,7 @@
         <div class="tbl-wrap"><table class="doc"><thead><tr><th>字段</th><th>默认</th><th>说明</th></tr></thead><tbody>
           <tr><td><code>defaultEffect</code></td><td><code>"ask"</code></td><td>无规则命中时的兜底（<code>allow</code>/<code>deny</code>/<code>ask</code>）</td></tr>
           <tr><td><code>rules</code></td><td><code>[]</code></td><td>规则数组（首个匹配生效），见 <a class="inline-link" href="#sec-10">§10</a></td></tr>
-          <tr><td><code>deny</code></td><td><code>[]</code></td><td>裸工具名黑名单：启动时从注册表摘除，模型看不到也调不了（比 <code>rules</code> 的 <code>deny</code> 更硬），见 <a class="inline-link" href="#sec-10">§10</a></td></tr>
+          <tr><td><code>deny</code></td><td><code>[]</code></td><td>裸工具名黑名单：启动时从注册表摘除，模型看不到也调不了（比 <code>rules</code> 的 <code>deny</code> 更硬），系统提示里与之绑定的说明同步消失，见 <a class="inline-link" href="#sec-10">§10</a></td></tr>
           <tr><td><code>additionalDirectories</code></td><td><code>[]</code></td><td>工作区之外、读工具可免询问触及的目录</td></tr>
           <tr><td><code>autoMode.llmClassifier</code></td><td><code>true</code></td><td><code>auto</code> 模式下把规则判不定的命令交给 LLM 风险分类器；关掉则一律弹确认</td></tr>
           <tr><td><code>autoMode.model</code></td><td>（无→便宜档）</td><td>分类器用的模型（裸 id 或档位名），独立于 <code>/model</code></td></tr>

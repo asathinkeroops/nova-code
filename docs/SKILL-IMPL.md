@@ -168,25 +168,40 @@ Use the `loadSkill` tool with `name` to read full instructions before acting.
 
 ### 4.2 接入点
 
-`apps/cli/src/system-prompt.ts` 的 `buildSystemPrompt(workspace, memory, sessionId)` 加第 4 个参数 `skillsBlock: string`。CLI 装配处生成这个 block：
+索引不是 `buildSystemPrompt`（`packages/agent/src/system-prompt.ts`）的独立参数，而是**一个 `ToolPromptSection`**——和 todo/task/monitor 那些工具族的说明走同一条路：宿主把所有 section 渲染成一个 `<tool-guidance>` 块，作为 `toolsGuidance` 传进去。
 
 ```ts
 // apps/cli/src/context.ts 启动时
-const skills = getSkillList({ cwd: workspace.root });
-const skillsBlock = renderSkillsBlock(skills, {
+const skillsBlock = renderSkillsBlock(modelSkillItems, {
   budgetBytes: resolveSkillsIndexBudget(settings, settings.model),
   maxDescriptionBytes: settings.skills.maxDescriptionBytes,
 });
+const toolPromptSections = [
+  ...BUILTIN_TOOL_PROMPTS,
+  SUBAGENT_PROMPT,
+  // order 200 = 排在指导 bullet 之后；requires 让它跟着工具一起消失
+  staticSection({ id: "skills", order: 200, requires: ["loadSkill"], text: skillsBlock }),
+];
+// applyToolDenylist 之后——工具集在这一刻才定死
+ctx.toolsGuidance = renderToolPrompts(ctx.tools.definitions(), toolPromptSections).text;
 ```
 
-`renderSkillsBlock` 是 apps/cli 里的小函数：空数组返回 `""`，否则按 name 字典序排，每条渲染成 `- <name>: <description>`（description 超 `maxDescriptionBytes` 截断加 `…`），总量超预算时把条目降级成 `- <name>`，包 `<available-skills>` tag。**渲染逻辑不进 external 包**——`external` 只管"有哪些 skill"，怎么塞进 prompt 是 CLI 的事。
+两个后果值得记住：
+
+- **`requires: ["loadSkill"]` 让索引和工具同生共死。** 以前 `permissions.deny: ["loadSkill"]` 会摘掉工具却留下整块索引，模型照着调、拿回 unknown tool 报错。
+- **渲染时机在 `applyToolDenylist` 之后**，那是 MCP、`createSubAgent`、plan-mode 两件套、denylist 全部落定的唯一一刻。渲染一次就冻住：会话中途 `/plugin install` 装进来的新 skill 不会进索引，得等下一个会话边界（system prompt 在 epoch 内必须逐字节不变，否则前缀缓存塌掉）。
+
+`renderSkillsBlock` 仍是 apps/cli 里的小函数：空数组返回 `""`，否则按 name 字典序排，每条渲染成 `- <name>: <description>`（description 超 `maxDescriptionBytes` 截断加 `…`），总量超预算时把条目降级成 `- <name>`，包 `<available-skills>` tag。**渲染逻辑不进 tools 包**——它只管"有哪些 skill"，预算怎么算（依赖 settings + 当前模型）是宿主的事。
 
 拼接顺序：
 
 ```
 base prompt
 ↓
-<available-skills> 块（如果有）
+<tool-guidance>
+  工具族指导 bullet（todo / task / background / monitor / loadSkill / subagent / plan-mode）
+  <available-skills> 块（如果有）
+</tool-guidance>
 ↓
 memory.system
 ```
