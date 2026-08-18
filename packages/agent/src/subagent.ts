@@ -139,6 +139,18 @@ export interface SubAgentDeps {
    * them later if sub-agents need their own scratch state.
    */
   getToolDefinitions: () => ToolDefinition[];
+  /**
+   * Extra tool names withheld from every sub-agent, on top of createSubAgent
+   * (always withheld, above) and whatever `readOnly` / `allowTools` drop per
+   * definition. The host names them because it owns the tools; the withholding
+   * lives here so one place decides what a child can see — and so the
+   * defense-in-depth permission check below covers them too.
+   *
+   * The CLI passes its plan-mode pair: a sub-agent runs inside the parent
+   * session, so letting it flip the PARENT's permission mode (or ask the user
+   * to leave plan mode on its behalf) is never right.
+   */
+  excludeTools?: Iterable<string>;
   /** Shared dispatcher — the sub-agent reuses the parent's tool implementations. */
   dispatch: ToolExecutor;
   /** The host's permission gate; narrowed per spawn to the sub-agent's tool set. */
@@ -199,15 +211,18 @@ export function createSubAgentTool(deps: SubAgentDeps): ToolHandler {
       const logDir = deps.getLogDir();
       await mkdir(logDir, { recursive: true }).catch(() => {});
 
-      // Sub-agent tool set = parent tools minus createSubAgent (no recursion).
-      // `readOnly` drops the workspace-mutating tools; an `allowTools` list
-      // (when present) intersects the set down further.
+      // Sub-agent tool set = parent tools minus createSubAgent (no recursion)
+      // and minus whatever the host withheld. `readOnly` drops the
+      // workspace-mutating tools; an `allowTools` list (when present)
+      // intersects the set down further.
       const allow = def.allowTools ? new Set(def.allowTools) : null;
+      const excluded = new Set(deps.excludeTools ?? []);
       const childTools = deps
         .getToolDefinitions()
         .filter(
           (d) =>
             d.name !== SUBAGENT_TOOL_NAME &&
+            !excluded.has(d.name) &&
             !(def.readOnly && MUTATING_TOOLS.has(d.name)) &&
             (!allow || allow.has(d.name)),
         );

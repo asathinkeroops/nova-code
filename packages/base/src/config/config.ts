@@ -755,7 +755,7 @@ const settingsObjectSchema = z.object({
       // "explore", "general-purpose", "nova-code-guide", or any custom agent).
       // Values are tier keys (lite/pro/max) or bare provider ids — the same
       // space as the top-level `model`. Resolution precedence, most specific
-      // first (see getSubagentModel): this map's per-name entry → the shipped
+      // first (see subAgentModelResolver): this map's per-name entry → the shipped
       // built-in default for that agent (general-purpose/plan → max, explore/
       // nova-code-guide → pro) → a custom agent's own `model` frontmatter → the
       // active main model. A per-name entry here overrides the built-in default,

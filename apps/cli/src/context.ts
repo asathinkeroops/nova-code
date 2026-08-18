@@ -1,16 +1,13 @@
 import { join, resolve } from "node:path";
 import {
   AgentRegistry,
-  assembleAgent,
+  assembleSession,
   buildCompactor,
-  createMemoryPrompt,
-  createSubAgentTool,
   emptyCursor,
   fixedOverheadTotal,
   loadMemory,
   loadMessages,
   type Agent,
-  type AgentDefinition,
 } from "@nova/agent";
 import {
   userText,
@@ -939,19 +936,15 @@ export async function createContext(
     return await ctx.screen.askUser(req, signal ? { signal } : undefined);
   };
 
-  (ctx as { agent: Agent }).agent = assembleAgent({
+  const assembled = assembleSession({
     workspace,
     getSessionId: () => ctx.session.id,
     getLogger: () => ctx.logger,
-    systemPrompt: createMemoryPrompt({
-      workspace,
+    memory: {
       getMemory: () => ctx.memory,
       skillsBlock,
-      // Doubles as the prefix epoch: the session id is the only thing whose
-      // change licenses a new system prompt (see freezeSystemPrompt).
-      getSessionId: () => ctx.session.id,
       getLanguage: () => ctx.settings.language,
-    }),
+    },
     getMessagesPath: () => ctx.session.messagesPath,
     ...(ctx.noTranscript ? {} : { getTranscript: () => ctx.transcript }),
     getPersistCursor: () => ctx.persistCursor,
@@ -977,92 +970,58 @@ export async function createContext(
     fileLedger,
     askUser,
     getMessages: () => ctx.screen.getMessages(),
+    subagent: {
+      enabled: settings.subagent.enabled,
+      getAgentRegistry: () => ctx.agents,
+      // Sub-agents must NOT drive the parent's live spinner token counter.
+      // Several run concurrently and each onStreamProgress callback reports that
+      // agent's own running total (not a sum), so sharing the tracked model
+      // would make the parent spinner's "↓ ~N tok" flicker between agents and
+      // read as garbage — hence trackTokens=false.
+      buildModel: (id) => buildModel(id, false),
+      defaultModels: DEFAULT_SUBAGENT_MODELS,
+      getModelOverrides: () => ctx.settings.subagent.model,
+      // Sub-agents follow /model when nothing more specific is configured.
+      getFallbackModelId: () => ctx.settings.model,
+      // The plan-mode pair: a sub-agent runs inside the parent session, so
+      // letting it flip the PARENT's permission mode (or ask the user to leave
+      // plan mode on its behalf) is never right.
+      excludeTools: PLAN_MODE_TOOL_NAMES,
+      getSessionDir: () => ctx.session.dir,
+      // Live progress: update the UI on every tick; persist the snapshot to
+      // the display sidecar once the sub-agent finishes so it survives resume
+      // (the canonical message only keeps the final report).
+      onDetail: (toolUseId, entries, done) => {
+        ctx.screen.setToolDetail(toolUseId, entries);
+        if (done) {
+          void appendToolDetail(ctx.session.dir, toolUseId, entries).catch((err) => {
+            const msg = err instanceof Error ? err.message : String(err);
+            ctx.logger.warn({ err: msg }, "failed to persist sub-agent details");
+          });
+        }
+      },
+      // Fold the sub-agent's token spend into the parent session's cumulative
+      // counters so the status line, `/usage`, and cost include it. Unlike the
+      // parent's own `post_request` hook this does NOT touch `setContextTokens`
+      // — the sub-agent's prompt is a separate context, not the main window's
+      // fill level. Resume recovery reads the sub-agent transcripts too (see
+      // restoreUsageFromTranscript), so this stays consistent after `--resume`.
+      onUsage: (usage) => ctx.screen.addUsage(usage),
+      getSettings: () => ({
+        maxTokens: ctx.settings.subagent.maxTokens,
+        maxTurns: ctx.settings.subagent.maxTurns,
+        maxTokensContinuations: ctx.settings.maxTokensContinuations,
+        toolConcurrency: ctx.settings.toolConcurrency,
+        modelModalities: resolveModelModalities(ctx.settings, ctx.settings.model),
+      }),
+    },
   });
 
-  // Sub-agents: register createSubAgent into the same registry so the main
-  // agent can spawn them. They reuse ctx.dispatch (parent tool impls) but see
-  // the tool definitions minus createSubAgent — no recursion. Deps read ctx
-  // lazily, so post-hoc registration is safe.
-  if (settings.subagent.enabled) {
-    // Sub-agents must NOT drive the parent's live spinner token counter. Several
-    // run concurrently and each onStreamProgress callback reports that agent's
-    // own running total (not a sum), so sharing the tracked model would make the
-    // parent spinner's "↓ ~N tok" flicker between agents and read as garbage.
-    // They therefore always run on a non-tracked model, cached per model-id.
-    //
-    // Model precedence, most specific first: settings.subagent.model[def.name]
-    // (per-agent override, keyed by sub-agent name) → the built-in default tier
-    // for a shipped agent (DEFAULT_SUBAGENT_MODELS) → a custom agent's own
-    // `model` frontmatter → the active main model (so sub-agents follow /model
-    // changes when nothing more specific is set). The per-name config wins over
-    // everything, so any built-in default is user-overridable one agent at a
-    // time without disturbing the others. Cached per resolved model-id, so
-    // agents that land on the same id share one client.
-    const subagentModelCache = new Map<string, ModelClient>();
-    const getSubagentModel = (def: AgentDefinition): ModelClient => {
-      const id =
-        settings.subagent.model?.[def.name] ??
-        DEFAULT_SUBAGENT_MODELS[def.name] ??
-        def.model ??
-        ctx.settings.model;
-      let model = subagentModelCache.get(id);
-      if (!model) {
-        model = buildModel(id, false);
-        subagentModelCache.set(id, model);
-      }
-      return model;
-    };
-    ctx.tools.register(
-      createSubAgentTool({
-        workspace,
-        getMemory: () => ctx.memory,
-        skillsBlock,
-        getAgentRegistry: () => ctx.agents,
-        getModel: getSubagentModel,
-        // Minus the plan-mode pair: a sub-agent runs inside the parent session,
-        // so letting it flip the PARENT's permission mode (or ask the user to
-        // leave plan mode on its behalf) is never right. Withholding the
-        // definitions also arms the sub-agent's own defense-in-depth permission
-        // check, which denies anything outside the tool set it was given.
-        getToolDefinitions: () =>
-          ctx.tools.definitions().filter((d) => !PLAN_MODE_TOOL_NAMES.has(d.name)),
-        dispatch: (use, c) => ctx.dispatch(use, c),
-        permission: ctx.permissionGate,
-        compactor: ctx.compactor,
-        fileLedger,
-        askUser,
-        getLogger: () => ctx.logger,
-        getLogDir: () => join(ctx.session.dir, "subagents"),
-        // Live progress: update the UI on every tick; persist the snapshot to
-        // the display sidecar once the sub-agent finishes so it survives resume
-        // (the canonical message only keeps the final report).
-        onDetail: (toolUseId, entries, done) => {
-          ctx.screen.setToolDetail(toolUseId, entries);
-          if (done) {
-            void appendToolDetail(ctx.session.dir, toolUseId, entries).catch((err) => {
-              const msg = err instanceof Error ? err.message : String(err);
-              ctx.logger.warn({ err: msg }, "failed to persist sub-agent details");
-            });
-          }
-        },
-        // Fold the sub-agent's token spend into the parent session's cumulative
-        // counters so the status line, `/usage`, and cost include it. Unlike the
-        // parent's own `post_request` hook this does NOT touch `setContextTokens`
-        // — the sub-agent's prompt is a separate context, not the main window's
-        // fill level. Resume recovery reads the sub-agent transcripts too (see
-        // restoreUsageFromTranscript), so this stays consistent after `--resume`.
-        onUsage: (usage) => ctx.screen.addUsage(usage),
-        noTranscript: ctx.noTranscript,
-        getSettings: () => ({
-          maxTokens: ctx.settings.subagent.maxTokens,
-          maxTurns: ctx.settings.subagent.maxTurns,
-          maxTokensContinuations: ctx.settings.maxTokensContinuations,
-          toolConcurrency: ctx.settings.toolConcurrency,
-          modelModalities: resolveModelModalities(ctx.settings, ctx.settings.model),
-        }),
-      }),
-    );
-  }
+  (ctx as { agent: Agent }).agent = assembled.agent;
+  // createSubAgent goes into the same registry the parent reads, so the main
+  // agent can spawn children. Every dep reads its binding lazily, so
+  // registering after assembly is safe.
+  if (assembled.subAgentTool) ctx.tools.register(assembled.subAgentTool);
 
   // Agent-driven plan mode: let the model put itself into the read-only `plan`
   // permission mode and ask to leave it once the plan is ready. The mode itself

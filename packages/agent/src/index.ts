@@ -1,5 +1,12 @@
 export { assembleAgent, type AssembleAgentOptions } from "./assemble.js";
 export {
+  assembleSession,
+  type AssembleSessionOptions,
+  type AssembleSessionResult,
+  type SessionMemoryOptions,
+  type SubAgentSessionOptions,
+} from "./session.js";
+export {
   createMemoryPrompt,
   createOptions,
   createSessionStore,
