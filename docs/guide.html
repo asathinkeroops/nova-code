@@ -636,7 +636,8 @@
         <p>排序由具体到宽泛：<strong>文件名前缀命中</strong> &gt; 文件名内含 &gt; 整条路径内含，同分则短路径优先。<span class="kbd">↑</span>/<span class="kbd">↓</span> 选择、<span class="kbd">Enter</span> 或 <span class="kbd">Tab</span> 补全 —— 补全只替换那个 <code>@…</code> 词，<strong>不会提交</strong>。命令行（<code>/</code> 开头）上只弹 slash 命令补全，不触发 <code>@</code>。</p>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)"><code>!</code> shell 直通</h3>
-        <p>以 <code>!</code> 开头的一行<strong>不发给模型</strong>，直接在 shell 里跑（输入框边框会变绿提示）。它复用 <code>bash</code> 工具：同样在工作区根执行、同样受 OS 沙箱约束（见 <a class="inline-link" href="#sec-11">§11</a>），输出以一张卡片贴回历史区，<span class="kbd">Esc</span> 可中断。因为是你自己敲的命令，<strong>不走权限门</strong>。</p>
+        <p>以 <code>!</code> 开头的一行<strong>不作为 prompt 发给模型</strong>，而是直接在 shell 里跑（输入框边框会变绿提示）。它复用 <code>bash</code> 工具：同样在工作区根执行、同样受 OS 沙箱约束（见 <a class="inline-link" href="#sec-11">§11</a>），输出以一张卡片贴回历史区，<span class="kbd">Esc</span> 可中断。因为是你自己敲的命令，<strong>不走权限门</strong>。</p>
+        <p>命令跑完后，这次执行会以 <code>&lt;bash-input&gt;</code> / <code>&lt;bash-stdout&gt;</code> / <code>&lt;bash-stderr&gt;</code> 三段记录进入上下文，并<strong>立刻触发一轮模型回应</strong> —— 所以 <code>! git diff</code> 之后可以直接接「解释一下上面的改动」，模型已经看过了。这条记录标为 synthetic，历史区不会因此多出一个用户气泡（<code>!</code> 卡片已经展示了这次执行）；<span class="kbd">Esc</span> 中断的命令和空的 <code>!</code> 都不入上下文、也不触发回合。</p>
         <p>它和 <code>/</code> 命令行一样带本地副作用，所以即使在回合运行中键入也<strong>始终排队</strong>、由 REPL 在空闲时派发 —— 不会被 <code>queue.consumeInLoop</code> 折进当前回合（见 <a class="inline-link" href="#sec-20">§20</a>）。</p>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">状态行</h3>

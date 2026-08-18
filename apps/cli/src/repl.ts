@@ -74,7 +74,28 @@ async function refreshPrediction(ctx: CliContext): Promise<void> {
   }
 }
 
-type DispatchAction = "exit" | "continue" | { kind: "turn"; prompt: string };
+type DispatchAction = "exit" | "continue" | { kind: "turn"; prompt: string; meta?: MessageMeta };
+
+/**
+ * The model-facing record of a `!` shell escape: what the user typed and what it
+ * printed, in the `<bash-input>`/`<bash-stdout>`/`<bash-stderr>` shape. nova's
+ * `bash` tool merges the two streams into one capture, so the whole thing lands
+ * in `<bash-stderr>` when the command failed and in `<bash-stdout>` when it did
+ * not; both tags are always emitted so "produced nothing" reads differently from
+ * "not reported".
+ */
+export function renderBangRecord(
+  command: string,
+  result: { output: string; isError?: boolean },
+): string {
+  const out = result.output.trim();
+  const failed = result.isError === true;
+  return (
+    `<bash-input>${command}</bash-input>\n` +
+    `<bash-stdout>${failed ? "" : out}</bash-stdout>\n` +
+    `<bash-stderr>${failed ? out : ""}</bash-stderr>`
+  );
+}
 
 /**
  * Run a `!`-prefixed line as a shell command instead of an LLM turn. Calls the
@@ -82,11 +103,15 @@ type DispatchAction = "exit" | "continue" | { kind: "turn"; prompt: string };
  * stay confined to the workspace — same confinement the model's bash calls get,
  * minus the permission prompt (the user typed the command themselves). Output
  * is shown as a card; ESC aborts mid-run.
+ *
+ * Returns the {@link renderBangRecord} text so the caller can hand the run to
+ * the agent, or null when there is nothing to feed it — an empty command (usage
+ * card only) or an ESC abort, neither of which the model should have to react to.
  */
-async function runBang(ctx: CliContext, command: string): Promise<void> {
+async function runBang(ctx: CliContext, command: string): Promise<string | null> {
   if (!command) {
     ctx.screen.card(dim(t.repl.bangUsage), { title: "!" });
-    return;
+    return null;
   }
   const controller = new AbortController();
   const bridge = ctx.sandbox?.bridge;
@@ -101,7 +126,7 @@ async function runBang(ctx: CliContext, command: string): Promise<void> {
       { cwd: ctx.workspace, signal: controller.signal, ...(bridge ? { sandbox: bridge } : {}) },
     );
     // Esc mid-run is a deliberate interrupt — leave the feed quiet, no card.
-    if (controller.signal.aborted) return;
+    if (controller.signal.aborted) return null;
     // Keep the card title to a single line so a multi-line command doesn't blow
     // up the header.
     const title = `! ${command.split("\n", 1)[0]}`;
@@ -109,6 +134,7 @@ async function runBang(ctx: CliContext, command: string): Promise<void> {
       title,
       kind: result.isError ? "error" : "info",
     });
+    return renderBangRecord(command, result);
   } finally {
     ctx.screen.setEscHandler(null);
     stopSpinner(ctx);
@@ -141,8 +167,14 @@ function makeCommandRunner(
 async function dispatchLine(ctx: CliContext, line: string): Promise<DispatchAction> {
   if (line === "/exit" || line === "/quit") return "exit";
   if (line.startsWith("!")) {
-    await runBang(ctx, line.slice(1).trim());
-    return "continue";
+    const record = await runBang(ctx, line.slice(1).trim());
+    if (record === null) return "continue";
+    // The shell escape is not just a local convenience: its output becomes the
+    // next turn, so `! git diff` can be followed by "explain that" and the model
+    // has already seen it. Marked synthetic because the user typed `! git diff`,
+    // not the tagged record — the TUI hides the bubble (the `!` card above
+    // already shows the run) while the model reads the tags.
+    return { kind: "turn", prompt: record, meta: { synthetic: true, kind: "shell-escape" } };
   }
   if (!line.startsWith("/")) return { kind: "turn", prompt: line };
 
@@ -316,7 +348,7 @@ async function runDueCron(ctx: CliContext): Promise<void> {
   const action = await dispatchLine(ctx, entry.payload);
   // "exit" from a payload (e.g. /exit) ends the schedule, not the REPL.
   if (action !== "exit" && action !== "continue") {
-    await runTurnWithStopHooks(ctx, action.prompt);
+    await runTurnWithStopHooks(ctx, action.prompt, action.meta);
     void refreshMentionFiles(ctx);
     void refreshBalance(ctx);
   }
@@ -595,7 +627,7 @@ export async function runRepl(ctx: CliContext, initialPrompt: string): Promise<v
     if (action === "exit") break;
     if (action === "continue") continue;
 
-    const ok = await runTurnWithStopHooks(ctx, action.prompt);
+    const ok = await runTurnWithStopHooks(ctx, action.prompt, action.meta);
     if (ok) await refreshPrediction(ctx);
     // Pick up files created/deleted during the turn. Fire-and-forget so it
     // never delays the next prompt; the function swallows its own errors.

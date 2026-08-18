@@ -75,6 +75,7 @@ export const syntheticKindSchema = z.enum([
   "plan-approved",
   "interrupted",
   "goal-eval",
+  "shell-escape",
   "compacted",
 ]);
 
