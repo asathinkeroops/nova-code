@@ -2,7 +2,7 @@ import React from "react";
 import { Box, Text } from "ink";
 import { basename } from "node:path";
 import { useShallow } from "zustand/react/shallow";
-import { computeCost, formatMoney } from "@nova/base";
+import { formatMoney } from "@nova/base";
 import { ACCENT_HEX } from "../colors.js";
 import { t } from "../i18n/index.js";
 import type { AppStoreApi } from "./store.js";
@@ -79,7 +79,6 @@ export function StatusLine({ store, shellMode = false }: StatusLineProps): React
     lifetimeCacheCreationTokens,
     lifetimeUncachedInputTokens,
     sessionOutputTokens,
-    costRates,
     accountBalance,
     termCols,
   } = store(
@@ -97,7 +96,6 @@ export function StatusLine({ store, shellMode = false }: StatusLineProps): React
       lifetimeCacheCreationTokens: s.lifetimeCacheCreationTokens,
       lifetimeUncachedInputTokens: s.lifetimeUncachedInputTokens,
       sessionOutputTokens: s.sessionOutputTokens,
-      costRates: s.costRates,
       accountBalance: s.accountBalance,
       termCols: s.termCols,
     })),
@@ -159,8 +157,8 @@ export function StatusLine({ store, shellMode = false }: StatusLineProps): React
     main.push({ icon: "•", text: displayCwd(banner.cwd, banner.home), color: ACCENT_HEX });
   }
 
-  // Second row: usage — cache hit rate (this session / all-time), session
-  // prompt / output token totals, and estimated cost when the model is priced.
+  // Second row: usage — cache hit rate (this session / all-time) and session
+  // prompt / output token totals.
   // Each segment gets a distinct color so the row reads like a small dashboard
   // (matching the multi-colored reference statusline) rather than a flat block.
   const usage: StatusSegment[] = [];
@@ -198,25 +196,10 @@ export function StatusLine({ store, shellMode = false }: StatusLineProps): React
       color: "magenta",
     });
   }
-  if (costRates && promptTotal + sessionOutputTokens > 0) {
-    const cost = computeCost(
-      {
-        uncachedInputTokens,
-        cacheReadTokens,
-        cacheCreationTokens,
-        outputTokens: sessionOutputTokens,
-      },
-      costRates,
-    );
-    usage.push({
-      icon: "●",
-      // A mid-tone amber hex rather than `yellowBright`: bright yellow is nearly
-      // white and washes out on a light terminal background. This amber keeps
-      // contrast on both light and dark themes (same tactic as ACCENT_HEX above).
-      text: `${formatMoney(cost.total, costRates.currency)} ${t.status.usageCost}`,
-      color: "#d97706",
-    });
-  }
+  // Estimated session cost is deliberately NOT shown: provider prices move fast
+  // enough that the local rate tables go stale between releases, and a wrong
+  // number is worse than none. `/usage` still reports it, where the figure can
+  // carry its own caveat.
 
   return (
     <Box flexDirection="column">

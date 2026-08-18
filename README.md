@@ -194,7 +194,7 @@ nova upgrade                       # 更新到最新版本（启动时也会自�
 | 📝 Markdown 扩展 | 自定义 slash 命令、子 agent、生命周期 hooks，丢 `.md` 进 `.nova/`、frontmatter 配置，免改代码 |
 | 🧩 插件 | `nova plugin` 从本地路径 / GitHub / git url / marketplace 安装、启停插件；一个插件可贡献命令、agent、skill、hooks、MCP / LSP server 与 `bin/` 可执行文件，兼容 Claude Code 插件格式 |
 | 🗂️ 三层记忆 | 全局 → 用户 → 项目，按 `NOVA.md` > `CLAUDE.md` > `AGENTS.md` 优先级加载 |
-| 💻 交互体验 | 全屏 Ink/React REPL，流式输出 + 鼠标；`@path` / `/` 补全、<kbd>↑</kbd> <kbd>↓</kbd> 翻历史；实时状态行显示 token 用量、缓存命中、花费、provider 余额（DeepSeek / Kimi）、git 分支、上下文占用 |
+| 💻 交互体验 | 全屏 Ink/React REPL，流式输出 + 鼠标；`@path` / `/` 补全、<kbd>↑</kbd> <kbd>↓</kbd> 翻历史；实时状态行显示 token 用量、缓存命中、provider 余额（DeepSeek / Kimi）、git 分支、上下文占用 |
 | 🌐 多语言 | 界面与模型回复语言分开配置：`settings.language` 控制模型回复语言（默认跟随系统 locale），`settings.locale` 单独覆盖 TUI 静态文案（内置 zh-CN / EN），二者可不同（如中文界面 + 英文回复）；不支持的语言标签回落到英文 |
 
 <br>

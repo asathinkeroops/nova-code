@@ -113,7 +113,6 @@ export const zh: DeepPartial<Catalog> = {
     usageCacheTotal: "累计",
     usageIn: "输入",
     usageOut: "输出",
-    usageCost: "花费",
   },
 
   spinner: {

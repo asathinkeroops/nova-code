@@ -643,7 +643,7 @@
         <p>输入框下方两行实时状态：</p>
         <ul class="space-y-2">
           <li><strong>第一行</strong>：模型档位 + 思考等级 + 上下文窗口、上下文占用进度条与百分比、工作区目录名、git 分支、完整 cwd。</li>
-          <li><strong>第二行（用量）</strong>：账户余额（仅接 DeepSeek 官方 API 时出现；账户不可扣费时转为琥珀色）、缓存命中率、累计输入 / 输出 token、按当前档位 <code>pricing</code> 估算的花费。终端过窄时从右往左丢弃分段，余额和命中率优先保留。
+          <li><strong>第二行（用量）</strong>：账户余额（仅接 DeepSeek 官方 API 时出现；账户不可扣费时转为琥珀色）、缓存命中率、累计输入 / 输出 token。花费估算不再上状态行（价格变动频繁，过期的估算比不显示更糟），改由 <code>/usage</code> 查看。终端过窄时从右往左丢弃分段，余额和命中率优先保留。
             <ul class="mt-2 space-y-1">
               <li>缓存分段给两个数字：<code>缓存 90% 会话 99% 累计</code> —— 前者是<strong>本会话</strong>（从 transcript 重放，扛得住重启和 <code>/resume</code>）的命中率，后者是<strong>跨会话累计</strong>的命中率，<code>/clear</code>、换会话、重装都不归零。累计值记在 <code>~/.nova/usage.json</code>（每请求批量累加、原子写，多个 nova 进程会各自并入而不是互相覆盖），而不是启动时去扫 <code>~/.nova/sessions/*</code> —— 旧会话目录会被 <code>sessionCleanup.maxAgeDays</code> 清掉，扫出来的历史本来就不全。哪一半还没有数据就只显示另一半。</li>
             </ul>

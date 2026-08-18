@@ -148,7 +148,6 @@ export const en = {
     usageCacheTotal: "total",
     usageIn: "in",
     usageOut: "out",
-    usageCost: "cost",
   },
 
   /** Working-spinner labels and hints (`hooks.ts`, `ctx-runtime.ts`, `repl.ts`). */
