@@ -8,6 +8,11 @@ import type { ProviderProfile } from "./types.js";
  * error translation and does not retry on HTTP status (transient-failure retry
  * policies vary by provider, so we don't assume one); the shared adapter still
  * retries malformed tool-call JSON generically.
+ *
+ * The generic profile's default transport is "anthropic". Forcing
+ * `settings.transport: "openai"` against an OpenAI-compatible gateway works for
+ * the wire itself, but there is no generic thinking knob on that protocol —
+ * reasoning follows the selected model — so the budget is ignored there.
  */
 export const otherProfile: ProviderProfile = {
   id: "other",
@@ -16,7 +21,8 @@ export const otherProfile: ProviderProfile = {
   // default (~0.3/char Latin, ~0.6 CJK) is a reasonable approximation.
   tokenEstimate: DEFAULT_TOKEN_ESTIMATE,
 
-  thinking(budget) {
+  thinking(budget, _model, transport) {
+    if (transport === "openai") return { params: {} };
     if (budget <= 0) return { params: { thinking: { type: "disabled" } } };
     return {
       params: { thinking: { type: "enabled", budget_tokens: budget } },

@@ -250,7 +250,11 @@ export const moonshotProfile: ProviderProfile = {
   // Matches DeepSeek's ratios: ~0.3 tokens/char for English, ~0.6 for CJK.
   tokenEstimate: { cjk: 0.6, other: 0.3 },
 
-  thinking(budget, model) {
+  thinking(budget, model, transport) {
+    // On the OpenAI-compatible wire there is no `thinking: { type, keep }`
+    // knob — reasoning follows the selected model (Kimi K2 models reason
+    // natively), so the knob stays empty there.
+    if (transport === "openai") return { params: {} };
     if (isPreservedThinkingModel(model ?? "")) {
       return { params: { thinking: { type: "enabled", keep: "all" } } };
     }

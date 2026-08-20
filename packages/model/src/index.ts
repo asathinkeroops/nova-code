@@ -1,6 +1,6 @@
 export {
-  createAnthropicModel,
-  type AnthropicModelConfig,
+  createModel,
+  type ModelConfig,
   type RetryNotice,
   type StreamProgress,
   type StreamTextDelta,
@@ -14,6 +14,7 @@ export {
   type AccountBalance,
   type BalanceProbe,
   type ErrorDecision,
+  type ModelTransport,
   type ProviderErrorInfo,
   type ProviderId,
   type ProviderProfile,

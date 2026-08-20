@@ -96,13 +96,15 @@ slash 命令、快捷键、审批弹窗、记忆文件优先级（`NOVA.md` > `C
 
 ## 四、行动清单（按优先级）
 
-### P0 · 补 OpenAI-compatible 传输层
+### P0 · 补 OpenAI-compatible 传输层 ✅ 已落地（2026-08-19）
 
 **这是唯一的硬缺口，也是定位 A 能否立住的前提。**
 
 现状：所有 provider 都经 `@anthropic-ai/sdk` 走 Anthropic 兼容协议（`packages/model/src/model.ts`），`ProviderProfile` 只抽象了 thinking 形状、错误码、余额探针、tokenizer 四件事，**没有抽象 transport**。而 Qwen / GLM / MiniMax / 豆包等国产主力是 OpenAI 协议优先。
 
 需要在 `model.ts` 里引入第二条 transport 分支，并把 transport 选择提升为 profile 的一个字段。工作量集中在 `@nova/model` 一个包内，不触碰 loop 契约。
+
+> **落地记录**：传输协议与供应商解耦——`settings.transport`（`"anthropic" | "openai"`）独立于 `provider`，DeepSeek 一个 profile 同时服务 `/anthropic` 与 `https://api.deepseek.com` 两个端点（thinking 旋钮随协议变化：`effort` 仅 Anthropic 端点有）；`openai.ts` OpenAI 兼容传输（官方 `openai` SDK 流式 `chat/completions`，`maxRetries: 0` 交回 Nova 自己的重试循环；请求体仍逐字节组装以保前缀缓存）+ `createModel` 统一工厂与共享重试循环。**不设通用 `openai` provider** —— OpenAI 兼容端点通过 `transport: "openai"` 在供应商自己的 profile 上使用。CLI 调用点仅改名，loop 契约未触碰。**未做**（另行确认）：Qwen / GLM / MiniMax / 豆包各自专用 profile 与 setup 模板——现有通用 `openai` 档配 `baseURL` 已可接入。
 
 ### P1 · 做一份公开的 token / 缓存 benchmark
 

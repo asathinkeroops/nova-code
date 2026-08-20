@@ -241,6 +241,11 @@ export interface HistoryPort {
 
 export interface TurnOptions {
   maxTokens: number;
+  /**
+   * Model-call budget for this one turn (one user message → final answer);
+   * the session itself has no turn cap. On hitting it the loop grants a
+   * single tool-free wrap-up turn so the agent answers from what it gathered.
+   */
   maxTurns: number;
   /**
    * Consecutive `max_tokens` continuations the loop may grant before giving up.

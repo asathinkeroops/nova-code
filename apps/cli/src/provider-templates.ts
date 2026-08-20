@@ -1,4 +1,5 @@
 import type {
+  ModelTransport,
   ProviderId,
 } from "@nova/model";
 import { DEFAULT_GOAL, DEFAULT_MODEL_TIER } from "@nova/base";
@@ -33,6 +34,10 @@ export interface ProviderTemplate {
     // `ProviderId` even though `settings.provider` itself is a free-form string.
     // Required: it is also the key into the built-in `models` table.
     provider: ProviderId;
+    // Wire protocol for the model endpoint. Omitted → the profile's default
+    // (anthropic). A vendor shipping both endpoints (DeepSeek) pins its
+    // preferred wire here; the baseURL below must match it.
+    transport?: ModelTransport;
     baseURL?: string;
     model?: string;
     goal?: {
@@ -71,10 +76,15 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
     label: "DeepSeek",
     settings: {
       provider: "deepseek",
-      // DeepSeek's Anthropic-compatible endpoint, written explicitly here so the
-      // saved config is self-describing. This is the sole place a DeepSeek base
-      // URL is hardcoded — the config schema no longer defaults `baseURL`.
-      baseURL: "https://api.deepseek.com/anthropic",
+      // DeepSeek's OpenAI-compatible endpoint (their recommended protocol, and
+      // the one the official `openai` SDK speaks natively) — written explicitly
+      // here so the saved config is self-describing. This is the sole place a
+      // DeepSeek base URL is hardcoded — the config schema no longer defaults
+      // `baseURL`. The transport pin (`openai`) keeps the wire and the URL in
+      // sync; the same provider profile also serves the `/anthropic` endpoint
+      // if a user switches `transport` back.
+      transport: "openai",
+      baseURL: "https://api.deepseek.com",
       model: DEFAULT_MODEL_TIER,
       // Goal mode on by default; judged by the cheap `lite` tier so the
       // after-each-turn check stays inexpensive. Persisted to nova.config.json.

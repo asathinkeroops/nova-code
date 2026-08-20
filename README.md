@@ -45,7 +45,7 @@
 
 <br>
 
-Nova 读代码、跑命令、改文件 —— 通过工具调用把任务推到完成。它是**开箱即用的成品**，不是需要自己拼装的框架：权限、沙箱、LSP、MCP、Skills、插件、可重放会话都已就位，装好填 key 就能干活。模型层面向**国产大模型**：各家 provider 都走 Anthropic 兼容协议，差异（thinking 形状、错误码、余额探针）由 **provider profile**（按 `settings.provider` 选择）吸收 —— DeepSeek 与 Kimi（Moonshot，beta）有专用适配，其余端点走通用 `other` 档。整个请求管线围绕服务端自动前缀缓存设计，让同一件事花更少的 token。
+Nova 读代码、跑命令、改文件 —— 通过工具调用把任务推到完成。它是**开箱即用的成品**，不是需要自己拼装的框架：权限、沙箱、LSP、MCP、Skills、插件、可重放会话都已就位，装好填 key 就能干活。模型层面向**国产大模型**：内置**两套传输协议**——Anthropic 兼容（DeepSeek / Kimi 原生）与 OpenAI 兼容（Qwen / GLM / MiniMax / 豆包等 `chat/completions` 端点原生）。**供应商（`provider`）与协议（`transport`）解耦**：DeepSeek 一个 profile 同时服务 `/anthropic` 与 `https://api.deepseek.com` 两个端点，`settings.transport` 切换、错误翻译与余额探针原样保留；thinking 形状、错误码、余额探针等差异由 **provider profile**（按 `settings.provider` 选择）吸收。其余 Anthropic 兼容端点走通用 `other` 档（OpenAI 兼容端点无需独立 provider —— 在供应商自己的 profile 上把 `settings.transport` 设为 `"openai"` 即可）。整个请求管线围绕服务端自动前缀缓存设计，让同一件事花更少的 token。
 
 <br>
 
@@ -57,14 +57,14 @@ Nova 读代码、跑命令、改文件 —— 通过工具调用把任务推到�
 
 ### ⚡ 国产模型原生适配，零配置
 
-不用调 `cache_control`、不用翻错误码文档。装好，填 key，开干。thinking 按各家的 wire 形状映射（DeepSeek 的 `effort`、Kimi 的 `thinking.type`，而不是到处套 `budget_tokens`）、HTTP 错误码翻成人话并附上充值 / 建 key 的链接、状态行实时显示账户余额。
+不用调 `cache_control`、不用翻错误码文档。装好，填 key，开干。thinking 按各家的 wire 形状映射（DeepSeek 的 `effort`、Kimi 的 `thinking.type`，而不是到处套 `budget_tokens`）、HTTP 错误码翻成人话并附上充值 / 建 key 的链接、状态行实时显示账户余额。OpenAI 兼容端点（DeepSeek / Qwen / GLM / MiniMax / 豆包等）走原生 `chat/completions` 传输——`settings.transport: "openai"` 加对应的 `baseURL` 即可接入，供应商适配（错误翻译 / 余额探针）原样保留。
 
 </td>
 <td width="50%" valign="top">
 
 ### 🎚️ 多 provider，三档阶梯
 
-内置 DeepSeek、Moonshot（Kimi）、通用 Anthropic 兼容三套 provider profile，各带错误码表、限流重试与余额探测。模型按 `lite` / `pro` / `max` 三档配置，每档独立设 id、thinking 等级和定价；`/model`、`--model` 切的是档位而非裸 provider id。
+内置 DeepSeek、Moonshot（Kimi）、通用 Anthropic 兼容（`other`）三套 provider profile，各带错误码表与限流重试（DeepSeek / Kimi 另带余额探测）；OpenAI 兼容端点通过 `transport: "openai"` 在现有供应商 profile 上使用，不设独立 provider。模型按 `lite` / `pro` / `max` 三档配置，每档独立设 id、thinking 等级和定价；`/model`、`--model` 切的是档位而非裸 provider id。
 
 </td>
 </tr>
@@ -125,7 +125,7 @@ nova -p "解释这段代码"              # headless 模式：只跑一轮，输
 nova upgrade                       # 更新到最新版本（启动时也会自动检查并提示）
 ```
 
-首次启动进入交互式配置向导，写入 `~/.nova/nova.config.json`（API key、模型、session 目录等）；不想让 key 明文落盘时，导出环境变量 `NOVA_API_KEY` 即可——它优先于配置文件里的 `apiKey`。模型按 `lite` / `pro` / `max` 三档配置，每档可单独设定 thinking 等级与定价（`models.<档>.pricing`，支持 USD / CNY）；`/model`、`--model` 切换的是档位而非裸 provider id。**三档的默认表按 provider 内置在代码里、不写进配置文件**，配置里只放你自己的覆盖项——这样升级 Nova 就能拿到新的模型 id / 价格 / 上下文窗口。默认 provider 为 `deepseek`，`settings.provider` 可切到 `moonshot`（Kimi，beta）或通用 `other`。界面与回复语言由 `settings.language`（模型回复语言，默认跟随系统 locale）与 `settings.locale`（仅 TUI 静态文案，内置 zh-CN / EN）分别控制。
+首次启动进入交互式配置向导，写入 `~/.nova/nova.config.json`（API key、模型、session 目录等）；不想让 key 明文落盘时，导出环境变量 `NOVA_API_KEY` 即可——它优先于配置文件里的 `apiKey`。模型按 `lite` / `pro` / `max` 三档配置，每档可单独设定 thinking 等级与定价（`models.<档>.pricing`，支持 USD / CNY）；`/model`、`--model` 切换的是档位而非裸 provider id。**三档的默认表按 provider 内置在代码里、不写进配置文件**，配置里只放你自己的覆盖项——这样升级 Nova 就能拿到新的模型 id / 价格 / 上下文窗口。默认 provider 为 `deepseek`，`settings.provider` 可切到 `moonshot`（Kimi，beta）或通用 `other`；`settings.transport: "openai"` 把任意供应商切到其 OpenAI 兼容端点（如 DeepSeek 的 `https://api.deepseek.com`）。界面与回复语言由 `settings.language`（模型回复语言，默认跟随系统 locale）与 `settings.locale`（仅 TUI 静态文案，内置 zh-CN / EN）分别控制。
 
 ### 📦 更多子命令
 

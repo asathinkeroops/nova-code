@@ -45,7 +45,7 @@
 
 <br>
 
-Nova reads code, runs commands, edits files — and drives your task to done through tool use. It's a **finished product**, not a kit you assemble yourself: permissions, sandbox, LSP, MCP, Skills, plugins, and replayable sessions are all in place — install, drop in a key, get to work. The model layer targets **Chinese LLMs**: every provider speaks the Anthropic-compatible protocol, and a **provider profile** (selected by `settings.provider`) absorbs the per-vendor quirks — thinking shape, error tables, balance probe. DeepSeek and Kimi (Moonshot, beta) have dedicated profiles; any other endpoint falls back to the generic `other` tier. The whole request pipeline is designed around server-side automatic prefix caching, so the same work costs fewer tokens.
+Nova reads code, runs commands, edits files — and drives your task to done through tool use. It's a **finished product**, not a kit you assemble yourself: permissions, sandbox, LSP, MCP, Skills, plugins, and replayable sessions are all in place — install, drop in a key, get to work. The model layer targets **Chinese LLMs**: two wire protocols are built in — Anthropic-compatible (native for DeepSeek / Kimi) and OpenAI-compatible (native for Qwen / GLM / MiniMax / Doubao and other `chat/completions` endpoints). **Provider and transport are decoupled**: one DeepSeek profile serves both the `/anthropic` and the plain `https://api.deepseek.com` endpoints — `settings.transport` switches wires while error translation and the balance probe stay. A **provider profile** (selected by `settings.provider`) absorbs the per-vendor quirks — thinking shape, error tables, balance probe. DeepSeek and Kimi (Moonshot, beta) have dedicated profiles; any other Anthropic-compatible endpoint falls back to the generic `other` profile — OpenAI-compatible endpoints need no separate provider, just `settings.transport: "openai"` on the vendor's own profile. The whole request pipeline is designed around server-side automatic prefix caching, so the same work costs fewer tokens.
 
 <br>
 
@@ -57,14 +57,14 @@ Nova reads code, runs commands, edits files — and drives your task to done thr
 
 ### ⚡ Native to Chinese LLMs, zero config
 
-No `cache_control` to tweak, no error-code docs to dig through. Install, drop in your key, go. Thinking maps to each vendor's own wire shape (DeepSeek's `effort`, Kimi's `thinking.type` — rather than forcing `budget_tokens` everywhere), HTTP error codes are translated into plain language with a top-up / new-key link attached, and your account balance shows live on the status line.
+No `cache_control` to tweak, no error-code docs to dig through. Install, drop in your key, go. Thinking maps to each vendor's own wire shape (DeepSeek's `effort`, Kimi's `thinking.type` — rather than forcing `budget_tokens` everywhere), HTTP error codes are translated into plain language with a top-up / new-key link attached, and your account balance shows live on the status line. OpenAI-compatible endpoints (DeepSeek / Qwen / GLM / MiniMax / Doubao, …) use the native `chat/completions` transport — set `settings.transport: "openai"` and the matching `baseURL` on the vendor's own profile; error translation and the balance probe carry over unchanged.
 
 </td>
 <td width="50%" valign="top">
 
 ### 🎚️ Multi-provider, three-tier ladder
 
-Three built-in provider profiles — DeepSeek, Moonshot (Kimi), and generic Anthropic-compatible — each with its own error-code table, rate-limit retries, and balance probe. Models are configured across `lite` / `pro` / `max` tiers, each with its own id, thinking level, and pricing. `/model` and `--model` switch the tier, not a raw provider id.
+Three built-in provider profiles — DeepSeek, Moonshot (Kimi), and generic Anthropic-compatible (`other`) — each with its own error-code table and rate-limit retries (DeepSeek and Kimi also probe account balance); OpenAI-compatible endpoints are reached via `transport: "openai"` on an existing vendor profile, not a separate provider. Models are configured across `lite` / `pro` / `max` tiers, each with its own id, thinking level, and pricing. `/model` and `--model` switch the tier, not a raw provider id.
 
 </td>
 </tr>
@@ -125,7 +125,7 @@ nova -p "explain this code"        # headless: one turn, print & exit
 nova upgrade                       # update to the latest version (also auto-checked at startup)
 ```
 
-First launch walks through an interactive setup (API key, model, etc.) → `~/.nova/nova.config.json`. To keep the key out of that plaintext file, export `NOVA_API_KEY` instead — it takes precedence over the config file's `apiKey`. Models are configured as a `lite` / `pro` / `max` ladder, each tier with its own thinking level and pricing (`models.<tier>.pricing`, USD / CNY); `/model` and `--model` switch tiers, not raw provider ids. **The default ladder is built in per provider and never written to the config file** — the file carries only your overrides, so upgrading Nova picks up new model ids, prices and context windows. The default provider is `deepseek`; set `settings.provider` to `moonshot` (Kimi, beta) or the generic `other`. Interface and reply language are controlled separately by `settings.language` (the model's reply language, defaults to the system locale) and `settings.locale` (TUI static text only, bundled zh-CN / EN).
+First launch walks through an interactive setup (API key, model, etc.) → `~/.nova/nova.config.json`. To keep the key out of that plaintext file, export `NOVA_API_KEY` instead — it takes precedence over the config file's `apiKey`. Models are configured as a `lite` / `pro` / `max` ladder, each tier with its own thinking level and pricing (`models.<tier>.pricing`, USD / CNY); `/model` and `--model` switch tiers, not raw provider ids. **The default ladder is built in per provider and never written to the config file** — the file carries only your overrides, so upgrading Nova picks up new model ids, prices and context windows. The default provider is `deepseek`; set `settings.provider` to `moonshot` (Kimi, beta) or the generic `other`; `settings.transport: "openai"` switches any vendor to its OpenAI-compatible endpoint (e.g. DeepSeek's `https://api.deepseek.com`). Interface and reply language are controlled separately by `settings.language` (the model's reply language, defaults to the system locale) and `settings.locale` (TUI static text only, bundled zh-CN / EN).
 
 ### 📦 More subcommands
 

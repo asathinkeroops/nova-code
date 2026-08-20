@@ -9,6 +9,7 @@ export type {
   ErrorDecision,
   AccountBalance,
   BalanceProbe,
+  ModelTransport,
 } from "./types.js";
 export { ProviderError } from "./error.js";
 export type { ProviderErrorInfo } from "./error.js";

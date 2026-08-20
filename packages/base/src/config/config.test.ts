@@ -41,7 +41,8 @@ describe("settingsSchema", () => {
   it("applies defaults when empty input is given", () => {
     const s = parseSettings({});
     expect(s.model).toBe("pro");
-    expect(s.maxTurns).toBe(100);
+    expect(s.maxTurns).toBe(5000);
+    expect(s.transport).toBeUndefined(); // omitted → the profile's default transport
     expect(s.permissions.defaultEffect).toBe("ask");
     expect(s.permissions.rules).toEqual([]);
     expect(s.transcript.enabled).toBe(true);
@@ -53,7 +54,7 @@ describe("settingsSchema", () => {
     expect(s.slash.projectDirs).toBeUndefined();
     expect(s.slash.userPaths).toBeUndefined();
     expect(s.subagent.enabled).toBe(true);
-    expect(s.subagent.maxTurns).toBe(100);
+    expect(s.subagent.maxTurns).toBe(5000);
     expect(s.subagent.maxTokens).toBe(32768);
   });
 
@@ -558,5 +559,15 @@ describe("auto-memory path resolution", () => {
 
   it("passes an absolute dir override through unchanged", () => {
     expect(resolveAutoMemoryDir("/ws", "/elsewhere/mem", "/home/me")).toBe("/elsewhere/mem");
+  });
+});
+
+describe("settings.transport", () => {
+  it("parses an explicit wire-protocol override", () => {
+    expect(parseSettings({ transport: "openai" }).transport).toBe("openai");
+    expect(parseSettings({ transport: "anthropic" }).transport).toBe("anthropic");
+  });
+  it("rejects a bogus transport value", () => {
+    expect(() => parseSettings({ transport: "gemini" })).toThrow();
   });
 });

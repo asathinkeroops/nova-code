@@ -19,7 +19,7 @@ import {
   type ToolPromptSection,
 } from "@nova/core";
 import {
-  createAnthropicModel,
+  createModel,
   resolveProfile,
 } from "@nova/model";
 import { SlashRegistry } from "./slash-registry.js";
@@ -595,10 +595,14 @@ export async function createContext(
   // for free, and the resolved id is what reaches cost/pricing matching.
   const buildModel = (name: string, trackTokens = true): ModelClient => {
     const model = resolveModelId(settings, name);
-    return createAnthropicModel({
+    return createModel({
       apiKey,
       model,
       provider: resolveProfile(settings.provider),
+      // Explicit wire-protocol override; omitted → the profile's default
+      // transport. Lets e.g. `provider: "deepseek"` run against DeepSeek's
+      // OpenAI-compatible endpoint (baseURL without the /anthropic suffix).
+      ...(settings.transport ? { transport: settings.transport } : {}),
       ...(settings.baseURL ? { baseURL: settings.baseURL } : {}),
       ...(settings.headers ? { headers: settings.headers } : {}),
       ...(trackTokens

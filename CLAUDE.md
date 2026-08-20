@@ -18,7 +18,7 @@ Standard `pnpm install / build / typecheck / test / lint / format` also work. No
 ## Workspace layout
 
 - `packages/*` (`@nova/<name>`) — library code. Workspace consumers import from `./src/index.ts` directly (no rebuild needed); published builds switch to `dist/` via `publishConfig`.
-- Active packages, eight of them: `core` (the agent kernel — message/hook/**port** contracts, the loop, the turn), `base` (the leaf foundation, grouped by subdirectory: `config/` settings schema + model tables + cost, `host/` logger + session + transcript + path-safety, `prompt/` slash contract + prompt expansion, `text/` shared string/token utils), `model` (Anthropic-compatible adapter + provider profiles + retry), `safety` (permission engine + OS write confinement), `tools`, `mcp` (Model Context Protocol client), `lsp` (language-server code intelligence), `agent` (port implementations + assembly + memory/compaction + sub-agents). Keep it at eight — a 200-line concern belongs in the package that owns its topic, not in a package of its own.
+- Active packages, eight of them: `core` (the agent kernel — message/hook/**port** contracts, the loop, the turn), `base` (the leaf foundation, grouped by subdirectory: `config/` settings schema + model tables + cost, `host/` logger + session + transcript + path-safety, `prompt/` slash contract + prompt expansion, `text/` shared string/token utils), `model` (dual-wire adapter — Anthropic-compatible + OpenAI-compatible `chat/completions` — + provider profiles + retry), `safety` (permission engine + OS write confinement), `tools`, `mcp` (Model Context Protocol client), `lsp` (language-server code intelligence), `agent` (port implementations + assembly + memory/compaction + sub-agents). Keep it at eight — a 200-line concern belongs in the package that owns its topic, not in a package of its own.
 - `apps/cli` — the only active app. `apps/http` and `apps/vscode` are placeholders.
 - `eval/` — replay harness; **excluded from eslint/tsconfig**, don't expect it to build with the rest.
 
@@ -36,7 +36,7 @@ mcp              ──► core + base   (both type-only; the `SlashCommand` con
                      bridges prompts into lives in base/src/prompt/slash-types.ts — the
                      registry and the .md loader are CLI-side)
 agent            ──► core + base
-model            ──► core + base   (the only package that imports @anthropic-ai/sdk)
+model            ──► core + base   (the only package that imports the model SDKs — @anthropic-ai/sdk and openai)
 cli (apps/cli)   ──► every package above
 ```
 

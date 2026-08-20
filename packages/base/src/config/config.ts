@@ -402,17 +402,35 @@ const settingsObjectSchema = z.object({
   // config error rather than a first-request crash.
   headers: httpHeadersSchema.optional(),
   // Which provider profile drives thinking-param and error/retry behavior.
-  // "deepseek" — DeepSeek's Anthropic-compatible endpoint (effort knob,
-  // translated error diagnostics, transient-status retry). "other" — any generic
-  // Anthropic-compatible endpoint (budget_tokens, no error translation, no
-  // status-based retry). Free-form string, not an enum: the profile registry is
-  // the single source of truth for the id set, and it lives in `@nova/core` —
-  // which this leaf package can't import to enumerate. `@nova/core`'s
-  // `resolveProfile` maps an unknown id (a typo, or a generic provider named
-  // directly) to the `other` fallback; `nova doctor` flags ids that aren't a
-  // built-in. Always present (defaults to "deepseek", this build's primary
-  // target), so downstream never has to guess a profile from the model name.
+  // "deepseek" — DeepSeek (its Anthropic-compatible endpoint by default, see
+  // `transport` below). "moonshot" — Kimi/Moonshot. "other" — any generic
+  // Anthropic-compatible endpoint. There is deliberately NO generic
+  // "openai" provider id: the openai WIRE is reached via `transport: "openai"`
+  // on a vendor's own profile (e.g. DeepSeek's OpenAI-compatible endpoint),
+  // not by inventing a vendor. Free-form string, not an enum: the profile
+  // registry is the single source of truth for the id set, and it lives in
+  // `@nova/model` — which this leaf package can't import to enumerate.
+  // `@nova/model`'s `resolveProfile` maps an unknown id (a typo, or a generic
+  // provider named directly) to the `other` fallback; `nova doctor` flags ids
+  // that aren't a built-in. Always present (defaults to "deepseek", this
+  // build's primary target), so downstream never has to guess a profile from
+  // the model name.
   provider: z.string().min(1).default("deepseek"),
+  // Wire protocol for the model endpoint, INDEPENDENT of the provider (a
+  // vendor ≠ a protocol): "anthropic" routes through the @anthropic-ai/sdk
+  // Messages format; "openai" through the OpenAI-compatible
+  // `chat/completions` transport (official openai SDK). Omitted → the
+  // provider profile's default (deepseek / moonshot / other default to
+  // anthropic; the generic openai profile to openai). A vendor shipping both
+  // endpoints keeps ONE provider — e.g. DeepSeek serves its Anthropic-compat
+  // API at `https://api.deepseek.com/anthropic` AND the OpenAI-compat API at
+  // `https://api.deepseek.com` from the same key: set `transport: "openai"`
+  // (and the matching `baseURL`) to switch wires while keeping DeepSeek's
+  // error translation, balance probe and docs. The thinking knob is
+  // transport-sensitive: DeepSeek's `output_config.effort` exists only on
+  // its anthropic wire; the openai wire takes `thinking.type` + a
+  // `reasoning_effort` ladder instead.
+  transport: z.enum(["anthropic", "openai"]).optional(),
   sessionDir: z.string().min(1).optional(),
   // UI / response language. "auto" (the default) follows the current system
   // locale (resolved from $LANG / $LC_ALL / $LANGUAGE, see resolveLanguage());
@@ -438,7 +456,15 @@ const settingsObjectSchema = z.object({
   // whose endpoint caps output at 8192 and so trips this often on long replies.
   // (maxTokens itself now lives per-tier in `models` — see resolveMaxTokens().)
   maxTokensContinuations: z.number().int().nonnegative().default(3),
-  maxTurns: z.number().int().positive().default(100),
+  // Model-call budget for a SINGLE turn (one user message → the agent's
+  // final answer): each model call inside that turn counts 1 (model → tool →
+  // model → …). The session itself has NO turn cap — every new user message
+  // gets its own budget, so long multi-day sessions are unaffected. On
+  // hitting the cap the loop does not discard work: it injects a tool-free
+  // "wrap up now" request so the model answers from what it already gathered
+  // (packages/core/src/loop.ts). Default deliberately high (5000) so a single
+  // long-running task — hours of uninterrupted tool work — does not trip it.
+  maxTurns: z.number().int().positive().default(5000),
   // Max tool executions to run concurrently within a single turn. Calls beyond
   // this cap queue and start as slots free up. 1 = fully sequential.
   toolConcurrency: z.number().int().positive().default(3),
@@ -792,7 +818,11 @@ const settingsObjectSchema = z.object({
       projectDirs: z.array(z.string().min(1)).optional(),
       userPaths: z.array(z.string().min(1)).optional(),
       extraDirs: z.array(z.string().min(1)).optional(),
-      maxTurns: z.number().int().positive().default(100),
+      // Same semantics as the top-level `maxTurns` (per-turn model-call
+      // budget; hitting it grants a tool-free wrap-up turn, work is kept).
+      // 5000 matches the top-level default so a long sub-task survives hours
+      // of tool work instead of being cut off mid-report.
+      maxTurns: z.number().int().positive().default(5000),
       // Per-response output cap for the sub-agent loop, tunable independently
       // of the top-level maxTokens. A sub-agent's final message is a single
       // consolidated report, so a small budget risks the loop's max_tokens
@@ -800,7 +830,7 @@ const settingsObjectSchema = z.object({
       // Anthropic-compatible endpoint caps output at 8192 — lower it there.
       maxTokens: z.number().int().positive().default(32768),
     })
-    .default({ enabled: true, maxTurns: 100, maxTokens: 32768 }),
+    .default({ enabled: true, maxTurns: 5000, maxTokens: 32768 }),
   // Nova Code Guide: a read-only Q&A agent that answers questions about Nova
   // itself from a local checkout of the Nova source. The `/nova-code-guide`
   // command spawns a read-only sub-agent scoped to that checkout; enabled by

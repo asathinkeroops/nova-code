@@ -1,19 +1,33 @@
 /**
  * A provider profile bundles everything the model adapter needs to know that
- * differs between LLM providers — the thinking-knob wire shape and how to react
- * to a failed request — behind one interface. The adapter (`model.ts`) depends
- * only on this shape and never on a concrete provider, so adding a provider is
- * adding a file that implements this interface plus one line in the `PROVIDERS`
- * registry (`index.ts`) — no hot-path edit, and no id union to widen (the `id`
- * field is `string`, and `ProviderId` derives from the registry keys).
- *
- * All providers here speak the Anthropic-compatible wire format (they go through
- * the same `@anthropic-ai/sdk` client); a profile only captures the *quirks* on
- * top of that, not a whole alternate transport.
+ * differs between LLM providers — which wire protocol it speaks, the
+ * thinking-knob wire shape, and how to react to a failed request — behind one
+ * interface. The adapter (`model.ts`) depends only on this shape and never on a
+ * concrete provider, so adding a provider is adding a file that implements this
+ * interface plus one line in the `PROVIDERS` registry (`index.ts`) — no hot-path
+ * edit, and no id union to widen (the `id` field is `string`, and `ProviderId`
+ * derives from the registry keys).
  */
 
 import type { TokenEstimate } from "@nova/base";
 import type { ProviderError } from "./error.js";
+
+/**
+ * The wire protocol used for a provider's model endpoint. "anthropic" goes
+ * through the `@anthropic-ai/sdk` client (native Anthropic Messages format,
+ * also spoken by DeepSeek / Moonshot's `/anthropic`-suffixed endpoints);
+ * "openai" goes through the OpenAI-compatible `chat/completions` transport
+ * (`openai.ts`, official `openai` SDK) — the protocol DeepSeek / Qwen / GLM /
+ * MiniMax / Doubao are native to.
+ *
+ * Transport is INDEPENDENT of the provider: a vendor that ships both endpoints
+ * (DeepSeek serves `/anthropic` AND `https://api.deepseek.com` from the same
+ * key) keeps ONE profile — its error table, balance probe and docs all apply
+ * to either wire — and the effective transport is `settings.transport` falling
+ * back to the profile's {@link ProviderProfile.transport} default. The adapter
+ * reads the effective transport once at construction and picks the branch.
+ */
+export type ModelTransport = "anthropic" | "openai";
 
 /** Wire params for the thinking knob, plus any `max_tokens` floor the format imposes. */
 export interface ThinkingParams {
@@ -74,14 +88,33 @@ export interface ProviderProfile {
   id: string;
 
   /**
+   * The wire protocol this provider is configured for. This is the DEFAULT —
+   * `settings.transport` overrides it per install (see {@link ModelTransport}),
+   * so a vendor with both endpoints (DeepSeek) keeps one profile and switches
+   * protocols in config. "anthropic" (the default when omitted) routes through
+   * the `@anthropic-ai/sdk` client; "openai" through the OpenAI-compatible
+   * `chat/completions` transport. The rest of the profile — error policy,
+   * balance probe, docs — applies on either wire; only the thinking knob is
+   * transport-sensitive (see {@link ProviderProfile.thinking}).
+   */
+  transport?: ModelTransport;
+
+  /**
    * Build the thinking-knob wire params for a given budget (in tokens).
    * `budget <= 0` means thinking is disabled. `model` is the concrete model id
    * the request targets, passed so a profile whose thinking wire shape depends
    * on the model (e.g. Moonshot, where `kimi-k2.7-code` forbids `type:"disabled"`
    * while `kimi-k2.5` forbids the `keep` field) can branch on it; profiles whose
    * knob is model-independent (DeepSeek, generic) simply ignore it.
+   *
+   * `transport` is the EFFECTIVE transport for this request (config override
+   * when set, else the profile default) — the knob's wire shape is per-protocol:
+   * DeepSeek's `output_config.effort` exists only on its Anthropic endpoint,
+   * and its OpenAI endpoint has no effort parameter at all (the reasoner always
+   * thinks, `chat` never does). A profile returns the shape matching the given
+   * transport, so the SAME provider works on both wires.
    */
-  thinking(budget: number, model?: string): ThinkingParams;
+  thinking(budget: number, model: string | undefined, transport: ModelTransport): ThinkingParams;
 
   /**
    * Char→token ratios for this provider's tokenizer, used by the rough

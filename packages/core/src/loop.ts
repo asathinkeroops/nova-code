@@ -33,6 +33,12 @@ export interface AgentLoopOptions {
   executeTool: ToolExecutor;
   messages: MessageParam[];
   maxTokens: number;
+  /**
+   * Model-call budget for this ONE turn (one user message → final answer):
+   * every model call counts 1. The session has no turn cap — each user
+   * message gets its own budget. Hitting it grants a single tool-free
+   * wrap-up turn (see below) rather than discarding gathered work.
+   */
   maxTurns: number;
   toolContext: ToolContext;
   /**

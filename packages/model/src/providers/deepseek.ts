@@ -252,19 +252,33 @@ async function fetchDeepSeekBalance(probe: BalanceProbe): Promise<AccountBalance
 // Provider profile
 // ────────────────────────────────────────────────────────────────────────────
 
-// DeepSeek only exposes "high" and "max". Anything below our `max` budget
-// (32k tokens, see THINKING_BUDGETS) rounds to "high"; at-or-above rounds to
-// "max" — matches DeepSeek's documented behavior where low/medium are
-// rewritten to high on their side.
+// DeepSeek only exposes "high" and "max" on its Anthropic-compatible wire.
+// Anything below our `max` budget (32k tokens, see THINKING_BUDGETS) rounds to
+// "high"; at-or-above rounds to "max" — matches DeepSeek's documented behavior
+// where low/medium are rewritten to high on their side.
 function budgetToEffort(budget: number): "high" | "max" {
   return budget >= THINKING_BUDGETS.max ? "max" : "high";
 }
 
+// DeepSeek's OpenAI-compatible wire exposes the full "low"/"high"/"max" ladder
+// via `reasoning_effort`, so the budget maps three rungs there instead of two.
+function budgetToReasoningEffort(budget: number): "low" | "high" | "max" {
+  if (budget >= THINKING_BUDGETS.max) return "max";
+  if (budget >= THINKING_BUDGETS.high) return "high";
+  return "low";
+}
+
 /**
- * DeepSeek's Anthropic-compatible endpoint. Takes thinking intensity via
- * `output_config.effort` (it rejects `budget_tokens`), and its documented HTTP
- * failures are translated into actionable diagnostics (see the error table
- * above) with transient statuses retried on the shared backoff schedule.
+ * DeepSeek's Anthropic-compatible endpoint (`/anthropic` suffix). Takes
+ * thinking intensity via `output_config.effort` (it rejects `budget_tokens`),
+ * and its documented HTTP failures are translated into actionable diagnostics
+ * (see the error table above) with transient statuses retried on the shared
+ * backoff schedule. The same profile also serves DeepSeek's OpenAI-compatible
+ * endpoint (baseURL without the suffix, `settings.transport: "openai"`): that
+ * wire takes the thinking knob as `thinking: { type: "enabled"|"disabled" }`
+ * plus `reasoning_effort: "low"|"high"|"max"` — see `budgetToReasoningEffort`
+ * for the three-rung budget mapping. Error translation, balance probe and docs
+ * are shared by both wires (same statuses, same `/user/balance`).
  */
 export const deepseekProfile: ProviderProfile = {
   id: "deepseek",
@@ -272,7 +286,16 @@ export const deepseekProfile: ProviderProfile = {
   // DeepSeek's documented ratios: ~0.3 tokens/char for English, ~0.6 for CJK.
   tokenEstimate: { cjk: 0.6, other: 0.3 },
 
-  thinking(budget) {
+  thinking(budget, _model, transport) {
+    if (transport === "openai") {
+      if (budget <= 0) return { params: { thinking: { type: "disabled" } } };
+      return {
+        params: {
+          thinking: { type: "enabled" },
+          reasoning_effort: budgetToReasoningEffort(budget),
+        },
+      };
+    }
     if (budget <= 0) return { params: { thinking: { type: "disabled" } } };
     return {
       params: {

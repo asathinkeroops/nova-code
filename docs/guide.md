@@ -1,6 +1,6 @@
 # Nova 使用手册
 
-> Nova（命令行二进制 `nova`，本手册中也称 *nova-code*）是一个跑在终端里的编码 agent —— 它读代码、跑命令、改文件，通过工具调用把一项任务推到完成。内部消息走 Anthropic 格式，模型层面向**国产大模型**：DeepSeek 与 Kimi（Moonshot）有专用 provider profile，其余 Anthropic 兼容端点走通用档。
+> Nova（命令行二进制 `nova`，本手册中也称 *nova-code*）是一个跑在终端里的编码 agent —— 它读代码、跑命令、改文件，通过工具调用把一项任务推到完成。模型层面向**国产大模型**，内置两套传输协议：Anthropic 兼容（DeepSeek 与 Kimi/Moonshot 原生）与 OpenAI 兼容（Qwen / GLM / MiniMax / 豆包等 `chat/completions` 端点原生）。DeepSeek 与 Kimi 有专用 provider profile，其余 Anthropic 兼容端点走通用档 `other`（OpenAI 兼容端点不设独立 provider —— 在供应商自己的 profile 上把 `settings.transport` 设为 `"openai"` 即可）。
 
 本手册面向 **使用者**：怎么装、怎么配、怎么在日常里把它用顺。如果你想了解内部架构（loop 契约、包依赖、扩展点），请读 `CLAUDE.md` 与仓库根的 `README.md`。
 
@@ -74,14 +74,14 @@ echo "总结这个 diff" | pnpm dev  # 无 TTY：headless 跑一轮后退出
 
 **当前只有 DeepSeek 一个模板对外可选**（Moonshot/Kimi 已内置但在内部测试期，暂从选择器隐藏；「Other provider」手填入口也暂时关闭）。既然只有一个 provider，向导会**跳过选择器**，直接问 DeepSeek 的 API key。它写入：
 
-- `provider: deepseek`、`baseURL: https://api.deepseek.com/anthropic`、默认档位 `pro`（以及 goal 配置和 key 本身）
+- `provider: deepseek`、`transport: openai`、`baseURL: https://api.deepseek.com`（DeepSeek 的 OpenAI 兼容端点）、默认档位 `pro`（以及 goal 配置和 key 本身）
 - 模型表**不写盘**：`lite`→`deepseek-v4-flash`，`pro`/`max`→`deepseek-v4-pro`（三档靠 per-tier `thinking` 拉开梯度）来自代码里的内置默认
 
 > **默认模型表不落盘。** `models` 的默认值按 `provider` 内置在代码里，加载配置时才层叠进来；配置文件里只放**你自己的覆盖项**。这样 Nova 升级带来的新模型 id、新价格、新上下文窗口，老装机也能直接吃到，而不会被向导当年写进文件的那份表钉死。旧版本写过整张表的配置，启动时会被**改写成它实际表达的覆盖项**（通常是空的，或一条 `/effort` 设过的 `thinking`），取值完全不变。
 >
 > 想覆盖某一档，只写要改的字段即可，例如 `"models": { "pro": { "thinking": "low" } }`——其余字段（`id`、`pricing`、`maxTokens`…）继续跟随内置默认。**但如果你把某档的 `id` 改成别的模型**，该档就整条以你的为准（不再继承内置的价格与上限）；反过来，同 `id` 的档位无法「删掉」某个内置字段（省略即继承）。`/effort` 持久化写的也正是这种最小覆盖。
 
-按 `Ctrl+C` 可中止向导。`apiKey` 已存在则跳过向导；导出了环境变量 `NOVA_API_KEY` 且配置里已有 `models` 表时同样跳过（只有环境变量、还没有 `models` 表时，向导仍会跑，但不再问你 key，也不会把这个 key 写进配置文件）。要接别的 Anthropic 兼容端点，直接**手动编辑** `~/.nova/nova.config.json`——schema 不为 `baseURL`/`models` 提供默认值，`provider` 为 `other`（无内置表）时需按 `lite`/`pro`/`max` 三档骨架填全（完整字段见 [§20](#20-配置文件完整参考)）。
+按 `Ctrl+C` 可中止向导。`apiKey` 已存在则跳过向导；导出了环境变量 `NOVA_API_KEY` 且配置里已有 `models` 表时同样跳过（只有环境变量、还没有 `models` 表时，向导仍会跑，但不再问你 key，也不会把这个 key 写进配置文件）。要接别的端点，直接**手动编辑** `~/.nova/nova.config.json`——**provider 与传输协议（`transport`）是两个独立维度**：同一家供应商（如 DeepSeek）可同时有 Anthropic 兼容端点（`https://api.deepseek.com/anthropic`）与 OpenAI 兼容端点（`https://api.deepseek.com`），换协议只需改 `transport` + `baseURL`，DeepSeek 的错误翻译 / 余额探针 / 文档链接原样保留。通用档 `other`（通用 Anthropic 兼容端点）无内置档位表，需按 `lite`/`pro`/`max` 三档骨架填全，完整字段见 [§20](#20-配置文件完整参考)。OpenAI 兼容端点**不设独立 provider**：在现有供应商 profile 上把 `transport` 设为 `"openai"` 即可。
 
 > 如果启动时 `apiKey` 仍为空（且没有 `NOVA_API_KEY`），Nova 会报错退出并提示去配置文件里补上。
 
@@ -267,7 +267,7 @@ Nova 把「extended thinking」暴露成五个等级，或一个显式的 token 
 
 同一轮里的多个 `createSubAgent` 调用会**并发执行**（受 `toolConcurrency` 限制）。父 agent 只会收到每个子 agent 的**最终一条消息**——庞大的中间调查被挡在主上下文之外。
 
-通过 `settings.subagent` 配置：`enabled` / `model` / `maxTurns`（默认 100）/ `maxTokens`（默认 32768）。`model` 是一张**按子 agent 名索引的表**（如 `{"plan":"max","explore":"pro"}`），可给每个 agent 单独指定模型档位；解析顺序由具体到宽泛：该表的对应条目 → 内置默认（`general-purpose`/`plan`→`max`，`explore`/`nova-code-guide`→`pro`）→ 自定义 agent 自己 frontmatter 里的 `model` → 当前主模型。整张表省略则全部沿用默认。每个子 agent 的 transcript 落在 `~/.nova/sessions/{id}/subagents/`。子 agent 触顶 `maxTurns` 时不再直接报错丢弃，而是追加一轮「禁用工具、立即收尾」的请求,让它基于已收集信息产出一份尽力而为的报告。
+通过 `settings.subagent` 配置：`enabled` / `model` / `maxTurns`（默认 5000）/ `maxTokens`（默认 32768）。`model` 是一张**按子 agent 名索引的表**（如 `{"plan":"max","explore":"pro"}`），可给每个 agent 单独指定模型档位；解析顺序由具体到宽泛：该表的对应条目 → 内置默认（`general-purpose`/`plan`→`max`，`explore`/`nova-code-guide`→`pro`）→ 自定义 agent 自己 frontmatter 里的 `model` → 当前主模型。整张表省略则全部沿用默认。每个子 agent 的 transcript 落在 `~/.nova/sessions/{id}/subagents/`。子 agent 触顶 `maxTurns` 时不再直接报错丢弃，而是追加一轮「禁用工具、立即收尾」的请求,让它基于已收集信息产出一份尽力而为的报告。
 
 > 注：子 agent 调用 todo/task/长任务这类「有状态」工具时，操作的是**父 session** 的共享存储。
 
@@ -779,16 +779,17 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 | 字段 | 默认 | 说明 |
 |------|------|------|
 | `apiKey` | （无） | provider API key（首次向导会写入）。**环境变量 `NOVA_API_KEY` 优先于此项**：设了就用它，配置文件里的值作为兜底。想把 key 留在环境里、不落到明文配置文件时用这个 |
-| `provider` | `"deepseek"` | 驱动 thinking 参数、错误翻译、重试策略的 **provider profile**：`deepseek`（effort 旋钮 + 错误翻译 + 状态码重试）/ `moonshot` / `other`（通用 Anthropic 兼容端点，用 `budget_tokens`、不翻译错误）。未知 id 回退到 `other` |
+| `provider` | `"deepseek"` | 驱动 thinking 参数、错误翻译、重试策略的 **provider profile**（供应商适配）：`deepseek`（effort 旋钮 + 错误翻译 + 状态码重试，默认走 Anthropic 端点，可用 `transport` 切到 OpenAI 端点）/ `moonshot` / `other`（通用 Anthropic 兼容端点，用 `budget_tokens`）。OpenAI 兼容端点不设独立 provider —— 用 `transport: "openai"` 在供应商 profile 上切换。未知 id 回退到 `other` |
+| `transport` | （无） | **传输协议**，与 `provider` 正交：`"anthropic"`（@anthropic-ai/sdk 的 Messages 格式）/ `"openai"`（OpenAI 兼容 `chat/completions`，官方 openai SDK）。省略 → 用 provider profile 的默认（内置 profile 均默认 anthropic）。一家供应商两个端点（DeepSeek）时用这个切换，DeepSeek 适配原样保留；thinking 旋钮随协议变化（Anthropic 端点用 `output_config.effort`，OpenAI 端点用 `thinking.type` 开关 + `reasoning_effort` 三档强度） |
 | `model` | `"pro"` | 当前**档位**：`models` 表中的 key（`lite`/`pro`/`max`），**永远不是裸模型 id** |
 | `models` | `{}` | 命名的模型档位表，value 为**档位对象**，每档带自己的 `id`、`maxTokens`、`contextWindowSize`、`thinking`、`modalities`、`pricing`、可选 `description`。非空时**必须含 `lite`/`pro`/`max` 三档**（schema 强制）。默认表按 `provider` 内置在代码里、加载时层叠进来（**不写进配置文件**，见 [§3](#3-首次配置向导)）；这里只写覆盖项 |
-| `baseURL` | （无） | Anthropic 兼容端点 URL（provider 模板写入；缺省则用 SDK 默认端点） |
+| `baseURL` | （无） | 模型端点 URL，格式随协议：Anthropic 兼容端点（如 DeepSeek 的 `https://api.deepseek.com/anthropic`；`deepseek`/`moonshot`/`other` 缺省用 SDK 默认端点）或 OpenAI 兼容端点根（如 DeepSeek 的 `https://api.deepseek.com`，SDK 自动拼 `/chat/completions`；`transport: "openai"` 时必须给） |
 | `headers` | （无） | 附加在**每个模型请求**上的 HTTP 头，形如 `{"User-Agent": "nova/1.0", "X-Tenant": "acme"}`。会并入 SDK 的默认头，同名时以这里为准（`authorization` / `x-api-key` 也可覆盖，供网关用非标准鉴权头）；只作用于模型端点，余额探测 / MCP / websearch 各有自己的传输层。头名按 HTTP token 校验、头值不允许 CR/LF，写错在加载配置时就报错 |
 | `sessionDir` | （无→ `~/.nova/sessions`） | session 存放目录 |
 | `language` | `"auto"` | **模型回复语言**（注入 system prompt），同时也是 TUI 界面语言的默认来源；`auto` 跟随系统 locale（`$LC_ALL`/`$LANG`/`$LANGUAGE`，macOS 还读 `AppleLocale`），否则填 BCP-47 标签如 `en`/`zh-CN`。加载时 `auto` 会被解析成具体标签 |
 | `locale` | `"auto"` | **仅 TUI 静态文案**的语言覆盖（菜单/提示/状态行）；`auto` = 跟随 `language`。内置 zh-CN 与 EN，其它标签回落英文。两者可不同（中文界面 + 英文回复），见 [§5](#5-交互式界面tui) |
 | `maxTokensContinuations` | `3` | 单次响应被该档 `maxTokens` 截断时，允许自动「续写」的连续次数（`0` = 老式硬停） |
-| `maxTurns` | `100` | 单轮最大循环次数 |
+| `maxTurns` | `5000` | **单条消息**内模型调用轮次上限（模型→工具→模型…直到给出回答）；**会话总轮数不受限**，每条新消息各自有独立配额。触顶不丢工作：注入一条「禁用工具、立即收尾」的请求让模型基于已收集信息作答（见 [§8](#8-plan-模式与子-agent) 子 agent 同款语义）。默认值很高，单任务连续工作数小时也不会撞 |
 | `toolConcurrency` | `3` | 单轮内工具并发上限（1 = 全串行） |
 
 > **每档输出上限 / 上下文窗口是 per-tier 的**：写在 `models.<tier>.maxTokens`（schema 缺省 32768，DeepSeek 内置默认三档均为 393216 = 384×1024）和 `models.<tier>.contextWindowSize`（缺省 1048576 = 1024×1024）里，不再是顶层字段。`models.<tier>.thinking` 让同一个模型 id 也能拉出 lite/pro/max 的能力梯度（见 [§7](#7-思考等级thinking)）；`models.<tier>.pricing` 提供 `/usage` 成本估算的每百万 token 单价（见 `pricing` 一节）。
@@ -881,7 +882,7 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 | `memory.auto.*` | `enabled:true` | 自动记忆（agent 自维护）：默认 `~/.nova/projects/<项目编码>/memory/`（`dir` 未设，可设为工作区内路径覆盖）、`maxEntries`=100，见 [§13](#13-记忆memory) |
 | `slash.enabled` | `true` | 自定义 slash 命令开关；`projectDirs`/`userPaths`/`extraDirs` 额外目录 |
 | `skills.enabled` | `true` | Skills 开关；`indexBudgetFraction`=0.01、`maxDescriptionBytes`=1536、`maxResponseBytes`=16384、`maxFileBytes`=1048576、`disableShellExecution`=false；`maxIndexBytes` 可选（钉死索引预算，优先于比例）；及额外目录 |
-| `subagent.enabled` | `true` | 子 agent 开关；`model`（按子 agent 名索引的档位表，见 [§8](#8-plan-模式与子-agent)）/`maxTurns`=100/`maxTokens`=32768 |
+| `subagent.enabled` | `true` | 子 agent 开关；`model`（按子 agent 名索引的档位表，见 [§8](#8-plan-模式与子-agent)）/`maxTurns`=5000/`maxTokens`=32768 |
 | `guide.*` | `enabled:true` | nova-code-guide 来源：`source`=`remote`（默认，克隆 `repoUrl`@`ref`→`cacheDir`，`refreshIntervalHours`=24）或 `local`（读 `localPath`/工作区），见 [§8](#8-plan-模式与子-agent) |
 | `goal.*` | `enabled:true` | `/goal` 目标模式：`evalModel`（判定档位，模板设 `lite`）/`maxContinuations`=25/`maxEvalTurns`=15 |
 | `loop.*` | `maxIterations`=100 | `/loop` 重复任务：`maxIterations` 安全上限、`minIntervalMs`=1000 拒绝过密间隔，见 [§6](#6-slash-命令大全) |
