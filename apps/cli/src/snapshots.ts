@@ -75,9 +75,10 @@ function hashOf(content: Buffer): string {
  *   blobs/<sha256>   — prior file contents, content-addressed
  *
  * Only the `write` and `edit` tools are captured; side effects from `bash`
- * (rm, sed -i, redirects) are invisible to this store. Sub-agent file writes
- * are likewise not captured — they run their own loop, off the main hooks.
- * Both of those show up as conflicts at rewind time rather than being reverted.
+ * (rm, sed -i, redirects) are invisible to this store. Main-agent and
+ * sub-agent file tools both reuse the host's dispatcher lifecycle, so both are
+ * captured under the current main-turn epoch. Untracked writers show up as
+ * conflicts at rewind time rather than being reverted.
  */
 export class SnapshotStore {
   private readonly indexPath: string;

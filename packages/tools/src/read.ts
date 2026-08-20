@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { ImageBlock, ToolHandler } from "@nova/core";
 import type * as XLSX from "xlsx";
 import { extractText } from "unpdf";
+import { fileExecutionKey } from "./file-execution.js";
 import { PATH_ALIASES, withAliases } from "./schema.js";
 
 /**
@@ -509,6 +510,7 @@ export const readTool: ToolHandler = {
       "Read a text file, spreadsheet, PDF, or image from disk. For text files, output is line-numbered (`<line>\\t<text>`, `cat -n` style, 1-based); returns up to `limit` lines (and at most ~200K characters) per call. If more remains, the result tells you the exact read(path, offset) call to continue from. The line-number prefix is display only — strip it before passing text to `edit`. For Excel files (.xlsx/.xls/.xlsm/.xlsb/.ods), each row is rendered as a TSV line with a metadata header; use the optional `sheet` parameter to select a sheet. For PDF files (.pdf), extracted text is returned line-numbered with a `[Page N]` marker before each page and the same offset/limit paging; scanned/image-only PDFs have no extractable text (capped at 30 MB). For image files (.png/.jpg/.jpeg/.gif/.webp), returns the image as a base64 block alongside metadata — only when the active model supports image input; capped at 20 MB.",
     inputSchema,
   },
+  executionKey: fileExecutionKey,
   async run(rawInput, ctx) {
     const input = inputSchema.parse(rawInput);
     const abs = resolve(ctx.cwd, input.path);

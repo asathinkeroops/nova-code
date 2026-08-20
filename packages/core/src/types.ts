@@ -352,6 +352,19 @@ export interface ToolContext {
 
 export interface ToolHandler {
   definition: ToolDefinition;
+  /**
+   * Optional host-side serialization key for stateful tools. Calls whose
+   * resolved keys are equal must not overlap; calls with different keys may
+   * still run concurrently. The dispatcher invokes this only after schema
+   * validation, so `input` is the normalized schema output (including aliases
+   * rewritten to their canonical fields).
+   *
+   * This is execution metadata, not part of the model-facing ToolDefinition.
+   */
+  executionKey?: (
+    input: unknown,
+    ctx: ToolContext,
+  ) => string | undefined | Promise<string | undefined>;
   run(input: unknown, ctx: ToolContext): Promise<ToolRunResult>;
 }
 

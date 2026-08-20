@@ -2,6 +2,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { z } from "zod";
 import type { ToolHandler } from "@nova/core";
+import { fileExecutionKey } from "./file-execution.js";
 import { PATH_ALIASES, withAliases } from "./schema.js";
 
 // `withAliases` tolerates `filePath`/`file_path`/`file` as synonyms for `path`
@@ -46,6 +47,7 @@ export const editTool: ToolHandler = {
       "Edit a file by replacing exact text. By default old_string must occur exactly once; set replace_all to change every occurrence. old_string must match the file's real bytes — `read` shows a line-number + tab prefix on each line that is NOT in the file, so strip it before matching.",
     inputSchema,
   },
+  executionKey: fileExecutionKey,
   async run(rawInput, ctx) {
     const input = inputSchema.parse(rawInput);
     if (input.old_string === input.new_string) {

@@ -3,6 +3,7 @@ import type {
   ToolContext,
   ToolExecutor,
   ToolResultBlock,
+  ToolRunResult,
   ToolUseBlock,
 } from "@nova/core";
 import type { Logger } from "@nova/base";
@@ -41,10 +42,52 @@ export interface DispatcherDeps {
    * the ledger can record fresh mtime baselines.
    */
   invariants?: InvariantsCheck;
+  /**
+   * Host-owned work that must participate in the same serialized transaction
+   * as a tool run. Hooks receive validated, normalized input. The CLI uses
+   * these to keep /rewind's capture/result bookkeeping inside the file lock.
+   */
+  lifecycle?: {
+    beforeRun?(use: ToolUseBlock, ctx: ToolContext): Promise<void>;
+    afterRun?(use: ToolUseBlock, ctx: ToolContext, result: ToolRunResult): Promise<void>;
+  };
+}
+
+/**
+ * FIFO serialization per resource key. A caller installs its completion
+ * promise before waiting for its predecessor, so later callers cannot
+ * overtake it. The completion promises only resolve, which means a failed tool
+ * never poisons the queue behind it.
+ */
+class KeyedSerialExecutor {
+  private readonly tails = new Map<string, Promise<void>>();
+
+  async runExclusive<T>(
+    key: string,
+    signal: AbortSignal | undefined,
+    run: () => Promise<T>,
+  ): Promise<T> {
+    const previous = this.tails.get(key) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.tails.set(key, current);
+
+    await previous;
+    try {
+      signal?.throwIfAborted();
+      return await run();
+    } finally {
+      release();
+      if (this.tails.get(key) === current) this.tails.delete(key);
+    }
+  }
 }
 
 export function createDispatcher(deps: DispatcherDeps): ToolExecutor {
-  const { registry, logger, invariants } = deps;
+  const { registry, logger, invariants, lifecycle } = deps;
+  const serial = new KeyedSerialExecutor();
 
   return async function dispatch(use: ToolUseBlock, ctx: ToolContext): Promise<ToolResultBlock> {
     logger?.debug({ tool: use.name, id: use.id }, "tool dispatched");
@@ -76,16 +119,18 @@ export function createDispatcher(deps: DispatcherDeps): ToolExecutor {
     // model used an alias — a write/edit could then clobber an unread file.
     const normalizedUse: ToolUseBlock = { ...use, input: parsed.data as Record<string, unknown> };
 
-    if (invariants) {
-      const check = await invariants.preCheck(normalizedUse, ctx);
-      if (!check.ok) {
-        logger?.warn({ tool: use.name, reason: check.message }, "invariant violation");
-        return errorResult(check.message);
+    const run = async (): Promise<ToolResultBlock> => {
+      if (invariants) {
+        const check = await invariants.preCheck(normalizedUse, ctx);
+        if (!check.ok) {
+          logger?.warn({ tool: use.name, reason: check.message }, "invariant violation");
+          return errorResult(check.message);
+        }
       }
-    }
 
-    try {
-      const result = await handler.run(parsed.data, { ...ctx, toolUseId: use.id });
+      const runCtx = { ...ctx, toolUseId: use.id };
+      await lifecycle?.beforeRun?.(normalizedUse, runCtx);
+      const result = await handler.run(parsed.data, runCtx);
       const block: ToolResultBlock = {
         type: "tool_result",
         tool_use_id: use.id,
@@ -105,7 +150,15 @@ export function createDispatcher(deps: DispatcherDeps): ToolExecutor {
           logger?.warn({ tool: use.name, err: msg }, "invariants postCommit failed");
         }
       }
+      await lifecycle?.afterRun?.(normalizedUse, runCtx, result);
       return block;
+    };
+
+    try {
+      const key = await handler.executionKey?.(parsed.data, ctx);
+      return key !== undefined
+        ? await serial.runExclusive(key, ctx.signal, run)
+        : await run();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       logger?.error({ tool: use.name, err: msg }, "tool execution failed");

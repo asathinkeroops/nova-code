@@ -88,7 +88,13 @@ describe("dispatcher", () => {
   // gating would be silently skipped for any aliased call, letting an edit
   // clobber a file it never read.
   it("feeds the alias-normalized input to the invariants gate and the handler", async () => {
-    const seen: { pre?: unknown; post?: unknown } = {};
+    const seen: {
+      key?: unknown;
+      pre?: unknown;
+      before?: unknown;
+      post?: unknown;
+      after?: unknown;
+    } = {};
     const invariants: InvariantsCheck = {
       async preCheck(use) {
         seen.pre = use.input;
@@ -105,18 +111,36 @@ describe("dispatcher", () => {
         description: "read",
         inputSchema: withAliases(z.object({ path: z.string().min(1) }), { path: PATH_ALIASES }),
       },
+      executionKey(input) {
+        seen.key = input;
+        return undefined;
+      },
       run,
     };
     const reg = new ToolRegistry().register(handler);
-    const dispatch = createDispatcher({ registry: reg, invariants });
+    const dispatch = createDispatcher({
+      registry: reg,
+      invariants,
+      lifecycle: {
+        async beforeRun(use) {
+          seen.before = use.input;
+        },
+        async afterRun(use) {
+          seen.after = use.input;
+        },
+      },
+    });
 
     // Model names the path `filePath` — the exact live DeepSeek failure.
     const r = await dispatch(uses("read", { filePath: "/abs/x.ts" }), { cwd: "/tmp" });
 
     expect(r.is_error).toBeUndefined();
-    // Both invariant hooks and the handler see the canonical `path`, never the alias.
+    // Every scheduling/lifecycle/invariant layer sees canonical `path`, never the alias.
+    expect(seen.key).toEqual({ path: "/abs/x.ts" });
     expect(seen.pre).toEqual({ path: "/abs/x.ts" });
+    expect(seen.before).toEqual({ path: "/abs/x.ts" });
     expect(seen.post).toEqual({ path: "/abs/x.ts" });
+    expect(seen.after).toEqual({ path: "/abs/x.ts" });
     expect(run).toHaveBeenCalledWith(
       { path: "/abs/x.ts" },
       expect.objectContaining({ toolUseId: "u_1" }),

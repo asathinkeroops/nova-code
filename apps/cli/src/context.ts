@@ -1,4 +1,4 @@
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import {
   AgentRegistry,
   assembleSession,
@@ -14,9 +14,11 @@ import {
   type Agent,
   type AskUserFn,
   type ModelClient,
+  type ToolContext,
   type ToolDefinition,
   type ToolExecutor,
   type ToolPromptSection,
+  type ToolUseBlock,
 } from "@nova/core";
 import {
   createModel,
@@ -482,42 +484,43 @@ export async function createContext(
         mtimeCheck: settings.invariants.mtimeCheck,
       })
     : undefined;
+  const snapshotPathFor = async (
+    use: ToolUseBlock,
+    toolCtx: ToolContext,
+  ): Promise<string | undefined> => {
+    if (use.name !== "write" && use.name !== "edit") return undefined;
+    const rawPath = (use.input as { path?: unknown }).path;
+    if (typeof rawPath !== "string" || rawPath.length === 0) return undefined;
+    return canonicalizePath(toolCtx.cwd, rawPath);
+  };
   const rawDispatch = createDispatcher({
     registry: tools,
     logger,
     ...(invariants ? { invariants } : {}),
+    lifecycle: {
+      async beforeRun(use, toolCtx) {
+        const path = await snapshotPathFor(use, toolCtx);
+        if (path) await ctx.snapshots.capture(path);
+      },
+      async afterRun(use, toolCtx, result) {
+        if (result.isError) return;
+        const path = await snapshotPathFor(use, toolCtx);
+        if (path) await ctx.snapshots.recordResult(path);
+      },
+    },
   });
-  // Snapshot the prior content of any file a write/edit is about to mutate,
-  // for /rewind. Capturing here in the dispatcher — rather than on the main
-  // agent's pre_tool_use hook — means sub-agent tool calls, which reuse this
-  // same `dispatch`, are captured too, under the current main turn's epoch.
-  // Permission is gated by a pre_tool_use hook upstream of executeTool, so a
-  // denied write never reaches here. This is also where the OS sandbox bridge
-  // is threaded onto the ToolContext, so subprocess tools (bash,
-  // incl. run_in_background) — and the sub-agent calls that reuse this dispatch —
-  // wrap their commands before spawning.
+  // Thread the OS sandbox bridge onto the ToolContext so subprocess tools
+  // (bash, incl. run_in_background) — and sub-agent calls that reuse this
+  // dispatch — wrap commands before spawning. File snapshots are dispatcher
+  // lifecycle hooks above: capture → tool → result bookkeeping all remain
+  // inside the same per-path serialized transaction.
   const dispatch: ToolExecutor = async (use, toolCtx) => {
-    let snapshotPath: string | undefined;
-    if (use.name === "write" || use.name === "edit") {
-      const raw = (use.input as { path?: unknown }).path;
-      if (typeof raw === "string" && raw.length > 0) {
-        snapshotPath = resolve(workspace, raw);
-        await ctx.snapshots.capture(snapshotPath);
-      }
-    }
     // ctx.sandbox is assigned after allowedRoots below; its bridge is undefined
     // when sandboxing is inactive. Read lazily — dispatch only runs during a
     // turn, long after ctx.sandbox is set.
     const bridge = ctx.sandbox?.bridge;
     const execCtx = bridge ? { ...toolCtx, sandbox: bridge } : toolCtx;
-    const result = await rawDispatch(use, execCtx);
-    // Record what the tool actually left on disk so /rewind can tell "still
-    // nova's version" from "changed underneath us" and refuse to clobber the
-    // latter. Skip on error — the file wasn't (fully) written.
-    if (snapshotPath && !result.is_error) {
-      await ctx.snapshots.recordResult(snapshotPath);
-    }
-    return result;
+    return rawDispatch(use, execCtx);
   };
   const registry = new SlashRegistry();
 
