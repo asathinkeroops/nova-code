@@ -101,12 +101,12 @@ export function createInvariants(opts: InvariantsOptions): InvariantsCheck {
 
       if (access.kind === "edit") {
         if (onDiskMtime === null) {
-          return { ok: false, message: `edit refused: ${access.abs} does not exist` };
+          return { ok: false, message: `edit refused: does not exist` };
         }
         if (opts.readBeforeEdit && ledger && !ledger.get(access.abs)) {
           return {
             ok: false,
-            message: `edit refused: ${access.abs} must be read first (use the read tool, then retry)`,
+            message: `edit refused: must be read first (use the read tool, then retry)`,
           };
         }
         if (opts.mtimeCheck && ledger) {
@@ -114,7 +114,7 @@ export function createInvariants(opts: InvariantsOptions): InvariantsCheck {
           if (record && record.lastReadMtimeMs !== onDiskMtime) {
             return {
               ok: false,
-              message: `edit refused: ${access.abs} changed on disk since the last read (mtime drift); re-read before editing`,
+              message: `edit refused: changed on disk since the last read (mtime drift); re-read before editing`,
             };
           }
         }
@@ -124,7 +124,7 @@ export function createInvariants(opts: InvariantsOptions): InvariantsCheck {
           if (opts.readBeforeEdit && ledger && !ledger.get(access.abs)) {
             return {
               ok: false,
-              message: `write refused: ${access.abs} already exists and must be read first before overwriting`,
+              message: `write refused: already exists and must be read first before overwriting`,
             };
           }
           if (opts.mtimeCheck && ledger) {
@@ -132,7 +132,7 @@ export function createInvariants(opts: InvariantsOptions): InvariantsCheck {
             if (record && record.lastReadMtimeMs !== onDiskMtime) {
               return {
                 ok: false,
-                message: `write refused: ${access.abs} changed on disk since the last read (mtime drift); re-read before overwriting`,
+                message: `write refused: changed on disk since the last read (mtime drift); re-read before overwriting`,
               };
             }
           }
