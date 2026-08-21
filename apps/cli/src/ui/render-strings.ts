@@ -330,7 +330,13 @@ function okLine(text: string): string {
 }
 
 function errLine(result: ToolResultBlock): string {
-  return red(`✗ ${flatten(trim(contentToString(result.content), 200))}`);
+  const text = flatten(trim(contentToString(result.content), 200));
+  // Invariants-layer rejections (`edit refused:` / `write refused:` —
+  // read-before-edit, mtime-drift, does-not-exist) are normal guardrails, not
+  // failures: render them in the same quiet gray as pending state. Everything
+  // else (schema errors, tool crashes, permission denials) keeps alarm-red.
+  const isRejection = /^(edit|write) refused:/.test(text);
+  return (isRejection ? gray : red)(`✗ ${text}`);
 }
 
 const tools: Record<string, ToolStr> = {
