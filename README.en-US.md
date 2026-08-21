@@ -8,7 +8,7 @@
 
 <p>A finished product, not a framework kit — and the same task costs you the fewest tokens.</p>
 
-<p><code>95%+ cache hits</code> · <code>OS-sandboxed</code> · <code>tool-complete</code> · <code>install-and-go</code></p>
+<p><code>high cache hit rate</code> · <code>OS-sandboxed</code> · <code>tool-complete</code> · <code>install-and-go</code></p>
 
 <p>
   <a href="https://www.npmjs.com/package/@asathinkeroops/nova-code"><img src="https://img.shields.io/npm/v/@asathinkeroops/nova-code?style=for-the-badge&logo=npm&logoColor=white&label=npm&color=CB3837" alt="npm version"></a>

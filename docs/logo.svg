@@ -185,5 +185,5 @@
     <rect x="768" y="120" width="12" height="24"/>
     <rect x="780" y="120" width="12" height="24"/>
   </g>
-  <text x="408" y="176" text-anchor="middle" textLength="768" lengthAdjust="spacingAndGlyphs" font-family="-apple-system, BlinkMacSystemFont, &apos;Segoe UI&apos;, &apos;PingFang SC&apos;, &apos;Microsoft YaHei&apos;, Helvetica, Arial, sans-serif" font-size="16" fill="#e6edf3">为 DeepSeek 量身打造的编程代理 — 95%+ 缓存命中 · OS 级沙箱 · 工具齐全 · 开箱即用</text>
+  <text x="408" y="176" text-anchor="middle" textLength="768" lengthAdjust="spacingAndGlyphs" font-family="-apple-system, BlinkMacSystemFont, &apos;Segoe UI&apos;, &apos;PingFang SC&apos;, &apos;Microsoft YaHei&apos;, Helvetica, Arial, sans-serif" font-size="16" fill="#e6edf3">为 DeepSeek 量身打造的编程代理 — 高缓存命中率 · OS 级沙箱 · 工具齐全 · 开箱即用</text>
 </svg>

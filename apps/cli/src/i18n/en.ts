@@ -104,7 +104,7 @@ export const en = {
    */
   render: {
     tagline:
-      "The coding agent for Chinese LLMs — 95%+ cache hits · OS-sandboxed · tool-complete · install-and-go. ",
+      "The coding agent for Chinese LLMs — high cache hit rate · OS-sandboxed · tool-complete · install-and-go. ",
     thinking: "thinking",
     redacted: "(redacted)",
     showLess: "… show less",
@@ -713,7 +713,7 @@ export const en = {
   /** First-run provider setup (`ui/setup-view.tsx`). */
   setup: {
     tagline:
-      "The coding agent for Chinese LLMs — 95%+ cache hits · OS-sandboxed · tool-complete",
+      "The coding agent for Chinese LLMs — high cache hit rate · OS-sandboxed · tool-complete",
     welcome: "Welcome to Nova!",
     missing: (n: number): string =>
       `Missing ${n} setting${n === 1 ? "" : "s"} — let's configure them. (Ctrl+C to abort)`,

@@ -20,7 +20,7 @@ The `messages` array is governed by a single function, `appendMessage` ([source]
 
 1. **Persistence stays cheap.** `persistMessages` ([source](https://github.com/nova-ai/nova-code/blob/main/packages/agent/src/persistence.ts)) compares the in-memory prefix against an on-disk cursor. When the prefix matches, it appends only the delta via `appendFile`. Only when a session is rewound (`/rewind`) or cleared (`/clear`) does it fall back to an atomic full rewrite. This fast-path means that after a 100-turn session, persisting turn 101 costs a single JSONL line write, not a full-file serialization.
 
-2. **The DeepSeek prefix cache stays hot.** Before every API call, `toWireMessages` ([source](https://github.com/nova-ai/nova-code/blob/main/packages/core/src/messages.ts#L34)) strips Nova-internal metadata (`meta` fields) to produce a byte-identical request body turn after turn. Since the DeepSeek gateway's automatic KV cache keys off the longest common prefix, Nova's append-only message stream achieves **95%+ cache hit rates**.
+2. **The DeepSeek prefix cache stays hot.** Before every API call, `toWireMessages` ([source](https://github.com/nova-ai/nova-code/blob/main/packages/core/src/messages.ts#L34)) strips Nova-internal metadata (`meta` fields) to produce a byte-identical request body turn after turn. Since the DeepSeek gateway's automatic KV cache keys off the longest common prefix, Nova's append-only message stream achieves **high cache hit rates**.
 
 3. **Compaction preserves the archive.** When context grows too large, Nova does not truncate history. It appends a single `<compacted>` boundary message, and a model-client decorator (`withCompactionSlice`) instructs the model to see only the slice from the last boundary forward. The full conversation is retained on disk and rendered in full by the TUI. Within one compaction epoch, the model-facing view is itself append-only — its head is fixed, its tail grows — so the cache continues to hit.
 
@@ -171,7 +171,7 @@ Beyond these five pillars, Nova ships a comprehensive toolchain that makes it fe
 | **Goal auto-correction loop** | ✅ Agentic verification | ❌ | ❌ | ❌ |
 | **File snapshots + rewind** | ✅ History + files | ❌ | ❌ | ❌ |
 | **max_tokens recovery** | ✅ Auto-continue | ❌ Hard error | ❌ Hard error | ❌ |
-| **Append-only prefix cache** | ✅ 95%+ hit rate | Partial | N/A | N/A |
+| **Append-only prefix cache** | ✅ High hit rate | Partial | N/A | N/A |
 | **Session hot-swap** | ✅ Full state migration | `--continue` only | ❌ | ❌ |
 | **In-session cron** | ✅ | ❌ | ❌ | ❌ |
 | **Task dependency graph** | ✅ Persistent | ❌ | ❌ | ❌ |

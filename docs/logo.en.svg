@@ -185,5 +185,5 @@
     <rect x="768" y="120" width="12" height="24"/>
     <rect x="780" y="120" width="12" height="24"/>
   </g>
-  <text x="408" y="176" text-anchor="middle" textLength="768" lengthAdjust="spacingAndGlyphs" font-family="-apple-system, BlinkMacSystemFont, &apos;Segoe UI&apos;, &apos;PingFang SC&apos;, &apos;Microsoft YaHei&apos;, Helvetica, Arial, sans-serif" font-size="16" fill="#e6edf3">The coding agent purpose-built for DeepSeek — 95%+ cache hits · OS-sandboxed · tool-complete · install-and-go</text>
+  <text x="408" y="176" text-anchor="middle" textLength="768" lengthAdjust="spacingAndGlyphs" font-family="-apple-system, BlinkMacSystemFont, &apos;Segoe UI&apos;, &apos;PingFang SC&apos;, &apos;Microsoft YaHei&apos;, Helvetica, Arial, sans-serif" font-size="16" fill="#e6edf3">The coding agent purpose-built for DeepSeek — high cache hit rate · OS-sandboxed · tool-complete · install-and-go</text>
 </svg>

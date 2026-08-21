@@ -8,7 +8,7 @@
 
 <p>开箱即用的成品，不是拼装框架；同样的任务，token 花得最少。</p>
 
-<p><code>95%+ 缓存命中</code> · <code>OS 级沙箱</code> · <code>工具齐全</code> · <code>开箱即用</code></p>
+<p><code>高缓存命中率</code> · <code>OS 级沙箱</code> · <code>工具齐全</code> · <code>开箱即用</code></p>
 
 <p>
   <a href="https://www.npmjs.com/package/@asathinkeroops/nova-code"><img src="https://img.shields.io/npm/v/@asathinkeroops/nova-code?style=for-the-badge&logo=npm&logoColor=white&label=npm&color=CB3837" alt="npm 版本"></a>
