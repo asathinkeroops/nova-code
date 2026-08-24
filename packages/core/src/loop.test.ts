@@ -128,6 +128,76 @@ describe("agentLoop · stop_reason state machine", () => {
     }
   });
 
+  it("appends rich tool output in call order after the complete result batch", async () => {
+    const { hooks, events } = makeHooks();
+    let request = 0;
+    let secondRequest: MessageParam[] = [];
+    const model: ModelClient = {
+      async call(req) {
+        request++;
+        if (request === 1) {
+          return {
+            content: [
+              { type: "tool_use", id: "a", name: "echo", input: { msg: "a" } },
+              { type: "tool_use", id: "b", name: "echo", input: { msg: "b" } },
+            ],
+            stopReason: "tool_use",
+          };
+        }
+        secondRequest = req.messages;
+        return { content: [{ type: "text", text: "done" }], stopReason: "end_turn" };
+      },
+    };
+    const exec: ToolExecutor = async (use) => {
+      // Make the first tool settle last. Follow-ups must still use assistant
+      // tool-call order rather than completion order.
+      if (use.id === "a") await new Promise((resolve) => setTimeout(resolve, 5));
+      return {
+        result: {
+          type: "tool_result",
+          tool_use_id: use.id,
+          content: `result:${use.id}`,
+        },
+        followupMessages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "image",
+                source: {
+                  type: "base64",
+                  media_type: "image/png",
+                  data: use.id.toUpperCase(),
+                },
+              },
+            ],
+          },
+        ],
+      };
+    };
+
+    await agentLoop({ ...baseOpts(hooks), model, executeTool: exec, toolConcurrency: 2 });
+
+    const resultBatch = secondRequest[2];
+    expect(Array.isArray(resultBatch?.content)).toBe(true);
+    if (Array.isArray(resultBatch?.content)) {
+      expect(resultBatch.content.map((block) => block.type)).toEqual([
+        "tool_result",
+        "tool_result",
+      ]);
+      expect(
+        resultBatch.content.map((block) => (block.type === "tool_result" ? block.tool_use_id : "")),
+      ).toEqual(["a", "b"]);
+    }
+    const imageData = secondRequest.slice(3, 5).map((message) => {
+      if (!Array.isArray(message.content)) return "";
+      const image = message.content.find((block) => block.type === "image");
+      return image?.type === "image" ? image.source.data : "";
+    });
+    expect(imageData).toEqual(["A", "B"]);
+    expect(events.filter((event) => event.kind === "post_user_message")).toHaveLength(3);
+  });
+
   it("invokes pre_permission per tool in declaration order then executes them concurrently", async () => {
     const { hooks } = makeHooks();
     const useOrder: string[] = [];
@@ -168,9 +238,7 @@ describe("agentLoop · stop_reason state machine", () => {
     expect(resultIds).toEqual(new Set(["a", "b", "c"]));
     const userMsg = result.messages[2];
     if (Array.isArray(userMsg?.content)) {
-      const ids = userMsg.content.map((b) =>
-        b.type === "tool_result" ? b.tool_use_id : null,
-      );
+      const ids = userMsg.content.map((b) => (b.type === "tool_result" ? b.tool_use_id : null));
       expect(ids).toEqual(["a", "b", "c"]);
     }
   });
@@ -428,9 +496,7 @@ describe("agentLoop · stop_reason state machine", () => {
     const userMsg = result.messages[2];
     expect(userMsg?.role).toBe("user");
     if (Array.isArray(userMsg?.content)) {
-      const ids = userMsg.content.map((b) =>
-        b.type === "tool_result" ? b.tool_use_id : null,
-      );
+      const ids = userMsg.content.map((b) => (b.type === "tool_result" ? b.tool_use_id : null));
       expect(ids).toEqual(["a", "b", "c"]);
       const bResult = userMsg.content[1];
       if (bResult?.type === "tool_result") {
@@ -466,9 +532,7 @@ describe("agentLoop · stop_reason state machine", () => {
 
     const userMsg = result.messages[2];
     if (Array.isArray(userMsg?.content)) {
-      const ids = userMsg.content.map((b) =>
-        b.type === "tool_result" ? b.tool_use_id : null,
-      );
+      const ids = userMsg.content.map((b) => (b.type === "tool_result" ? b.tool_use_id : null));
       expect(ids).toEqual(["a", "b"]);
     }
   });
@@ -500,9 +564,7 @@ describe("agentLoop · stop_reason state machine", () => {
     const userMsg = result.messages[2];
     expect(userMsg?.role).toBe("user");
     if (Array.isArray(userMsg?.content)) {
-      const ids = userMsg.content.map((b) =>
-        b.type === "tool_result" ? b.tool_use_id : null,
-      );
+      const ids = userMsg.content.map((b) => (b.type === "tool_result" ? b.tool_use_id : null));
       expect(ids).toEqual(["a", "b", "c"]);
       const bResult = userMsg.content[1];
       if (bResult?.type === "tool_result") {
@@ -574,10 +636,7 @@ describe("agentLoop · stop_reason state machine", () => {
     expect(result.stopReason).toBe("end_turn");
     // The loop injected a continuation user turn between the two assistant turns.
     const continuation = result.messages.find(
-      (m) =>
-        m.role === "user" &&
-        typeof m.content === "string" &&
-        m.content.includes("cut off"),
+      (m) => m.role === "user" && typeof m.content === "string" && m.content.includes("cut off"),
     );
     expect(continuation).toBeDefined();
     // No terminating stop was emitted for the truncation itself.
@@ -676,9 +735,7 @@ describe("agentLoop · stop_reason state machine", () => {
         // First maxTurns calls keep working; the forced wrap-up turn answers.
         if (calls <= 3) {
           return {
-            content: [
-              { type: "tool_use", id: `t-${calls}`, name: "echo", input: { msg: "x" } },
-            ],
+            content: [{ type: "tool_use", id: `t-${calls}`, name: "echo", input: { msg: "x" } }],
             stopReason: "tool_use",
           };
         }
@@ -697,7 +754,8 @@ describe("agentLoop · stop_reason state machine", () => {
     expect(seenTools[3]).toEqual([]);
     // A wrap-up instruction was injected before the final turn.
     const injected = result.messages.find(
-      (m) => m.role === "user" && typeof m.content === "string" && /maximum of 3 turns/.test(m.content),
+      (m) =>
+        m.role === "user" && typeof m.content === "string" && /maximum of 3 turns/.test(m.content),
     );
     expect(injected).toBeDefined();
   });
@@ -775,9 +833,7 @@ describe("agentLoop · pre_compact hook", () => {
 
   it("fires post_compact with before/after counts when pre_compact swaps the array", async () => {
     const { hooks, events } = makeHooks();
-    const model = mockModel([
-      { content: [{ type: "text", text: "ok" }], stopReason: "end_turn" },
-    ]);
+    const model = mockModel([{ content: [{ type: "text", text: "ok" }], stopReason: "end_turn" }]);
     hooks.on("pre_compact", ({ messages }) => ({
       messages: [...messages, { role: "user" as const, content: "[compacted]" }],
     }));
@@ -806,9 +862,7 @@ describe("agentLoop · pre_compact hook", () => {
 
   it("does not emit post_messages from compaction when pre_compact returns undefined", async () => {
     const hooks = new HookRegistry();
-    const model = mockModel([
-      { content: [{ type: "text", text: "ok" }], stopReason: "end_turn" },
-    ]);
+    const model = mockModel([{ content: [{ type: "text", text: "ok" }], stopReason: "end_turn" }]);
     hooks.on("pre_compact", () => undefined);
     const seenLengths: number[] = [];
     hooks.on("post_messages", ({ messages }) => {
@@ -841,21 +895,17 @@ describe("agentLoop · pre_continue hook", () => {
       { content: [{ type: "text", text: "done" }], stopReason: "end_turn" },
     ]);
     const seenTurns: number[] = [];
-    const injector = vi.fn(
-      ({ turn, toolUses }: { turn: number; toolUses: ToolUseBlock[] }) => {
-        seenTurns.push(turn);
-        return {
-          messages: [
-            {
-              role: "user" as const,
-              content: [
-                { type: "text" as const, text: `nudge after ${toolUses[0]?.id ?? "?"}` },
-              ],
-            },
-          ],
-        };
-      },
-    );
+    const injector = vi.fn(({ turn, toolUses }: { turn: number; toolUses: ToolUseBlock[] }) => {
+      seenTurns.push(turn);
+      return {
+        messages: [
+          {
+            role: "user" as const,
+            content: [{ type: "text" as const, text: `nudge after ${toolUses[0]?.id ?? "?"}` }],
+          },
+        ],
+      };
+    });
     hooks.on("pre_continue", injector);
 
     const result = await agentLoop({
@@ -1071,9 +1121,7 @@ describe("agentLoop · pre_request hook", () => {
  */
 describe("agentLoop · ports", () => {
   const toolTurn: AssistantTurn = {
-    content: [
-      { type: "tool_use", id: "t1", name: "echo", input: { msg: "hi" } },
-    ],
+    content: [{ type: "tool_use", id: "t1", name: "echo", input: { msg: "hi" } }],
     stopReason: "tool_use",
   };
   const doneTurn: AssistantTurn = {

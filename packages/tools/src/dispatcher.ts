@@ -1,10 +1,14 @@
-import type {
-  InvariantsCheck,
-  ToolContext,
-  ToolExecutor,
-  ToolResultBlock,
-  ToolRunResult,
-  ToolUseBlock,
+import {
+  toolFollowupMessageSchema,
+  type InvariantsCheck,
+  type ToolContext,
+  type ToolExecutionOutcome,
+  type ToolExecutionResult,
+  type ToolExecutor,
+  type ToolFollowupMessage,
+  type ToolResultBlock,
+  type ToolRunResult,
+  type ToolUseBlock,
 } from "@nova/core";
 import type { Logger } from "@nova/base";
 import type { ZodError } from "zod";
@@ -89,7 +93,10 @@ export function createDispatcher(deps: DispatcherDeps): ToolExecutor {
   const { registry, logger, invariants, lifecycle } = deps;
   const serial = new KeyedSerialExecutor();
 
-  return async function dispatch(use: ToolUseBlock, ctx: ToolContext): Promise<ToolResultBlock> {
+  return async function dispatch(
+    use: ToolUseBlock,
+    ctx: ToolContext,
+  ): Promise<ToolExecutionResult> {
     logger?.debug({ tool: use.name, id: use.id }, "tool dispatched");
 
     const errorResult = (content: string): ToolResultBlock => ({
@@ -119,7 +126,7 @@ export function createDispatcher(deps: DispatcherDeps): ToolExecutor {
     // model used an alias — a write/edit could then clobber an unread file.
     const normalizedUse: ToolUseBlock = { ...use, input: parsed.data as Record<string, unknown> };
 
-    const run = async (): Promise<ToolResultBlock> => {
+    const run = async (): Promise<ToolResultBlock | ToolExecutionOutcome> => {
       if (invariants) {
         const check = await invariants.preCheck(normalizedUse, ctx);
         if (!check.ok) {
@@ -134,10 +141,7 @@ export function createDispatcher(deps: DispatcherDeps): ToolExecutor {
       const block: ToolResultBlock = {
         type: "tool_result",
         tool_use_id: use.id,
-        content:
-          result.blocks && result.blocks.length > 0
-            ? [{ type: "text" as const, text: result.output }, ...result.blocks]
-            : result.output,
+        content: result.output,
         ...(result.isError ? { is_error: true } : {}),
       };
       if (invariants) {
@@ -151,18 +155,22 @@ export function createDispatcher(deps: DispatcherDeps): ToolExecutor {
         }
       }
       await lifecycle?.afterRun?.(normalizedUse, runCtx, result);
-      return block;
+      const followupMessages = normalizeFollowupMessages(result);
+      return followupMessages.length > 0 ? { result: block, followupMessages } : block;
     };
 
     try {
       const key = await handler.executionKey?.(parsed.data, ctx);
-      return key !== undefined
-        ? await serial.runExclusive(key, ctx.signal, run)
-        : await run();
+      return key !== undefined ? await serial.runExclusive(key, ctx.signal, run) : await run();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       logger?.error({ tool: use.name, err: msg }, "tool execution failed");
       return errorResult(`Tool error: ${msg}`);
     }
   };
+}
+
+/** Validate rich tool output at the dispatcher boundary. */
+function normalizeFollowupMessages(result: ToolRunResult): ToolFollowupMessage[] {
+  return (result.followupMessages ?? []).map((message) => toolFollowupMessageSchema.parse(message));
 }

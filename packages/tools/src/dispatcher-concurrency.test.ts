@@ -3,7 +3,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
-import type { InvariantsCheck, ToolHandler, ToolUseBlock } from "@nova/core";
+import type {
+  InvariantsCheck,
+  ToolExecutionResult,
+  ToolHandler,
+  ToolResultBlock,
+  ToolUseBlock,
+} from "@nova/core";
 import { createDispatcher } from "./dispatcher.js";
 import { editTool } from "./edit.js";
 import { fileExecutionKey } from "./file-execution.js";
@@ -26,6 +32,10 @@ function deferred<T = void>(): Deferred<T> {
 
 function use(id: string, name: string, input: Record<string, unknown>): ToolUseBlock {
   return { type: "tool_use", id, name, input };
+}
+
+function resultOf(execution: ToolExecutionResult): ToolResultBlock {
+  return "result" in execution ? execution.result : execution;
 }
 
 function flushTasks(): Promise<void> {
@@ -164,8 +174,8 @@ describe("dispatcher · keyed serialization", () => {
       dispatch(use("u2", "keyed", { key: "same", label: "second" }), { cwd: "/tmp" }),
     ]);
 
-    expect(first.is_error).toBe(true);
-    expect(second.is_error).toBeUndefined();
+    expect(resultOf(first).is_error).toBe(true);
+    expect(resultOf(second).is_error).toBeUndefined();
     expect(starts).toEqual(["first", "second"]);
   });
 
@@ -199,13 +209,13 @@ describe("dispatcher · keyed serialization", () => {
     const [firstRes, secondRes] = await Promise.all([first, second]);
     // The first ran normally; the queued one surfaced the abort as an error
     // result without ever entering `run`.
-    expect(firstRes.is_error).toBeUndefined();
-    expect(secondRes.is_error).toBe(true);
+    expect(resultOf(firstRes).is_error).toBeUndefined();
+    expect(resultOf(secondRes).is_error).toBe(true);
     expect(starts).toEqual(["first"]);
 
     // The queue was not poisoned: a later same-key call still executes.
     const third = dispatch(use("u3", "keyed", { key: "same", label: "third" }), { cwd: "/tmp" });
-    expect((await third).content).toBe("third");
+    expect(resultOf(await third).content).toBe("third");
     expect(starts).toEqual(["first", "third"]);
   });
 });
@@ -237,8 +247,8 @@ describe("dispatcher · file serialization", () => {
       }),
     ]);
 
-    expect(first.is_error).toBeUndefined();
-    expect(second.is_error).toBeUndefined();
+    expect(resultOf(first).is_error).toBeUndefined();
+    expect(resultOf(second).is_error).toBeUndefined();
     expect(await readFile(path, "utf8")).toBe("ALPHA\nBETA\n");
   });
 

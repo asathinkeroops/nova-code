@@ -75,7 +75,7 @@ echo "总结这个 diff" | pnpm dev  # 无 TTY：headless 跑一轮后退出
 **当前只有 DeepSeek 一个模板对外可选**（Moonshot/Kimi 已内置但在内部测试期，暂从选择器隐藏；「Other provider」手填入口也暂时关闭）。既然只有一个 provider，向导会**跳过选择器**，直接问 DeepSeek 的 API key。它写入：
 
 - `provider: deepseek`、`transport: openai`、`baseURL: https://api.deepseek.com`（DeepSeek 的 OpenAI 兼容端点）、默认档位 `pro`（以及 goal 配置和 key 本身）
-- 模型表**不写盘**：`lite`→`deepseek-v4-flash`，`pro`/`max`→`deepseek-v4-pro`（三档靠 per-tier `thinking` 拉开梯度）来自代码里的内置默认
+- 模型表**不写盘**：`lite`→`deepseek-v4-flash-vision-exp`，`pro`/`max`→`deepseek-v4-pro`（三档靠 per-tier `thinking` 拉开梯度）来自代码里的内置默认
 
 > **默认模型表不落盘。** `models` 的默认值按 `provider` 内置在代码里，加载配置时才层叠进来；配置文件里只放**你自己的覆盖项**。这样 Nova 升级带来的新模型 id、新价格、新上下文窗口，老装机也能直接吃到，而不会被向导当年写进文件的那份表钉死。旧版本写过整张表的配置，启动时会被**改写成它实际表达的覆盖项**（通常是空的，或一条 `/effort` 设过的 `thinking`），取值完全不变。
 >
@@ -285,7 +285,7 @@ Nova 把「extended thinking」暴露成五个等级，或一个显式的 token 
 
 | 工具 | 权限 | 说明 |
 |------|------|------|
-| `read` | 只读 | 读**文本 / 表格 / PDF / 图片**：文本输出带 `cat -n` 风格行号（1-based），`offset` 起始行、`limit` 最大行数，单页约 20 万字符上限、单行超 1.6 万字符会截断并标注，超出时提示用 `offset` 续读；行号前缀仅用于显示，传给 `edit` 前需去掉。表格（`.xlsx/.xls/.xlsm/.xlsb/.ods`）每行渲成 TSV 带表头，`sheet` 选工作表。**PDF**（`.pdf`，≤30MB）抽取文本后同样带行号返回，每页前插一条 `[Page N]` 标记，`offset`/`limit` 照常分页；扫描件 / 纯图片 PDF 抽不出文本，会明说并建议改用 OCR 工具。图片（`.png/.jpg/.jpeg/.gif/.webp`，≤20MB）以 base64 块返回——**仅当前档位支持图片输入时**（否则提示切到 image-capable 档位）。含 NUL 字节的二进制文件直接拒读并给出 `file`/`xxd` 建议 |
+| `read` | 只读 | 读**文本 / 表格 / PDF / 图片**：文本输出带 `cat -n` 风格行号（1-based），`offset` 起始行、`limit` 最大行数，单页约 20 万字符上限、单行超 1.6 万字符会截断并标注，超出时提示用 `offset` 续读；行号前缀仅用于显示，传给 `edit` 前需去掉。表格（`.xlsx/.xls/.xlsm/.xlsb/.ods`）每行渲成 TSV 带表头，`sheet` 选工作表。**PDF**（`.pdf`，≤30MB）抽取文本后同样带行号返回，每页前插一条 `[Page N]` 标记，`offset`/`limit` 照常分页；扫描件 / 纯图片 PDF 抽不出文本，会明说并建议改用 OCR 工具。图片（`.png/.jpg/.jpeg/.gif/.webp`，≤20MB）返回文本元数据，并将 base64 图片作为紧随工具结果的用户图片消息交给模型——**仅当前档位支持图片输入时**（否则提示切到 image-capable 档位）。含 NUL 字节的二进制文件直接拒读并给出 `file`/`xxd` 建议 |
 | `write` | 需批准 | 写整个文件（覆盖），默认自动创建父目录 |
 | `edit` | 需批准 | 精确字符串替换；`old_string` 默认须唯一匹配，`replace_all` 可全替 |
 | `bash` | 需批准 | 执行 shell 命令（`bash -lc`）。默认阻塞：`timeout_ms` **默认与上限都是 180000（3 分钟）**，`cwd` 可覆盖工作目录，输出截到 200KB。更长的任务传 `run_in_background: true`——命令转入后台、立即返回 `{id, pid, output_path}`，`env` 可追加环境变量 |

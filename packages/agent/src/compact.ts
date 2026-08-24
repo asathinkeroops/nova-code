@@ -1,13 +1,12 @@
 import {
   markSynthetic,
+  type ContentBlock,
+  type ImageBlock,
   type MessageParam,
   type ModelClient,
+  type TextBlock,
 } from "@nova/core";
-import {
-  DEFAULT_TOKEN_ESTIMATE,
-  estimateTextTokens,
-  type TokenEstimate,
-} from "@nova/base";
+import { DEFAULT_TOKEN_ESTIMATE, estimateTextTokens, type TokenEstimate } from "@nova/base";
 
 export const COMPACT_MARKER = "[compacted]";
 
@@ -21,6 +20,12 @@ const DEFAULT_MAX_SUMMARY_TOKENS = 4000;
  * a window spent both of those while most of the window was still usable.
  */
 const DEFAULT_CONTEXT_WINDOW_PERCENT = 0.9;
+
+// Vision providers account for images by decoded dimensions rather than by
+// tokenizing their base64 transport. Canonical ImageBlock currently carries no
+// dimensions, so use a conservative per-image estimate while ensuring the raw
+// base64 never dominates the text estimate or a compaction summary request.
+const DEFAULT_IMAGE_TOKEN_ESTIMATE = 1_600;
 
 // ────────────────────────────────────────────────────────────────────────────
 // Compaction boundary — the model-facing view of an append-only history
@@ -68,7 +73,61 @@ export function estimateTokens(
   messages: MessageParam[],
   weights: TokenEstimate = DEFAULT_TOKEN_ESTIMATE,
 ): number {
-  return estimateTextTokens(JSON.stringify(messages), weights);
+  const projected = projectImagesForText(messages);
+  return (
+    estimateTextTokens(JSON.stringify(projected.messages), weights) +
+    projected.imageCount * DEFAULT_IMAGE_TOKEN_ESTIMATE
+  );
+}
+
+/** Exact decoded byte count for a syntactically valid padded/unpadded base64 string. */
+function base64ByteLength(data: string): number {
+  if (data.length === 0) return 0;
+  const padding = data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0;
+  return Math.max(0, Math.floor((data.length * 3) / 4) - padding);
+}
+
+/**
+ * Replace top-level and legacy tool_result-nested image data with compact text
+ * descriptors. The summarizer receives conversation JSON as plain text and
+ * cannot interpret base64 embedded in that JSON as vision input, so retaining
+ * the bytes there only inflates requests and can trigger compaction instantly.
+ */
+function projectImagesForText(messages: MessageParam[]): {
+  messages: MessageParam[];
+  imageCount: number;
+} {
+  let imageCount = 0;
+
+  const projectRichBlock = (block: TextBlock | ImageBlock): TextBlock | ImageBlock => {
+    if (block.type === "text") return block;
+    imageCount++;
+    const bytes = base64ByteLength(block.source.data);
+    return {
+      ...block,
+      source: {
+        ...block.source,
+        data: `[image data omitted: ${bytes} bytes]`,
+      },
+    };
+  };
+
+  const projectBlock = (block: ContentBlock): ContentBlock => {
+    if (block.type === "image") return projectRichBlock(block);
+    if (block.type === "tool_result" && Array.isArray(block.content)) {
+      return { ...block, content: block.content.map(projectRichBlock) };
+    }
+    return block;
+  };
+
+  return {
+    messages: messages.map((message) =>
+      typeof message.content === "string"
+        ? message
+        : { ...message, content: message.content.map(projectBlock) },
+    ),
+    imageCount,
+  };
 }
 
 export interface ThresholdOptions {
@@ -171,7 +230,7 @@ export async function autoCompact(
 ): Promise<AutoCompactResult> {
   const maxSummaryTokens = opts.maxSummaryTokens ?? DEFAULT_MAX_SUMMARY_TOKENS;
 
-  const conversationText = JSON.stringify(messages);
+  const conversationText = JSON.stringify(projectImagesForText(messages).messages);
   const focusLine = opts.focus ? `\n\nFocus on: ${opts.focus}` : "";
   const userText = `${SUMMARY_INSTRUCTIONS}${focusLine}\n\n${conversationText}`;
 

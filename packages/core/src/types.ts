@@ -126,6 +126,23 @@ export const messageParamSchema = z.object({
 
 export type MessageParam = z.infer<typeof messageParamSchema>;
 
+/**
+ * A provider-neutral user message emitted alongside a tool result.
+ *
+ * Rich tool output does not belong inside `tool_result.content`: Anthropic can
+ * represent images there, but OpenAI Chat Completions cannot. The loop appends
+ * these messages only AFTER the complete tool_result batch, preserving every
+ * tool_use ↔ tool_result pair before exposing the rich content to the model.
+ * The deliberately narrow schema prevents a tool from injecting assistant,
+ * tool_use, thinking, or synthetic control messages into canonical history.
+ */
+export const toolFollowupMessageSchema = z.object({
+  role: z.literal("user"),
+  content: z.array(z.union([textBlockSchema, imageBlockSchema])).min(1),
+});
+
+export type ToolFollowupMessage = z.infer<typeof toolFollowupMessageSchema>;
+
 export const stopReasonSchema = z.enum([
   "end_turn",
   "pause_turn",
@@ -372,16 +389,29 @@ export interface ToolRunResult {
   output: string;
   isError?: boolean;
   /**
-   * Optional structured content blocks (images, etc.) that accompany the text
-   * output. When present, the dispatcher emits them alongside a wrapping text
-   * block derived from `output` — the model sees the text metadata first, then
-   * the rich content. Only text and image blocks are valid inside a tool_result;
-   * tool_use / thinking blocks are not.
+   * Provider-neutral rich output appended by the core loop as user messages,
+   * after the complete tool_result batch. This is the preferred form for new
+   * tools: both Anthropic and OpenAI accept images as user content.
    */
-  blocks?: (TextBlock | ImageBlock)[];
+  followupMessages?: ToolFollowupMessage[];
 }
 
-export type ToolExecutor = (toolUse: ToolUseBlock, ctx: ToolContext) => Promise<ToolResultBlock>;
+/** A paired tool result plus provider-neutral messages to append after its batch. */
+export interface ToolExecutionOutcome {
+  result: ToolResultBlock;
+  followupMessages?: ToolFollowupMessage[];
+}
+
+/**
+ * Executors may still return a bare ToolResultBlock for backwards
+ * compatibility. The loop normalizes both forms before running post_tool_use.
+ */
+export type ToolExecutionResult = ToolResultBlock | ToolExecutionOutcome;
+
+export type ToolExecutor = (
+  toolUse: ToolUseBlock,
+  ctx: ToolContext,
+) => Promise<ToolExecutionResult>;
 
 export interface PermissionResult {
   granted: boolean;

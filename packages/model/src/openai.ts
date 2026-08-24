@@ -104,23 +104,35 @@ function splitUserContent(msg: MessageParam): {
   return { text, images, toolResults };
 }
 
-/** Render a tool result as the single string OpenAI `tool` messages carry. */
-function serializeToolResult(result: ToolResultBlock): string {
+/**
+ * Render the text OpenAI `tool` messages carry and extract legacy nested image
+ * blocks. New Nova histories store rich output as top-level user messages, but
+ * resumed sessions may still contain Anthropic-shaped images inside a
+ * tool_result; promote those images instead of silently dropping them.
+ */
+function serializeToolResult(result: ToolResultBlock): { text: string; images: string[] } {
   const text =
     typeof result.content === "string"
       ? result.content
       : result.content
-          .filter((b): b is Extract<(typeof result.content)[number], { type: "text" }> => b.type === "text")
+          .filter(
+            (b): b is Extract<(typeof result.content)[number], { type: "text" }> =>
+              b.type === "text",
+          )
           .map((b) => b.text)
           .join("\n");
-  const droppedImage = Array.isArray(result.content)
-    ? result.content.some((b) => b.type === "image")
-    : false;
+  const images = Array.isArray(result.content)
+    ? result.content
+        .filter(
+          (b): b is Extract<(typeof result.content)[number], { type: "image" }> =>
+            b.type === "image",
+        )
+        .map((b) => `data:${b.source.media_type};base64,${b.source.data}`)
+    : [];
   // OpenAI has no per-result error flag; the Anthropic wire's `is_error` is
   // folded into a leading "Error: " so the model still sees the failure.
   const head = result.is_error ? "Error: " : "";
-  const tail = droppedImage ? "\n[image output omitted — OpenAI tool messages cannot carry images]" : "";
-  return `${head}${text}${tail}`;
+  return { text: `${head}${text}`, images };
 }
 
 function mergeUserParts(text: string[], images: string[]): string | Array<Record<string, unknown>> {
@@ -137,23 +149,33 @@ function mergeUserParts(text: string[], images: string[]): string | Array<Record
  * request while the epoch is frozen, so prefix caching holds. `meta` is stripped
  * by {@link toWireMessages} exactly as on the Anthropic branch.
  */
-export function toOpenAIMessages(system: string, messages: MessageParam[]): Array<Record<string, unknown>> {
+export function toOpenAIMessages(
+  system: string,
+  messages: MessageParam[],
+): Array<Record<string, unknown>> {
   const out: Array<Record<string, unknown>> = [{ role: "system", content: system }];
   for (const msg of toWireMessages(messages)) {
     if (msg.role === "user") {
       const { text, images, toolResults } = splitUserContent(msg);
       if (toolResults.length > 0) {
-        // Tool results must be their own `tool` messages, ordered after any
-        // plain user content they rode in with.
-        if (text.length > 0 || images.length > 0) {
-          out.push({ role: "user", content: mergeUserParts(text, images) });
-        }
+        // Every tool call must receive its `tool` message before the next user
+        // input. Canonical Anthropic-shaped messages may carry ordinary user
+        // content after their leading tool_result blocks, so split that tail
+        // and emit it only after all tool messages. Legacy images nested inside
+        // tool_result are promoted into the same provider-neutral user input.
+        const promotedImages: string[] = [];
         for (const result of toolResults) {
+          const serialized = serializeToolResult(result);
           out.push({
             role: "tool",
             tool_call_id: result.tool_use_id,
-            content: serializeToolResult(result),
+            content: serialized.text,
           });
+          promotedImages.push(...serialized.images);
+        }
+        const userImages = [...images, ...promotedImages];
+        if (text.length > 0 || userImages.length > 0) {
+          out.push({ role: "user", content: mergeUserParts(text, userImages) });
         }
         continue;
       }
@@ -392,9 +414,7 @@ export async function openAIStreamOnce(
     turn.usage = {
       inputTokens: isTwoBucket ? miss : uncached,
       outputTokens: usage.completion_tokens ?? 0,
-      ...(usage.prompt_cache_hit_tokens !== undefined
-        ? { cacheReadInputTokens: hit }
-        : {}),
+      ...(usage.prompt_cache_hit_tokens !== undefined ? { cacheReadInputTokens: hit } : {}),
       // Only the three-bucket shape carries a separate cache-write bucket;
       // DeepSeek folds the write into `miss` and bills it at full price.
       ...(!isTwoBucket && usage.prompt_cache_miss_tokens !== undefined
@@ -402,7 +422,8 @@ export async function openAIStreamOnce(
         : {}),
     };
     // Real totals landed — one final progress update with them.
-    if (onProgress) onProgress({ inputTokens: turn.usage.inputTokens, outputTokens: turn.usage.outputTokens });
+    if (onProgress)
+      onProgress({ inputTokens: turn.usage.inputTokens, outputTokens: turn.usage.outputTokens });
   }
   return turn;
 }

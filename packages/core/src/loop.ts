@@ -15,15 +15,18 @@ import {
   type PermissionGate,
 } from "./ports.js";
 import { decide } from "./stop-reason.js";
-import type {
-  AssistantTurn,
-  MessageParam,
-  StopReason,
-  ToolContext,
-  ToolDefinition,
-  ToolExecutor,
-  ToolResultBlock,
-  ToolUseBlock,
+import {
+  toolFollowupMessageSchema,
+  type AssistantTurn,
+  type MessageParam,
+  type StopReason,
+  type ToolContext,
+  type ToolDefinition,
+  type ToolExecutionResult,
+  type ToolExecutor,
+  type ToolFollowupMessage,
+  type ToolResultBlock,
+  type ToolUseBlock,
 } from "./types.js";
 
 export interface AgentLoopOptions {
@@ -362,6 +365,9 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
     await hooks.runAdvisory("post_messages", { messages });
 
     const results: (ToolResultBlock | undefined)[] = new Array(slots.length).fill(undefined);
+    const followups: (ToolFollowupMessage[] | undefined)[] = new Array(slots.length).fill(
+      undefined,
+    );
     const userMsgIdx = messages.length;
     messages = appendMessage(messages, userToolResults([]));
     await hooks.runAdvisory("post_messages", { messages });
@@ -371,6 +377,7 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
       opts.toolConcurrency,
       async (slot, idx) => {
         let result: ToolResultBlock;
+        let followupMessages: ToolFollowupMessage[] = [];
         if (slot.status === "cancelled") {
           result = errorToolResult(slot.use.id, "Tool execution cancelled");
         } else if (slot.status === "denied") {
@@ -379,7 +386,11 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
           result = errorToolResult(slot.use.id, "Tool execution cancelled");
         } else {
           try {
-            result = await opts.executeTool(slot.use, opts.toolContext);
+            const outcome = normalizeToolExecution(
+              await opts.executeTool(slot.use, opts.toolContext),
+            );
+            result = outcome.result;
+            followupMessages = outcome.followupMessages ?? [];
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             result = errorToolResult(slot.use.id, `Tool execution failed: ${msg}`);
@@ -388,10 +399,20 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
 
         // post_tool_use blocking: lets a hook replace the result before it's
         // folded into the message history.
-        const override = await hooks.runBlocking("post_tool_use", { use: slot.use, result });
-        if (override) result = override.result;
+        const override = await hooks.runBlocking("post_tool_use", {
+          use: slot.use,
+          result,
+          followupMessages,
+        });
+        if (override) {
+          result = override.result;
+          if (override.followupMessages !== undefined) {
+            followupMessages = validateFollowupMessages(override.followupMessages);
+          }
+        }
 
         results[idx] = result;
+        followups[idx] = followupMessages;
         const filled = results.filter((r): r is ToolResultBlock => r !== undefined);
         messages = [...messages];
         messages[userMsgIdx] = userToolResults(filled);
@@ -413,6 +434,7 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
               : String(settled.reason)
             : "missing result";
         results[i] = errorToolResult(slot.use.id, `Tool execution failed: ${why}`);
+        followups[i] = [];
       }
     }
     if (needsFinalCommit) {
@@ -423,6 +445,18 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
 
     const userMsg = messages[userMsgIdx]!;
     await hooks.runAdvisory("post_user_message", userMsg);
+
+    // Rich tool output is provider-neutral top-level user content, never nested
+    // inside tool_result. Append only after EVERY result is present: OpenAI
+    // requires all tool calls to receive tool messages before the next user
+    // input, and Anthropic requires tool_result immediately after tool_use.
+    // Flatten by slot index rather than settlement order so parallel tools stay
+    // deterministic and each image follows the result that announced it.
+    for (const followup of followups.flatMap((batch) => batch ?? [])) {
+      messages = appendMessage(messages, followup);
+      await hooks.runAdvisory("post_messages", { messages });
+      await hooks.runAdvisory("post_user_message", followup);
+    }
 
     // pre_continue blocking: register a hook to inject extra messages
     // between iterations (e.g. todo reminders).
@@ -450,6 +484,23 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
 
 function errorToolResult(toolUseId: string, content: string): ToolResultBlock {
   return { type: "tool_result", tool_use_id: toolUseId, content, is_error: true };
+}
+
+function normalizeToolExecution(execution: ToolExecutionResult): {
+  result: ToolResultBlock;
+  followupMessages: ToolFollowupMessage[];
+} {
+  if ("result" in execution) {
+    return {
+      result: execution.result,
+      followupMessages: validateFollowupMessages(execution.followupMessages ?? []),
+    };
+  }
+  return { result: execution, followupMessages: [] };
+}
+
+function validateFollowupMessages(messages: ToolFollowupMessage[]): ToolFollowupMessage[] {
+  return messages.map((message) => toolFollowupMessageSchema.parse(message));
 }
 
 /**

@@ -373,7 +373,7 @@ const settingsObjectSchema = z.object({
   // placeholder that a chosen provider template (or the user's config)
   // overwrites alongside `models`.
   model: z.string().default(DEFAULT_MODEL_TIER),
-  // Named model tiers, e.g. { "lite": { id: "deepseek-v4-flash", ... }, "pro": { ... } }.
+  // Named model tiers, e.g. { "lite": { id: "deepseek-v4-flash-vision-exp", ... }, "pro": { ... } }.
   // Every value is a profile object carrying its own maxTokens / contextWindowSize
   // / thinking (and optionally baseURL / apiKey). Distinct tiers may share one
   // concrete `id` and differ only in their per-tier knobs (e.g. pro/max both →

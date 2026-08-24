@@ -39,7 +39,7 @@ import type {
   PermissionResult,
   ToolContext,
   ToolDefinition,
-  ToolResultBlock,
+  ToolExecutionResult,
   ToolUseBlock,
 } from "./types.js";
 
@@ -281,7 +281,7 @@ export interface OptionsProvider {
  */
 export interface ToolHost {
   list(): ToolDefinition[];
-  execute(use: ToolUseBlock, ctx: ToolContext): Promise<ToolResultBlock>;
+  execute(use: ToolUseBlock, ctx: ToolContext): Promise<ToolExecutionResult>;
   contextFor(): ToolContext;
 }
 

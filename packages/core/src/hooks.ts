@@ -4,6 +4,7 @@ import type {
   StopReason,
   ToolDefinition,
   ToolResultBlock,
+  ToolFollowupMessage,
   ToolUseBlock,
 } from "./types.js";
 
@@ -127,17 +128,23 @@ export interface HookSpec {
     decision: void;
   };
   /**
-   * Fires after `executeTool` returns and before the loop folds the result
-   * into the message history. Pure notifications return `undefined`;
-   * transformers return `{ result }` (redaction, truncation, ...).
+   * Fires after `executeTool` returns and before the loop folds the result and
+   * provider-neutral follow-up messages into history. Pure notifications return
+   * `undefined`; transformers may replace the result and/or follow-ups
+   * (redaction, truncation, ...).
    */
   post_tool_use: {
-    payload: { use: ToolUseBlock; result: ToolResultBlock };
-    decision: { result: ToolResultBlock };
+    payload: {
+      use: ToolUseBlock;
+      result: ToolResultBlock;
+      /** Always supplied by the loop; optional keeps direct hook callers source-compatible. */
+      followupMessages?: ToolFollowupMessage[];
+    };
+    decision: { result: ToolResultBlock; followupMessages?: ToolFollowupMessage[] };
   };
   /**
-   * Fires after a user message lands — either the initial user input (fired
-   * by the caller) or a tool_result batch (fired by the loop).
+   * Fires after a user message lands — the initial user input (fired by the
+   * caller), a tool_result batch, or a rich tool follow-up (fired by the loop).
    */
   post_user_message: { payload: MessageParam; decision: void };
 

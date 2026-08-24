@@ -85,7 +85,10 @@ function lastCreate(): {
   body: Record<string, unknown>;
   opts: Record<string, unknown>;
 } {
-  const [body, opts] = mockCreate.mock.calls.at(-1)! as [Record<string, unknown>, Record<string, unknown>];
+  const [body, opts] = mockCreate.mock.calls.at(-1)! as [
+    Record<string, unknown>,
+    Record<string, unknown>,
+  ];
   return { body, opts };
 }
 
@@ -191,13 +194,72 @@ describe("toOpenAIMessages", () => {
     expect(out[1]).toEqual({ role: "tool", tool_call_id: "call_1", content: "ok" });
   });
 
-  it("prefixes Error: on is_error tool results (no error flag in OpenAI)", () => {
+  it("emits tool messages before top-level user image content", () => {
     const out = toOpenAIMessages("sys", [
       {
         role: "user",
         content: [
-          { type: "tool_result", tool_use_id: "call_1", content: "boom", is_error: true },
+          { type: "tool_result", tool_use_id: "call_1", content: "image metadata" },
+          { type: "text", text: "image returned by read" },
+          {
+            type: "image",
+            source: { type: "base64", media_type: "image/png", data: "AAA" },
+          },
         ],
+      },
+    ]);
+
+    expect(out[1]).toEqual({
+      role: "tool",
+      tool_call_id: "call_1",
+      content: "image metadata",
+    });
+    expect(out[2]).toEqual({
+      role: "user",
+      content: [
+        { type: "text", text: "image returned by read" },
+        { type: "image_url", image_url: { url: "data:image/png;base64,AAA" } },
+      ],
+    });
+  });
+
+  it("promotes images nested in legacy tool results instead of dropping them", () => {
+    const out = toOpenAIMessages("sys", [
+      {
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "call_1",
+            content: [
+              { type: "text", text: "legacy metadata" },
+              {
+                type: "image",
+                source: { type: "base64", media_type: "image/jpeg", data: "BBB" },
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    expect(out[1]).toEqual({
+      role: "tool",
+      tool_call_id: "call_1",
+      content: "legacy metadata",
+    });
+    expect(out[2]).toEqual({
+      role: "user",
+      content: [{ type: "image_url", image_url: { url: "data:image/jpeg;base64,BBB" } }],
+    });
+    expect(JSON.stringify(out)).not.toContain("image output omitted");
+  });
+
+  it("prefixes Error: on is_error tool results (no error flag in OpenAI)", () => {
+    const out = toOpenAIMessages("sys", [
+      {
+        role: "user",
+        content: [{ type: "tool_result", tool_use_id: "call_1", content: "boom", is_error: true }],
       },
     ]);
     expect(out[1]).toEqual({ role: "tool", tool_call_id: "call_1", content: "Error: boom" });
@@ -248,9 +310,7 @@ describe("buildOpenAIRequestBody", () => {
       {
         maxTokens: 16_000,
         thinkingParams: { enable_thinking: true, thinking_budget: 16_000 },
-        tools: [
-          { name: "noop", description: "no-op", input_schema: { type: "object" } },
-        ],
+        tools: [{ name: "noop", description: "no-op", input_schema: { type: "object" } }],
       },
     ) as unknown as Record<string, unknown>;
     expect(body.stream).toBe(true);
@@ -335,7 +395,9 @@ describe("createModel openai transport", () => {
   });
 
   it("streams text deltas and returns the accumulated turn", async () => {
-    mockCreate.mockResolvedValueOnce(streamOf([textChunk("hello "), textChunk("world"), doneChunk("stop")]));
+    mockCreate.mockResolvedValueOnce(
+      streamOf([textChunk("hello "), textChunk("world"), doneChunk("stop")]),
+    );
     const m = makeClient(thinkingProfile);
     const res = await m.call({ ...baseReq, tools: [] });
     expect(res.content).toEqual([{ type: "text", text: "hello world" }]);
@@ -585,8 +647,18 @@ describe("createModel openai transport retries", () => {
     // Arguments arrive truncated — `JSON.parse` throws the V8 SyntaxError that
     // `isMalformedToolJsonError` matches, so the shared loop re-issues.
     mockCreate
-      .mockResolvedValueOnce(streamOf([toolCallChunk({ index: 0, id: "c1", name: "read", args: '{"path":' }), doneChunk("tool_calls")]))
-      .mockResolvedValueOnce(streamOf([toolCallChunk({ index: 0, id: "c1", name: "read", args: '{"path":"/a"}' }), doneChunk("tool_calls")]));
+      .mockResolvedValueOnce(
+        streamOf([
+          toolCallChunk({ index: 0, id: "c1", name: "read", args: '{"path":' }),
+          doneChunk("tool_calls"),
+        ]),
+      )
+      .mockResolvedValueOnce(
+        streamOf([
+          toolCallChunk({ index: 0, id: "c1", name: "read", args: '{"path":"/a"}' }),
+          doneChunk("tool_calls"),
+        ]),
+      );
     const m = makeClient(thinkingProfile);
     const p = m.call(baseReq);
     await vi.advanceTimersByTimeAsync(1_000);

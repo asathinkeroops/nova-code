@@ -1,11 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import type { InvariantsCheck, ToolHandler, ToolUseBlock } from "@nova/core";
+import type {
+  InvariantsCheck,
+  ToolExecutionResult,
+  ToolHandler,
+  ToolResultBlock,
+  ToolUseBlock,
+} from "@nova/core";
 import { createDispatcher, formatValidationError } from "./dispatcher.js";
 import { ToolRegistry } from "./registry.js";
 import { PATH_ALIASES, withAliases } from "./schema.js";
 
-function makeHandler(run = vi.fn(async () => ({ output: "ok" }))): ToolHandler {
+function makeHandler(run: ToolHandler["run"] = vi.fn(async () => ({ output: "ok" }))): ToolHandler {
   return {
     definition: {
       name: "echo",
@@ -20,11 +26,15 @@ function uses(name: string, input: unknown): ToolUseBlock {
   return { type: "tool_use", id: "u_1", name, input: input as Record<string, unknown> };
 }
 
+function resultOf(execution: ToolExecutionResult): ToolResultBlock {
+  return "result" in execution ? execution.result : execution;
+}
+
 describe("dispatcher", () => {
   it("returns is_error when the tool is unknown", async () => {
     const reg = new ToolRegistry();
     const dispatch = createDispatcher({ registry: reg });
-    const r = await dispatch(uses("nope", {}), { cwd: "/tmp" });
+    const r = resultOf(await dispatch(uses("nope", {}), { cwd: "/tmp" }));
     expect(r.is_error).toBe(true);
     expect(typeof r.content).toBe("string");
   });
@@ -32,7 +42,7 @@ describe("dispatcher", () => {
   it("returns is_error with a flattened, readable message when input schema fails", async () => {
     const reg = new ToolRegistry().register(makeHandler());
     const dispatch = createDispatcher({ registry: reg });
-    const r = await dispatch(uses("echo", { msg: 42 }), { cwd: "/tmp" });
+    const r = resultOf(await dispatch(uses("echo", { msg: 42 }), { cwd: "/tmp" }));
     expect(r.is_error).toBe(true);
     // No raw zod JSON dump leaks to the model.
     expect(String(r.content)).not.toContain('"code"');
@@ -44,10 +54,42 @@ describe("dispatcher", () => {
     const run = vi.fn(async () => ({ output: "hello world" }));
     const reg = new ToolRegistry().register(makeHandler(run));
     const dispatch = createDispatcher({ registry: reg });
-    const r = await dispatch(uses("echo", { msg: "hi" }), { cwd: "/tmp" });
+    const r = resultOf(await dispatch(uses("echo", { msg: "hi" }), { cwd: "/tmp" }));
     expect(r.is_error).toBeUndefined();
     expect(r.content).toBe("hello world");
     expect(run).toHaveBeenCalledOnce();
+  });
+
+  it("returns rich output as provider-neutral follow-up user messages", async () => {
+    const run = vi.fn(async () => ({
+      output: "image metadata",
+      followupMessages: [
+        {
+          role: "user" as const,
+          content: [
+            {
+              type: "image" as const,
+              source: {
+                type: "base64" as const,
+                media_type: "image/png" as const,
+                data: "AAA",
+              },
+            },
+          ],
+        },
+      ],
+    }));
+    const dispatch = createDispatcher({
+      registry: new ToolRegistry().register(makeHandler(run)),
+    });
+
+    const execution = await dispatch(uses("echo", { msg: "hi" }), { cwd: "/tmp" });
+
+    expect("result" in execution).toBe(true);
+    if (!("result" in execution)) return;
+    expect(execution.result.content).toBe("image metadata");
+    expect(execution.followupMessages?.[0]?.role).toBe("user");
+    expect(execution.followupMessages?.[0]?.content[0]?.type).toBe("image");
   });
 
   it("flattens a missing required field into an actionable hint", () => {
@@ -76,7 +118,7 @@ describe("dispatcher", () => {
     });
     const reg = new ToolRegistry().register(makeHandler(throwing));
     const dispatch = createDispatcher({ registry: reg });
-    const r = await dispatch(uses("echo", { msg: "hi" }), { cwd: "/tmp" });
+    const r = resultOf(await dispatch(uses("echo", { msg: "hi" }), { cwd: "/tmp" }));
     expect(r.is_error).toBe(true);
     expect(String(r.content)).toContain("kaboom");
   });
@@ -132,7 +174,7 @@ describe("dispatcher", () => {
     });
 
     // Model names the path `filePath` — the exact live DeepSeek failure.
-    const r = await dispatch(uses("read", { filePath: "/abs/x.ts" }), { cwd: "/tmp" });
+    const r = resultOf(await dispatch(uses("read", { filePath: "/abs/x.ts" }), { cwd: "/tmp" }));
 
     expect(r.is_error).toBeUndefined();
     // Every scheduling/lifecycle/invariant layer sees canonical `path`, never the alias.

@@ -29,7 +29,7 @@ describe("built-in model tables", () => {
       baseURL: "https://api.deepseek.com/anthropic",
     });
     expect(Object.keys(s.models).sort()).toEqual(["lite", "max", "pro"]);
-    expect(s.models.lite?.id).toBe("deepseek-v4-flash");
+    expect(s.models.lite?.id).toBe("deepseek-v4-flash-vision-exp");
     expect(s.models.pro?.id).toBe("deepseek-v4-pro");
     // The default `model` tier resolves against the filled table, so a config
     // carrying nothing but provider + key is complete.
@@ -53,7 +53,7 @@ describe("built-in model tables", () => {
     // Everything not overridden still tracks the built-in.
     expect(s.models.pro?.id).toBe(BUILTIN_PROVIDER_MODELS.deepseek?.pro?.id);
     expect(s.models.pro?.pricing).toEqual(BUILTIN_PROVIDER_MODELS.deepseek?.pro?.pricing);
-    expect(s.models.lite?.id).toBe("deepseek-v4-flash");
+    expect(s.models.lite?.id).toBe("deepseek-v4-flash-vision-exp");
   });
 
   it("replaces (never merges) a tier that names a different model id", () => {
@@ -124,7 +124,7 @@ describe("stripDefaultModels", () => {
     // The user's choice survives; everything else is back on the built-ins.
     const s = await loadSettings(configPath);
     expect(s.models.lite?.thinking).toBe("high");
-    expect(s.models.lite?.id).toBe("deepseek-v4-flash");
+    expect(s.models.lite?.id).toBe("deepseek-v4-flash-vision-exp");
     expect(s.models.lite?.pricing).toEqual(deepseek.lite?.pricing);
     expect(s.models.pro?.thinking).toBe("high");
   });
@@ -141,7 +141,7 @@ describe("stripDefaultModels", () => {
     });
     const s = await loadSettings(configPath);
     expect(s.models.pro?.id).toBe("deepseek-reasoner");
-    expect(s.models.lite?.id).toBe("deepseek-v4-flash");
+    expect(s.models.lite?.id).toBe("deepseek-v4-flash-vision-exp");
   });
 
   it("is idempotent — an already-reduced table is left alone", async () => {

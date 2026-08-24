@@ -129,6 +129,23 @@ describe("shouldAutoCompact / computeThreshold", () => {
     const long = estimateTokens([{ role: "user", content: "x".repeat(4000) }]);
     expect(long).toBeGreaterThan(short);
   });
+
+  it("estimates image cost without tokenizing raw base64 as text", () => {
+    const image = (data: string): MessageParam => ({
+      role: "user",
+      content: [
+        {
+          type: "image",
+          source: { type: "base64", media_type: "image/png", data },
+        },
+      ],
+    });
+    const small = estimateTokens([image("AAAA")]);
+    const huge = estimateTokens([image("A".repeat(1_000_000))]);
+
+    expect(small).toBeGreaterThan(1_500);
+    expect(huge - small).toBeLessThan(100);
+  });
 });
 
 describe("autoCompact", () => {
@@ -202,5 +219,45 @@ describe("autoCompact", () => {
     const prompt = seen[0] ?? "";
     expect(prompt).toContain("Write a structured summary");
     expect(prompt).toContain("y".repeat(200_000));
+  });
+
+  it("replaces top-level and legacy nested base64 in the summarizer prompt", async () => {
+    let prompt = "";
+    const model: ModelClient = {
+      call: async (req): Promise<AssistantTurn> => {
+        const content = req.messages[0]?.content;
+        if (typeof content === "string") prompt = content;
+        return { content: [{ type: "text", text: "ok" }], stopReason: "end_turn" };
+      },
+    };
+    const topLevel = "VE9QX0xFVkVMX1NFQ1JFVA==";
+    const nested = "TkVTVEVEX1NFQ1JFVA==";
+    const messages: MessageParam[] = [
+      {
+        role: "user",
+        content: [
+          {
+            type: "image",
+            source: { type: "base64", media_type: "image/png", data: topLevel },
+          },
+          {
+            type: "tool_result",
+            tool_use_id: "old",
+            content: [
+              {
+                type: "image",
+                source: { type: "base64", media_type: "image/jpeg", data: nested },
+              },
+            ],
+          },
+        ],
+      },
+    ];
+
+    await autoCompact(messages, { model });
+
+    expect(prompt).not.toContain(topLevel);
+    expect(prompt).not.toContain(nested);
+    expect(prompt.match(/image data omitted/g)).toHaveLength(2);
   });
 });

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { crc32 } from "node:zlib";
 import { describe, expect, it } from "vitest";
-import type { ToolContext } from "@nova/core";
+import type { ImageBlock, ToolContext, ToolRunResult } from "@nova/core";
 import * as XLSX from "xlsx";
 import { readTool } from "./read.js";
 
@@ -12,6 +12,12 @@ import { readTool } from "./read.js";
 const MAX_LINE_CHARS = 16_000;
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 
+function imageBlocks(result: ToolRunResult): ImageBlock[] {
+  return (result.followupMessages ?? [])
+    .flatMap((message) => message.content)
+    .filter((block): block is ImageBlock => block.type === "image");
+}
+
 async function writeFixture(name: string, content: string): Promise<{ cwd: string; path: string }> {
   const cwd = await mkdtemp(join(tmpdir(), "nova-read-"));
   await writeFile(join(cwd, name), content);
@@ -19,7 +25,10 @@ async function writeFixture(name: string, content: string): Promise<{ cwd: strin
 }
 
 /** Write a binary buffer to a temp file. */
-async function writeBinaryFixture(name: string, buf: Buffer): Promise<{ cwd: string; path: string }> {
+async function writeBinaryFixture(
+  name: string,
+  buf: Buffer,
+): Promise<{ cwd: string; path: string }> {
   const cwd = await mkdtemp(join(tmpdir(), "nova-read-"));
   await writeFile(join(cwd, name), buf);
   return { cwd, path: name };
@@ -46,7 +55,9 @@ function minimalPngBytes(): Buffer {
 
   // IDAT: minimal zlib-compressed 1x1 RGB pixel (red = FF 00 00, filtered with 0)
   // zlib header (78 01), raw deflate: 63 60 60 F8 4F 00 00 04 00 01, adler32
-  const idatRaw = Buffer.from([0x78, 0x01, 0x63, 0x60, 0x60, 0xf8, 0x4f, 0x00, 0x00, 0x04, 0x00, 0x01]);
+  const idatRaw = Buffer.from([
+    0x78, 0x01, 0x63, 0x60, 0x60, 0xf8, 0x4f, 0x00, 0x00, 0x04, 0x00, 0x01,
+  ]);
   const idatType = Buffer.from("IDAT");
   const idatLen = Buffer.alloc(4);
   idatLen.writeUInt32BE(idatRaw.length, 0);
@@ -62,7 +73,20 @@ function minimalPngBytes(): Buffer {
   const iendCrcBuf = Buffer.alloc(4);
   iendCrcBuf.writeUInt32BE(iendCrc, 0);
 
-  return Buffer.concat([sig, ihdrLen, ihdrType, ihdrData, ihdrCrcBuf, idatLen, idatType, idatRaw, idatCrcBuf, iendLen, iendType, iendCrcBuf]);
+  return Buffer.concat([
+    sig,
+    ihdrLen,
+    ihdrType,
+    ihdrData,
+    ihdrCrcBuf,
+    idatLen,
+    idatType,
+    idatRaw,
+    idatCrcBuf,
+    iendLen,
+    iendType,
+    iendCrcBuf,
+  ]);
 }
 
 /** Minimal JPEG bytes: SOI marker (FF D8 FF) + dummy data. */
@@ -173,14 +197,10 @@ describe("read: Excel files", () => {
   });
 
   it("selects a sheet by name", async () => {
-    const { cwd, path } = await writeXlsxFixture(
-      "multi.xlsx",
-      [["A"]],
-      {
-        sheetName: "First",
-        extraSheet: { name: "Second", rows: [["B"]] },
-      },
-    );
+    const { cwd, path } = await writeXlsxFixture("multi.xlsx", [["A"]], {
+      sheetName: "First",
+      extraSheet: { name: "Second", rows: [["B"]] },
+    });
 
     const res = await readTool.run({ path, sheet: "Second" }, ctx(cwd));
 
@@ -191,14 +211,10 @@ describe("read: Excel files", () => {
   });
 
   it("selects a sheet by 1-based index", async () => {
-    const { cwd, path } = await writeXlsxFixture(
-      "multi.xlsx",
-      [["first"]],
-      {
-        sheetName: "S1",
-        extraSheet: { name: "S2", rows: [["second"]] },
-      },
-    );
+    const { cwd, path } = await writeXlsxFixture("multi.xlsx", [["first"]], {
+      sheetName: "S1",
+      extraSheet: { name: "S2", rows: [["second"]] },
+    });
 
     const res = await readTool.run({ path, sheet: "2" }, ctx(cwd));
 
@@ -297,8 +313,8 @@ describe("read: image files", () => {
     expect(res.output).toContain("test.png");
     expect(res.output).toContain("PNG");
     expect(res.output).toContain("image/png");
-    expect(res.blocks).toHaveLength(1);
-    const block = res.blocks![0]!;
+    expect(res.followupMessages).toHaveLength(1);
+    const block = imageBlocks(res)[0]!;
     expect(block.type).toBe("image");
     if (block.type === "image") {
       expect(block.source.type).toBe("base64");
@@ -317,8 +333,8 @@ describe("read: image files", () => {
 
     expect(res.isError).toBeUndefined();
     expect(res.output).toContain("image/jpeg");
-    expect(res.blocks).toHaveLength(1);
-    const block = res.blocks![0]!;
+    expect(res.followupMessages).toHaveLength(1);
+    const block = imageBlocks(res)[0]!;
     if (block.type === "image") {
       expect(block.source.media_type).toBe("image/jpeg");
     }
@@ -333,8 +349,8 @@ describe("read: image files", () => {
     );
 
     expect(res.isError).toBeUndefined();
-    expect(res.blocks).toHaveLength(1);
-    const block = res.blocks![0]!;
+    expect(res.followupMessages).toHaveLength(1);
+    const block = imageBlocks(res)[0]!;
     if (block.type === "image") {
       expect(block.source.media_type).toBe("image/jpeg");
     }
@@ -343,14 +359,11 @@ describe("read: image files", () => {
   it("refuses (does NOT dump binary) when the model does NOT support images", async () => {
     const { cwd, path } = await writeBinaryFixture("test.png", minimalPngBytes());
 
-    const res = await readTool.run(
-      { path },
-      ctx(cwd, { modelModalities: { input: ["text"] } }),
-    );
+    const res = await readTool.run({ path }, ctx(cwd, { modelModalities: { input: ["text"] } }));
 
     // Must NOT fall through to the text reader and dump line-numbered mojibake:
     // an image on a text-only tier is an actionable error, not content.
-    expect(res.blocks).toBeUndefined();
+    expect(res.followupMessages).toBeUndefined();
     expect(res.isError).toBe(true);
     expect(res.output).toContain("image");
     expect(res.output).not.toContain("PNG\r\n"); // no raw bytes in the output
@@ -361,7 +374,7 @@ describe("read: image files", () => {
 
     const res = await readTool.run({ path }, ctx(cwd));
 
-    expect(res.blocks).toBeUndefined();
+    expect(res.followupMessages).toBeUndefined();
     expect(res.isError).toBe(true);
     expect(res.output).toContain("image");
   });
@@ -372,12 +385,9 @@ describe("read: image files", () => {
     const bytes = Buffer.from([0x00, 0x01, 0x02, 0x00, 0xff, 0xfe, 0x00, 0x42]);
     const { cwd, path } = await writeBinaryFixture("blob.bin", bytes);
 
-    const res = await readTool.run(
-      { path },
-      ctx(cwd, { modelModalities: { input: ["text"] } }),
-    );
+    const res = await readTool.run({ path }, ctx(cwd, { modelModalities: { input: ["text"] } }));
 
-    expect(res.blocks).toBeUndefined();
+    expect(res.followupMessages).toBeUndefined();
     expect(res.isError).toBe(true);
     expect(res.output).toContain("binary");
   });
@@ -400,7 +410,7 @@ describe("read: image files", () => {
 
     expect(res.isError).toBe(true);
     expect(res.output).toContain("MB");
-    expect(res.blocks).toBeUndefined();
+    expect(res.followupMessages).toBeUndefined();
   });
 
   it("warns on magic-byte mismatch but still returns the image", async () => {
@@ -416,7 +426,7 @@ describe("read: image files", () => {
     expect(res.isError).toBeUndefined();
     expect(res.output).toContain("magic bytes do not match");
     // Still returns a block — the caller decides what to do
-    expect(res.blocks).toHaveLength(1);
+    expect(res.followupMessages).toHaveLength(1);
   });
 
   it("reads .webp and .gif extensions", async () => {
@@ -427,21 +437,23 @@ describe("read: image files", () => {
       { path: gifFixture.path },
       ctx(gifFixture.cwd, { modelModalities: { input: ["text", "image"] } }),
     );
-    expect(gifRes.blocks).toHaveLength(1);
-    const gifBlock = gifRes.blocks![0]!;
+    expect(gifRes.followupMessages).toHaveLength(1);
+    const gifBlock = imageBlocks(gifRes)[0]!;
     if (gifBlock.type === "image") {
       expect(gifBlock.source.media_type).toBe("image/gif");
     }
 
     // WebP magic: 52 49 46 46
-    const webpBuf = Buffer.from([0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50]); // RIFF....WEBP
+    const webpBuf = Buffer.from([
+      0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50,
+    ]); // RIFF....WEBP
     const webpFixture = await writeBinaryFixture("img.webp", webpBuf);
     const webpRes = await readTool.run(
       { path: webpFixture.path },
       ctx(webpFixture.cwd, { modelModalities: { input: ["text", "image"] } }),
     );
-    expect(webpRes.blocks).toHaveLength(1);
-    const webpBlock = webpRes.blocks![0]!;
+    expect(webpRes.followupMessages).toHaveLength(1);
+    const webpBlock = imageBlocks(webpRes)[0]!;
     if (webpBlock.type === "image") {
       expect(webpBlock.source.media_type).toBe("image/webp");
     }
@@ -459,7 +471,6 @@ describe("read: image files", () => {
     );
 
     // SVG is NOT in IMAGE_EXTENSIONS → treated as text
-    expect(res.blocks).toBeUndefined();
     expect(res.output).toContain("svg");
   });
 
@@ -514,7 +525,6 @@ describe("read: PDF files", () => {
     const res = await readTool.run({ path }, ctx(cwd));
 
     expect(res.isError).toBeUndefined();
-    expect(res.blocks).toBeUndefined();
     expect(res.output).toContain('PDF "doc.pdf" — 1 page');
     expect(res.output).toContain("[Page 1]");
     expect(res.output).toContain("Hello Nova");
