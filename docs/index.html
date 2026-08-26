@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Nova-Code — 面向国产大模型的开源终端编程 Agent。开箱即用的成品，不是拼装框架：省钱、安全、灵活刻进架构，操作系统级沙箱、一个 Markdown 文件即一项能力。">
+<meta name="description" content="Nova-Code — 高度适配国产模型、极致省钱的开源终端编程 Agent。内置 Anthropic-compatible 与 OpenAI-compatible 双传输，以缓存友好的稳定前缀降低重复上下文成本。">
 <link rel="icon" href="./app-icon-v2.webp" type="image/webp">
 <link rel="preload" href="./nova-galaxy-hero.webp" as="image" type="image/webp">
 <title>Nova-Code — 面向国产大模型的终端编程 Agent</title>
@@ -11,21 +11,21 @@
   *, *::before, *::after { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
   :root {
-    color-scheme: light;
-    --ground: #FAF9FE;
-    --ground-2: #F3F0FB;
-    --surface: #FFFFFF;
-    --ink: #14101F;
-    --ink-soft: #2C2640;
-    --muted: #6C6579;
-    --faint: #9A93A8;
-    --line: #ECE8F5;
-    --line-strong: #DED7EF;
-    --accent: #6D28D9;
-    --accent-bright: #A855F7;
-    --accent-wash: #F1EBFC;
-    --cosmos: #0D0A1A;
-    --cosmos-2: #16112B;
+    color-scheme: dark;
+    --ground: #0A0713;
+    --ground-2: #100B1F;
+    --surface: #140F24;
+    --ink: #F1ECFB;
+    --ink-soft: #D6CEEE;
+    --muted: #9A92B4;
+    --faint: #6E6788;
+    --line: #241D3C;
+    --line-strong: #322853;
+    --accent: #B98CFF;
+    --accent-bright: #C9A6FF;
+    --accent-wash: #1C1436;
+    --cosmos: #07040F;
+    --cosmos-2: #120C24;
     --cosmos-line: #2A2246;
     --cosmos-ink: #E9E4F7;
     --cosmos-muted: #9C93C4;
@@ -39,47 +39,6 @@
     --maxw: 1140px;
     --radius: 14px;
     --radius-lg: 20px;
-    --shadow-soft: 0 1px 2px rgba(20,16,31,.04), 0 8px 30px rgba(80,44,150,.06);
-    --shadow-panel: 0 24px 70px -24px rgba(60,30,120,.45), 0 2px 8px rgba(20,16,31,.18);
-  }
-
-  @media (prefers-color-scheme: dark) {
-    :root {
-      color-scheme: dark;
-      --ground: #0A0713;
-      --ground-2: #100B1F;
-      --surface: #140F24;
-      --ink: #F1ECFB;
-      --ink-soft: #D6CEEE;
-      --muted: #9A92B4;
-      --faint: #6E6788;
-      --line: #241D3C;
-      --line-strong: #322853;
-      --accent: #B98CFF;
-      --accent-bright: #C9A6FF;
-      --accent-wash: #1C1436;
-      --cosmos: #07040F;
-      --cosmos-2: #120C24;
-      --cosmos-line: #2A2246;
-      --shadow-soft: 0 1px 2px rgba(0,0,0,.3), 0 10px 34px rgba(0,0,0,.35);
-      --shadow-panel: 0 26px 80px -28px rgba(0,0,0,.75), 0 2px 8px rgba(0,0,0,.5);
-    }
-  }
-  :root[data-theme="light"] {
-    color-scheme: light;
-    --ground: #FAF9FE; --ground-2: #F3F0FB; --surface: #FFFFFF;
-    --ink: #14101F; --ink-soft: #2C2640; --muted: #6C6579; --faint: #9A93A8;
-    --line: #ECE8F5; --line-strong: #DED7EF;
-    --accent: #6D28D9; --accent-bright: #A855F7; --accent-wash: #F1EBFC;
-    --shadow-soft: 0 1px 2px rgba(20,16,31,.04), 0 8px 30px rgba(80,44,150,.06);
-    --shadow-panel: 0 24px 70px -24px rgba(60,30,120,.45), 0 2px 8px rgba(20,16,31,.18);
-  }
-  :root[data-theme="dark"] {
-    color-scheme: dark;
-    --ground: #0A0713; --ground-2: #100B1F; --surface: #140F24;
-    --ink: #F1ECFB; --ink-soft: #D6CEEE; --muted: #9A92B4; --faint: #6E6788;
-    --line: #241D3C; --line-strong: #322853;
-    --accent: #B98CFF; --accent-bright: #C9A6FF; --accent-wash: #1C1436;
     --shadow-soft: 0 1px 2px rgba(0,0,0,.3), 0 10px 34px rgba(0,0,0,.35);
     --shadow-panel: 0 26px 80px -28px rgba(0,0,0,.75), 0 2px 8px rgba(0,0,0,.5);
   }
@@ -376,8 +335,7 @@
   .hero.anim-paused, .hero.anim-paused *,
   .hero.anim-paused::before, .hero.anim-paused::after,
   .hero.anim-paused *::before, .hero.anim-paused *::after { animation-play-state: paused !important; }
-  /* long, gentle melt into the deep demo band below (was --ground; the demo band is
-     now dark so the hero resolves into darkness, keeping the deep/light rhythm intact) */
+  /* long, gentle melt from the galaxy hero into the persistent deep-space canvas */
   .hero::after {
     content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 420px;
     background: linear-gradient(to bottom,
@@ -406,7 +364,7 @@
     position: absolute; inset: 0; width: 100%; height: 100%;
     z-index: 0; pointer-events: none; display: block;
   }
-  /* soft light orbs — still used by the final CTA on light ground */
+  /* soft light orbs used by the final CTA on the dark ground */
   .hero-orbs { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
   .hero-orbs span {
     position: absolute; border-radius: 50%; filter: blur(60px); opacity: .5;
@@ -505,7 +463,7 @@
     position: relative; white-space: nowrap;
   }
   .hero-sub {
-    margin: 22px 0 0; max-width: 33ch;
+    margin: 22px 0 0; max-width: 38ch;
     font-size: 1.12rem; color: var(--muted); line-height: 1.62;
   }
   .hero-sub b { color: var(--ink-soft); font-weight: 600; }
@@ -522,6 +480,7 @@
   .btn-primary:hover { transform: translateY(-2px); background: color-mix(in srgb, var(--accent) 88%, black);
     box-shadow: 0 16px 34px -12px color-mix(in srgb, var(--accent) 85%, black); }
   .btn-primary svg { width: 17px; height: 17px; }
+  button.btn-primary { border: 0; cursor: pointer; font-family: inherit; }
 
   .cmd {
     display: inline-flex; align-items: center; gap: 12px;
@@ -545,6 +504,46 @@
   .cmd:hover .copy { color: var(--accent); }
   .cmd .copy svg { width: 15px; height: 15px; }
   .cmd.copied .copy { color: var(--ok); }
+
+  /* ---------- Conversion path ---------- */
+  .quick-start { padding: 58px 0 72px; }
+  .quick-start-card {
+    display: grid; grid-template-columns: minmax(280px,.82fr) minmax(0,1.35fr); gap: 46px;
+    padding: 40px; border: 1px solid rgba(213,190,255,.15); border-radius: 24px;
+    color: var(--cosmos-ink);
+    background:
+      radial-gradient(90% 120% at 100% 0%, rgba(139,74,255,.22), transparent 58%),
+      linear-gradient(145deg, #100820, #090512);
+    box-shadow: 0 28px 80px -42px rgba(67,22,151,.72);
+  }
+  .quick-start-copy { align-self: center; }
+  .quick-start-copy .eyebrow { color: #c6a2ff; }
+  .quick-start-copy h2 {
+    margin: 10px 0 0; max-width: 12ch; color: #fff;
+    font-size: clamp(1.8rem,3.2vw,2.55rem); line-height: 1.12; letter-spacing: -.025em;
+  }
+  .quick-start-copy h2 span { display: block; }
+  .quick-start-copy p { margin: 16px 0 0; color: rgba(226,217,243,.7); line-height: 1.7; }
+  .quick-start-copy a { display: inline-block; margin-top: 18px; color: #d6b9ff; font-weight: 600; }
+  .quick-start-copy a:hover { color: #fff; }
+  .quick-start-flow { min-width: 0; }
+  .quick-start .cmd {
+    width: 100%; justify-content: space-between; box-sizing: border-box;
+    color: #f4ecff; background: rgba(255,255,255,.055); border-color: rgba(222,205,255,.18);
+    box-shadow: none;
+  }
+  .quick-start .cmd:hover { border-color: #b983ff; }
+  .quick-start .cmd .copy { background: rgba(255,255,255,.07); color: #cab4ee; flex: none; }
+  .quick-start .cmd [data-copy-label] { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .start-steps { display: grid; grid-template-columns: repeat(3,1fr); gap: 18px; margin-top: 22px; }
+  .start-step { padding-top: 18px; border-top: 1px solid rgba(222,205,255,.15); }
+  .start-step .n {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; border-radius: 8px; margin-bottom: 12px;
+    color: #eadcff; background: rgba(168,85,247,.19); font: 600 .76rem/1 var(--font-mono);
+  }
+  .start-step h3 { margin: 0; color: #fff; font-size: .96rem; }
+  .start-step p { margin: 8px 0 0; color: rgba(219,210,238,.65); font-size: .84rem; line-height: 1.6; }
 
   .hero-meta {
     margin-top: 30px; display: flex; flex-wrap: wrap; gap: 22px;
@@ -637,8 +636,7 @@
   section[id] { scroll-margin-top: 82px; }
   .band { padding: 90px 0; }
   /* NOTE: content-visibility:auto was removed here — its scroll-time virtualization
-     flashed a 1px light seam between adjacent bands (a blank sliver during re-paint),
-     visible as a white line at the deep/light section boundaries. The perf win isn't
+     flashed a 1px seam between adjacent bands during re-paint. The perf win isn't
      worth the artifact on a single landing page; isolation + overflow are enough. */
   .band { isolation: isolate; overflow: hidden; }
   .band-head { max-width: 620px; }
@@ -650,8 +648,7 @@
   .band-head p { margin: 16px 0 0; color: var(--muted); font-size: 1.08rem; }
 
   /* ---------- Showcase video ---------- */
-  /* deep band: pairs with the hero above and keeps the page's deep/light rhythm
-     (demo→pillars→platform→extend→caps→compare = deep,light,deep,light,deep,light) */
+  /* deeper demo band: adds tonal separation without leaving the dark theme */
   .showcase {
     background:
       radial-gradient(100% 90% at 92% 8%, rgba(168,85,247,.17), transparent 46%),
@@ -693,7 +690,7 @@
   .showcase-frame video { display: block; width: 100%; height: auto; background: #000; }
 
   /* ---------- Three pillars ---------- */
-  /* first light band after the deep hero+demo pair — full top padding for the dark→light break */
+  /* quieter dark band after the hero and demo, with full top padding for separation */
   .pillars { padding-top: 90px; }
   .pillars::before {
     content: ""; position: absolute; z-index: -1; width: 760px; height: 760px; left: 50%; top: -260px; transform: translateX(-50%);
@@ -927,6 +924,23 @@
     display: flex; align-items: center; gap: 9px; }
   .cap .ct .g { width: 7px; height: 7px; border-radius: 2px; background: var(--accent); transform: rotate(45deg); }
   .cap p { margin: 9px 0 0; font-size: .9rem; color: var(--muted); line-height: 1.55; }
+  .cap.featured {
+    grid-column: 1 / -1; display: grid; grid-template-columns: minmax(220px,.7fr) minmax(0,1.8fr);
+    align-items: center; gap: 28px;
+    background: linear-gradient(110deg, color-mix(in srgb, var(--accent-wash) 72%, var(--surface)), var(--surface));
+  }
+  .cap.featured .ct { font-size: 1.05rem; }
+  .cap.featured p { margin: 0; font-size: .94rem; }
+  .platform .cap.featured {
+    background: linear-gradient(110deg, rgba(168,85,247,.2), rgba(255,255,255,.035));
+  }
+  .platform .cap.featured:hover {
+    background: linear-gradient(110deg, rgba(168,85,247,.27), rgba(255,255,255,.06));
+  }
+  @media (max-width: 620px) {
+    .cap.featured { display: block; }
+    .cap.featured p { margin-top: 9px; }
+  }
 
   /* ---------- Comparison ---------- */
   #compare {
@@ -993,6 +1007,9 @@
     margin: 0 auto; max-width: 16ch; text-wrap: balance; line-height: 1.1; color: var(--ink); }
   .cta-final p { margin: 18px auto 0; max-width: 44ch; color: var(--muted); font-size: 1.08rem; }
   .cta-final .row-btns { margin-top: 34px; display: flex; justify-content: center; flex-wrap: wrap; gap: 14px; }
+  .cta-final .cta-tertiary { margin-top: 18px; font-size: .9rem; }
+  .cta-final .cta-tertiary a { color: var(--accent); font-weight: 600; }
+  .cta-final .cta-tertiary a:hover { color: color-mix(in srgb, var(--accent) 76%, black); }
 
   footer.foot { border-top: 1px solid var(--line); padding: 40px 0 54px; background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--accent-wash) 36%, transparent)); }
   .foot-inner { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; justify-content: space-between; }
@@ -1016,6 +1033,13 @@
   }
   @media (max-width: 620px) {
     .wrap { padding-left: 18px; padding-right: 18px; }
+    .quick-start { padding: 38px 0 54px; }
+    .quick-start-card { grid-template-columns: 1fr; gap: 28px; padding: 28px 22px; border-radius: 20px; }
+    .quick-start-copy h2 { max-width: none; }
+    .start-steps { grid-template-columns: 1fr; gap: 14px; }
+    .start-step { display: grid; grid-template-columns: 32px 1fr; column-gap: 10px; }
+    .start-step .n { grid-row: 1 / span 2; }
+    .start-step p { margin-top: 5px; }
     .hero { min-height: 100vh; min-height: 100svh; padding: 116px 0; }
     h1.hero-title { font-size: clamp(2rem, 9.3vw, 2.45rem); line-height: 1.16; }
     .hero-shell > .hero-title { margin-bottom: 38px; }
@@ -1066,10 +1090,7 @@
       <a href="#extend">扩展</a>
       <a href="#compare">对比</a>
       <a href="https://nova-code.top/guide.html" target="_blank" rel="noopener">使用手册</a>
-      <a class="nav-cta" href="https://github.com/asathinkeroops/nova-code" target="_blank" rel="noopener">
-        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5A11.5 11.5 0 0 0 .5 12a11.5 11.5 0 0 0 7.86 10.92c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.53-1.34-1.29-1.7-1.29-1.7-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.2 1.77 1.2 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.7 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.43-2.7 5.4-5.26 5.69.41.36.78 1.05.78 2.12v3.14c0 .31.2.67.8.56A11.5 11.5 0 0 0 23.5 12 11.5 11.5 0 0 0 12 .5Z"/></svg>
-        GitHub
-      </a>
+      <a class="nav-cta" href="#get-started">立即开始</a>
     </nav>
   </div>
 </header>
@@ -1093,24 +1114,24 @@
       <h1 class="hero-title"><span class="title-line">面向国产大模型的</span><span class="hl title-line">终端编程 Agent</span></h1>
       <div class="hero-grid">
         <div class="hero-copy">
-        <span class="badge"><span class="dot"></span>开箱即用的成品 · MIT 开源</span>
-        <p class="hero-sub">开箱即用的成品，不是拼装框架——架构级适配国产大模型，同等预算跑出数倍吞吐，效果丝毫不减；MCP、Skill、Plugin、子代理、Goal、Hooks、Loop 一应俱全，命令行兼容 Claude Code，几乎零学习成本</p>
+        <span class="badge"><span class="dot"></span>高度适配国产模型 · 极致省钱</span>
+        <p class="hero-sub"><b>高度适配国产模型，极致省钱。</b>Anthropic / OpenAI 双传输覆盖 DeepSeek、Kimi、Qwen、GLM、MiniMax、豆包等模型端点；provider 与 transport 解耦，供应商适配跨协议复用。Append-only 历史与会话内稳定系统提示词提高重复上下文的前缀缓存复用，降低 token 成本。</p>
         <div class="hero-actions">
-          <a class="btn-primary" href="https://github.com/asathinkeroops/nova-code" target="_blank" rel="noopener">
-            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5A11.5 11.5 0 0 0 .5 12a11.5 11.5 0 0 0 7.86 10.92c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.53-1.34-1.29-1.7-1.29-1.7-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.2 1.77 1.2 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.7 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.43-2.7 5.4-5.26 5.69.41.36.78 1.05.78 2.12v3.14c0 .31.2.67.8.56A11.5 11.5 0 0 0 23.5 12 11.5 11.5 0 0 0 12 .5Z"/></svg>
-            在 GitHub 上 Star
+          <a class="btn-primary" href="#get-started">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+            3 分钟开始使用
           </a>
-          <button class="cmd" id="copyCmd" type="button" aria-label="复制克隆命令">
-            <span class="prompt">$</span><span id="cmdText">git clone github.com/asathinkeroops/nova-code</span>
+          <button class="cmd" id="copyInstallHero" type="button" data-copy="npm install @asathinkeroops/nova-code -g" data-copied-label="安装命令已复制" aria-label="复制安装命令">
+            <span class="prompt">$</span><span id="cmdText" data-copy-label>npm install @asathinkeroops/nova-code -g</span>
             <span class="copy" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
             </span>
           </button>
         </div>
         <div class="hero-meta">
-          <span>TypeScript 严格模式</span>
-          <span>pnpm 单仓 · 约 11 个包</span>
-          <span>CLI 二进制 <code style="font-family:var(--font-mono);color:#E7A6FF">nova</code></span>
+          <span>国产模型深度适配</span>
+          <span>Anthropic / OpenAI 双协议</span>
+          <span>Append-only 前缀缓存</span>
         </div>
         </div>
 
@@ -1126,6 +1147,31 @@
             <span>缓存命中 <b>96%</b></span><span class="sep">·</span>
             <span>本轮花费 <b>¥0.02</b></span><span class="sep">·</span>
             <span><code style="font-family:var(--font-mono);color:var(--accent-bright)">/usage</code> 查看明细</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- QUICK START -->
+  <section class="band quick-start" id="get-started">
+    <div class="wrap">
+      <div class="quick-start-card reveal">
+        <div class="quick-start-copy">
+          <span class="eyebrow">从看到做到</span>
+          <h2><span>三步跑起</span><span>第一轮任务</span></h2>
+          <p>不必先读完整手册。Node.js 20 及以上环境里，全局安装后在项目目录运行 <code>nova</code> 即可。</p>
+          <a href="https://nova-code.top/guide.html" target="_blank" rel="noopener">需要更多配置？查看完整使用手册 →</a>
+        </div>
+        <div class="quick-start-flow">
+          <button class="cmd" id="copyInstallStart" type="button" data-copy="npm install @asathinkeroops/nova-code -g" data-copied-label="已复制，粘贴到终端运行" aria-label="复制 npm 安装命令">
+            <span class="prompt">$</span><span data-copy-label>npm install @asathinkeroops/nova-code -g</span>
+            <span class="copy" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span>
+          </button>
+          <div class="start-steps">
+            <div class="start-step"><span class="n">01</span><h3>安装 CLI</h3><p>复制上面的命令，在终端完成全局安装。</p></div>
+            <div class="start-step"><span class="n">02</span><h3>进入项目启动</h3><p>切到你的代码目录，运行 <code>nova</code>。</p></div>
+            <div class="start-step"><span class="n">03</span><h3>填 Key，开始任务</h3><p>首次向导只询问 DeepSeek API Key，随后直接描述要完成的改动。</p></div>
           </div>
         </div>
       </div>
@@ -1168,9 +1214,9 @@
           </div>
           <div class="pillar-body">
             <div class="k">01 · 省钱</div>
-            <h3>前缀缓存自动命中 <em>prefix cache</em></h3>
-            <p>为国产大模型协议级适配，DeepSeek 与 Kimi 各有专用 provider profile。消息历史只追加、绝不原地改，写盘也是前缀感知——服务端缓存稳稳命中。</p>
-            <div class="metric"><b>96%+</b> 前缀缓存命中率</div>
+            <h3>为前缀缓存而设计 <em>prefix cache</em></h3>
+            <p>Anthropic 与 OpenAI 两条传输分支共享统一的 Agent 循环、重试与用量链路。消息历史采用 append-only，系统提示词在会话 epoch 内保持稳定，尽量扩大相邻请求可复用的公共前缀。</p>
+            <div class="metric"><b>稳定前缀</b> 面向缓存复用设计</div>
           </div>
         </article>
         <article class="pillar reveal">
@@ -1181,8 +1227,8 @@
           <div class="pillar-body">
             <div class="k">02 · 安全</div>
             <h3>操作系统级沙箱 <em>seatbelt / bwrap</em></h3>
-            <p>所有 bash 与子进程跑在内核沙箱里，文件写入被锁死在工作区内。零配置、零摩擦，不支持的平台静默降级绝不打断你。</p>
-            <div class="metric"><b>内核级</b> 不可绕过的兜底</div>
+            <p>沙箱默认关闭；启用后，bash 与后台任务等子进程的文件写入由 Seatbelt / bubblewrap 限制在工作区及显式允许目录。读取与网络默认开放，也可按需进一步收紧。</p>
+            <div class="metric"><b>一行开启</b> 权限引擎之上的纵深防御</div>
           </div>
         </article>
         <article class="pillar reveal">
@@ -1194,7 +1240,7 @@
             <div class="k">03 · 灵活</div>
             <h3>一个 .md 文件就是一项能力 <em>declarative</em></h3>
             <p>放一个带 frontmatter 的 Markdown，它立刻变成运行时能力：子代理、斜杠命令、技能。不改源码、不重编译，提交到 Git 即团队共享。</p>
-            <div class="metric"><b>0 行</b> 代码即可扩展</div>
+            <div class="metric"><b>Markdown</b> 即可声明扩展</div>
           </div>
         </article>
       </div>
@@ -1212,13 +1258,13 @@
       <div class="index">
         <div class="row reveal">
           <div class="num" aria-label="设计支柱 1"><img src="./planet-pillar-gas.webp" alt="" width="1254" height="1254" loading="lazy" decoding="async"></div>
-          <div class="rtitle"><h3>Append-only 架构</h3><div class="sub">zero-cost prefix caching</div></div>
-          <div class="rdesc">每一字节历史写入即不可变，由单一 <code>appendMessage</code> 治理。压缩不截断历史，只追加一个 <code>&lt;compacted&gt;</code> 边界，归档完整保留。系统提示词全程冻结，缓存永不塌陷。</div>
+          <div class="rtitle"><h3>Append-only 架构</h3><div class="sub">cache-friendly request prefixes</div></div>
+          <div class="rdesc">规范历史由单一 <code>appendMessage</code> 以 append-only 方式治理。压缩不截断历史，只追加一个 <code>&lt;compacted&gt;</code> 边界；模型视图从最新边界开始，系统提示词在同一会话 epoch 内保持稳定，帮助相邻请求保留公共前缀。</div>
         </div>
         <div class="row reveal">
           <div class="num" aria-label="设计支柱 2"><img src="./planet-pillar-rock.webp" alt="" width="1254" height="1254" loading="lazy" decoding="async"></div>
           <div class="rtitle"><h3>纵深防御</h3><div class="sub">every layer assumes failure</div></div>
-          <div class="rdesc">模型不可靠，系统必须优雅恢复。<code>max_tokens</code> 是暂停而非崩溃，自动续写;每个 tool_use 都配对 tool_result;字段名写错也照跑。
+          <div class="rdesc">模型输出可能中断，系统为常见失败提供恢复路径：<code>max_tokens</code> 在配置预算内触发续写；每个 tool_use 都会补齐配对的 tool_result；常见路径字段别名会在校验前归一化。
             <div class="chips"><span class="chip">truncation 续写</span><span class="chip">tool_result 兜底</span><span class="chip">read-before-edit</span><span class="chip">mtime 漂移检测</span></div>
           </div>
         </div>
@@ -1236,8 +1282,8 @@
         </div>
         <div class="row reveal">
           <div class="num" aria-label="设计支柱 5"><img src="./planet-pillar-ocean.webp" alt="" width="1254" height="1254" loading="lazy" decoding="async"></div>
-          <div class="rtitle"><h3>OS 级安全，无摩擦</h3><div class="sub">safe to enable by default</div></div>
-          <div class="rdesc">封装 Seatbelt 与 bubblewrap 于内核层：写入限制、读黑名单、网络隔离、违规可见。设计成永不阻塞你——平台不支持则静默降为空操作，单条命令包装失败仍照常执行。</div>
+          <div class="rtitle"><h3>OS 级写入隔离，按需开启</h3><div class="sub">opt-in defense in depth</div></div>
+          <div class="rdesc">封装 Seatbelt 与 bubblewrap 于内核层：默认关闭，启用后约束子进程的文件写入范围；读取默认开放，网络默认不受限，均可按配置收紧。平台或依赖不支持时会降级为非沙箱执行，可通过 <code>/sandbox</code> 查看实际状态。</div>
         </div>
       </div>
     </div>
@@ -1249,7 +1295,7 @@
       <div class="ext-copy reveal">
         <span class="eyebrow">声明式扩展</span>
         <h2>放一个 Markdown，就多一项能力</h2>
-        <p>Nova 的扩展哲学只有一句话：带 frontmatter 的 <code style="font-family:var(--font-mono);color:var(--accent)">.md</code> 文件，立刻变成运行时能力。所有外部能力都走声明式、零代码的入口，并共享同一道权限门。</p>
+        <p>带 frontmatter 的 <code style="font-family:var(--font-mono);color:var(--accent)">.md</code> 文件可声明子代理、斜杠命令与技能；Hook、MCP、LSP 和插件也通过配置接入，并共享同一套权限边界。</p>
         <ul class="ext-list">
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span><b>子代理、斜杠命令、技能</b>——同一套模式定义</span></li>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span>兼容 Claude Code 的<b>生命周期 Hook 与 MCP 桥接</b></span></li>
@@ -1285,6 +1331,7 @@
         <h2>不只是 CLI，更像一个开发平台</h2>
       </div>
       <div class="caps reveal">
+        <div class="cap featured"><div class="ct"><span class="g"></span>国产模型双传输</div><p><code>provider</code> 负责 thinking、错误翻译与余额探针，<code>transport</code> 独立选择 Anthropic Messages 或 OpenAI <code>chat/completions</code> wire；切换协议无需复制整套 Agent 配置。</p></div>
         <div class="cap"><div class="ct"><span class="g"></span>多会话热切换</div><p><code>/resume</code> 交互式挑选历史会话，完整迁移 Agent 状态；<code>/clear</code> 开新会话而不丢旧的。</p></div>
         <div class="cap"><div class="ct"><span class="g"></span>快照 + /rewind</div><p>写前 SHA-256 内容寻址快照。回滚同时还原对话与文件，并自动检测外部改动冲突。</p></div>
         <div class="cap"><div class="ct"><span class="g"></span>Cron 调度</div><p>Agent 自建定时任务，支持 <code>5m</code> 间隔或 cron 表达式，<code>/resume</code> 时自动重新装载。</p></div>
@@ -1301,7 +1348,7 @@
       <div class="band-head reveal">
         <span class="eyebrow">同类对比</span>
         <h2>把可靠性当成第一等的事</h2>
-        <p>许多能力 Nova 是开源阵营里唯一或最完整的一个（对比状态截至 2026 年，各家仍在演进）。</p>
+        <p>以下聚焦 Nova 当前实现的可靠性设计；同类工具持续演进，具体能力以各自最新版本为准。</p>
       </div>
       <div class="cmp-wrap reveal">
         <table class="cmp">
@@ -1313,7 +1360,7 @@
             <tr><td>Goal 自动纠错循环</td><td class="nova-col yes">✓ Agent 化校验</td><td class="no">—</td><td class="no">—</td><td class="no">—</td></tr>
             <tr><td>快照 + 回滚</td><td class="nova-col yes">✓ 历史 + 文件</td><td class="no">—</td><td class="no">—</td><td class="no">—</td></tr>
             <tr><td>max_tokens 恢复</td><td class="nova-col yes">✓ 自动续写</td><td class="no">硬报错</td><td class="no">硬报错</td><td class="no">—</td></tr>
-            <tr><td>Append-only 前缀缓存</td><td class="nova-col yes">✓ 96%+ 命中</td><td class="no">部分</td><td class="no">N/A</td><td class="no">N/A</td></tr>
+            <tr><td>Append-only 前缀缓存</td><td class="nova-col yes">✓ 缓存友好</td><td class="no">部分</td><td class="no">N/A</td><td class="no">N/A</td></tr>
             <tr><td>OS 级沙箱</td><td class="nova-col yes">✓ 开源</td><td class="no">闭源</td><td class="no">—</td><td class="no">—</td></tr>
             <tr><td>会话热切换</td><td class="nova-col yes">✓ 完整状态迁移</td><td class="no">仅 --continue</td><td class="no">—</td><td class="no">—</td></tr>
           </tbody>
@@ -1327,18 +1374,19 @@
     <div class="hero-orbs"><span class="o1" style="left:50%;top:-40px;transform:translateX(-50%)"></span></div>
     <div class="wrap" style="position:relative;z-index:1">
       <img class="planet reveal" src="./app-icon-v2.webp" alt="Nova-Code logo" width="96" height="96">
-      <h2 class="reveal">如果你在用国产大模型写代码</h2>
-      <p class="reveal">架构级适配国产大模型，MCP、Skill、子代理、Goal、Hooks 全内置，命令行兼容 Claude Code——省钱省心，还不丢工作。试试看，顺手 Star。</p>
+      <h2 class="reveal">准备好跑第一轮任务了吗</h2>
+      <p class="reveal">Node.js 20 及以上即可安装。首次启动只需填写 DeepSeek API Key，然后在你的项目目录里直接描述任务。</p>
       <div class="row-btns reveal">
-        <a class="btn-primary" href="https://github.com/asathinkeroops/nova-code" target="_blank" rel="noopener">
-          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5A11.5 11.5 0 0 0 .5 12a11.5 11.5 0 0 0 7.86 10.92c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.53-1.34-1.29-1.7-1.29-1.7-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.2 1.77 1.2 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.7 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.43-2.7 5.4-5.26 5.69.41.36.78 1.05.78 2.12v3.14c0 .31.2.67.8.56A11.5 11.5 0 0 0 23.5 12 11.5 11.5 0 0 0 12 .5Z"/></svg>
-          github.com/asathinkeroops/nova-code
-        </a>
-        <button class="cmd" id="copyCmd2" type="button" aria-label="复制克隆命令">
-          <span class="prompt">$</span><span>git clone github.com/asathinkeroops/nova-code</span>
-          <span class="copy" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span>
+        <button class="btn-primary" id="copyInstallFinal" type="button" data-copy="npm install @asathinkeroops/nova-code -g" data-copied-label="安装命令已复制" aria-label="复制安装命令">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 9h8M8 13h5"/></svg>
+          <span data-copy-label>复制安装命令</span>
         </button>
+        <a class="cmd" href="https://nova-code.top/guide.html" target="_blank" rel="noopener">
+          <span class="prompt">→</span><span>查看完整使用手册</span>
+          <span class="copy" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M8 7h9v9"/></svg></span>
+        </a>
       </div>
+      <p class="cta-tertiary reveal"><a href="https://github.com/asathinkeroops/nova-code" target="_blank" rel="noopener">先看看 GitHub 源码与版本说明 →</a></p>
     </div>
   </section>
 </main>
@@ -1368,7 +1416,7 @@
 (function () {
   var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  // ---- nav: glassy over the supernova hero, solid light bar once past it ----
+  // ---- nav: glassy over the supernova hero, solid dark bar once past it ----
   var nav = document.getElementById("nav");
   var hero = document.getElementById("hero");
   // Cache the hero's bottom edge instead of reading offsetHeight on every scroll tick.
@@ -1392,18 +1440,31 @@
   }
 
   // ---- copy command buttons ----
-  function wireCopy(id) {
-    var el = document.getElementById(id);
+  function fallbackCopy(text) {
+    var area = document.createElement("textarea");
+    area.value = text; area.setAttribute("readonly", "");
+    area.style.position = "fixed"; area.style.opacity = "0";
+    document.body.appendChild(area); area.select();
+    try { document.execCommand("copy"); } catch (_) {}
+    document.body.removeChild(area);
+  }
+  function wireCopy(el) {
     if (!el) return;
     el.addEventListener("click", function () {
-      var text = "git clone https://github.com/asathinkeroops/nova-code";
-      var done = function () { el.classList.add("copied"); setTimeout(function(){ el.classList.remove("copied"); }, 1400); };
+      var text = el.getAttribute("data-copy") || "";
+      var label = el.querySelector("[data-copy-label]");
+      var original = label ? label.textContent : "";
+      var done = function () {
+        el.classList.add("copied");
+        if (label) label.textContent = el.getAttribute("data-copied-label") || "已复制";
+        setTimeout(function(){ el.classList.remove("copied"); if (label) label.textContent = original; }, 1600);
+      };
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(done).catch(done);
-      } else { done(); }
+        navigator.clipboard.writeText(text).then(done).catch(function () { fallbackCopy(text); done(); });
+      } else { fallbackCopy(text); done(); }
     });
   }
-  wireCopy("copyCmd"); wireCopy("copyCmd2");
+  document.querySelectorAll("[data-copy]").forEach(wireCopy);
 
   // ---- shared animation driver: one rAF, smooth 60fps cap, pauses when hidden/offscreen ----
   var animators = [];
