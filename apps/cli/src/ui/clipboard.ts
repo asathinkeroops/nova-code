@@ -68,7 +68,8 @@ function tryOsc52(text: string): void {
  * throws — the caller's recourse is to fall back to a typed path.
  *
  * Platform helpers:
- *   macOS   — `osascript` reads the clipboard as «class PNGf» and writes the file.
+ *   macOS   — JXA reads the pasteboard's native PNG/TIFF UTI; AppleScript is a
+ *             compatibility fallback for legacy clipboard representations.
  *   Linux   — `wl-paste` (Wayland) or `xclip` (X11) pipe `image/png` to us.
  *   Windows — PowerShell `Clipboard::GetImage()` saves the PNG.
  */
@@ -83,10 +84,7 @@ export async function saveClipboardImage(destPath: string): Promise<boolean> {
 }
 
 /** Spawn a command and resolve with its exit code and captured stdout bytes. */
-function capture(
-  bin: string,
-  args: string[],
-): Promise<{ code: number | null; stdout: Buffer }> {
+function capture(bin: string, args: string[]): Promise<{ code: number | null; stdout: Buffer }> {
   return new Promise((resolve) => {
     let child;
     try {
@@ -104,29 +102,75 @@ function capture(
 
 /** PNG magic number — guards against a tool emitting an empty/non-image stream. */
 function isPng(buf: Buffer): boolean {
-  return (
-    buf.length > 8 &&
-    buf[0] === 0x89 &&
-    buf[1] === 0x50 &&
-    buf[2] === 0x4e &&
-    buf[3] === 0x47
-  );
+  return buf.length > 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47;
 }
 
-async function saveMacClipboardImage(dest: string): Promise<boolean> {
+type CaptureCommand = (
+  bin: string,
+  args: string[],
+) => Promise<{ code: number | null; stdout: Buffer }>;
+
+/** @internal Exported so platform command selection can be tested without a live clipboard. */
+export async function saveMacClipboardImage(
+  dest: string,
+  runCommand: CaptureCommand = capture,
+): Promise<boolean> {
   // The clipboard image may live only in memory (copied from a chat app or
-  // browser, never saved to disk). Prefer its PNG representation and write it
-  // straight to `dest`.
-  if (await macClipboardAs("«class PNGf»", dest)) return true;
+  // browser, never saved to disk). Read the native UTI instead of asking
+  // AppleScript to coerce it to an old four-character class: apps such as IM
+  // clients commonly publish `public.tiff`, and that coercion can fail with
+  // error -1700 even though valid TIFF bytes are present on the pasteboard.
+  if (await macPasteboardAs("public.png", dest, runCommand)) return true;
+
   // Many apps expose only a TIFF representation. Capture that, then convert to
-  // PNG with macOS's built-in `sips` (the read tool only consumes PNG/JPEG/…).
+  // PNG with macOS's built-in `sips` (the read tool consumes PNG/JPEG/…).
   const tiff = `${dest}.tiff`;
-  if (await macClipboardAs("«class TIFF»", tiff)) {
-    const { code } = await capture("sips", ["-s", "format", "png", tiff, "--out", dest]);
+  if (await macPasteboardAs("public.tiff", tiff, runCommand)) {
+    const { code } = await runCommand("sips", ["-s", "format", "png", tiff, "--out", dest]);
+    await rm(tiff, { force: true }).catch(() => undefined);
+    return code === 0;
+  }
+
+  // Older applications may still advertise only legacy pasteboard classes.
+  // Preserve the previous AppleScript path as a compatibility fallback.
+  if (await macClipboardAs("«class PNGf»", dest, runCommand)) return true;
+  if (await macClipboardAs("«class TIFF»", tiff, runCommand)) {
+    const { code } = await runCommand("sips", ["-s", "format", "png", tiff, "--out", dest]);
     await rm(tiff, { force: true }).catch(() => undefined);
     return code === 0;
   }
   return false;
+}
+
+/**
+ * Write one native macOS pasteboard UTI to `dest` through AppKit. JXA gives us
+ * direct access to the NSData advertised by the source application and avoids
+ * AppleScript's lossy/coercion-dependent `the clipboard as «class …»` path.
+ * The script and destination are separate argv entries, so no shell or script
+ * escaping is involved.
+ */
+async function macPasteboardAs(
+  uti: "public.png" | "public.tiff",
+  dest: string,
+  runCommand: CaptureCommand,
+): Promise<boolean> {
+  const script = [
+    'ObjC.import("AppKit");',
+    "function run(argv) {",
+    "  const data = $.NSPasteboard.generalPasteboard.dataForType(argv[0]);",
+    '  if (!data) return "none";',
+    '  return data.writeToFileAtomically(argv[1], true) ? "ok" : "none";',
+    "}",
+  ].join("\n");
+  const { code, stdout } = await runCommand("osascript", [
+    "-l",
+    "JavaScript",
+    "-e",
+    script,
+    uti,
+    dest,
+  ]);
+  return code === 0 && stdout.toString().trim() === "ok";
 }
 
 /**
@@ -135,7 +179,11 @@ async function saveMacClipboardImage(dest: string): Promise<boolean> {
  * representation. Args are passed to osascript directly (no shell), so the path
  * needs no escaping.
  */
-async function macClipboardAs(klass: string, dest: string): Promise<boolean> {
+async function macClipboardAs(
+  klass: string,
+  dest: string,
+  runCommand: CaptureCommand,
+): Promise<boolean> {
   const script = [
     "on run argv",
     "set destPath to item 1 of argv",
@@ -154,8 +202,8 @@ async function macClipboardAs(klass: string, dest: string): Promise<boolean> {
   const args: string[] = [];
   for (const line of script) args.push("-e", line);
   args.push(dest);
-  const { stdout } = await capture("osascript", args);
-  return stdout.toString().trim() === "ok";
+  const { code, stdout } = await runCommand("osascript", args);
+  return code === 0 && stdout.toString().trim() === "ok";
 }
 
 async function saveLinuxClipboardImage(dest: string): Promise<boolean> {
