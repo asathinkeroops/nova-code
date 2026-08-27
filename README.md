@@ -32,6 +32,8 @@
   &nbsp;•&nbsp;
   <a href="#-架构"><b>架构</b></a>
   &nbsp;•&nbsp;
+  <a href="docs/guide.md"><b>使用手册</b></a>
+  &nbsp;•&nbsp;
   <a href="#-开发"><b>开发</b></a>
 </p>
 
@@ -45,7 +47,9 @@
 
 <br>
 
-Nova 读代码、跑命令、改文件 —— 通过工具调用把任务推到完成。它是**开箱即用的成品**，不是需要自己拼装的框架：权限、沙箱、LSP、MCP、Skills、插件、可重放会话都已就位，装好填 key 就能干活。模型层面向**国产大模型**：内置**两套传输协议**——Anthropic 兼容（DeepSeek / Kimi 原生）与 OpenAI 兼容（Qwen / GLM / MiniMax / 豆包等 `chat/completions` 端点原生）。**供应商（`provider`）与协议（`transport`）解耦**：DeepSeek 一个 profile 同时服务 `/anthropic` 与 `https://api.deepseek.com` 两个端点，`settings.transport` 切换、错误翻译与余额探针原样保留；thinking 形状、错误码、余额探针等差异由 **provider profile**（按 `settings.provider` 选择）吸收。其余 Anthropic 兼容端点走通用 `other` 档（OpenAI 兼容端点无需独立 provider —— 在供应商自己的 profile 上把 `settings.transport` 设为 `"openai"` 即可）。整个请求管线围绕服务端自动前缀缓存设计，让同一件事花更少的 token。
+Nova 读代码、跑命令、改文件 —— 通过工具调用把任务推到完成。它是**开箱即用的成品**，不是需要自己拼装的框架：权限、工作区信任、沙箱、LSP、MCP、Skills、插件、可恢复会话都已就位，装好填 key 就能干活。
+
+模型接入由两个正交维度组成：**供应商适配（`provider`）**负责 thinking 形状、错误翻译、重试与余额探测，**传输协议（`transport`）**负责 Anthropic Messages 或 OpenAI `chat/completions` wire。当前首启向导默认接入 DeepSeek 的 OpenAI 兼容端点；同一个 DeepSeek profile 也能切到 `/anthropic`，而 Kimi / Qwen / GLM / MiniMax / 豆包等端点可通过内置 profile 或手动配置接入。整个请求管线围绕服务端自动前缀缓存设计，让重复上下文复用更多、token 花得更少。
 
 <br>
 
@@ -55,16 +59,16 @@ Nova 读代码、跑命令、改文件 —— 通过工具调用把任务推到�
 <tr>
 <td width="50%" valign="top">
 
-### ⚡ 国产模型原生适配，零配置
+### ⚡ 双协议原生适配，开箱即用
 
-不用调 `cache_control`、不用翻错误码文档。装好，填 key，开干。thinking 按各家的 wire 形状映射（DeepSeek 的 `effort`、Kimi 的 `thinking.type`，而不是到处套 `budget_tokens`）、HTTP 错误码翻成人话并附上充值 / 建 key 的链接、状态行实时显示账户余额。OpenAI 兼容端点（DeepSeek / Qwen / GLM / MiniMax / 豆包等）走原生 `chat/completions` 传输——`settings.transport: "openai"` 加对应的 `baseURL` 即可接入，供应商适配（错误翻译 / 余额探针）原样保留。
+不用调 `cache_control`、不用翻错误码文档。装好，填 key，开干。thinking 按协议和供应商映射：DeepSeek 的 Anthropic wire 使用 `output_config.effort`，OpenAI wire 使用 `thinking.type` + `reasoning_effort`，Kimi 的 Anthropic wire 使用 `thinking.type`；HTTP 错误会翻成人话并附上充值 / 建 key 链接。DeepSeek / Qwen / GLM / MiniMax / 豆包等 `chat/completions` 端点走原生 OpenAI 传输，供应商的错误翻译与余额探针不会因换协议丢失。
 
 </td>
 <td width="50%" valign="top">
 
 ### 🎚️ 多 provider，三档阶梯
 
-内置 DeepSeek、Moonshot（Kimi）、通用 Anthropic 兼容（`other`）三套 provider profile，各带错误码表与限流重试（DeepSeek / Kimi 另带余额探测）；OpenAI 兼容端点通过 `transport: "openai"` 在现有供应商 profile 上使用，不设独立 provider。模型按 `lite` / `pro` / `max` 三档配置，每档独立设 id、thinking 等级和定价；`/model`、`--model` 切的是档位而非裸 provider id。
+内置 DeepSeek、Moonshot（Kimi，beta）和通用 Anthropic 兼容（`other`）三套 provider profile，各带错误码表与限流重试（DeepSeek / Kimi 另带余额探测）；当前首次配置向导只开放 DeepSeek，其余端点可手动配置。OpenAI 兼容端点通过 `transport: "openai"` 复用现有供应商 profile，不另造 provider。模型按 `lite` / `pro` / `max` 三档配置，每档独立设 id、thinking、模态、上下文窗口与定价。
 
 </td>
 </tr>
@@ -73,7 +77,7 @@ Nova 读代码、跑命令、改文件 —— 通过工具调用把任务推到�
 
 ### 🚀 缓存友好刻在骨子里
 
-历史 append-only，请求体逐字节稳定（内部 `meta` 字段发送前剥除，不污染前缀），记忆与 skills 只在会话边界重建、绝不中途变动 —— 让服务端自动前缀缓存每轮命中（DeepSeek、Kimi 均为此类缓存），响应更快、token 更省。auto 压缩默认在上下文用到窗口一半时触发，且只追加一条 `<compacted>` 边界。
+历史 append-only，请求体逐字节稳定（内部 `meta` 字段发送前剥除，不污染前缀），记忆与 skills 只在会话边界重建、绝不中途变动 —— 尽可能让服务端自动前缀缓存跨轮复用（DeepSeek、Kimi 均为此类缓存），响应更快、token 更省。auto 压缩默认在上下文用到窗口一半时触发，且只追加一条 `<compacted>` 边界。
 
 </td>
 <td width="50%" valign="top">
@@ -89,14 +93,14 @@ Nova 读代码、跑命令、改文件 —— 通过工具调用把任务推到�
 
 ### 🧩 用 Markdown 扩展，用插件分发
 
-自定义子 agent、slash 命令、skills、生命周期 hooks —— 一个 `.md` 文件、frontmatter 写配置、正文写指令，即刻生效。想整包分享就装进插件：`nova plugin install` 从本地路径、GitHub、git url 或 marketplace 安装，兼容 Claude Code 的插件格式。
+自定义子 agent、slash 命令和 skills 都用 Markdown 声明；生命周期 shell hooks 则写进全局配置或项目的 `.nova/hooks.json` / `.nova/hooks.local.json`。想整包分享就装进插件：`nova plugin install` 支持本地路径、GitHub、git URL 或 marketplace，兼容 Claude Code 插件格式。
 
 </td>
 <td width="50%" valign="top">
 
 ### 🤖 为自动化而生
 
-`nova -p` 无头模式单轮跑完即退，配 `--output-format json` 就能接进脚本与 CI；`/review <PR#>` 走 `gh` 只读评审 GitHub PR；`cronCreate` 按间隔或 cron 表达式定时触发 prompt；`/goal` 设定成功条件后自动推进直到达成。
+`nova -p` 无头模式单轮跑完即退，非 TTY 时还能从 stdin 自动读取 prompt；`--output-format json|jsonl` 输出完整结果或流式事件，便于接入脚本、CI 与 git hooks。`/review <PR#>` 通过 `gh` 只读评审 GitHub PR；`cronCreate` 定时触发 prompt；`/goal` 按成功条件自动推进。
 
 </td>
 </tr>
@@ -121,19 +125,24 @@ Nova 读代码、跑命令、改文件 —— 通过工具调用把任务推到�
 ```bash
 npm install @asathinkeroops/nova-code -g
 nova                               # 启动 REPL
+nova "解释这个仓库的架构"           # 先跑一条 prompt，再留在 REPL
 nova -p "解释这段代码"              # headless 模式：只跑一轮，输出后退出
+echo "总结当前 diff" | nova --output-format jsonl
 nova upgrade                       # 更新到最新版本（启动时也会自动检查并提示）
 ```
 
-首次启动进入交互式配置向导，写入 `~/.nova/nova.config.json`（API key、模型、session 目录等）；不想让 key 明文落盘时，导出环境变量 `NOVA_API_KEY` 即可——它优先于配置文件里的 `apiKey`。模型按 `lite` / `pro` / `max` 三档配置，每档可单独设定 thinking 等级与定价（`models.<档>.pricing`，支持 USD / CNY）；`/model`、`--model` 切换的是档位而非裸 provider id。**三档的默认表按 provider 内置在代码里、不写进配置文件**，配置里只放你自己的覆盖项——这样升级 Nova 就能拿到新的模型 id / 价格 / 上下文窗口。默认 provider 为 `deepseek`，`settings.provider` 可切到 `moonshot`（Kimi，beta）或通用 `other`；`settings.transport: "openai"` 把任意供应商切到其 OpenAI 兼容端点（如 DeepSeek 的 `https://api.deepseek.com`）。界面与回复语言由 `settings.language`（模型回复语言，默认跟随系统 locale）与 `settings.locale`（仅 TUI 静态文案，内置 zh-CN / EN）分别控制。
+首次启动目前会直接询问 DeepSeek API key，并把 `provider: "deepseek"`、`transport: "openai"`、`baseURL: "https://api.deepseek.com"` 与默认档位 `pro` 写入 `~/.nova/nova.config.json`。不想让 key 明文落盘时，可导出 `NOVA_API_KEY`；它优先于配置文件里的 `apiKey`，向导也不会把环境变量中的 key 写回磁盘。首次进入一个工作区时还会要求确认信任，信任记录只保存在用户全局配置中。
+
+DeepSeek 的内置模型梯度是 `lite` → `deepseek-v4-flash-vision-exp`（支持图片输入），`pro` / `max` → `deepseek-v4-pro`，三档分别使用不同 thinking 深度。**默认模型表按 provider 内置在代码里，不写进配置文件**；你的配置只保存覆盖项，因此升级即可获得新的模型 id、价格和上下文窗口。`/model` 持久切换档位，`--model` 只覆盖本次启动；界面与回复语言分别由 `settings.locale`（TUI，内置 zh-CN / EN）和 `settings.language`（模型回复，默认跟随系统 locale）控制。更多 provider 与完整配置见[使用手册](docs/guide.md)。
 
 ### 📦 更多子命令
 
+<!-- prettier-ignore -->
 | 子命令 | 作用 |
 | --- | --- |
 | `nova doctor` | 体检全局配置 |
-| `nova mcp` | 管理 MCP 服务器 |
-| `nova plugin` | 安装 / 启停插件 |
+| `nova mcp` | 添加、查看、移除 MCP 服务器并管理远程 OAuth 登录 |
+| `nova plugin` | 安装、卸载、启停插件并管理 marketplace |
 | `nova upgrade` | 升级 CLI |
 
 <br>
@@ -142,11 +151,12 @@ nova upgrade                       # 更新到最新版本（启动时也会自�
 
 ### 内置工具
 
-模型能调用的工具，覆盖读写、搜索、执行、代码智能、联网：
+模型能调用的工具覆盖读写、搜索、执行、代码智能与联网。最终工具集会按配置、已发现的 Skills / LSP / MCP 能力和 `permissions.deny` 动态生成：
 
+<!-- prettier-ignore -->
 | 工具 | 能力 |
 | --- | --- |
-| `read` / `write` / `edit` | 读文件（行号 + 分页，支持 `.xlsx` / `.ods` 表格与 `.pdf` 文档；图片需模型档位支持图像输入）、整文件写、精确文本替换 |
+| `read` / `write` / `edit` | 读文件（行号 + 分页，支持 `.xlsx/.xls/.xlsm/.xlsb/.ods` 表格与 `.pdf` 文档）、整文件写、精确文本替换；图片通过 Anthropic / OpenAI 两种传输都可用的用户图片消息交给支持视觉的档位 |
 | `glob` / `grep` | 按文件名匹配、全文正则搜索 |
 | `bash` | 运行 shell 命令；`run_in_background: true` 则把 dev server、watcher 等长任务放到后台，立即返回 id、pid 和日志路径 |
 | `killBackground` | 终止一个后台命令 |
@@ -156,18 +166,20 @@ nova upgrade                       # 更新到最新版本（启动时也会自�
 | `createTodo` / `updateTodo` / `getTodoList` / `clearTodoList` | 会话内多步清单 |
 | `createTask` / `updateTask` / `getTaskList` / `clearTaskList` | 跨会话任务计划，支持依赖 |
 | `askUserQuestion` | 向用户提多选问题并等待作答 |
+| `createSubAgent` | 委派一个有独立上下文和工具集的 `explore` / `plan` / `general-purpose` 或自定义子 agent |
 | `enterPlanMode` / `exitPlanMode` | 模型自己进入只读的 plan 模式先出方案；方案写好后请用户确认才退出并动手。就算模型忘了调 `exitPlanMode`，一轮结束时 nova 也会自己弹确认框，同意即恢复原权限档并接着实现 |
 | `cronCreate` / `cronList` / `cronDelete` | 按间隔或 cron 表达式定时跑 prompt 或 `/命令`；会话内生效，`/resume` 后自动重挂 |
 | `loadSkill` | 按需加载 skill |
 
 ### ⌨️ 内置命令
 
+<!-- prettier-ignore -->
 | 命令 | 能力 |
 | --- | --- |
 | `/help` | 查看所有命令 |
-| `/model` · `/effort` | 切换模型档位（lite/pro/max）、调整思考等级 |
+| `/model` · `/effort` | 持久切换模型档位、调整当前档位的思考等级；显式数字 budget 仅本会话生效 |
 | `/compact` | 压缩长历史成摘要 |
-| `/clear` · `/resume` · `/rewind` | 开新会话、恢复历史会话、回退历史 |
+| `/clear` · `/resume` · `/rewind` | 开新会话、恢复历史会话；回退历史时预览并恢复 Nova 的文件快照，外部改动会作为冲突保留 |
 | `/rename` | 给当前会话起个名字（显示在输入框边框上） |
 | `/plan` | 只读调研出实现方案，不动手 |
 | `/goal` | 设定成功条件后自动推进直到达成 |
@@ -175,7 +187,8 @@ nova upgrade                       # 更新到最新版本（启动时也会自�
 | `/init` | 分析代码库生成 `NOVA.md` |
 | `/agents` · `/agent` | 查看子 agent 类型、委派任务 |
 | `/nova-code-guide` · `/nova-code-guide-update` | 就 Nova 自身答疑的只读 Q&A agent；后者拉取最新源码 |
-| `/commands` · `/skills` · `/mcp` · `/lsp` · `/plugin` | 查看已注册命令、skills、MCP 服务器、语言服务器、已加载插件 |
+| `/commands` · `/skills` · `/lsp` | 查看或重载命令、查看 skills 与语言服务器 |
+| `/mcp` · `/plugin` | MCP 菜单可鉴权、重连、退出登录和查看工具；插件菜单查看本会话已加载贡献（安装 / 启停走 `nova plugin`） |
 | `/sandbox` | 本会话内开关 OS 命令沙箱（`on` / `off`） |
 | `/loop` | 按间隔重复跑某条 prompt 或命令（`/loop <间隔> <prompt\|/cmd>`，`/loop stop` 停止） |
 | `/doctor` | 体检全局配置（JSON/schema、模型/key、hooks、MCP），报告问题，可交给 agent 就地修复 |
@@ -186,17 +199,18 @@ nova upgrade                       # 更新到最新版本（启动时也会自�
 
 ### 核心特性
 
+<!-- prettier-ignore -->
 | 特性 | 能力 |
 | --- | --- |
 | 🧠 子 agent | 带全新上下文、独立工具集干活：`explore` 只读检索、`plan` 只读规划、`general-purpose` 全权限、`nova-code-guide` 答疑，可自定义；每个 agent 可经 `subagent.model` 单独指定模型档位 |
-| 🛡️ 权限与沙箱 | <kbd>shift</kbd>+<kbd>tab</kbd> 切换 `default` / `acceptEdits` / `auto` / `plan`（模型也能自己进 plan 模式；退出必须经你确认，且这道确认由 nova 在回合结束时主动弹，不靠模型自觉）；OS 级沙箱把子进程写入隔离在工作区（macOS Seatbelt / Linux bubblewrap），默认关闭、可一键开启 |
+| 🛡️ 权限与沙箱 | 首次进入目录先过工作区信任门；默认 `auto` 模式以静态规则 + 可选小模型分类器判断 bash 风险，<kbd>shift</kbd>+<kbd>tab</kbd> 可切 `default` / `acceptEdits` / `auto` / `plan`；OS 级沙箱把子进程写入隔离在工作区（macOS Seatbelt / Linux bubblewrap），默认关闭、可一键开启 |
 | 📄 文件防护 | 改文件前强制先读、检测外部改动，避免误覆盖 |
-| 🔌 MCP | 接入外部 MCP 服务器（`stdio` / `http` / `sse`），把它们的工具当内置工具用，同样受权限管控 |
+| 🔌 MCP | 接入 `stdio` / `http` / `sse` 服务器；工具进入统一权限门，resources 通过只读工具访问，prompts 映射成 slash 命令，远程服务器支持 OAuth 2.0 + PKCE |
 | 📚 Skills | 把可复用操作手册写成 `SKILL.md`，模型按需加载，省 token 又能随仓库分发 |
-| 📝 Markdown 扩展 | 自定义 slash 命令、子 agent、生命周期 hooks，丢 `.md` 进 `.nova/`、frontmatter 配置，免改代码 |
-| 🧩 插件 | `nova plugin` 从本地路径 / GitHub / git url / marketplace 安装、启停插件；一个插件可贡献命令、agent、skill、hooks、MCP / LSP server 与 `bin/` 可执行文件，兼容 Claude Code 插件格式 |
-| 🗂️ 三层记忆 | 全局 → 用户 → 项目，按 `NOVA.md` > `CLAUDE.md` > `AGENTS.md` 优先级加载 |
-| 💻 交互体验 | 全屏 Ink/React REPL，流式输出 + 鼠标；`@path` / `/` 补全、<kbd>↑</kbd> <kbd>↓</kbd> 翻历史；实时状态行显示 token 用量、缓存命中、provider 余额（DeepSeek / Kimi）、git 分支、上下文占用 |
+| 📝 声明式扩展 | `.nova/commands/*.md`、`.nova/agents/*.md`、`.nova/skills/*/SKILL.md` 声明命令、子 agent 与 skills；`.nova/hooks.json` / `.nova/hooks.local.json` 声明生命周期 shell hooks |
+| 🧩 插件 | `nova plugin` 从本地路径 / GitHub / git URL / marketplace 安装、启停插件；一个插件可贡献命令、agent、skill、hooks、MCP / LSP server 与 `bin/`，兼容 Claude Code 插件格式；插件加载默认关闭，需显式启用 |
+| 🗂️ 记忆 | 静态记忆按全局 → 用户 → 项目叠加，每层按 `NOVA.md` > `CLAUDE.md` > `AGENTS.md` 选一个；另有按项目隔离、跨会话持久的 agent 自动记忆 |
+| 💻 交互体验 | 全屏 Ink/React REPL，流式输出 + 鼠标；`@path` / `/` 补全、`!command` shell 直通、图片粘贴 / 拖拽、<kbd>↑</kbd> <kbd>↓</kbd> 翻历史；状态行显示 token、缓存命中、provider 余额、git 分支与上下文占用 |
 | 🌐 多语言 | 界面与模型回复语言分开配置：`settings.language` 控制模型回复语言（默认跟随系统 locale），`settings.locale` 单独覆盖 TUI 静态文案（内置 zh-CN / EN），二者可不同（如中文界面 + 英文回复）；不支持的语言标签回落到英文 |
 
 <br>
@@ -215,8 +229,8 @@ Nova 的内核是 `@nova/core`：模型循环（`agentLoop`）加上包在外面
 packages/
   core           agent kernel：port/hook 契约 · agent loop · turn 生命周期 · message 类型
   base           地基（叶子）：config 设置 schema + 模型表 + 计费 · host logger/session/transcript/路径安全 · prompt slash 契约 + 展开 · text 字符串工具
-  model          Anthropic 兼容适配器 · provider profile · 重试
-  agent          port 实现 + 装配（assembleAgent）· 三层记忆 + auto compact · 子 agent
+  model          Anthropic / OpenAI 兼容传输 · provider profile · 重试
+  agent          port 实现 + 装配（assembleSession / assembleAgent）· 静态/自动记忆 + auto compact · 子 agent
   tools          ToolRegistry · dispatcher · 内置工具
   safety         PermissionEngine · 文件访问不变量 · OS 级写入沙箱
   mcp            MCP 客户端（stdio / HTTP / SSE）
@@ -248,6 +262,7 @@ pnpm format / pnpm format:check
 单包脚本：`pnpm --filter @nova/<name> <script>`。测试文件和源码并排放：`packages/*/src/**/*.test.ts(x)`。
 
 新贡献者请先读：
+
 - `CLAUDE.md` — 架构约定、loop 契约、ESM 规范
 - `nova-architecture.html` — 架构总图
 

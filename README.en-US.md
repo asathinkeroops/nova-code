@@ -32,6 +32,8 @@
   &nbsp;•&nbsp;
   <a href="#-architecture"><b>Architecture</b></a>
   &nbsp;•&nbsp;
+  <a href="docs/guide.md"><b>User Guide (ZH)</b></a>
+  &nbsp;•&nbsp;
   <a href="#-development"><b>Development</b></a>
 </p>
 
@@ -45,7 +47,9 @@
 
 <br>
 
-Nova reads code, runs commands, edits files — and drives your task to done through tool use. It's a **finished product**, not a kit you assemble yourself: permissions, sandbox, LSP, MCP, Skills, plugins, and replayable sessions are all in place — install, drop in a key, get to work. The model layer targets **Chinese LLMs**: two wire protocols are built in — Anthropic-compatible (native for DeepSeek / Kimi) and OpenAI-compatible (native for Qwen / GLM / MiniMax / Doubao and other `chat/completions` endpoints). **Provider and transport are decoupled**: one DeepSeek profile serves both the `/anthropic` and the plain `https://api.deepseek.com` endpoints — `settings.transport` switches wires while error translation and the balance probe stay. A **provider profile** (selected by `settings.provider`) absorbs the per-vendor quirks — thinking shape, error tables, balance probe. DeepSeek and Kimi (Moonshot, beta) have dedicated profiles; any other Anthropic-compatible endpoint falls back to the generic `other` profile — OpenAI-compatible endpoints need no separate provider, just `settings.transport: "openai"` on the vendor's own profile. The whole request pipeline is designed around server-side automatic prefix caching, so the same work costs fewer tokens.
+Nova reads code, runs commands, edits files — and drives your task to done through tool use. It's a **finished product**, not a kit you assemble yourself: permissions, workspace trust, sandbox, LSP, MCP, Skills, plugins, and resumable sessions are all in place — install, drop in a key, get to work.
+
+Model integration has two orthogonal dimensions: a **provider profile** handles thinking shape, error translation, retries, and balance probes, while the **transport** chooses the Anthropic Messages or OpenAI `chat/completions` wire. First-run setup currently connects DeepSeek's OpenAI-compatible endpoint by default; the same DeepSeek profile can switch to `/anthropic`, while Kimi, Qwen, GLM, MiniMax, Doubao, and other endpoints can be connected through built-in provider profiles or manual configuration. The whole request pipeline is designed around server-side automatic prefix caching, maximizing reuse of repeated context to reduce token cost.
 
 <br>
 
@@ -55,16 +59,16 @@ Nova reads code, runs commands, edits files — and drives your task to done thr
 <tr>
 <td width="50%" valign="top">
 
-### ⚡ Native to Chinese LLMs, zero config
+### ⚡ Native dual-protocol support, ready to run
 
-No `cache_control` to tweak, no error-code docs to dig through. Install, drop in your key, go. Thinking maps to each vendor's own wire shape (DeepSeek's `effort`, Kimi's `thinking.type` — rather than forcing `budget_tokens` everywhere), HTTP error codes are translated into plain language with a top-up / new-key link attached, and your account balance shows live on the status line. OpenAI-compatible endpoints (DeepSeek / Qwen / GLM / MiniMax / Doubao, …) use the native `chat/completions` transport — set `settings.transport: "openai"` and the matching `baseURL` on the vendor's own profile; error translation and the balance probe carry over unchanged.
+No `cache_control` to tweak, no error-code docs to dig through. Install, drop in your key, go. Thinking is mapped per vendor and wire: DeepSeek uses `output_config.effort` on the Anthropic wire and `thinking.type` + `reasoning_effort` on the OpenAI wire; Kimi uses `thinking.type` on its Anthropic wire. HTTP failures become plain-language guidance with top-up / new-key links. DeepSeek, Qwen, GLM, MiniMax, Doubao, and other `chat/completions` endpoints use the native OpenAI transport without losing provider-specific error translation or balance probes.
 
 </td>
 <td width="50%" valign="top">
 
 ### 🎚️ Multi-provider, three-tier ladder
 
-Three built-in provider profiles — DeepSeek, Moonshot (Kimi), and generic Anthropic-compatible (`other`) — each with its own error-code table and rate-limit retries (DeepSeek and Kimi also probe account balance); OpenAI-compatible endpoints are reached via `transport: "openai"` on an existing vendor profile, not a separate provider. Models are configured across `lite` / `pro` / `max` tiers, each with its own id, thinking level, and pricing. `/model` and `--model` switch the tier, not a raw provider id.
+Three provider profiles are built in — DeepSeek, Moonshot (Kimi, beta), and generic Anthropic-compatible (`other`) — each with its own error table and rate-limit retries (DeepSeek and Kimi also probe account balance). First-run setup currently exposes only DeepSeek; other endpoints are configured manually. OpenAI-compatible endpoints reuse an existing vendor profile via `transport: "openai"`, not a separate provider. Models use `lite` / `pro` / `max` tiers, each with its own id, thinking, modalities, context window, and pricing.
 
 </td>
 </tr>
@@ -73,7 +77,7 @@ Three built-in provider profiles — DeepSeek, Moonshot (Kimi), and generic Anth
 
 ### 🚀 Cache-friendly by design
 
-History is append-only and the request body stays byte-stable (internal `meta` fields are stripped before sending so they never pollute the prefix); memory and skills are rebuilt only at session boundaries, never mid-turn — keeping the server-side automatic prefix cache (DeepSeek and Kimi both use one) hitting every turn. Auto-compaction fires at half the context window and only appends a `<compacted>` boundary.
+History is append-only and the request body stays byte-stable (internal `meta` fields are stripped before sending so they never pollute the prefix); memory and skills are rebuilt only at session boundaries, never mid-turn — maximizing reuse of the server-side automatic prefix cache across turns (DeepSeek and Kimi both use one). Auto-compaction fires at half the context window and only appends a `<compacted>` boundary.
 
 </td>
 <td width="50%" valign="top">
@@ -89,14 +93,14 @@ Turn it on and subprocess (`bash` / background tasks) writes are confined to the
 
 ### 🧩 Extend with markdown, package as plugins
 
-Define custom sub-agents, slash commands, skills, or lifecycle hooks — drop a `.md` file with frontmatter and you're done. No code changes, ships with the repo. To share a whole bundle, install it as a plugin: `nova plugin install` from a local path, GitHub repo, git url, or marketplace — Claude Code plugin-format compatible.
+Declare custom sub-agents, slash commands, and skills in Markdown; lifecycle shell hooks live in the global config or `.nova/hooks.json` / `.nova/hooks.local.json`. To share a whole bundle, install it as a plugin: `nova plugin install` supports local paths, GitHub, git URLs, and marketplaces in the Claude Code-compatible plugin format.
 
 </td>
 <td width="50%" valign="top">
 
 ### 🤖 Built for automation
 
-`nova -p` runs a single non-interactive turn and exits; pair it with `--output-format json` to wire into scripts and CI. `/review <PR#>` reviews a GitHub PR read-only via `gh`; `cronCreate` fires a prompt on an interval or cron expression (re-armed on `/resume`); `/goal` sets a success condition and drives itself until it's met.
+`nova -p` runs one non-interactive turn and exits; in a non-TTY environment it can also read the prompt from stdin. `--output-format json|jsonl` emits a complete result or streamed events for scripts, CI, and git hooks. `/review <PR#>` reviews a GitHub PR read-only via `gh`; `cronCreate` schedules prompts; `/goal` keeps working toward an explicit success condition.
 
 </td>
 </tr>
@@ -121,19 +125,24 @@ Nova closely mirrors the Claude Code workflow — the same slash commands, keybi
 ```bash
 npm install @asathinkeroops/nova-code -g
 nova                               # launch the REPL
+nova "explain this repository"     # run an initial prompt, then stay in the REPL
 nova -p "explain this code"        # headless: one turn, print & exit
+echo "summarize the current diff" | nova --output-format jsonl
 nova upgrade                       # update to the latest version (also auto-checked at startup)
 ```
 
-First launch walks through an interactive setup (API key, model, etc.) → `~/.nova/nova.config.json`. To keep the key out of that plaintext file, export `NOVA_API_KEY` instead — it takes precedence over the config file's `apiKey`. Models are configured as a `lite` / `pro` / `max` ladder, each tier with its own thinking level and pricing (`models.<tier>.pricing`, USD / CNY); `/model` and `--model` switch tiers, not raw provider ids. **The default ladder is built in per provider and never written to the config file** — the file carries only your overrides, so upgrading Nova picks up new model ids, prices and context windows. The default provider is `deepseek`; set `settings.provider` to `moonshot` (Kimi, beta) or the generic `other`; `settings.transport: "openai"` switches any vendor to its OpenAI-compatible endpoint (e.g. DeepSeek's `https://api.deepseek.com`). Interface and reply language are controlled separately by `settings.language` (the model's reply language, defaults to the system locale) and `settings.locale` (TUI static text only, bundled zh-CN / EN).
+First launch currently asks directly for a DeepSeek API key and writes `provider: "deepseek"`, `transport: "openai"`, `baseURL: "https://api.deepseek.com"`, and the default `pro` tier to `~/.nova/nova.config.json`. To keep the key out of that plaintext file, export `NOVA_API_KEY`; it overrides `apiKey`, and setup never copies an environment key back to disk. The first time Nova enters a workspace, it also asks you to trust it; the trust record lives only in the user-level config.
+
+DeepSeek's built-in ladder is `lite` → `deepseek-v4-flash-vision-exp` (image input), and `pro` / `max` → `deepseek-v4-pro`, with a different thinking depth on each tier. **Provider defaults are built into the code and never written to the config file**; the file carries only your overrides, so upgrades can deliver new model ids, prices, and context windows. `/model` persists the selected tier, while `--model` only overrides the current launch. `settings.locale` controls TUI text (bundled zh-CN / EN), while `settings.language` controls model replies and defaults to the system locale. See the [Chinese user guide](docs/guide.md) for more providers and the full configuration reference.
 
 ### 📦 More subcommands
 
+<!-- prettier-ignore -->
 | Subcommand | What it does |
 | --- | --- |
 | `nova doctor` | Health-check the global config |
-| `nova mcp` | Manage MCP servers |
-| `nova plugin` | Install / enable / disable plugins |
+| `nova mcp` | Add, inspect, remove, and OAuth-authenticate MCP servers |
+| `nova plugin` | Install, uninstall, enable/disable plugins, and manage marketplaces |
 | `nova upgrade` | Update the CLI |
 
 <br>
@@ -142,11 +151,12 @@ First launch walks through an interactive setup (API key, model, etc.) → `~/.n
 
 ### Built-in tools
 
-Tools the model can call — covering read/write, search, execution, code intelligence, and the web:
+Model-callable tools cover read/write, search, execution, code intelligence, and the web. The final set is built dynamically from settings, discovered Skills / LSP / MCP capabilities, and `permissions.deny`:
 
+<!-- prettier-ignore -->
 | Tool | Capability |
 | --- | --- |
-| `read` / `write` / `edit` | Read files (line-numbered + paginated, incl. `.xlsx` / `.ods` spreadsheets and `.pdf` documents; images on image-capable model tiers), whole-file write, exact-text replace |
+| `read` / `write` / `edit` | Read files (line-numbered + paginated, incl. `.xlsx/.xls/.xlsm/.xlsb/.ods` spreadsheets and `.pdf` documents), whole-file write, exact-text replace; images reach vision-capable tiers as user-image messages supported by both Anthropic and OpenAI transports |
 | `glob` / `grep` | Filename matching, full-text regex search |
 | `bash` | Run shell commands; with `run_in_background: true` it detaches long tasks (dev servers, watchers) and returns an id, pid, and log path immediately |
 | `killBackground` | Terminate a background command |
@@ -156,18 +166,20 @@ Tools the model can call — covering read/write, search, execution, code intell
 | `createTodo` / `updateTodo` / `getTodoList` / `clearTodoList` | In-session multi-step checklist |
 | `createTask` / `updateTask` / `getTaskList` / `clearTaskList` | Cross-session task plan with dependencies |
 | `askUserQuestion` | Ask the user multiple-choice questions and wait for answers |
+| `createSubAgent` | Delegate to an `explore`, `plan`, `general-purpose`, or custom sub-agent with fresh context and its own tool set |
 | `enterPlanMode` / `exitPlanMode` | The model puts itself into read-only plan mode to work out an approach, then asks you to approve the plan before it leaves and starts implementing. Even when it forgets to call `exitPlanMode`, nova raises the prompt itself once the turn ends — approving restores your previous mode and continues straight into the work |
 | `cronCreate` / `cronList` / `cronDelete` | Schedule a prompt or `/command` on an interval or cron expression; live within a session and re-arm on `/resume` |
 | `loadSkill` | Load a skill on demand |
 
 ### ⌨️ Built-in commands
 
+<!-- prettier-ignore -->
 | Command | Capability |
 | --- | --- |
 | `/help` | See all commands |
-| `/model` · `/effort` | Switch model tier (lite/pro/max), adjust the thinking level |
+| `/model` · `/effort` | Persist the active model tier and its thinking level; an explicit numeric budget is session-only |
 | `/compact` | Summarize long history |
-| `/clear` · `/resume` · `/rewind` | Start a fresh session, resume a past one, roll back history |
+| `/clear` · `/resume` · `/rewind` | Start or resume sessions; rewind history with a previewed file-snapshot restore while preserving external changes as conflicts |
 | `/rename` | Give the current session a custom name (shown on the input frame) |
 | `/plan` | Investigate read-only and produce an implementation plan |
 | `/goal` | Set a success condition and auto-work toward it until met |
@@ -175,7 +187,8 @@ Tools the model can call — covering read/write, search, execution, code intell
 | `/init` | Analyze the codebase to generate `NOVA.md` |
 | `/agents` · `/agent` | See sub-agent types, delegate a task |
 | `/nova-code-guide` · `/nova-code-guide-update` | Read-only Q&A agent about Nova itself; the latter pulls the newest source |
-| `/commands` · `/skills` · `/mcp` · `/lsp` · `/plugin` | See registered commands, skills, MCP servers, language servers, loaded plugins |
+| `/commands` · `/skills` · `/lsp` | Inspect or reload commands, and inspect skills and language servers |
+| `/mcp` · `/plugin` | Authenticate/reconnect/log out MCP servers and inspect tools; inspect contributions loaded from plugins (installation and toggles use `nova plugin`) |
 | `/sandbox` | Enable/disable the OS command sandbox for this session (`on` / `off`) |
 | `/loop` | Re-run a prompt or command on an interval (`/loop <interval> <prompt\|/cmd>`, `/loop stop` to end) |
 | `/doctor` | Health-check the global config (JSON/schema, model/key, hooks, MCP), report issues, optionally hand them to the agent to fix in place |
@@ -186,17 +199,18 @@ Tools the model can call — covering read/write, search, execution, code intell
 
 ### Core capabilities
 
+<!-- prettier-ignore -->
 | Capability | What it gives you |
 | --- | --- |
 | 🧠 Sub-agents | Work with fresh context and their own tool set: `explore` (read-only retrieval), `plan` (read-only planning), `general-purpose` (full access), `nova-code-guide` (Q&A about Nova), plus custom types; each agent can run on its own model tier via `subagent.model` |
-| 🛡️ Permissions & sandbox | <kbd>shift</kbd>+<kbd>tab</kbd> cycles `default` / `acceptEdits` / `auto` / `plan` (the model can also enter plan mode itself; leaving it always needs your approval, and nova raises that prompt itself when a turn ends rather than relying on the model to ask); an OS-level sandbox confines subprocess writes to the workspace (macOS Seatbelt / Linux bubblewrap), off by default and one flag to enable |
+| 🛡️ Permissions & sandbox | A workspace-trust gate runs before project code is loaded; the default `auto` mode uses static rules plus an optional small-model classifier for bash risk, while <kbd>shift</kbd>+<kbd>tab</kbd> cycles `default` / `acceptEdits` / `auto` / `plan`; an OS-level sandbox confines subprocess writes to the workspace (macOS Seatbelt / Linux bubblewrap), off by default |
 | 📄 File guarding | Files must be read before they're edited, and external changes are detected — no accidental clobbering |
-| 🔌 MCP | Connect external MCP servers (`stdio` / `http` / `sse`) and use their tools like built-ins, under the same permission gating |
+| 🔌 MCP | Connect `stdio` / `http` / `sse` servers; tools enter the normal permission gate, resources are exposed through read-only tools, prompts become slash commands, and remote servers support OAuth 2.0 + PKCE |
 | 📚 Skills | Write reusable playbooks as `SKILL.md`, loaded on demand by the model — token-cheap and distributable with the repo |
-| 📝 Markdown extensions | Custom slash commands, sub-agents, and lifecycle hooks: drop a `.md` into `.nova/`, configure via frontmatter, no code changes |
-| 🧩 Plugins | `nova plugin` installs / enables / disables plugins from a local path, GitHub, git url, or marketplace; one plugin can contribute commands, agents, skills, hooks, MCP / LSP servers, and `bin/` executables, in the Claude Code-compatible plugin format |
-| 🗂️ Three-layer memory | Global → user → project, loaded by `NOVA.md` > `CLAUDE.md` > `AGENTS.md` priority |
-| 💻 TUI | Full-screen Ink/React REPL, streaming output + mouse; `@path` / `/` completion, <kbd>↑</kbd> <kbd>↓</kbd> history; live status line with token usage, cache hits, provider balance (DeepSeek / Kimi), git branch, context fill |
+| 📝 Declarative extensions | `.nova/commands/*.md`, `.nova/agents/*.md`, and `.nova/skills/*/SKILL.md` declare commands, sub-agents, and skills; `.nova/hooks.json` / `.nova/hooks.local.json` declare lifecycle shell hooks |
+| 🧩 Plugins | `nova plugin` installs / enables / disables plugins from a local path, GitHub, git URL, or marketplace; one plugin can contribute commands, agents, skills, hooks, MCP / LSP servers, and `bin/`, in the Claude Code-compatible format; plugin loading is opt-in |
+| 🗂️ Memory | Static memory layers global → user → project, choosing one file per layer by `NOVA.md` > `CLAUDE.md` > `AGENTS.md`; agent-maintained auto-memory is isolated per project and persists across sessions |
+| 💻 TUI | Full-screen Ink/React REPL, streaming output + mouse; `@path` / `/` completion, `!command` shell passthrough, pasted/dropped images, <kbd>↑</kbd> <kbd>↓</kbd> history; status line with tokens, cache hits, provider balance, git branch, and context fill |
 | 🌐 Multilingual | UI and model-reply language configured independently: `settings.language` drives the model's reply language (defaults to the system locale), `settings.locale` overrides the TUI's static text (bundled zh-CN / EN); the two can differ (e.g. Chinese UI + English replies), and an unsupported tag falls back to English |
 
 <br>
@@ -215,8 +229,8 @@ Nova's kernel is `@nova/core`: the model loop (`agentLoop`) plus the turn lifecy
 packages/
   core           agent kernel: port/hook contracts · agent loop · turn lifecycle · message types
   base           leaf foundation: config settings schema + model tables + cost · host logger/session/transcript/path-safety · prompt slash contract + expansion · text string utils
-  model          Anthropic-compatible adapter · provider profiles · retry
-  agent          port implementations + assembly (assembleAgent) · 3-layer memory + auto compact · sub-agents
+  model          Anthropic/OpenAI-compatible transports · provider profiles · retry
+  agent          port implementations + assembly (assembleSession / assembleAgent) · static/auto memory + auto compact · sub-agents
   tools          ToolRegistry · dispatcher · built-in tools
   safety         PermissionEngine · file-access invariants · OS-level write sandbox
   mcp            MCP client (stdio / HTTP / SSE)
@@ -248,6 +262,7 @@ pnpm format / pnpm format:check
 Per-package scripts: `pnpm --filter @nova/<name> <script>`. Tests live next to source: `packages/*/src/**/*.test.ts(x)`.
 
 New contributors should start with:
+
 - `CLAUDE.md` — architecture invariants, loop contract, ESM conventions
 - `nova-architecture.html` — architecture diagram and overview
 
