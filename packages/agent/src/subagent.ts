@@ -41,7 +41,10 @@ export const SUBAGENT_PROMPT: ToolPromptSection = {
   order: 60,
   requires: [SUBAGENT_TOOL_NAME],
   render: () =>
-    `- Delegate focused subtasks to parallel sub-agents with ${SUBAGENT_TOOL_NAME} (type: explore = read-only retrieval, plan = read-only planning, general-purpose = full tools).`,
+    [
+      `- Delegate focused subtasks to parallel sub-agents with ${SUBAGENT_TOOL_NAME} (type: explore = read-only retrieval, plan = read-only planning, general-purpose = full tools).`,
+      `- Prefer delegation only when a task truly splits into independent subtasks: hand those off to sub-agents so each runs in its own context, shielding yours from noisy investigation and keeping it free for coordination — you only receive the final report. Don't split what is deeply interdependent or already small.`,
+    ].join("\n"),
 };
 
 /**
