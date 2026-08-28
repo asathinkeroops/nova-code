@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyToolDenylist,
   autoMemoryRules,
-  sessionLogRules,
+  sessionCaptureRules,
   DEFAULT_PERMISSION_RULES,
   MODE_COMMAND_TOOLS,
   resolveModeDecision,
@@ -135,31 +135,35 @@ describe("auto-memory rules", () => {
     expect(merged.slice(0, mem.length)).toEqual(mem);
   });
 
-  it("auto-allows read/glob/grep scoped to the session log dirs", () => {
+  it("auto-allows read/glob/grep scoped to the session capture dirs (logs + images)", () => {
     const BG = `${CWD}/.nova/sessions/s1/background`;
     const MON = `${CWD}/.nova/sessions/s1/monitors`;
-    expect(sessionLogRules([BG, MON])).toEqual([
-      { tool: "read", effect: "allow", match: { path: { within: [BG, MON] } } },
-      { tool: "glob", effect: "allow", match: { path: { within: [BG, MON] } } },
-      { tool: "grep", effect: "allow", match: { path: { within: [BG, MON] } } },
+    const IMG = `${CWD}/.nova/sessions/s1/images`;
+    expect(sessionCaptureRules([BG, MON, IMG])).toEqual([
+      { tool: "read", effect: "allow", match: { path: { within: [BG, MON, IMG] } } },
+      { tool: "glob", effect: "allow", match: { path: { within: [BG, MON, IMG] } } },
+      { tool: "grep", effect: "allow", match: { path: { within: [BG, MON, IMG] } } },
     ]);
   });
 
-  it("lets the engine read a captured-output log without prompting, but not write one", () => {
-    // Following a running command is a plain `read` of its output_path, and the
-    // logs live outside the workspace — without this rule every poll would ask.
-    const LOGS = "/tmp/nova-sessions/s1/background";
+  it("lets the engine read a pasted image without prompting, but not write one", () => {
+    // Pasting a screenshot saves it under {session.dir}/images, outside the
+    // workspace — without the capture rule that read would prompt (and did, in
+    // auto mode, before images were added to the set).
+    const BG = "/tmp/nova-sessions/s1/background";
     const MON = "/tmp/nova-sessions/s1/monitors";
+    const IMG = "/tmp/nova-sessions/s1/images";
     const settings = parseSettings({});
     const eng = new PermissionEngine({
       defaultEffect: settings.permissions.defaultEffect,
-      rules: resolvePermissionRules(settings, [CWD], undefined, [LOGS, MON]),
+      rules: resolvePermissionRules(settings, [CWD], undefined, [BG, MON, IMG]),
     });
-    expect(eng.evaluate({ tool: "read", input: { path: `${LOGS}/abc.log` } }).effect).toBe("allow");
-    expect(eng.evaluate({ tool: "grep", input: { path: `${LOGS}/abc.log` } }).effect).toBe("allow");
-    expect(eng.evaluate({ tool: "read", input: { path: `${MON}/xyz.log` } }).effect).toBe("allow");
+    expect(eng.evaluate({ tool: "read", input: { path: `${IMG}/pasted-123.png` } }).effect).toBe(
+      "allow",
+    );
+    expect(eng.evaluate({ tool: "grep", input: { path: `${IMG}` } }).effect).toBe("allow");
     // Only the read-only set is granted; the manager owns writing these files.
-    expect(eng.evaluate({ tool: "write", input: { path: `${LOGS}/abc.log` } }).effect).not.toBe(
+    expect(eng.evaluate({ tool: "write", input: { path: `${IMG}/pasted-123.png` } }).effect).not.toBe(
       "allow",
     );
     // And the grant does not leak to other out-of-workspace paths.

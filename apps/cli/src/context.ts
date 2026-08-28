@@ -746,14 +746,17 @@ export async function createContext(
       : undefined;
   // Captured-output dirs are the model's read-back path for still-running work
   // (`bash` returns a background command's `output_path`; `monitor` returns its
-  // watch script's `log_path`), so read/grep must be allowed there — they live
-  // under the session dir, outside the workspace fence.
-  const sessionLogDirs = await Promise.all(
-    ["background", "monitors"].map((d) => canonicalizePath(workspace, join(session.dir, d))),
+  // watch script's `log_path`) and for the images the user pastes into the
+  // prompt (repl.ts saves them under `session.dir/images`). read/grep must be
+  // allowed there — they live under the session dir, outside the workspace fence.
+  const sessionCaptureDirs = await Promise.all(
+    ["background", "monitors", "images"].map((d) =>
+      canonicalizePath(workspace, join(session.dir, d)),
+    ),
   );
   const permission = new PermissionEngine({
     defaultEffect: settings.permissions.defaultEffect,
-    rules: resolvePermissionRules(settings, allowedRoots, autoMemoryDir, sessionLogDirs),
+    rules: resolvePermissionRules(settings, allowedRoots, autoMemoryDir, sessionCaptureDirs),
     ask: askWithSignal,
   });
   (ctx as { permission: PermissionEngine }).permission = permission;

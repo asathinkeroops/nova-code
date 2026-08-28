@@ -208,18 +208,20 @@ export function autoMemoryRules(autoDir: string): PermissionRule[] {
 
 /**
  * Auto-allow the read-only tools inside the session's captured-output
- * directories: background-command logs and monitor logs. Both hand the model a
- * path instead of a dedicated read-back tool, so following a running command —
- * or checking a watch script's stderr — IS a `read`/`grep`. Those are otherwise
- * fenced to the workspace by {@link workspaceReadRules}, while the logs live
- * under `~/.nova/sessions/`; without this rule every such read would prompt.
+ * directories: background-command logs, monitor logs, and pasted/dropped
+ * images. All three hand the model a path instead of a dedicated read-back
+ * tool, so following a running command, checking a watch script's stderr, or
+ * reading a pasted screenshot IS a `read`/`grep`/`glob`. Those are otherwise
+ * fenced to the workspace by {@link workspaceReadRules}, while they live under
+ * `~/.nova/sessions/`; without this rule every such read would prompt.
  *
- * Safe to allow: these directories hold nothing but output nova itself captured
- * from commands the user already approved at launch. `dirs` must already be
- * canonicalized (see canonicalizeRoots); writing there is the managers' business
- * alone, so only the read-only set is granted.
+ * Safe to allow: these directories hold nothing but assets nova itself
+ * captured — command output from runs the user approved, and images the user
+ * pasted into the prompt. `dirs` must already be canonicalized (see
+ * canonicalizeRoots); writing there is the managers' business alone, so only
+ * the read-only set is granted.
  */
-export function sessionLogRules(dirs: readonly string[]): PermissionRule[] {
+export function sessionCaptureRules(dirs: readonly string[]): PermissionRule[] {
   const within = [...dirs];
   return WORKSPACE_READ_TOOLS.map((tool) => ({
     tool,
@@ -264,12 +266,12 @@ export function resolvePermissionRules(
   settings: Settings,
   roots: readonly string[],
   autoMemoryDir?: string,
-  sessionLogDirs: readonly string[] = [],
+  sessionCaptureDirs: readonly string[] = [],
 ): PermissionRule[] {
   return [
     ...settings.permissions.rules,
     ...(autoMemoryDir ? autoMemoryRules(autoMemoryDir) : []),
-    ...(sessionLogDirs.length > 0 ? sessionLogRules(sessionLogDirs) : []),
+    ...(sessionCaptureDirs.length > 0 ? sessionCaptureRules(sessionCaptureDirs) : []),
     ...workspaceReadRules(roots),
     ...DEFAULT_PERMISSION_RULES,
   ];
