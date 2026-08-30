@@ -2,8 +2,7 @@ import { markSynthetic, type MessageParam, type ToolUseBlock } from "@nova/core"
 import { TodoStore } from "./store.js";
 
 export interface TodoReminderOptions {
-  threshold?: number;
-  toolName?: string;
+  /** Head line before the bulleted open items. Default: "Update your todos:". */
   reminderText?: string;
 }
 
@@ -11,33 +10,20 @@ export type InterjectCtx = { turn: number; toolUses: ToolUseBlock[] };
 export type InterjectFn = (ctx: InterjectCtx) => Promise<MessageParam[] | void>;
 
 export function makeTodoReminder(store: TodoStore, opts: TodoReminderOptions = {}): InterjectFn {
-  const threshold = opts.threshold ?? 3;
-  const toolName = opts.toolName ?? "updateTodo";
-  const text = opts.reminderText ?? "<todo-reminder>Update your todos.</todo-reminder>";
-  let streak = 0;
+  const head = opts.reminderText ?? "Update your todos:";
 
-  return async ({ toolUses }) => {
-    const list = store.list();
-    const hasUnfinished = list.some((t) => t.status === "pending" || t.status === "in_progress");
+  return async ({ toolUses }: InterjectCtx): Promise<MessageParam[] | void> => {
+    // Only nudge on a turn that actually moved the task forward. The loop pairs
+    // every tool_use with a tool_result, so a non-empty set here IS the progress.
+    if (toolUses.length === 0) return undefined;
 
-    // A fully-completed list (non-empty, nothing in flight) no longer nudges a
-    // clearTodoList here: the CLI auto-clears it after a short delay
-    // (scheduleTodoAutoClear), which doesn't depend on the model complying. Such
-    // a list just falls through to the `!hasUnfinished` suppression below.
+    const open = store.list().filter((t) => t.status === "pending" || t.status === "in_progress");
+    if (open.length === 0) return undefined;
 
-    if (toolUses.some((u) => u.name === toolName)) {
-      streak = 0;
-      return;
-    }
-    streak++;
-    if (streak < threshold) return;
-
-    // Suppress when nothing is actionable (empty list). Keep streak so a fresh
-    // in_progress todo can trigger immediately on the next turn instead of
-    // waiting another `threshold` turns.
-    if (!hasUnfinished) return;
-
-    streak = 0;
+    // List the specific open items so the model can act on them directly rather
+    // than a vague "update your todos" it may not map back to the checklist.
+    const lines = open.map((t) => `- [${t.status}] ${t.description}`);
+    const text = `<todo-reminder>${head}\n${lines.join("\n")}</todo-reminder>`;
     return [markSynthetic({ role: "user", content: [{ type: "text", text }] }, "todo-reminder")];
   };
 }

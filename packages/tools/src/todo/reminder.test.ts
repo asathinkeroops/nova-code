@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { MessageParam, ToolUseBlock } from "@nova/core";
+import type { ContentBlock, MessageParam, ToolUseBlock } from "@nova/core";
 import { TodoStore } from "./store.js";
 import { makeTodoReminder } from "./reminder.js";
 
@@ -15,122 +15,93 @@ function call(
   return fn({ turn, toolUses });
 }
 
+/** Extract the concatenated text of a message's content blocks. */
+function textOf(msg: MessageParam): string {
+  if (typeof msg.content === "string") return msg.content;
+  return msg.content
+    .map((b) => (b.type === "text" ? (b as Extract<ContentBlock, { type: "text" }>).text : ""))
+    .join("");
+}
+
 describe("makeTodoReminder", () => {
-  it("injects after `threshold` consecutive turns without updateTodo when todos are unfinished", async () => {
+  it("injects listing every open item on a turn that made progress", async () => {
     const store = new TodoStore();
     store.create("write code");
+    store.create("fix test");
     const remind = makeTodoReminder(store);
 
-    expect(await call(remind, [use("bash")])).toBeUndefined();
-    expect(await call(remind, [use("read")])).toBeUndefined();
-    const out = await call(remind, [use("edit")]);
+    const out = await call(remind, [use("bash")]);
     expect(out).toEqual([
       {
         role: "user",
-        content: [{ type: "text", text: "<todo-reminder>Update your todos.</todo-reminder>" }],
+        content: [
+          {
+            type: "text",
+            text: "<todo-reminder>Update your todos:\n- [pending] write code\n- [pending] fix test</todo-reminder>",
+          },
+        ],
         meta: { synthetic: true, kind: "todo-reminder" },
       },
     ]);
   });
 
-  it("resets the streak whenever updateTodo appears in the turn", async () => {
+  it("lists in_progress items too, next to pending ones", async () => {
+    const store = new TodoStore();
+    const running = store.create("running");
+    store.update(running.id, "in_progress");
+    store.create("next");
+    const remind = makeTodoReminder(store);
+
+    const out = (await call(remind, [use("bash")]))!;
+    expect(textOf(out[0] as MessageParam)).toContain("- [in_progress] running");
+    expect(textOf(out[0] as MessageParam)).toContain("- [pending] next");
+  });
+
+  it("does not inject on a turn with no tool calls (no progress)", async () => {
     const store = new TodoStore();
     store.create("x");
     const remind = makeTodoReminder(store);
 
-    await call(remind, [use("bash")]);
-    await call(remind, [use("updateTodo")]); // reset
-    expect(await call(remind, [use("read")])).toBeUndefined();
-    expect(await call(remind, [use("read")])).toBeUndefined();
-    expect(await call(remind, [use("read")])).toBeDefined();
+    expect(await call(remind, [])).toBeUndefined();
   });
 
-  it("counts a mixed turn (updateTodo + other tools) as a reset", async () => {
-    const store = new TodoStore();
-    store.create("x");
-    const remind = makeTodoReminder(store);
-
-    await call(remind, [use("bash")]);
-    await call(remind, [use("updateTodo"), use("bash")]); // reset
-    expect(await call(remind, [use("read")])).toBeUndefined();
-    expect(await call(remind, [use("read")])).toBeUndefined();
-    expect(await call(remind, [use("read")])).toBeDefined();
-  });
-
-  it("resets streak after injecting so the next reminder needs another `threshold` turns", async () => {
-    const store = new TodoStore();
-    store.create("x");
-    const remind = makeTodoReminder(store);
-
-    await call(remind, [use("bash")]);
-    await call(remind, [use("bash")]);
-    await call(remind, [use("bash")]); // injects
-    expect(await call(remind, [use("bash")])).toBeUndefined();
-    expect(await call(remind, [use("bash")])).toBeUndefined();
-    expect(await call(remind, [use("bash")])).toBeDefined();
-  });
-
-  it("does not inject when the todo list is empty", async () => {
+  it("does not inject when the list is empty", async () => {
     const store = new TodoStore();
     const remind = makeTodoReminder(store);
 
-    await call(remind, [use("bash")]);
-    await call(remind, [use("bash")]);
     expect(await call(remind, [use("bash")])).toBeUndefined();
   });
 
   it("stays silent when every todo is completed (CLI auto-clears instead of nudging)", async () => {
     const store = new TodoStore();
-    const t = store.create("done already");
-    store.update(t.id, "completed");
+    const done = store.create("done already");
+    store.update(done.id, "completed");
     const remind = makeTodoReminder(store);
 
-    // A fully-completed list no longer nudges a clearTodoList — the CLI wipes it
-    // deterministically via scheduleTodoAutoClear. The reminder falls through to
-    // the `!hasUnfinished` suppression and never injects, even on the very turn
-    // that completed the last todo (updateTodo present).
     expect(await call(remind, [use("bash")])).toBeUndefined();
-    expect(await call(remind, [use("updateTodo")])).toBeUndefined();
-    expect(await call(remind, [use("read")])).toBeUndefined();
   });
 
-  it("preserves streak across suppressed turns: a new in_progress todo triggers immediately", async () => {
+  it("only lists pending and in_progress, excluding completed items", async () => {
     const store = new TodoStore();
+    store.create("open");
+    const done = store.create("closed");
+    store.update(done.id, "completed");
     const remind = makeTodoReminder(store);
 
-    // 3 silent turns while the list is empty — no inject, but streak keeps growing.
-    await call(remind, [use("bash")]);
-    await call(remind, [use("bash")]);
-    expect(await call(remind, [use("bash")])).toBeUndefined();
-
-    // Now add an unfinished todo. The very next non-updateTodo turn triggers.
-    const t = store.create("new task");
-    store.update(t.id, "in_progress");
-    expect(await call(remind, [use("bash")])).toBeDefined();
+    const out = (await call(remind, [use("bash")]))!;
+    const text = textOf(out[0] as MessageParam);
+    expect(text).toContain("- [pending] open");
+    expect(text).not.toContain("closed");
   });
 
-  it("honors custom threshold, toolName and reminderText", async () => {
+  it("honors a custom reminderText head", async () => {
     const store = new TodoStore();
     store.create("x");
-    const remind = makeTodoReminder(store, {
-      threshold: 2,
-      toolName: "myUpdate",
-      reminderText: "PLEASE UPDATE",
-    });
+    const remind = makeTodoReminder(store, { reminderText: "PLEASE UPDATE:" });
 
-    expect(await call(remind, [use("bash")])).toBeUndefined();
-    const out = await call(remind, [use("bash")]);
-    expect(out).toEqual([
-      {
-        role: "user",
-        content: [{ type: "text", text: "PLEASE UPDATE" }],
-        meta: { synthetic: true, kind: "todo-reminder" },
-      },
-    ]);
-
-    // myUpdate (not updateTodo) is what resets now.
-    await call(remind, [use("myUpdate")]);
-    expect(await call(remind, [use("bash")])).toBeUndefined();
-    expect(await call(remind, [use("bash")])).toBeDefined();
+    const out = (await call(remind, [use("bash")]))!;
+    expect(textOf(out[0] as MessageParam)).toBe(
+      "<todo-reminder>PLEASE UPDATE:\n- [pending] x</todo-reminder>",
+    );
   });
 });
