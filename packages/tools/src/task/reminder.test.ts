@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { MessageParam, ToolUseBlock } from "@nova/core";
+import type { ContentBlock, MessageParam, ToolUseBlock } from "@nova/core";
 import { TaskStore } from "./store.js";
 import { makeTaskReminder } from "./reminder.js";
 
@@ -18,6 +18,14 @@ function call(
   return fn({ turn, toolUses });
 }
 
+/** Extract the concatenated text of a message's content blocks. */
+function textOf(msg: MessageParam): string {
+  if (typeof msg.content === "string") return msg.content;
+  return msg.content
+    .map((b) => (b.type === "text" ? (b as Extract<ContentBlock, { type: "text" }>).text : ""))
+    .join("");
+}
+
 let workspace: string;
 
 beforeEach(async () => {
@@ -29,121 +37,84 @@ afterEach(async () => {
 });
 
 describe("makeTaskReminder", () => {
-  it("injects after `threshold` consecutive turns without updateTask when tasks are unfinished", async () => {
+  it("injects listing every open task on a turn that made progress", async () => {
     const store = new TaskStore(workspace, "test-session");
     await store.create("plan migration");
+    await store.create("write docs");
     const remind = makeTaskReminder(store);
 
-    expect(await call(remind, [use("bash")])).toBeUndefined();
-    expect(await call(remind, [use("read")])).toBeUndefined();
-    const out = await call(remind, [use("edit")]);
+    const out = await call(remind, [use("bash")]);
     expect(out).toEqual([
       {
         role: "user",
-        content: [{ type: "text", text: "<task-reminder>Update your tasks.</task-reminder>" }],
+        content: [
+          {
+            type: "text",
+            text: "<task-reminder>Update your tasks:\n- [pending] plan migration\n- [pending] write docs</task-reminder>",
+          },
+        ],
         meta: { synthetic: true, kind: "task-reminder" },
       },
     ]);
   });
 
-  it("resets the streak whenever updateTask appears in the turn", async () => {
+  it("lists in_progress items too, next to pending ones", async () => {
     const store = new TaskStore(workspace, "test-session");
-    await store.create("x");
+    const running = await store.create("running");
+    await store.update(running.id, { status: "in_progress" });
+    await store.create("next");
     const remind = makeTaskReminder(store);
 
-    await call(remind, [use("bash")]);
-    await call(remind, [use("updateTask")]); // reset
-    expect(await call(remind, [use("read")])).toBeUndefined();
-    expect(await call(remind, [use("read")])).toBeUndefined();
-    expect(await call(remind, [use("read")])).toBeDefined();
+    const out = (await call(remind, [use("bash")]))!;
+    expect(textOf(out[0] as MessageParam)).toContain("- [in_progress] running");
+    expect(textOf(out[0] as MessageParam)).toContain("- [pending] next");
   });
 
-  it("counts a mixed turn (updateTask + other tools) as a reset", async () => {
+  it("does not inject on a turn with no tool calls (no progress)", async () => {
     const store = new TaskStore(workspace, "test-session");
     await store.create("x");
     const remind = makeTaskReminder(store);
 
-    await call(remind, [use("bash")]);
-    await call(remind, [use("updateTask"), use("bash")]); // reset
-    expect(await call(remind, [use("read")])).toBeUndefined();
-    expect(await call(remind, [use("read")])).toBeUndefined();
-    expect(await call(remind, [use("read")])).toBeDefined();
-  });
-
-  it("resets streak after injecting so the next reminder needs another `threshold` turns", async () => {
-    const store = new TaskStore(workspace, "test-session");
-    await store.create("x");
-    const remind = makeTaskReminder(store);
-
-    await call(remind, [use("bash")]);
-    await call(remind, [use("bash")]);
-    await call(remind, [use("bash")]); // injects
-    expect(await call(remind, [use("bash")])).toBeUndefined();
-    expect(await call(remind, [use("bash")])).toBeUndefined();
-    expect(await call(remind, [use("bash")])).toBeDefined();
+    expect(await call(remind, [])).toBeUndefined();
   });
 
   it("does not inject when the task list is empty", async () => {
     const store = new TaskStore(workspace, "test-session");
     const remind = makeTaskReminder(store);
 
-    await call(remind, [use("bash")]);
-    await call(remind, [use("bash")]);
     expect(await call(remind, [use("bash")])).toBeUndefined();
   });
 
   it("stays silent when every task is completed (CLI auto-clears instead of nudging)", async () => {
     const store = new TaskStore(workspace, "test-session");
-    const t = await store.create("done already");
-    await store.update(t.id, { status: "completed" });
+    const done = await store.create("done already");
+    await store.update(done.id, { status: "completed" });
     const remind = makeTaskReminder(store);
 
-    // A fully-completed plan no longer nudges a clearTaskList — the CLI wipes it
-    // deterministically via scheduleTaskAutoClear. The reminder falls through to
-    // the `!hasUnfinished` suppression and never injects, even on the very turn
-    // that completed the last task (updateTask present).
     expect(await call(remind, [use("bash")])).toBeUndefined();
-    expect(await call(remind, [use("updateTask")])).toBeUndefined();
-    expect(await call(remind, [use("read")])).toBeUndefined();
   });
 
-  it("preserves streak across suppressed turns: a new in_progress task triggers immediately", async () => {
+  it("only lists pending and in_progress, excluding completed items", async () => {
     const store = new TaskStore(workspace, "test-session");
+    await store.create("open");
+    const done = await store.create("closed");
+    await store.update(done.id, { status: "completed" });
     const remind = makeTaskReminder(store);
 
-    // 3 silent turns while the list is empty — no inject, but streak keeps growing.
-    await call(remind, [use("bash")]);
-    await call(remind, [use("bash")]);
-    expect(await call(remind, [use("bash")])).toBeUndefined();
-
-    // Now add an unfinished task. The very next non-updateTask turn triggers.
-    const t = await store.create("new task");
-    await store.update(t.id, { status: "in_progress" });
-    expect(await call(remind, [use("bash")])).toBeDefined();
+    const out = (await call(remind, [use("bash")]))!;
+    const text = textOf(out[0] as MessageParam);
+    expect(text).toContain("- [pending] open");
+    expect(text).not.toContain("closed");
   });
 
-  it("honors custom threshold, toolName and reminderText", async () => {
+  it("honors a custom reminderText head", async () => {
     const store = new TaskStore(workspace, "test-session");
     await store.create("x");
-    const remind = makeTaskReminder(store, {
-      threshold: 2,
-      toolName: "myUpdate",
-      reminderText: "PLEASE UPDATE",
-    });
+    const remind = makeTaskReminder(store, { reminderText: "PLEASE UPDATE:" });
 
-    expect(await call(remind, [use("bash")])).toBeUndefined();
-    const out = await call(remind, [use("bash")]);
-    expect(out).toEqual([
-      {
-        role: "user",
-        content: [{ type: "text", text: "PLEASE UPDATE" }],
-        meta: { synthetic: true, kind: "task-reminder" },
-      },
-    ]);
-
-    // myUpdate (not updateTask) is what resets now.
-    await call(remind, [use("myUpdate")]);
-    expect(await call(remind, [use("bash")])).toBeUndefined();
-    expect(await call(remind, [use("bash")])).toBeDefined();
+    const out = (await call(remind, [use("bash")]))!;
+    expect(textOf(out[0] as MessageParam)).toBe(
+      "<task-reminder>PLEASE UPDATE:\n- [pending] x</task-reminder>",
+    );
   });
 });
