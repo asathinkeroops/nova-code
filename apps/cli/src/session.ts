@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { blocksOf, extractText, type MessageParam } from "@nova/core";
 import {
@@ -103,9 +104,61 @@ export interface ResolveSessionOptions {
   continue?: boolean;
 }
 
+/**
+ * The workspace a session belongs to, read from its first `session_start`
+ * transcript record. Sessions carry their cwd nowhere else — the dir name is a
+ * timestamp+uuid, and neither `messages.jsonl` nor the `Session` interface
+ * records it — so `--continue` (which must pick the newest session *for the
+ * current workspace*, not the newest across every workspace) needs this.
+ * Returns undefined when the transcript is missing/unreadable or has no
+ * `session_start` record.
+ */
+async function sessionWorkspace(s: Session): Promise<string | undefined> {
+  try {
+    const raw = await readFile(s.transcriptPath, "utf8");
+    for (const line of raw.split("\n")) {
+      if (!line) continue;
+      let kind: unknown;
+      let data: unknown;
+      try {
+        const rec = JSON.parse(line) as { kind?: unknown; data?: unknown };
+        kind = rec.kind;
+        data = rec.data;
+      } catch {
+        continue;
+      }
+      if (kind !== "session_start") continue;
+      const cwd = (data as { cwd?: unknown } | null | undefined)?.cwd;
+      return typeof cwd === "string" ? cwd : undefined;
+    }
+  } catch {
+    // transcript missing/unreadable — nothing to match on
+  }
+  return undefined;
+}
+
+/**
+ * The most recently used session for a given workspace, from a list already
+ * sorted newest-first by `listSessions`. Sessions with no recorded cwd — or a
+ * mismatched one — are skipped. `session_start.cwd` and `workspace` both come
+ * from `cwd ?? process.cwd()`, so no path normalization is applied: resolving a
+ * relative `--cwd` here (against the *current* process cwd) would be
+ * wrong, since it was recorded when the session was created.
+ */
+async function newestSessionForWorkspace(
+  sessions: Session[],
+  workspace: string,
+): Promise<Session | undefined> {
+  for (const s of sessions) {
+    if ((await sessionWorkspace(s)) === workspace) return s;
+  }
+  return undefined;
+}
+
 export async function resolveSession(
   opts: ResolveSessionOptions,
   sessionDir: string | undefined,
+  workspace?: string,
 ): Promise<{ session: Session; resumed: boolean }> {
   if (opts.resume) {
     const found = await getSession(opts.resume, sessionDir);
@@ -116,10 +169,21 @@ export async function resolveSession(
   }
   if (opts.continue) {
     const list = await listSessions(sessionDir);
-    if (list.length === 0) {
-      throw new Error("no sessions to continue");
+    // `--continue` resumes the most recent session *for the current workspace*,
+    // not the most recent across every workspace: sessions are all global under
+    // ~/.nova/sessions, so filter on the `session_start.cwd` recorded at
+    // creation. When no workspace is known, fall back to the most recent overall.
+    const match = workspace
+      ? await newestSessionForWorkspace(list, workspace)
+      : list[0];
+    if (!match) {
+      throw new Error(
+        workspace
+          ? `no sessions to continue for ${workspace}`
+          : "no sessions to continue",
+      );
     }
-    return { session: list[0]!, resumed: true };
+    return { session: match, resumed: true };
   }
   return { session: await createSession(sessionDir), resumed: false };
 }

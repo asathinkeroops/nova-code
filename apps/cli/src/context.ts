@@ -198,7 +198,7 @@ export async function createContext(
   const memory = await loadMemory(workspace, memoryOpts);
   const version = await readCliVersion();
 
-  const { session, resumed } = await resolveSession(cliOpts, settings.sessionDir);
+  const { session, resumed } = await resolveSession(cliOpts, settings.sessionDir, workspace);
 
   const buildLogger = (destination: string): Logger =>
     createLogger({

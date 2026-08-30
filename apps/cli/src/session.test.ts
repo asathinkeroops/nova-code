@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { MessageParam } from "@nova/core";
 import { createSession } from "@nova/base";
-import { buildSessionRows } from "./session.js";
+import { buildSessionRows, resolveSession } from "./session.js";
 
 let root: string;
 
@@ -16,6 +16,18 @@ const writeMsgs = (path: string, msgs: MessageParam[]): Promise<void> =>
   writeFile(path, msgs.map((m) => JSON.stringify(m)).join("\n") + "\n");
 
 const userMsg = (text: string): MessageParam => ({ role: "user", content: text });
+
+// Writes the transcript's first `session_start` record, which is what
+// resolveSession uses to attribute a session to a workspace.
+const writeSessionStart = (path: string, cwd: string): Promise<void> =>
+  writeFile(
+    path,
+    `${JSON.stringify({
+      timestamp: new Date().toISOString(),
+      kind: "session_start",
+      data: { id: "x", cwd, model: "pro", resumed: false },
+    })}\n`,
+  );
 
 describe("buildSessionRows", () => {
   it("labels a session with its first user message", async () => {
@@ -43,5 +55,43 @@ describe("buildSessionRows", () => {
     const rows = await buildSessionRows(root);
     const row = rows.find((r) => r.session.id === s.id);
     expect(row?.label).toContain("load failed");
+  });
+});
+
+describe("resolveSession --continue", () => {
+  it("resumes the newest session for the current workspace, not the newest overall", async () => {
+    const a = await createSession(root);
+    await writeSessionStart(a.transcriptPath, "/repo/a");
+    await new Promise((r) => setTimeout(r, 10));
+    const b = await createSession(root);
+    await writeSessionStart(b.transcriptPath, "/repo/b");
+
+    // Globally the most recently used session is b, but `--continue` for
+    // /repo/a must undo that and pick the newest session that belongs to a.
+    const resumedA = await resolveSession({ continue: true }, root, "/repo/a");
+    expect(resumedA.session.id).toBe(a.id);
+    expect(resumedA.resumed).toBe(true);
+
+    const resumedB = await resolveSession({ continue: true }, root, "/repo/b");
+    expect(resumedB.session.id).toBe(b.id);
+  });
+
+  it("throws when no recorded session belongs to the current workspace", async () => {
+    const a = await createSession(root);
+    await writeSessionStart(a.transcriptPath, "/repo/a");
+    await expect(resolveSession({ continue: true }, root, "/repo/none")).rejects.toThrow(
+      /no sessions to continue/,
+    );
+  });
+
+  it("still resumes the most recent session overall when no workspace is known", async () => {
+    const a = await createSession(root);
+    await writeSessionStart(a.transcriptPath, "/repo/a");
+    await new Promise((r) => setTimeout(r, 10));
+    const b = await createSession(root);
+    await writeSessionStart(b.transcriptPath, "/repo/b");
+
+    const resumed = await resolveSession({ continue: true }, root);
+    expect(resumed.session.id).toBe(b.id);
   });
 });
