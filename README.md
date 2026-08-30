@@ -156,7 +156,7 @@ DeepSeek 的内置模型梯度是 `lite` → `deepseek-v4-flash-vision-exp`（�
 <!-- prettier-ignore -->
 | 工具 | 能力 |
 | --- | --- |
-| `read` / `write` / `edit` | 读文件（行号 + 分页，支持 `.xlsx/.xls/.xlsm/.xlsb/.ods` 表格与 `.pdf` 文档）、整文件写、精确文本替换；图片通过 Anthropic / OpenAI 两种传输都可用的用户图片消息交给支持视觉的档位 |
+| `read` / `write` / `edit` | 读文件（行号 + 分页，支持 `.xlsx/.xls/.xlsm/.xlsb/.ods` 表格与 `.pdf` 文档）、整文件写、精确文本替换；图片通过 Anthropic / OpenAI 两种传输都可用的用户图片消息交给支持视觉的档位（最长边超过 2048px 时先在内存中等比缩小，不改写原文件） |
 | `glob` / `grep` | 按文件名匹配、全文正则搜索 |
 | `bash` | 运行 shell 命令；`run_in_background: true` 则把 dev server、watcher 等长任务放到后台，立即返回 id、pid 和日志路径 |
 | `killBackground` | 终止一个后台命令 |

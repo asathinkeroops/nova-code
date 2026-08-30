@@ -11,7 +11,7 @@ import { readTool } from "./read.js";
 // Mirrors read.ts's MAX_LINE_CHARS. Kept local so the test pins the contract
 // rather than re-importing the constant.
 const MAX_LINE_CHARS = 16_000;
-const MAX_IMAGE_DIMENSION = 1_568;
+const MAX_IMAGE_DIMENSION = 2_048;
 
 function imageBlocks(result: ToolRunResult): ImageBlock[] {
   return (result.followupMessages ?? [])

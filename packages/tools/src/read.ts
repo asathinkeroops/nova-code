@@ -74,8 +74,16 @@ const MAX_PDF_BYTES = 30 * MB;
 /** File extensions that the model API can consume as image blocks. */
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp"]);
 
-/** Provider-neutral maximum for either image dimension. */
-const MAX_IMAGE_DIMENSION = 1_568;
+/**
+ * Provider-neutral maximum for either image dimension. 2048px preserves detail
+ * for OpenAI's `high` tier (2048px) and Claude 4.7+ high-resolution tier
+ * (<=2576px), while a Claude standard tier (1568px) or DeepSeek (downscales
+ * internally to ~800x800 / 384 tokens) simply downscale on their side. No
+ * provider rejects an oversized image — they all scale it down — so raising
+ * this never errors; it only trades payload/context size for detail. Keep it
+ * below 2576px or Claude high-res gains nothing and the base64 just gets larger.
+ */
+const MAX_IMAGE_DIMENSION = 2_048;
 
 /** Magic bytes for verifying that a file's content matches its extension. */
 const IMAGE_MAGIC: Record<string, readonly number[]> = {
@@ -591,7 +599,7 @@ export const readTool: ToolHandler = {
   definition: {
     name: "read",
     description:
-      "Read a text file, spreadsheet, PDF, or image from disk. For text files, output is line-numbered (`<line>\\t<text>`, `cat -n` style, 1-based); returns up to `limit` lines (and at most ~200K characters) per call. If more remains, the result tells you the exact read(path, offset) call to continue from. The line-number prefix is display only — strip it before passing text to `edit`. For Excel files (.xlsx/.xls/.xlsm/.xlsb/.ods), each row is rendered as a TSV line with a metadata header; use the optional `sheet` parameter to select a sheet. For PDF files (.pdf), extracted text is returned line-numbered with a `[Page N]` marker before each page and the same offset/limit paging; scanned/image-only PDFs have no extractable text (capped at 30 MB). For image files (.png/.jpg/.jpeg/.gif/.webp), returns text metadata plus a base64 user-image message — only when the active model supports image input; dimensions over 1568px are proportionally resized before return.",
+      "Read a text file, spreadsheet, PDF, or image from disk. For text files, output is line-numbered (`<line>\\t<text>`, `cat -n` style, 1-based); returns up to `limit` lines (and at most ~200K characters) per call. If more remains, the result tells you the exact read(path, offset) call to continue from. The line-number prefix is display only — strip it before passing text to `edit`. For Excel files (.xlsx/.xls/.xlsm/.xlsb/.ods), each row is rendered as a TSV line with a metadata header; use the optional `sheet` parameter to select a sheet. For PDF files (.pdf), extracted text is returned line-numbered with a `[Page N]` marker before each page and the same offset/limit paging; scanned/image-only PDFs have no extractable text (capped at 30 MB). For image files (.png/.jpg/.jpeg/.gif/.webp), returns text metadata plus a base64 user-image message — only when the active model supports image input; dimensions over 2048px are proportionally resized before return.",
     inputSchema,
   },
   executionKey: fileExecutionKey,

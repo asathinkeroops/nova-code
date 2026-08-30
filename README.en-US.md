@@ -156,7 +156,7 @@ Model-callable tools cover read/write, search, execution, code intelligence, and
 <!-- prettier-ignore -->
 | Tool | Capability |
 | --- | --- |
-| `read` / `write` / `edit` | Read files (line-numbered + paginated, incl. `.xlsx/.xls/.xlsm/.xlsb/.ods` spreadsheets and `.pdf` documents), whole-file write, exact-text replace; images reach vision-capable tiers as user-image messages supported by both Anthropic and OpenAI transports |
+| `read` / `write` / `edit` | Read files (line-numbered + paginated, incl. `.xlsx/.xls/.xlsm/.xlsb/.ods` spreadsheets and `.pdf` documents), whole-file write, exact-text replace; images reach vision-capable tiers as user-image messages supported by both Anthropic and OpenAI transports (images over 2048px on their longest side are proportionally resized in-memory, leaving the original untouched) |
 | `glob` / `grep` | Filename matching, full-text regex search |
 | `bash` | Run shell commands; with `run_in_background: true` it detaches long tasks (dev servers, watchers) and returns an id, pid, and log path immediately |
 | `killBackground` | Terminate a background command |
