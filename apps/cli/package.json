@@ -57,6 +57,7 @@
     "pino": "^9.0.0",
     "pino-pretty": "^11.0.0",
     "react": "^18.3.0",
+    "sharp": "^0.34.5",
     "string-width": "^7.2.0",
     "unpdf": "^1.6.2",
     "wrap-ansi": "^9.0.0",

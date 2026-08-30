@@ -285,7 +285,7 @@ Nova 把「extended thinking」暴露成五个等级，或一个显式的 token 
 
 | 工具 | 权限 | 说明 |
 |------|------|------|
-| `read` | 只读 | 读**文本 / 表格 / PDF / 图片**：文本输出带 `cat -n` 风格行号（1-based），`offset` 起始行、`limit` 最大行数，单页约 20 万字符上限、单行超 1.6 万字符会截断并标注，超出时提示用 `offset` 续读；行号前缀仅用于显示，传给 `edit` 前需去掉。表格（`.xlsx/.xls/.xlsm/.xlsb/.ods`）每行渲成 TSV 带表头，`sheet` 选工作表。**PDF**（`.pdf`，≤30MB）抽取文本后同样带行号返回，每页前插一条 `[Page N]` 标记，`offset`/`limit` 照常分页；扫描件 / 纯图片 PDF 抽不出文本，会明说并建议改用 OCR 工具。图片（`.png/.jpg/.jpeg/.gif/.webp`，≤20MB）返回文本元数据，并将 base64 图片作为紧随工具结果的用户图片消息交给模型——**仅当前档位支持图片输入时**（否则提示切到 image-capable 档位）。含 NUL 字节的二进制文件直接拒读并给出 `file`/`xxd` 建议 |
+| `read` | 只读 | 读**文本 / 表格 / PDF / 图片**：文本输出带 `cat -n` 风格行号（1-based），`offset` 起始行、`limit` 最大行数，单页约 20 万字符上限、单行超 1.6 万字符会截断并标注，超出时提示用 `offset` 续读；行号前缀仅用于显示，传给 `edit` 前需去掉。表格（`.xlsx/.xls/.xlsm/.xlsb/.ods`）每行渲成 TSV 带表头，`sheet` 选工作表。**PDF**（`.pdf`，≤30MB）抽取文本后同样带行号返回，每页前插一条 `[Page N]` 标记，`offset`/`limit` 照常分页；扫描件 / 纯图片 PDF 抽不出文本，会明说并建议改用 OCR 工具。图片（`.png/.jpg/.jpeg/.gif/.webp`）返回文本元数据，并将 base64 图片作为紧随工具结果的用户图片消息交给模型；最长边超过 1568px 时先在内存中等比缩小，不改写原文件——**仅当前档位支持图片输入时**（否则提示切到 image-capable 档位）。含 NUL 字节的二进制文件直接拒读并给出 `file`/`xxd` 建议 |
 | `write` | 需批准 | 写整个文件（覆盖），默认自动创建父目录 |
 | `edit` | 需批准 | 精确字符串替换；`old_string` 默认须唯一匹配，`replace_all` 可全替 |
 | `bash` | 需批准 | 执行 shell 命令（`bash -lc`）。默认阻塞：`timeout_ms` **默认与上限都是 180000（3 分钟）**，`cwd` 可覆盖工作目录，输出截到 200KB。更长的任务传 `run_in_background: true`——命令转入后台、立即返回 `{id, pid, output_path}`，`env` 可追加环境变量 |

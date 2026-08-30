@@ -4,7 +4,9 @@ import { defineConfig } from "tsup";
 // workspace packages are bundled in from source (they live in devDependencies,
 // which tsup bundles by default and `noExternal` makes explicit), while every
 // real npm dependency stays external and is installed from the published
-// `dependencies` (notably `@vscode/ripgrep`, which ships a platform binary).
+// `dependencies` (notably `@vscode/ripgrep` and `sharp`, which ship platform
+// binaries). Keep sharp explicit so its JS loader is never bundled separately
+// from the native @img/sharp-* packages npm selects for the target machine.
 export default defineConfig({
   entry: { index: "src/index.ts" },
   format: ["esm"],
@@ -12,6 +14,7 @@ export default defineConfig({
   target: "node20",
   bundle: true,
   noExternal: [/^@nova\//],
+  external: ["sharp"],
   dts: false,
   clean: true,
   splitting: false,

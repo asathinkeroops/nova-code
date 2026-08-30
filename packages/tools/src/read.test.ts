@@ -1,16 +1,17 @@
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { crc32 } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import type { ImageBlock, ToolContext, ToolRunResult } from "@nova/core";
+import sharp from "sharp";
 import * as XLSX from "xlsx";
 import { readTool } from "./read.js";
 
 // Mirrors read.ts's MAX_LINE_CHARS. Kept local so the test pins the contract
 // rather than re-importing the constant.
 const MAX_LINE_CHARS = 16_000;
-const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
+const MAX_IMAGE_DIMENSION = 1_568;
 
 function imageBlocks(result: ToolRunResult): ImageBlock[] {
   return (result.followupMessages ?? [])
@@ -301,7 +302,8 @@ describe("read: Excel files", () => {
 
 describe("read: image files", () => {
   it("returns an image block when the model accepts images (PNG)", async () => {
-    const { cwd, path } = await writeBinaryFixture("test.png", minimalPngBytes());
+    const source = minimalPngBytes();
+    const { cwd, path } = await writeBinaryFixture("test.png", source);
 
     const res = await readTool.run(
       { path },
@@ -319,7 +321,7 @@ describe("read: image files", () => {
     if (block.type === "image") {
       expect(block.source.type).toBe("base64");
       expect(block.source.media_type).toBe("image/png");
-      expect(block.source.data).toBeTruthy();
+      expect(block.source.data).toBe(source.toString("base64"));
     }
   });
 
@@ -392,25 +394,50 @@ describe("read: image files", () => {
     expect(res.output).toContain("binary");
   });
 
-  it("rejects an oversized image", async () => {
-    const cwd = await mkdtemp(join(tmpdir(), "nova-read-"));
-    const filePath = join(cwd, "big.png");
-    // Write a file with valid PNG magic but claimed size > MAX_IMAGE_BYTES.
-    // We write a sparse file via seeking — but writeFile writes actual bytes.
-    // Instead, just write a buffer slightly over the limit.
-    const sig = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-    const large = Buffer.alloc(MAX_IMAGE_BYTES + 1); // 1 byte over
-    sig.copy(large);
-    await writeFile(filePath, large);
+  it("proportionally resizes image dimensions that exceed the limit", async () => {
+    const source = await sharp({
+      create: {
+        width: MAX_IMAGE_DIMENSION * 2,
+        height: MAX_IMAGE_DIMENSION,
+        channels: 3,
+        background: { r: 10, g: 20, b: 30 },
+      },
+    })
+      .png()
+      .toBuffer();
+    const { cwd, path } = await writeBinaryFixture("wide.png", source);
 
     const res = await readTool.run(
-      { path: "big.png" },
+      { path },
       ctx(cwd, { modelModalities: { input: ["text", "image"] } }),
     );
 
-    expect(res.isError).toBe(true);
-    expect(res.output).toContain("MB");
-    expect(res.followupMessages).toBeUndefined();
+    expect(res.isError).toBeUndefined();
+    expect(res.output).toContain(
+      `${MAX_IMAGE_DIMENSION * 2}×${MAX_IMAGE_DIMENSION} → ${MAX_IMAGE_DIMENSION}×${MAX_IMAGE_DIMENSION / 2}`,
+    );
+    expect(res.output).toContain("proportionally resized");
+
+    const block = imageBlocks(res)[0]!;
+    if (block.type === "image") {
+      const metadata = await sharp(Buffer.from(block.source.data, "base64")).metadata();
+      expect(metadata.width).toBe(MAX_IMAGE_DIMENSION);
+      expect(metadata.height).toBe(MAX_IMAGE_DIMENSION / 2);
+    }
+    expect(await readFile(join(cwd, path))).toEqual(source);
+  });
+
+  it("does not reject an image solely because its file is larger than 20 MB", async () => {
+    const large = Buffer.concat([minimalPngBytes(), Buffer.alloc(20 * 1024 * 1024)]);
+    const { cwd, path } = await writeBinaryFixture("large-file.png", large);
+
+    const res = await readTool.run(
+      { path },
+      ctx(cwd, { modelModalities: { input: ["text", "image"] } }),
+    );
+
+    expect(res.isError).toBeUndefined();
+    expect(res.followupMessages).toHaveLength(1);
   });
 
   it("warns on magic-byte mismatch but still returns the image", async () => {

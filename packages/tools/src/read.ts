@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { basename, extname, resolve } from "node:path";
 import { z } from "zod";
 import type { ImageBlock, ToolFollowupMessage, ToolHandler } from "@nova/core";
+import type { Sharp } from "sharp";
 import type * as XLSX from "xlsx";
 import { extractText } from "unpdf";
 import { fileExecutionKey } from "./file-execution.js";
@@ -20,6 +21,14 @@ let xlsxModule: typeof XLSX | null = null;
 async function loadXlsx(): Promise<typeof XLSX> {
   xlsxModule ??= await import("xlsx");
   return xlsxModule;
+}
+
+// `sharp` loads a native image-processing library, so keep it off the CLI's
+// startup path and pay that cost only when read actually receives an image.
+// Node's module loader caches the dynamic import for subsequent image reads.
+async function loadSharp() {
+  const { default: sharp } = await import("sharp");
+  return sharp;
 }
 
 // Secondary safety budget on the size of a single response, measured in JS
@@ -65,8 +74,8 @@ const MAX_PDF_BYTES = 30 * MB;
 /** File extensions that the model API can consume as image blocks. */
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp"]);
 
-/** Max file size for image reads (20 MB). Larger images are rejected. */
-const MAX_IMAGE_BYTES = 20 * MB;
+/** Provider-neutral maximum for either image dimension. */
+const MAX_IMAGE_DIMENSION = 1_568;
 
 /** Magic bytes for verifying that a file's content matches its extension. */
 const IMAGE_MAGIC: Record<string, readonly number[]> = {
@@ -443,6 +452,80 @@ function checkMagic(buf: Buffer, ext: string): boolean {
   return true;
 }
 
+interface PreparedImage {
+  buffer: Buffer;
+  originalWidth?: number;
+  originalHeight?: number;
+  width?: number;
+  height?: number;
+  resized: boolean;
+}
+
+function encodeForExtension(image: Sharp, ext: string): Sharp {
+  switch (ext) {
+    case ".jpg":
+    case ".jpeg":
+      return image.jpeg();
+    case ".gif":
+      return image.gif();
+    case ".webp":
+      return image.webp();
+    default:
+      return image.png();
+  }
+}
+
+/** Scale oversized images down to fit the dimension cap without cropping. */
+async function prepareImage(buf: Buffer, ext: string): Promise<PreparedImage> {
+  try {
+    const sharp = await loadSharp();
+    const animated = ext === ".gif" || ext === ".webp";
+    const options = { animated, limitInputPixels: false } as const;
+    const metadata = await sharp(buf, options).metadata();
+    const originalWidth = metadata.width;
+    const originalHeight = metadata.pageHeight ?? metadata.height;
+
+    if (originalWidth === undefined || originalHeight === undefined) {
+      return { buffer: buf, originalWidth, originalHeight, resized: false };
+    }
+
+    if (Math.max(originalWidth, originalHeight) <= MAX_IMAGE_DIMENSION) {
+      return {
+        buffer: buf,
+        originalWidth,
+        originalHeight,
+        width: originalWidth,
+        height: originalHeight,
+        resized: false,
+      };
+    }
+
+    const scale = MAX_IMAGE_DIMENSION / Math.max(originalWidth, originalHeight);
+    const width = Math.max(1, Math.round(originalWidth * scale));
+    const height = Math.max(1, Math.round(originalHeight * scale));
+    const source = sharp(buf, options).autoOrient();
+    // For multi-frame images sharp exposes the frames as a vertical stack.
+    // Width-only resize applies the same scale to every frame; passing the
+    // per-frame height here would instead squash the whole stack.
+    const image = animated
+      ? source.resize({ width, withoutEnlargement: true })
+      : source.resize({ width, height, fit: "fill", withoutEnlargement: true });
+    const result = await encodeForExtension(image, ext).toBuffer({ resolveWithObject: true });
+    return {
+      buffer: result.data,
+      originalWidth,
+      originalHeight,
+      width,
+      height,
+      resized: true,
+    };
+  } catch {
+    // Preserve the previous pass-through behaviour for truncated or unusual
+    // images that the provider may still accept.
+    return { buffer: buf, resized: false };
+  }
+}
+
 async function readImage(
   abs: string,
   ext: string,
@@ -473,26 +556,22 @@ async function readImage(
     return { output: `read failed: ${msg}`, isError: true };
   }
 
-  // Size guard — base64 will be ~33% larger, keep it reasonable.
-  if (buf.length > MAX_IMAGE_BYTES) {
-    const mb = (buf.length / MB).toFixed(1);
-    const cap = (MAX_IMAGE_BYTES / MB).toFixed(0);
-    return {
-      output: `read failed: ${path} is ${mb} MB (cap is ${cap} MB). Use bash with a command-line tool to resize or inspect it.`,
-      isError: true,
-    };
-  }
-
   // Verify magic bytes match the extension; if not, the file is mislabeled.
   // Still serve it — the API will reject a wrong media_type, but that's better
   // than silently sending garbled text from the text-reader fallback.
   const magicOk = checkMagic(buf, ext);
   const mediaType = (IMAGE_MIME[ext] ?? "image/png") as ImageBlock["source"]["media_type"];
 
-  const base64 = buf.toString("base64");
-  const sizeKB = (buf.length / KB).toFixed(1);
+  const prepared = await prepareImage(buf, ext);
+  const base64 = prepared.buffer.toString("base64");
+  const sizeKB = (prepared.buffer.length / KB).toFixed(1);
 
   let output = `Image: ${path}\n  format: ${ext.slice(1).toUpperCase()}${mediaType ? ` (${mediaType})` : ""}, ${sizeKB} KB`;
+  if (prepared.resized) {
+    output += `\n  dimensions: ${prepared.originalWidth}×${prepared.originalHeight} → ${prepared.width}×${prepared.height} (proportionally resized; max dimension ${MAX_IMAGE_DIMENSION}px)`;
+  } else if (prepared.width !== undefined && prepared.height !== undefined) {
+    output += `\n  dimensions: ${prepared.width}×${prepared.height}`;
+  }
   if (!magicOk) {
     output += `\n  ⚠ magic bytes do not match ${ext} extension — file may be mislabeled`;
   }
@@ -512,7 +591,7 @@ export const readTool: ToolHandler = {
   definition: {
     name: "read",
     description:
-      "Read a text file, spreadsheet, PDF, or image from disk. For text files, output is line-numbered (`<line>\\t<text>`, `cat -n` style, 1-based); returns up to `limit` lines (and at most ~200K characters) per call. If more remains, the result tells you the exact read(path, offset) call to continue from. The line-number prefix is display only — strip it before passing text to `edit`. For Excel files (.xlsx/.xls/.xlsm/.xlsb/.ods), each row is rendered as a TSV line with a metadata header; use the optional `sheet` parameter to select a sheet. For PDF files (.pdf), extracted text is returned line-numbered with a `[Page N]` marker before each page and the same offset/limit paging; scanned/image-only PDFs have no extractable text (capped at 30 MB). For image files (.png/.jpg/.jpeg/.gif/.webp), returns text metadata plus a base64 user-image message — only when the active model supports image input; capped at 20 MB.",
+      "Read a text file, spreadsheet, PDF, or image from disk. For text files, output is line-numbered (`<line>\\t<text>`, `cat -n` style, 1-based); returns up to `limit` lines (and at most ~200K characters) per call. If more remains, the result tells you the exact read(path, offset) call to continue from. The line-number prefix is display only — strip it before passing text to `edit`. For Excel files (.xlsx/.xls/.xlsm/.xlsb/.ods), each row is rendered as a TSV line with a metadata header; use the optional `sheet` parameter to select a sheet. For PDF files (.pdf), extracted text is returned line-numbered with a `[Page N]` marker before each page and the same offset/limit paging; scanned/image-only PDFs have no extractable text (capped at 30 MB). For image files (.png/.jpg/.jpeg/.gif/.webp), returns text metadata plus a base64 user-image message — only when the active model supports image input; dimensions over 1568px are proportionally resized before return.",
     inputSchema,
   },
   executionKey: fileExecutionKey,
