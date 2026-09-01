@@ -63,7 +63,7 @@ async function refreshPrediction(ctx: CliContext): Promise<void> {
       ctx.logger.debug({ text: result.text, durationMs }, "predict ok");
     } else {
       ctx.logger.info(
-        { error: result.error, raw: result.raw, durationMs },
+        { error: result.error, stopReason: result.stopReason, raw: result.raw, durationMs },
         "predict produced no placeholder",
       );
     }

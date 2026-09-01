@@ -3,6 +3,7 @@ import {
   extractText,
   type MessageParam,
   type ModelClient,
+  type StopReason,
 } from "@nova/core";
 
 export interface PredictOptions {
@@ -20,6 +21,9 @@ export interface PredictResult {
   text: string | null;
   raw?: string;
   error?: string;
+  /** The model's stop reason, surfaced so the caller can tell a clean end_turn
+   * from a max_tokens truncation when deciding what to log. */
+  stopReason?: StopReason;
 }
 
 const RECENT_MESSAGES = 6;
@@ -36,15 +40,39 @@ function formatHistory(messages: MessageParam[]): string {
   return parts.join("\n\n");
 }
 
-function cleanPrediction(raw: string, maxChars: number): string | null {
+/** Sentence-enders we prefer to cut at so a truncated placeholder never breaks mid-sentence. */
+const SENTENCE_END = new Set([..."。！？!?；;…\n"]);
+/** Clause / word boundaries (comma, colon, whitespace) as a fallback cut point. */
+const CLAUSE_END = new Set([..."，,、：: "]);
+
+/**
+ * Slice `text` to at most `limit` characters, but backtrack to the nearest
+ * sentence end (then clause/word boundary) instead of cutting mid-sentence.
+ * A placeholder that stops at a full punctuation mark reads as complete even
+ * when the model overran the length budget.
+ */
+function truncateAtBoundary(text: string, limit: number): string {
+  const chars = Array.from(text);
+  if (chars.length <= limit) return text;
+  const head = chars.slice(0, limit);
+  for (const enders of [SENTENCE_END, CLAUSE_END]) {
+    for (let i = head.length - 1; i > 0; i--) {
+      const ch = head[i];
+      if (ch !== undefined && enders.has(ch)) return head.slice(0, i + 1).join("");
+    }
+  }
+  return head.join("");
+}
+
+export function cleanPrediction(raw: string, maxChars: number): string | null {
   let cleaned = raw.split(/\r?\n/)[0] ?? "";
   // eslint-disable-next-line no-control-regex
   cleaned = cleaned.replace(/[\x00-\x1f\x7f]/g, "").trim();
   cleaned = cleaned.replace(/^["'`「『（(]+|["'`」』）)]+$/g, "").trim();
   if (!cleaned) return null;
-  const chars = Array.from(cleaned);
-  if (chars.length > maxChars) cleaned = chars.slice(0, maxChars).join("");
-  return cleaned || null;
+  // A boundary cut can land on a word/clause space (an English phrase), so
+  // re-trim the tail — `truncateAtBoundary` only cuts, never trims.
+  return truncateAtBoundary(cleaned, maxChars).trim() || null;
 }
 
 export async function predictNextInput(opts: PredictOptions): Promise<PredictResult> {
@@ -89,9 +117,17 @@ export async function predictNextInput(opts: PredictOptions): Promise<PredictRes
       signal: controller.signal,
     });
     const raw = extractText(result.content).trim();
-    if (!raw) return { text: null, raw: "", error: "empty-text" };
+    // A max_tokens stop means the model ran out of room mid-sentence, so the
+    // text is a truncated fragment. Never surface it as a placeholder — no
+    // prediction is better than a broken one.
+    if (result.stopReason === "max_tokens") {
+      return { text: null, raw, stopReason: result.stopReason, error: "truncated" };
+    }
+    if (!raw) {
+      return { text: null, raw: "", stopReason: result.stopReason, error: "empty-text" };
+    }
     const cleaned = cleanPrediction(raw, maxChars);
-    return { text: cleaned, raw };
+    return { text: cleaned, raw, stopReason: result.stopReason };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return { text: null, error: msg };
