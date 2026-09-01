@@ -1,14 +1,30 @@
-import { mkdir, readdir, rm, stat } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
+import { z } from "zod";
+
+const sessionMetadataSchema = z
+  .object({
+    version: z.literal(1),
+    workspace: z.string().min(1),
+  })
+  .strict();
+
+export type SessionMetadata = z.infer<typeof sessionMetadataSchema>;
 
 export interface Session {
   id: string;
   dir: string;
   createdAt: Date;
+  metadataPath: string;
   transcriptPath: string;
   messagesPath: string;
+}
+
+export interface CreateSessionOptions {
+  workspace: string;
+  rootOverride?: string;
 }
 
 function defaultRoot(): string {
@@ -20,19 +36,43 @@ function makeId(now: Date = new Date()): string {
   return `${iso}-${randomUUID().slice(0, 8)}`;
 }
 
-export async function createSession(rootOverride?: string): Promise<Session> {
-  const root = rootOverride ? resolve(rootOverride) : defaultRoot();
+export async function createSession(opts: CreateSessionOptions): Promise<Session> {
+  const root = opts.rootOverride ? resolve(opts.rootOverride) : defaultRoot();
   const createdAt = new Date();
   const id = makeId(createdAt);
   const dir = join(root, id);
+  const metadataPath = join(dir, "session.json");
+  const input = sessionMetadataSchema.parse({
+    version: 1,
+    workspace: opts.workspace,
+  });
+  const metadata: SessionMetadata = { ...input, workspace: resolve(input.workspace) };
   await mkdir(dir, { recursive: true });
+  // The workspace is creation-time identity, not mutable session activity.
+  // `wx` makes accidental rebinding fail even if this code is later reused
+  // against an existing directory.
+  await writeFile(metadataPath, `${JSON.stringify(metadata)}\n`, { flag: "wx" });
   return {
     id,
     dir,
     createdAt,
+    metadataPath,
     transcriptPath: join(dir, "transcript.jsonl"),
     messagesPath: join(dir, "messages.jsonl"),
   };
+}
+
+/** Read the immutable workspace recorded when a session was created. */
+export async function readSessionWorkspace(session: Session): Promise<string | undefined> {
+  try {
+    const parsed: unknown = JSON.parse(await readFile(session.metadataPath, "utf8"));
+    const result = sessionMetadataSchema.safeParse(parsed);
+    return result.success ? result.data.workspace : undefined;
+  } catch {
+    // Legacy sessions have no session.json. Their transcript fallback lives in
+    // the CLI, which owns the session_start event shape.
+    return undefined;
+  }
 }
 
 export async function listSessions(rootOverride?: string): Promise<Session[]> {
@@ -48,6 +88,7 @@ export async function listSessions(rootOverride?: string): Promise<Session[]> {
         id,
         dir,
         createdAt: s.birthtime,
+        metadataPath: join(dir, "session.json"),
         transcriptPath: join(dir, "transcript.jsonl"),
         messagesPath: join(dir, "messages.jsonl"),
       });
@@ -80,6 +121,7 @@ export async function getSession(id: string, rootOverride?: string): Promise<Ses
     id,
     dir,
     createdAt: s.birthtime,
+    metadataPath: join(dir, "session.json"),
     transcriptPath: join(dir, "transcript.jsonl"),
     messagesPath: join(dir, "messages.jsonl"),
   };

@@ -30,7 +30,7 @@ export const en = {
     clear: "start a fresh session (the current one stays resumable)",
     compact: "summarize history into a single message",
     rename: "give this session a custom name (shown on the input frame)",
-    resume: "switch to a saved session",
+    resume: "switch to a saved session in this workspace",
     rewind: "rewind history to a previous message (history after it is discarded)",
     sandbox: "enable/disable the OS command sandbox for this session",
     init: "generate or refresh NOVA.md by analyzing the codebase",
@@ -441,9 +441,14 @@ export const en = {
 
   /** The `/resume` session picker + notices (`commands/resume.ts`). */
   resume: {
-    noSessions: "no sessions to resume.",
+    noSessions: "no sessions to resume in this workspace.",
     notFound: (id: string): string => `session ${id} not found.`,
-    header: "select session to resume:",
+    workspaceUnknown: (id: string, current: string): string =>
+      `session ${id} has no workspace binding and cannot be resumed from ${current}.`,
+    workspaceMismatch: (id: string, bound: string, current: string): string =>
+      `session ${id} belongs to workspace ${bound}, not the current workspace ${current}. ` +
+      `Start Nova in ${bound} to resume it.`,
+    header: "select a session from this workspace:",
     alreadyOn: "already on that session.",
     /** Ephemeral card shown above a restored history (`context.ts`). */
     loadedMessages: (n: number): string => `loaded ${n} message(s) from disk`,

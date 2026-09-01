@@ -327,8 +327,8 @@ program
   .option("--cwd <dir>", "override working directory for tools")
   .option("--no-transcript", "skip writing to the session transcript")
   .option("--no-pretty", "disable pretty logging")
-  .option("-c, --continue", "resume the most recent session")
-  .option("--resume <id>", "resume a session by id")
+  .option("-c, --continue", "resume the most recent session in this workspace")
+  .option("--resume <id>", "resume a session by id (current workspace only)")
   .option(
     "--output-format <fmt>",
     "headless output: text (default) | json (outcome + full messages) | jsonl (streamed events)",

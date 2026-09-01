@@ -179,7 +179,7 @@ Model-callable tools cover read/write, search, execution, code intelligence, and
 | `/help` | See all commands |
 | `/model` · `/effort` | Persist the active model tier and its thinking level; an explicit numeric budget is session-only |
 | `/compact` | Summarize long history |
-| `/clear` · `/resume` · `/rewind` | Start or resume sessions; rewind history with a previewed file-snapshot restore while preserving external changes as conflicts |
+| `/clear` · `/resume` · `/rewind` | Start sessions or resume history from the current workspace; rewind history with a previewed file-snapshot restore while preserving external changes as conflicts |
 | `/rename` | Give the current session a custom name (shown on the input frame) |
 | `/plan` | Investigate read-only and produce an implementation plan |
 | `/goal` | Set a success condition and auto-work toward it until met |
@@ -196,6 +196,8 @@ Model-callable tools cover read/write, search, execution, code intelligence, and
 | `/tasks` | View and manage background commands (`bash` + `run_in_background`) — list / stop |
 | `/predict` | Toggle next-input prediction |
 | `/exit` · `/quit` | Quit |
+
+Each session is permanently bound to the workspace where it was created. `nova -c` and `/resume` only search sessions from the current workspace; `nova --resume <id>` and `/resume <id>` reject sessions from another workspace and report the directory they belong to.
 
 ### Core capabilities
 

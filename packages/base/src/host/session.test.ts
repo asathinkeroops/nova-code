@@ -7,6 +7,7 @@ import {
   getSession,
   listSessions,
   pruneSessions,
+  readSessionWorkspace,
   selectExpiredSessions,
   type ExpiringSession,
 } from "./session.js";
@@ -19,24 +20,31 @@ beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "nova-session-"));
 });
 
+const create = (workspace = "/workspace") => createSession({ workspace, rootOverride: root });
+
 afterEach(() => {
   // session test root is scoped under tmpdir; OS cleans it
 });
 
 describe("session", () => {
-  it("creates a session directory with a transcript path", async () => {
-    const s = await createSession(root);
+  it("creates a session permanently bound to its workspace", async () => {
+    const s = await create("/repo/a");
     expect(s.id).toMatch(/^\d{8}T\d{6}-[0-9a-f]{8}$/);
     expect(s.dir.startsWith(root)).toBe(true);
+    expect(await readSessionWorkspace(s)).toBe("/repo/a");
+    expect(JSON.parse(await readFile(s.metadataPath, "utf8"))).toEqual({
+      version: 1,
+      workspace: "/repo/a",
+    });
     await writeFile(s.transcriptPath, "hello\n");
     const back = await readFile(s.transcriptPath, "utf8");
     expect(back).toBe("hello\n");
   });
 
   it("lists sessions newest first", async () => {
-    const a = await createSession(root);
+    const a = await create();
     await new Promise((r) => setTimeout(r, 5));
-    const b = await createSession(root);
+    const b = await create();
     const list = await listSessions(root);
     const ids = list.map((s) => s.id);
     expect(ids).toContain(a.id);
@@ -45,9 +53,9 @@ describe("session", () => {
 
   it("orders by last activity, not creation, so --continue resumes the last-used session", async () => {
     // `older` is created first, `newer` second — by birthtime `newer` would win.
-    const older = await createSession(root);
+    const older = await create();
     await new Promise((r) => setTimeout(r, 5));
-    const newer = await createSession(root);
+    const newer = await create();
 
     // But we then work in `older` (append to its history) more recently, so it
     // must sort to the head — that's what `nova -c` reaches for.
@@ -62,8 +70,8 @@ describe("session", () => {
   });
 
   it("ignores transcript-only activity when ordering resumable sessions", async () => {
-    const transcriptOnlyRecent = await createSession(root);
-    const messagesRecent = await createSession(root);
+    const transcriptOnlyRecent = await create();
+    const messagesRecent = await create();
     const now = Date.now();
 
     await writeFile(transcriptOnlyRecent.messagesPath, '{"role":"user","content":"old"}\n');
@@ -84,9 +92,11 @@ describe("session", () => {
   });
 
   it("returns session by id", async () => {
-    const created = await createSession(root);
+    const created = await create();
     const fetched = await getSession(created.id, root);
     expect(fetched?.id).toBe(created.id);
+    expect(fetched?.metadataPath).toBe(created.metadataPath);
+    expect(fetched && (await readSessionWorkspace(fetched))).toBe("/workspace");
   });
 });
 
@@ -139,9 +149,9 @@ describe("pruneSessions", () => {
   const ids = async (): Promise<string[]> => (await readdir(root)).sort();
 
   it("removes sessions whose last activity is older than maxAgeDays", async () => {
-    const fresh = await createSession(root);
+    const fresh = await create();
     await ageBy(fresh.messagesPath, 5);
-    const old = await createSession(root);
+    const old = await create();
     await ageBy(old.messagesPath, 40);
 
     const res = await pruneSessions({ rootOverride: root, maxAgeDays: 30, now });
@@ -152,7 +162,7 @@ describe("pruneSessions", () => {
   });
 
   it("protects the active session even if it looks old", async () => {
-    const active = await createSession(root);
+    const active = await create();
     await ageBy(active.messagesPath, 40);
 
     const res = await pruneSessions({
@@ -167,9 +177,9 @@ describe("pruneSessions", () => {
   });
 
   it("does nothing when every session is within the window", async () => {
-    const a = await createSession(root);
+    const a = await create();
     await ageBy(a.messagesPath, 1);
-    const b = await createSession(root);
+    const b = await create();
     await ageBy(b.messagesPath, 10);
 
     const res = await pruneSessions({ rootOverride: root, maxAgeDays: 30, now });

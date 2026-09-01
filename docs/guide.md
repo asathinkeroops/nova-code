@@ -99,8 +99,8 @@ nova [prompt...]                   # 先跑一轮初始 prompt，再留在 REPL�
       --permission-mode default|acceptEdits|auto|plan   # 初始权限模式（默认 auto）
       --dangerously-skip-permissions   # 全自动批准（适合 CI/无人值守）
       --output-format text|json|jsonl  # headless 输出格式（默认 text）
-      --resume <id>                # 恢复指定 id 的 session
-  -c, --continue                   # 恢复最近一个 session
+      --resume <id>                # 恢复当前 workspace 下指定 id 的 session
+  -c, --continue                   # 恢复当前 workspace 最近一个 session
       --no-transcript              # 本次不写 transcript
       --no-pretty                  # 关闭 pretty 日志
   -v, --version                    # 打印版本后退出
@@ -206,7 +206,7 @@ Nova 是一个全屏 Ink/React REPL：顶部是滚动的历史区，底部是固
 | `/clear` | 清空当前会话历史（session 仍保留） |
 | `/rename [<name>\|clear]` | 给当前 session 起个名字（显示在输入框边框上）；`clear` 清除 |
 | `/compact [focus…]` | 把历史压缩成单条摘要消息；可附带关注点提示 |
-| `/resume [<id>]` | 切换到指定 session；不带参数则弹出列表选择 |
+| `/resume [<id>]` | 切换到当前 workspace 下的指定 session；不带参数则弹出当前 workspace 的列表选择 |
 | `/rewind [<n>]` | 回退到此前某条消息——其后的对话历史与文件改动都会被丢弃 |
 | `/plan <goal>` | 把调查交给一个只读的 plan 子 agent，返回分步实现计划 |
 | `/goal [<condition>\|clear]` | 设定一个成功条件，Nova 自动推进直到达成；`clear` 取消 |
@@ -731,9 +731,10 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 
 ### 恢复与切换
 
-- `nova -c` / `nova --continue`：恢复最近一个 session。
-- `nova --resume <id>`：按 id 恢复。
-- REPL 内 `/resume [<id>]`：切到指定 session（不带参数则弹列表选，这也是浏览历史 session 的入口）。
+- session 创建时会永久绑定当时的 workspace，后续恢复不会改变归属。旧 session 没有独立 metadata 时，以 transcript 中第一次 `session_start.cwd` 作为固定归属。
+- `nova -c` / `nova --continue`：恢复当前 workspace 最近一个有消息的 session。
+- `nova --resume <id>`：按 id 恢复当前 workspace 的 session；目标属于其他 workspace 时拒绝恢复，并提示其绑定目录。
+- REPL 内 `/resume [<id>]`：只列出和切换当前 workspace 的 session；显式指定其他 workspace 的 id 同样会被拒绝。
 
 ### 回退（Rewind）
 

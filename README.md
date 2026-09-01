@@ -179,7 +179,7 @@ DeepSeek 的内置模型梯度是 `lite` → `deepseek-v4-flash-vision-exp`（�
 | `/help` | 查看所有命令 |
 | `/model` · `/effort` | 持久切换模型档位、调整当前档位的思考等级；显式数字 budget 仅本会话生效 |
 | `/compact` | 压缩长历史成摘要 |
-| `/clear` · `/resume` · `/rewind` | 开新会话、恢复历史会话；回退历史时预览并恢复 Nova 的文件快照，外部改动会作为冲突保留 |
+| `/clear` · `/resume` · `/rewind` | 开新会话、恢复当前 workspace 的历史会话；回退历史时预览并恢复 Nova 的文件快照，外部改动会作为冲突保留 |
 | `/rename` | 给当前会话起个名字（显示在输入框边框上） |
 | `/plan` | 只读调研出实现方案，不动手 |
 | `/goal` | 设定成功条件后自动推进直到达成 |
@@ -196,6 +196,8 @@ DeepSeek 的内置模型梯度是 `lite` → `deepseek-v4-flash-vision-exp`（�
 | `/tasks` | 查看和管理后台命令（`bash` + `run_in_background`），支持 list / stop |
 | `/predict` | 开关下一条输入预测 |
 | `/exit` · `/quit` | 退出 |
+
+每个 session 在创建时永久绑定当前 workspace。`nova -c` 和 `/resume` 只查找当前 workspace 的 session；`nova --resume <id>` 或 `/resume <id>` 遇到其他 workspace 的 session 时会拒绝恢复并提示其绑定目录。
 
 ### 核心特性
 

@@ -23,7 +23,7 @@ export const zh: DeepPartial<Catalog> = {
     clear: "开启一个全新会话（当前会话仍可恢复）",
     compact: "将历史压缩为一条消息",
     rename: "为当前会话取一个自定义名称（显示在输入框边框上）",
-    resume: "切换到某个已保存的会话",
+    resume: "切换到当前 workspace 下已保存的会话",
     rewind: "将历史回退到之前的某条消息（其后的历史会被丢弃）",
     sandbox: "为当前会话启用/停用操作系统命令沙箱",
     init: "分析代码库以生成或刷新 NOVA.md",
@@ -512,9 +512,14 @@ export const zh: DeepPartial<Catalog> = {
   },
 
   resume: {
-    noSessions: "没有可恢复的会话。",
+    noSessions: "当前 workspace 下没有可恢复的会话。",
     notFound: (id: string): string => `未找到会话 ${id}。`,
-    header: "选择要恢复的会话：",
+    workspaceUnknown: (id: string, current: string): string =>
+      `会话 ${id} 没有 workspace 绑定，无法从 ${current} 恢复。`,
+    workspaceMismatch: (id: string, bound: string, current: string): string =>
+      `会话 ${id} 绑定于 workspace ${bound}，不是当前 workspace ${current}。` +
+      `请在 ${bound} 中启动 Nova 后再恢复。`,
+    header: "选择当前 workspace 下要恢复的会话：",
     alreadyOn: "已经在该会话上了。",
     loadedMessages: (n: number): string => `已从磁盘加载 ${n} 条消息`,
     skippedMessages: (n: number): string => `已跳过 ${n} 行无法解析的历史记录，详见会话日志`,

@@ -22,7 +22,10 @@ export async function handleClear(ctx: CliContext): Promise<void> {
     return;
   }
 
-  const fresh = await createSession(ctx.settings.sessionDir);
+  const fresh = await createSession({
+    workspace: ctx.workspace,
+    ...(ctx.settings.sessionDir ? { rootOverride: ctx.settings.sessionDir } : {}),
+  });
   await switchToSession(ctx, fresh, {
     title: "/clear",
     resumed: false,

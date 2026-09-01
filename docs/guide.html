@@ -568,8 +568,8 @@
   <span class="tok-f">-t, --think</span> off|low|medium|high|max   <span class="tok-c"># thinking 等级，或正整数 token 预算</span>
       <span class="tok-f">--max-turns</span> &lt;n&gt;              <span class="tok-c"># 单轮最大循环次数</span>
       <span class="tok-f">--cwd</span> &lt;dir&gt;                   <span class="tok-c"># 工具的工作目录（工作区根）</span>
-      <span class="tok-f">--resume</span> &lt;id&gt;                 <span class="tok-c"># 恢复指定 id 的 session</span>
-  <span class="tok-f">-c, --continue</span>                  <span class="tok-c"># 恢复最近一个 session</span>
+      <span class="tok-f">--resume</span> &lt;id&gt;                 <span class="tok-c"># 恢复当前 workspace 下指定 id 的 session</span>
+  <span class="tok-f">-c, --continue</span>                  <span class="tok-c"># 恢复当前 workspace 最近一个 session</span>
       <span class="tok-f">--no-transcript</span>             <span class="tok-c"># 本次不写 transcript</span>
       <span class="tok-f">--no-pretty</span>                 <span class="tok-c"># 关闭 pretty 日志</span>
       <span class="tok-f">--output-format</span> text|json|jsonl  <span class="tok-c"># headless 输出格式（默认 text）</span>
@@ -673,7 +673,7 @@
           <tr><td><code>/clear</code></td><td>清空当前会话历史（session 仍保留）</td></tr>
           <tr><td><code>/rename [&lt;name&gt;|clear]</code></td><td>给当前 session 起个名字（显示在输入框边框上）；<code>clear</code> 清除</td></tr>
           <tr><td><code>/compact [focus…]</code></td><td>把历史压缩成单条摘要消息；可附带关注点提示</td></tr>
-          <tr><td><code>/resume [&lt;id&gt;]</code></td><td>切换到指定 session；不带参数则弹出列表选择</td></tr>
+          <tr><td><code>/resume [&lt;id&gt;]</code></td><td>切换到当前 workspace 下的指定 session；不带参数则弹出当前 workspace 的列表选择</td></tr>
           <tr><td><code>/rewind [&lt;n&gt;]</code></td><td>回退到此前某条消息 —— 其后的对话历史与文件改动都会被丢弃（会预览受影响的文件并请求确认）</td></tr>
           <tr><td><code>/init [focus…]</code></td><td>探索代码库后生成 / 刷新项目记忆（<code>NOVA.md</code>，可附关注点）</td></tr>
           <tr><td><code>/plan &lt;goal&gt;</code></td><td>把调查交给一个只读的 plan 子 agent，返回分步实现计划</td></tr>
@@ -1187,9 +1187,10 @@
         <div class="flex items-center gap-3 mb-5"><span class="sec-num">19</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">会话、检查点与数据落盘</h2></div>
         <h3 class="text-base font-semibold mt-2 mb-3" style="color:var(--text)">恢复与切换</h3>
         <ul class="space-y-2">
-          <li><code>nova -c</code> / <code>nova --continue</code>：恢复最近一个 session。</li>
-          <li><code>nova --resume &lt;id&gt;</code>：按 id 恢复。</li>
-          <li>REPL 内 <code>/resume [&lt;id&gt;]</code>：切到指定 session（不带参数则弹交互式列表选）。</li>
+          <li>session 创建时会永久绑定当时的 workspace，后续恢复不会改变归属。旧 session 没有独立 metadata 时，以 transcript 中第一次 <code>session_start.cwd</code> 作为固定归属。</li>
+          <li><code>nova -c</code> / <code>nova --continue</code>：恢复当前 workspace 最近一个有消息的 session。</li>
+          <li><code>nova --resume &lt;id&gt;</code>：按 id 恢复当前 workspace 的 session；目标属于其他 workspace 时拒绝恢复，并提示其绑定目录。</li>
+          <li>REPL 内 <code>/resume [&lt;id&gt;]</code>：只列出和切换当前 workspace 的 session；显式指定其他 workspace 的 id 同样会被拒绝。</li>
         </ul>
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">回退（Rewind）</h3>
         <p><code>/rewind [&lt;n&gt;]</code> 回到此前某条消息 —— <strong>其后的对话历史与文件改动都会被丢弃</strong>，相当于一个检查点回滚。</p>

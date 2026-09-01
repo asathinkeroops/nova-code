@@ -1,10 +1,11 @@
-import { listSessions, type Session } from "@nova/base";
+import { getSession, type Session } from "@nova/base";
 import { ACCENT_HEX, dim, green } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { pickerArrow } from "../ui/picker.js";
 import { t } from "../i18n/index.js";
 import { overlayNotice } from "./overlay-notice.js";
 import {
+  assertSessionWorkspace,
   buildSessionRows,
   formatTimestamp,
   switchToSession,
@@ -14,22 +15,25 @@ import {
 const TITLE = "/resume";
 
 export async function handleResume(ctx: CliContext, arg: string): Promise<void> {
-  const list = await listSessions(ctx.settings.sessionDir);
-  if (list.length === 0) {
-    await overlayNotice(ctx, TITLE, [dim(t.resume.noSessions)]);
-    return;
-  }
-
   let target: Session | null = null;
 
   if (arg) {
-    target = list.find((s) => s.id === arg) ?? null;
+    target = await getSession(arg, ctx.settings.sessionDir);
     if (!target) {
       ctx.screen.card(t.resume.notFound(arg), { kind: "error", title: TITLE });
       return;
     }
+    try {
+      await assertSessionWorkspace(target, ctx.workspace);
+    } catch (err) {
+      ctx.screen.card(err instanceof Error ? err.message : String(err), {
+        kind: "error",
+        title: TITLE,
+      });
+      return;
+    }
   } else {
-    const items: SessionRow[] = await buildSessionRows(ctx.settings.sessionDir);
+    const items: SessionRow[] = await buildSessionRows(ctx.settings.sessionDir, ctx.workspace);
     if (items.length === 0) {
       await overlayNotice(ctx, TITLE, [dim(t.resume.noSessions)]);
       return;
