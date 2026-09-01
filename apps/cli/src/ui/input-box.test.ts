@@ -6,6 +6,7 @@ import {
   historyRule,
   matchingFiles,
   mentionTokenAt,
+  offsetForColumn,
   popupRow,
   sanitizePastedText,
   sessionNameBadge,
@@ -202,6 +203,32 @@ describe("findCursorPosition across hard breaks", () => {
     expect(findCursorPosition(lines, 1)).toEqual({ row: 0, col: 1 }); // end of "a"
     expect(findCursorPosition(lines, 2)).toEqual({ row: 1, col: 0 }); // blank row
     expect(findCursorPosition(lines, 3)).toEqual({ row: 2, col: 0 }); // start of "b"
+  });
+});
+
+describe("offsetForColumn", () => {
+  const W = 80;
+
+  it("maps a visual column to a buffer offset on the given line", () => {
+    const lines = wrapBuffer("ab\ncd", W);
+    // lines[0] = "ab" spanning [0,2); col 1 is the boundary after 'a'.
+    expect(offsetForColumn(lines[0]!, 0)).toBe(0);
+    expect(offsetForColumn(lines[0]!, 1)).toBe(1);
+    expect(offsetForColumn(lines[0]!, 2)).toBe(2);
+  });
+
+  it("clamps to the line end when the target column runs past it", () => {
+    const lines = wrapBuffer("ab\ncd", W);
+    expect(offsetForColumn(lines[0]!, 99)).toBe(2);
+    expect(offsetForColumn(lines[1]!, 99)).toBe(5);
+  });
+
+  it("resolves a wide char to its leading boundary, never splitting it", () => {
+    const lines = wrapBuffer("中x", W);
+    // '中' occupies two columns; a target inside it lands before it.
+    expect(offsetForColumn(lines[0]!, 1)).toBe(0);
+    expect(offsetForColumn(lines[0]!, 2)).toBe(1);
+    expect(offsetForColumn(lines[0]!, 3)).toBe(2);
   });
 });
 

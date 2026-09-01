@@ -166,6 +166,26 @@ export function findCursorPosition(
   return { row: 0, col: 0 };
 }
 
+/**
+ * Map a visual-target column (display width, relative to a line's content start)
+ * to a buffer offset on that line, clamped to the line's end. The inverse of the
+ * column resolution in `findCursorPosition` / `hitTestInput`: walking display
+ * widths means a target landing in the middle of a wide (CJK/emoji) char resolves
+ * to the char's leading boundary instead of splitting it. Used by ↑/↓ row
+ * navigation to keep a row move's column, and clamped so a short target row still
+ * lands at its end.
+ */
+export function offsetForColumn(line: DisplayLine, targetCol: number): number {
+  let acc = 0;
+  let k = 0;
+  for (; k < line.content.length; k++) {
+    const w = charDisplayWidth(line.content, k);
+    if (targetCol < acc + w) break;
+    acc += w;
+  }
+  return line.bufStart + k;
+}
+
 export interface InputHitLayout {
   /** Wrapped body lines (a single empty line when the buffer is empty). */
   lines: DisplayLine[];
@@ -755,6 +775,16 @@ export function InputBox({
         return;
       }
       if (key.upArrow) {
+        // A multi-line buffer: ↑ moves the caret up a row, keeping its visual
+        // column, unless it's already on the first row — then it falls through to
+        // popup / history handling below. A single-line buffer has no room to
+        // move, so it always uses that handling (matching the expected shell-like
+        // recall behaviour).
+        if (lines.length > 1 && cursorRow > 0) {
+          const target = lines[cursorRow - 1];
+          if (target) setCursor(offsetForColumn(target, cursorCol));
+          return;
+        }
         if (matches.length > 0) {
           const next = (effectivePopupCursor - 1 + matches.length) % matches.length;
           setPopupCursor(next);
@@ -771,6 +801,15 @@ export function InputBox({
         return;
       }
       if (key.downArrow) {
+        // A multi-line buffer: ↓ moves the caret down a row, keeping its visual
+        // column, unless it's already on the last row — then it falls through to
+        // popup / history handling below. A single-line buffer has no room to
+        // move, so it always uses that handling.
+        if (lines.length > 1 && cursorRow < lines.length - 1) {
+          const target = lines[cursorRow + 1];
+          if (target) setCursor(offsetForColumn(target, cursorCol));
+          return;
+        }
         if (matches.length > 0) {
           const next = (effectivePopupCursor + 1) % matches.length;
           setPopupCursor(next);
