@@ -62,9 +62,11 @@ describe("resolveSession --continue", () => {
   it("resumes the newest session for the current workspace, not the newest overall", async () => {
     const a = await createSession(root);
     await writeSessionStart(a.transcriptPath, "/repo/a");
+    await writeMsgs(a.messagesPath, [userMsg("work in a")]);
     await new Promise((r) => setTimeout(r, 10));
     const b = await createSession(root);
     await writeSessionStart(b.transcriptPath, "/repo/b");
+    await writeMsgs(b.messagesPath, [userMsg("work in b")]);
 
     // Globally the most recently used session is b, but `--continue` for
     // /repo/a must undo that and pick the newest session that belongs to a.
@@ -79,7 +81,29 @@ describe("resolveSession --continue", () => {
   it("throws when no recorded session belongs to the current workspace", async () => {
     const a = await createSession(root);
     await writeSessionStart(a.transcriptPath, "/repo/a");
+    await writeMsgs(a.messagesPath, [userMsg("work in a")]);
     await expect(resolveSession({ continue: true }, root, "/repo/none")).rejects.toThrow(
+      /no sessions to continue/,
+    );
+  });
+
+  it("skips a newer empty session instead of pinning continue to it", async () => {
+    const resumable = await createSession(root);
+    await writeSessionStart(resumable.transcriptPath, "/repo/a");
+    await writeMsgs(resumable.messagesPath, [userMsg("keep this history")]);
+    await new Promise((r) => setTimeout(r, 10));
+    const empty = await createSession(root);
+    await writeSessionStart(empty.transcriptPath, "/repo/a");
+
+    const resumed = await resolveSession({ continue: true }, root, "/repo/a");
+    expect(resumed.session.id).toBe(resumable.id);
+  });
+
+  it("throws when the workspace has only empty sessions", async () => {
+    const empty = await createSession(root);
+    await writeSessionStart(empty.transcriptPath, "/repo/a");
+
+    await expect(resolveSession({ continue: true }, root, "/repo/a")).rejects.toThrow(
       /no sessions to continue/,
     );
   });
@@ -87,9 +111,11 @@ describe("resolveSession --continue", () => {
   it("still resumes the most recent session overall when no workspace is known", async () => {
     const a = await createSession(root);
     await writeSessionStart(a.transcriptPath, "/repo/a");
+    await writeMsgs(a.messagesPath, [userMsg("work in a")]);
     await new Promise((r) => setTimeout(r, 10));
     const b = await createSession(root);
     await writeSessionStart(b.transcriptPath, "/repo/b");
+    await writeMsgs(b.messagesPath, [userMsg("work in b")]);
 
     const resumed = await resolveSession({ continue: true }, root);
     expect(resumed.session.id).toBe(b.id);

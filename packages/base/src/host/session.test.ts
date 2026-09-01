@@ -61,6 +61,23 @@ describe("session", () => {
     expect(list[0]?.id).toBe(older.id);
   });
 
+  it("ignores transcript-only activity when ordering resumable sessions", async () => {
+    const transcriptOnlyRecent = await createSession(root);
+    const messagesRecent = await createSession(root);
+    const now = Date.now();
+
+    await writeFile(transcriptOnlyRecent.messagesPath, '{"role":"user","content":"old"}\n');
+    await utimes(transcriptOnlyRecent.messagesPath, new Date(now - 60_000), new Date(now - 60_000));
+    await writeFile(transcriptOnlyRecent.transcriptPath, "session_start\n");
+    await utimes(transcriptOnlyRecent.transcriptPath, new Date(now), new Date(now));
+
+    await writeFile(messagesRecent.messagesPath, '{"role":"user","content":"new"}\n');
+    await utimes(messagesRecent.messagesPath, new Date(now - 30_000), new Date(now - 30_000));
+
+    const list = await listSessions(root);
+    expect(list[0]?.id).toBe(messagesRecent.id);
+  });
+
   it("returns null for unknown id", async () => {
     const s = await getSession("does-not-exist", root);
     expect(s).toBeNull();

@@ -138,19 +138,24 @@ async function sessionWorkspace(s: Session): Promise<string | undefined> {
 }
 
 /**
- * The most recently used session for a given workspace, from a list already
- * sorted newest-first by `listSessions`. Sessions with no recorded cwd — or a
- * mismatched one — are skipped. `session_start.cwd` and `workspace` both come
- * from `cwd ?? process.cwd()`, so no path normalization is applied: resolving a
- * relative `--cwd` here (against the *current* process cwd) would be
- * wrong, since it was recorded when the session was created.
+ * The most recently used resumable session, from a list already sorted
+ * newest-first by `listSessions`. Empty histories are skipped: merely starting
+ * or continuing a session appends to its transcript, so treating transcript
+ * activity alone as resumable can pin `--continue` to an empty session forever.
+ *
+ * When `workspace` is present, sessions with no recorded cwd — or a mismatched
+ * one — are skipped too. `session_start.cwd` and `workspace` both come from
+ * `cwd ?? process.cwd()`, so no path normalization is applied: resolving a
+ * relative `--cwd` here (against the *current* process cwd) would be wrong,
+ * since it was recorded when the session was created.
  */
-async function newestSessionForWorkspace(
+async function newestResumableSession(
   sessions: Session[],
-  workspace: string,
+  workspace?: string,
 ): Promise<Session | undefined> {
   for (const s of sessions) {
-    if ((await sessionWorkspace(s)) === workspace) return s;
+    if (workspace && (await sessionWorkspace(s)) !== workspace) continue;
+    if ((await loadMessages(s.messagesPath)).length > 0) return s;
   }
   return undefined;
 }
@@ -173,14 +178,10 @@ export async function resolveSession(
     // not the most recent across every workspace: sessions are all global under
     // ~/.nova/sessions, so filter on the `session_start.cwd` recorded at
     // creation. When no workspace is known, fall back to the most recent overall.
-    const match = workspace
-      ? await newestSessionForWorkspace(list, workspace)
-      : list[0];
+    const match = await newestResumableSession(list, workspace);
     if (!match) {
       throw new Error(
-        workspace
-          ? `no sessions to continue for ${workspace}`
-          : "no sessions to continue",
+        workspace ? `no sessions to continue for ${workspace}` : "no sessions to continue",
       );
     }
     return { session: match, resumed: true };

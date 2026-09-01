@@ -52,17 +52,20 @@ export async function listSessions(rootOverride?: string): Promise<Session[]> {
         messagesPath: join(dir, "messages.jsonl"),
       });
     }
-    // Sort by last activity (newest first) so the head is the most recently
-    // *used* session, not the most recently *created* one. `--continue` resumes
-    // sessions[0], and a resumed-then-worked-in old session must win over a
-    // newer-but-abandoned one — `createdAt` (dir birthtime) would get that wrong.
-    const activity = new Map<string, number>();
+    // Sort by persisted conversation activity, not transcript activity. Merely
+    // starting or continuing a session appends `session_start` to the transcript;
+    // allowing that mtime to drive the order can pin `--continue` to an empty or
+    // stale session. `messages.jsonl` changes only when resumable history changes.
+    const messageActivity = new Map<string, number>();
     await Promise.all(
       sessions.map(async (s) => {
-        activity.set(s.id, (await lastActivityAt(s)).getTime());
+        const messages = await stat(s.messagesPath).catch(() => null);
+        messageActivity.set(s.id, messages?.mtimeMs ?? 0);
       }),
     );
-    return sessions.sort((a, b) => (activity.get(b.id) ?? 0) - (activity.get(a.id) ?? 0));
+    return sessions.sort(
+      (a, b) => (messageActivity.get(b.id) ?? 0) - (messageActivity.get(a.id) ?? 0),
+    );
   } catch {
     return [];
   }
@@ -106,10 +109,10 @@ export function selectExpiredSessions(
   return sessions.filter((s) => !keep.has(s.id) && s.lastActiveAt.getTime() < cutoff);
 }
 
-// Last-activity time for a session: the newest mtime among its history and
-// transcript files (those get appended every turn), falling back to the
-// directory creation time when neither file exists yet — a freshly created,
-// never-written session.
+// Retention activity for a session: the newest mtime among its history and
+// transcript files, falling back to directory creation time when neither file
+// exists yet. This intentionally includes transcript-only activity for cleanup;
+// `listSessions` ordering intentionally does not (see above).
 async function lastActivityAt(s: Session): Promise<Date> {
   let latest = 0;
   for (const p of [s.messagesPath, s.transcriptPath]) {
