@@ -55,6 +55,17 @@ describe("predictNextInput", () => {
     expect(res.text).toBeNull();
     expect(res.error).toBe("empty-text");
   });
+
+  it("instructs the model to emit one complete single-line sentence", async () => {
+    const model = stubModel("添加单元测试", "end_turn");
+    await predictNextInput({ model, messages: HISTORY, maxChars: 300, timeoutMs: 8000 });
+    const req = vi.mocked(model.call).mock.calls[0]![0];
+    expect(req.system).toContain("ONE complete imperative sentence");
+    expect(req.system).toContain("single line");
+    expect(req.system).toContain("finish the thought");
+    expect(req.system).toContain("at most 300 characters");
+    expect(req.system).toContain("no reasoning");
+  });
 });
 
 describe("cleanPrediction", () => {

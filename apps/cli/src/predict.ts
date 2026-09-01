@@ -88,12 +88,12 @@ export async function predictNextInput(opts: PredictOptions): Promise<PredictRes
 
   const instructions =
     `You predict the user's next TASK request to the coding agent. ` +
-    `Given the conversation below between User and Assistant, output the most likely next TASK the User would ask the agent to do. ` +
+    `Given the conversation below between User and Assistant, output the single most likely next TASK the User would ask the agent to do. ` +
     `The prediction MUST be an actionable task — an instruction to do, change, add, fix, refactor, run, investigate, or check something. ` +
     `It must NOT be a question, a greeting, a confirmation, an acknowledgement, a thank-you, or any other non-task chat. ` +
-    `Phrase it as an imperative instruction (e.g. "添加 X", "修复 Y", "重构 Z", "add X", "fix Y", "refactor Z"). ` +
-    `Output ONLY the predicted task text — no quotes, no "User:" prefix, no markdown, no commentary. ` +
-    `Be concise: ${maxChars} characters or fewer. Match the user's language. ` +
+    `Write it as ONE complete imperative sentence in the user's language (e.g. "添加 X", "修复 Y", "重构 Z", "add X", "fix Y", "refactor Z"). ` +
+    `Keep it to a single line, at most ${maxChars} characters, and always finish the thought — never stop mid-sentence and never break the task across lines. ` +
+    `Output ONLY that sentence: no quotes, no "User:" prefix, no markdown, no reasoning, no commentary. ` +
     `Always produce a plausible task; never refuse and never output an empty response. ` +
     `Ground the task in the project context and the immediately preceding work — propose a natural follow-up task, not an unrelated one.`;
   const system = memorySystem
