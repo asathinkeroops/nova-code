@@ -131,7 +131,11 @@ echo "总结当前 diff" | nova --output-format jsonl
 nova upgrade                       # 更新到最新版本（启动时也会自动检查并提示）
 ```
 
-首次启动目前会直接询问 DeepSeek API key，并把 `provider: "deepseek"`、`transport: "openai"`、`baseURL: "https://api.deepseek.com"` 与默认档位 `pro` 写入 `~/.nova/nova.config.json`。不想让 key 明文落盘时，可导出 `NOVA_API_KEY`；它优先于配置文件里的 `apiKey`，向导也不会把环境变量中的 key 写回磁盘。首次进入一个工作区时还会要求确认信任，信任记录只保存在用户全局配置中。
+首次启动目前会直接询问 DeepSeek API key，并把一个 provider 连接（`providers: [{ "name": "deepseek", "profile": "deepseek", "transport": "openai", "baseURL": "https://api.deepseek.com", "apiKey": "<key>" }]` 与 `currentProvider: "deepseek"`）和默认档位 `pro` 写入 `~/.nova/nova.config.json`。不想让 key 明文落盘时，可导出 `NOVA_API_KEY`；它优先于当前 provider 连接的 `apiKey`，向导也不会把环境变量中的 key 写回磁盘。首次进入一个工作区时还会要求确认信任，信任记录只保存在用户全局配置中。
+
+运行时只接受 `providers` / `currentProvider` 结构。检测到旧的顶层 `provider`、`baseURL`、`apiKey`、`models`、`transport` 时，启动会先把它们一次性迁移成 provider 连接并原子写回配置文件；后续只按新格式读取。
+
+Headless 模式不会运行交互向导；当前 provider 缺少 API key、解析不到模型表，或缺少协议所需的 `baseURL` 时会直接报错。请先交互启动一次完成配置，或手动补齐 `providers` / `currentProvider`。
 
 DeepSeek 的内置模型梯度是 `lite` → `deepseek-v4-flash-vision-exp`（支持图片输入），`pro` / `max` → `deepseek-v4-pro`，三档分别使用不同 thinking 深度。**默认模型表按 provider 内置在代码里，不写进配置文件**；你的配置只保存覆盖项，因此升级即可获得新的模型 id、价格和上下文窗口。`/model` 持久切换档位，`--model` 只覆盖本次启动；界面与回复语言分别由 `settings.locale`（TUI，内置 zh-CN / EN）和 `settings.language`（模型回复，默认跟随系统 locale）控制。更多 provider 与完整配置见[使用手册](docs/guide.md)。
 

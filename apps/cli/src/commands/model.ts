@@ -1,4 +1,5 @@
 import {
+  activeModels,
   modelDescription,
   resolveModelId,
   resolveThinkingLevel,
@@ -24,7 +25,7 @@ function notice(ctx: CliContext, lines: string[]): Promise<void> {
 
 /**
  * Switch the active model and persist to nova.config.json. `name` is a key in
- * settings.models (a configured tier like "lite"/"pro"/"max") or a bare model id. We
+ * the active provider's models (a configured tier like "lite"/"pro"/"max") or a bare model id. We
  * rebuild both the tracked main model and the non-tracked predict mirror and
  * refresh the banner — and also write the new default to nova.config.json so the
  * choice survives restarts. Sub-agents read ctx.settings.model lazily, so they
@@ -60,13 +61,14 @@ function applyModel(ctx: CliContext, name: string): void {
 }
 
 export async function handleModel(ctx: CliContext, arg: string): Promise<void> {
-  const names = Object.keys(ctx.settings.models);
+  const models = activeModels(ctx.settings);
+  const names = Object.keys(models);
 
   // Explicit arg switches directly. It must name a configured tier — model
   // selection is alias-only, so a bare model id (or a typo) is rejected rather
   // than silently set as an unresolvable model.
   if (arg) {
-    if (!Object.prototype.hasOwnProperty.call(ctx.settings.models, arg)) {
+    if (!Object.prototype.hasOwnProperty.call(models, arg)) {
       await notice(ctx, [
         `${dim(t.model.unknownTier)} ${arg}`,
         ...(names.length ? [`${dim(t.model.configuredTiers)} ${names.join(", ")}`] : []),

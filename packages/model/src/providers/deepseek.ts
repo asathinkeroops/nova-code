@@ -274,7 +274,7 @@ function budgetToReasoningEffort(budget: number): "low" | "high" | "max" {
  * and its documented HTTP failures are translated into actionable diagnostics
  * (see the error table above) with transient statuses retried on the shared
  * backoff schedule. The same profile also serves DeepSeek's OpenAI-compatible
- * endpoint (baseURL without the suffix, `settings.transport: "openai"`): that
+ * endpoint (baseURL without the suffix, `providers[].transport: "openai"`): that
  * wire takes the thinking knob as `thinking: { type: "enabled"|"disabled" }`
  * plus `reasoning_effort: "low"|"high"|"max"` — see `budgetToReasoningEffort`
  * for the three-rung budget mapping. Error translation, balance probe and docs

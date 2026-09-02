@@ -186,15 +186,21 @@ describe("refreshBanner", () => {
     const setCostRates = vi.fn();
     // A bare temp dir is not a git repo, so currentGitBranch returns null.
     const workspace = await mkdtemp(join(tmpdir(), "nova-ctx-"));
-    // `models` has no schema default now and must define the full lite/pro/max
-    // ladder; the active "pro" tier resolves to its concrete id on the status line.
+    // The active provider's table must define the full lite/pro/max ladder; the
+    // "pro" tier resolves to its concrete id on the status line.
     const settings = parseSettings({
       model: "pro",
-      models: {
-        lite: { id: "deepseek-v4-flash" },
-        pro: { id: "deepseek-v4-pro" },
-        max: { id: "deepseek-v4-pro" },
-      },
+      providers: [
+        {
+          name: "test",
+          profile: "other",
+          models: {
+            lite: { id: "deepseek-v4-flash" },
+            pro: { id: "deepseek-v4-pro" },
+            max: { id: "deepseek-v4-pro" },
+          },
+        },
+      ],
     });
     const ctx = makeCtx({
       version: "9.9.9",

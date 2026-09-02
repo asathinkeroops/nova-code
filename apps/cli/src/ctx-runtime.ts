@@ -4,6 +4,9 @@ import {
   resolveProfile,
 } from "@nova/model";
 import {
+  activeProvider,
+  activeProviderProfile,
+  resolveApiKey,
   resolveBudget,
 } from "@nova/base";
 import { resolveContextWindowSize, resolveModelId } from "@nova/base";
@@ -40,7 +43,7 @@ export function refreshBanner(ctx: CliContext): void {
     sessionId: ctx.session.id,
     contextWindowSize,
     thinkingLabel: thinkingLevelLabel(ctx),
-    provider: ctx.settings.provider,
+    provider: activeProviderProfile(ctx.settings) ?? "other",
   });
   ctx.screen.setStatusMeta({
     sessionStartedAt: ctx.session.createdAt.getTime(),
@@ -59,10 +62,11 @@ export function refreshBanner(ctx: CliContext): void {
  * fire-and-forget so a slow request never delays a turn.
  */
 export async function refreshBalance(ctx: CliContext): Promise<void> {
-  const profile = resolveProfile(ctx.settings.provider);
+  const provider = activeProvider(ctx.settings);
+  const profile = resolveProfile(activeProviderProfile(ctx.settings) ?? "other");
   const balance = await profile.probeBalance?.({
-    baseURL: ctx.settings.baseURL,
-    apiKey: ctx.settings.apiKey,
+    baseURL: provider?.baseURL,
+    apiKey: resolveApiKey(ctx.settings),
   });
   // Leave a previously-fetched balance in place on a transient failure rather
   // than blanking the segment; only overwrite when we actually got a figure.

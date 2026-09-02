@@ -23,7 +23,7 @@ import type { ProviderError } from "./error.js";
  * Transport is INDEPENDENT of the provider: a vendor that ships both endpoints
  * (DeepSeek serves `/anthropic` AND `https://api.deepseek.com` from the same
  * key) keeps ONE profile — its error table, balance probe and docs all apply
- * to either wire — and the effective transport is `settings.transport` falling
+ * to either wire — and the effective transport is `providers[].transport` falling
  * back to the profile's {@link ProviderProfile.transport} default. The adapter
  * reads the effective transport once at construction and picks the branch.
  */
@@ -89,7 +89,7 @@ export interface ProviderProfile {
 
   /**
    * The wire protocol this provider is configured for. This is the DEFAULT —
-   * `settings.transport` overrides it per install (see {@link ModelTransport}),
+   * the active provider entry's `transport` overrides it (see {@link ModelTransport}),
    * so a vendor with both endpoints (DeepSeek) keeps one profile and switches
    * protocols in config. "anthropic" (the default when omitted) routes through
    * the `@anthropic-ai/sdk` client; "openai" through the OpenAI-compatible

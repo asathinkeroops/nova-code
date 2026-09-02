@@ -33,6 +33,12 @@ export {
   resolveApiKey,
   saveSettings,
   saveModelProfileOverride,
+  providerEntrySchema,
+  type ProviderEntry,
+  activeProvider,
+  activeModels,
+  activeProviderProfile,
+  activeProviderHeaders,
   isDangerousBash,
   DEFAULT_CONFIG_PATH,
   DEFAULT_MEMORY_FILENAMES,
@@ -66,6 +72,7 @@ export {
   type ModelEntry,
   modelModalitiesSchema,
   type ModelModalities,
+  type HttpHeaders,
   mcpServerSchema,
   mcpStdioServerSchema,
   mcpHttpServerSchema,
@@ -92,9 +99,14 @@ export {
   BUILTIN_PROVIDER_MODELS,
   AUTO_WRITTEN_MODEL_TABLES,
   builtinModelsFor,
-  mergeBuiltinModels,
+  mergeProviderModels,
   stripDefaultModels,
 } from "./config/models.js";
+
+export {
+  adaptLegacyProviderConfig,
+  migrateLegacyProviderConfig,
+} from "./config/migration.js";
 
 export {
   computeCost,

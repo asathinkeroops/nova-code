@@ -10,7 +10,7 @@
 
 > 为 DeepSeek 量身打造的编程代理 — 高缓存命中率 · OS 级沙箱 · 工具齐全 · 开箱即用。
 
-Nova 读代码、跑命令、改文件——通过工具调用把任务推到完成。模型层围绕 **DeepSeek** 构建：thinking 映射到 effort（而非 `budget_tokens`）、错误码翻译成人话、余额与定价内建，整个请求管线为 DeepSeek 的自动上下文缓存做了调优，让缓存持续命中。各家 provider 都走 Anthropic 兼容协议，差异（thinking 形状、错误码、余额探针）由 provider profile（按 `settings.provider` 选择）吸收——DeepSeek 是第一优先级，Kimi（Moonshot）有专用适配（beta），其余端点走通用 `other` 档。
+Nova 读代码、跑命令、改文件——通过工具调用把任务推到完成。模型层围绕 **DeepSeek** 构建：thinking 映射到 effort（而非 `budget_tokens`）、错误码翻译成人话、余额与定价内建，整个请求管线为 DeepSeek 的自动上下文缓存做了调优，让缓存持续命中。模型端点可走 Anthropic 或 OpenAI 兼容协议，差异（thinking 形状、错误码、余额探针）由当前 `providers[]` 条目的 `profile` 吸收——DeepSeek 是第一优先级，Kimi（Moonshot）有专用适配（beta），其余 Anthropic 兼容端点走通用 `other` 档。
 
 ## 为什么选 Nova
 
@@ -40,7 +40,7 @@ nova -p "解释这段代码"              # headless 模式：只跑一轮，输
 nova upgrade                       # 更新到最新版本（启动时也会自动检查并提示）
 ```
 
-首次启动进入交互式配置向导，写入 `~/.nova/nova.config.json`（API key、模型、session 目录等）。模型按 `lite` / `pro` / `max` 三档配置，每档可单独设定 thinking 等级与定价（`models.<档>.pricing`，支持 USD / CNY）；`/model`、`--model` 切换的是档位而非裸 provider id。默认 provider 为 `deepseek`，`settings.provider` 可切到 `moonshot`（Kimi，beta）或通用 `other`。
+首次启动进入交互式配置向导，写入 `~/.nova/nova.config.json`。provider 连接统一放在 `providers[]`，由 `currentProvider` 选择当前项；旧的顶层 `provider` / `baseURL` / `apiKey` / `models` / `transport` 会在启动时一次性迁移并写回新结构，运行时不保留双格式兼容。模型按 `lite` / `pro` / `max` 三档配置，每档可单独设定 thinking 等级与定价（`providers[].models.<档>.pricing`，支持 USD / CNY）；`/model`、`--model` 切换的是档位而非裸 provider id。
 
 `nova` 还带子命令：`nova doctor`（体检全局配置）、`nova mcp`（管理 MCP 服务器）、`nova plugin`（安装 / 启停插件）、`nova upgrade`（升级 CLI）。
 

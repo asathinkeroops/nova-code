@@ -23,7 +23,7 @@ describe("resolveProfile", () => {
   });
 
   it("falls back to the `other` profile for an unknown id", () => {
-    // `settings.provider` is a free-form string, so a typo or a generic
+    // A provider entry's `profile` is a free-form string, so a typo or a generic
     // provider named directly resolves to the generic fallback, never throws.
     expect(resolveProfile("deepsek")).toBe(otherProfile);
     expect(resolveProfile("some-third-party")).toBe(otherProfile);

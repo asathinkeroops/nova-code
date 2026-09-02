@@ -1,4 +1,4 @@
-import { computeCost, formatMoney, type ModelRates } from "@nova/base";
+import { activeModels, computeCost, formatMoney, type ModelRates } from "@nova/base";
 import { accent, ACCENT_HEX, bold, cyan, dim } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { t } from "../i18n/index.js";
@@ -14,7 +14,7 @@ const TITLE = "/usage";
  */
 export function resolveSessionRates(ctx: CliContext): ModelRates | undefined {
   if (!ctx.settings.pricing.enabled) return undefined;
-  const p = ctx.settings.models[ctx.settings.model]?.pricing;
+  const p = activeModels(ctx.settings)[ctx.settings.model]?.pricing;
   if (!p) return undefined;
   return {
     input: p.input,

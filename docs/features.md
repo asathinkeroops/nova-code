@@ -83,7 +83,7 @@ REPL 无 `@path` 提及与文件名自动补全。日常频繁"把这个文件�
 
 ### 6. 多 provider / 会话内换模型 —— 影响中 ✅ 部分已实现
 
-**已落地**：OpenAI 兼容传输层（`packages/model/src/openai.ts`，官方 `openai` SDK）——Qwen / GLM / MiniMax / 豆包等 `chat/completions` 端点走原生 OpenAI 协议（**不设通用 `openai` provider**，用 `transport: "openai"` 在供应商 profile 上切换）；**传输协议与供应商解耦**（`settings.transport` 独立于 `provider`），DeepSeek 一个 profile 即可在 `/anthropic` 与 `https://api.deepseek.com` 两端点间切换，错误翻译与余额探针原样保留。仍缺：各国产厂商的专用 profile（thinking 旋钮、错误码表、余额探针）与 setup 模板、会话内 `/model` 快速切换与失败 fallback。
+**已落地**：OpenAI 兼容传输层（`packages/model/src/openai.ts`，官方 `openai` SDK）——Qwen / GLM / MiniMax / 豆包等 `chat/completions` 端点走原生 OpenAI 协议（**不设通用 `openai` provider**，用 `providers[].transport: "openai"` 在供应商 profile 上切换）；**传输协议与供应商解耦**（`providers[].transport` 独立于 `providers[].profile`），DeepSeek 一个 profile 即可在 `/anthropic` 与 `https://api.deepseek.com` 两端点间切换，错误翻译与余额探针原样保留。仍缺：各国产厂商的专用 profile（thinking 旋钮、错误码表、余额探针）与 setup 模板、会话内 `/model` 快速切换与失败 fallback。
 
 - **取舍**：与"专注 DeepSeek"定位相关，未必该做全多 provider。但会话内 `/model` 快速切换（同 provider 不同模型，如 reasoner ↔ chat）成本低、日常有用。
 

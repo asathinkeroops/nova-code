@@ -3,6 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  activeModels,
+  activeProvider,
+  activeProviderHeaders,
+  activeProviderProfile,
   API_KEY_ENV,
   apiKeyFromEnv,
   resolveApiKey,
@@ -37,12 +41,26 @@ const tiers = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+const withModels = (
+  models: Record<string, unknown> = tiers(),
+  settings: Record<string, unknown> = {},
+) => ({
+  providers: [{ name: "test", profile: "other", models }],
+  currentProvider: "test",
+  ...settings,
+});
+
+const configured = (
+  models: Record<string, unknown> = tiers(),
+  settings: Record<string, unknown> = {},
+) => parseSettings(withModels(models, settings));
+
 describe("settingsSchema", () => {
   it("applies defaults when empty input is given", () => {
     const s = parseSettings({});
     expect(s.model).toBe("pro");
     expect(s.maxTurns).toBe(5000);
-    expect(s.transport).toBeUndefined(); // omitted → the profile's default transport
+    expect(activeProvider(s)).toBeUndefined();
     expect(s.permissions.defaultEffect).toBe("ask");
     expect(s.permissions.rules).toEqual([]);
     expect(s.transcript.enabled).toBe(true);
@@ -101,7 +119,7 @@ describe("settingsSchema", () => {
 
 describe("model tiers", () => {
   it("leaves models empty by default (populated by a provider template)", () => {
-    expect(parseSettings({}).models).toEqual({});
+    expect(activeModels(parseSettings({}))).toEqual({});
   });
 
   it("accepts an empty/unconfigured config without failing tier validation", () => {
@@ -113,8 +131,8 @@ describe("model tiers", () => {
   });
 
   it("normalizes each profile entry, filling per-tier defaults", () => {
-    const s = parseSettings({ models: tiers() });
-    expect(s.models.lite).toEqual({
+    const s = configured();
+    expect(activeModels(s).lite).toEqual({
       id: "lite-id",
       maxTokens: DEFAULT_MAX_TOKENS,
       contextWindowSize: DEFAULT_CONTEXT_WINDOW_SIZE,
@@ -123,18 +141,18 @@ describe("model tiers", () => {
   });
 
   it("accepts profile-object entries with per-tier overrides", () => {
-    const s = parseSettings({
-      models: tiers({
+    const s = configured(
+      tiers({
         pro: { id: "deepseek-v4-pro", maxTokens: 8192, contextWindowSize: 128_000 },
       }),
-    });
-    expect(s.models.lite).toEqual({
+    );
+    expect(activeModels(s).lite).toEqual({
       id: "lite-id",
       maxTokens: DEFAULT_MAX_TOKENS,
       contextWindowSize: DEFAULT_CONTEXT_WINDOW_SIZE,
       modalities: { input: ["text"] },
     });
-    expect(s.models.pro).toEqual({
+    expect(activeModels(s).pro).toEqual({
       id: "deepseek-v4-pro",
       maxTokens: 8192,
       contextWindowSize: 128_000,
@@ -143,35 +161,35 @@ describe("model tiers", () => {
   });
 
   it("rejects a profile object missing id", () => {
-    expect(() =>
-      settingsSchema.parse({ models: tiers({ pro: { maxTokens: 8192 } }) }),
-    ).toThrow();
+    expect(() => settingsSchema.parse(withModels(tiers({ pro: { maxTokens: 8192 } })))).toThrow();
   });
 
   it("requires the full lite/pro/max ladder in a non-empty table", () => {
     expect(() =>
-      settingsSchema.parse({ model: "pro", models: { lite: { id: "a" }, pro: { id: "b" } } }),
+      settingsSchema.parse(
+        withModels({ lite: { id: "a" }, pro: { id: "b" } }, { model: "pro" }),
+      ),
     ).toThrow(/must configure all tiers.*missing: max/);
   });
 
   it("allows extra tiers on top of the required ladder", () => {
-    const s = parseSettings({ models: tiers({ vision: { id: "vision-id" } }) });
+    const s = configured(tiers({ vision: { id: "vision-id" } }));
     expect(resolveModelId(s, "vision")).toBe("vision-id");
   });
 
   it("resolves an alias key to its concrete id", () => {
-    const s = parseSettings({ model: "lite", models: tiers({ lite: { id: "deepseek-v4-flash" } }) });
+    const s = configured(tiers({ lite: { id: "deepseek-v4-flash" } }), { model: "lite" });
     expect(resolveModelId(s, "lite")).toBe("deepseek-v4-flash");
   });
 
   it("passes an unknown name through unchanged (aux-model bare id escape hatch)", () => {
-    const s = parseSettings({ models: tiers() });
+    const s = configured();
     expect(resolveModelId(s, "claude-sonnet-4-5")).toBe("claude-sonnet-4-5");
   });
 
   it("rejects a `model` that isn't a configured tier (alias-only)", () => {
     expect(() =>
-      settingsSchema.parse({ model: "deepseek-v4-pro", models: tiers() }),
+      settingsSchema.parse(withModels(tiers(), { model: "deepseek-v4-pro" })),
     ).toThrow(/not a configured tier/);
   });
 
@@ -196,14 +214,14 @@ describe("model tiers", () => {
   });
 
   it("accepts a `model` that names a configured tier", () => {
-    const s = parseSettings({ model: "pro", models: tiers() });
+    const s = configured(tiers(), { model: "pro" });
     expect(s.model).toBe("pro");
   });
 });
 
 describe("resolveMaxTokens", () => {
   // Merge per-tier overrides onto the required lite/pro/max ladder.
-  const base = (models: Record<string, unknown> = {}) => parseSettings({ models: tiers(models) });
+  const base = (models: Record<string, unknown> = {}) => configured(tiers(models));
 
   it("falls back to DEFAULT_MAX_TOKENS when the tier has no override", () => {
     const s = base();
@@ -227,7 +245,7 @@ describe("resolveMaxTokens", () => {
 });
 
 describe("resolveContextWindowSize", () => {
-  const base = (models: Record<string, unknown> = {}) => parseSettings({ models: tiers(models) });
+  const base = (models: Record<string, unknown> = {}) => configured(tiers(models));
 
   it("falls back to DEFAULT_CONTEXT_WINDOW_SIZE when the tier has no override", () => {
     const s = base();
@@ -252,34 +270,31 @@ describe("resolveContextWindowSize", () => {
 
 describe("resolveSkillsIndexBudget", () => {
   it("scales with the tier's context window at 4 bytes/token", () => {
-    const s = parseSettings({ models: tiers({ pro: { id: "x", contextWindowSize: 1_000_000 } }) });
+    const s = configured(tiers({ pro: { id: "x", contextWindowSize: 1_000_000 } }));
     expect(resolveSkillsIndexBudget(s, "pro")).toBe(40_000);
   });
 
   it("defaults to ~8000 bytes on a 200k window, matching the previous fixed budget", () => {
-    const s = parseSettings({ models: tiers({ pro: { id: "x", contextWindowSize: 200_000 } }) });
+    const s = configured(tiers({ pro: { id: "x", contextWindowSize: 200_000 } }));
     expect(resolveSkillsIndexBudget(s, "pro")).toBe(8_000);
   });
 
   it("honours an explicit maxIndexBytes over the fraction", () => {
-    const s = parseSettings({
-      models: tiers({ pro: { id: "x", contextWindowSize: 1_000_000 } }),
+    const s = configured(tiers({ pro: { id: "x", contextWindowSize: 1_000_000 } }), {
       skills: { maxIndexBytes: 4_096 },
     });
     expect(resolveSkillsIndexBudget(s, "pro")).toBe(4_096);
   });
 
   it("honours a custom indexBudgetFraction", () => {
-    const s = parseSettings({
-      models: tiers({ pro: { id: "x", contextWindowSize: 200_000 } }),
+    const s = configured(tiers({ pro: { id: "x", contextWindowSize: 200_000 } }), {
       skills: { indexBudgetFraction: 0.05 },
     });
     expect(resolveSkillsIndexBudget(s, "pro")).toBe(40_000);
   });
 
   it("never returns a budget below 1", () => {
-    const s = parseSettings({
-      models: tiers({ pro: { id: "x", contextWindowSize: 1 } }),
+    const s = configured(tiers({ pro: { id: "x", contextWindowSize: 1 } }), {
       skills: { indexBudgetFraction: 0.0000001 },
     });
     expect(resolveSkillsIndexBudget(s, "pro")).toBe(1);
@@ -287,8 +302,7 @@ describe("resolveSkillsIndexBudget", () => {
 });
 
 describe("loadSettings", () => {
-  // The loader folds $NOVA_API_KEY into settings.apiKey, so a key exported in
-  // the dev's own shell would otherwise leak into these expectations.
+  // An exported key would otherwise change resolveApiKey expectations.
   const priorApiKeyEnv = process.env[API_KEY_ENV];
   beforeEach(() => {
     delete process.env[API_KEY_ENV];
@@ -304,18 +318,25 @@ describe("loadSettings", () => {
     await writeFile(
       path,
       JSON.stringify({
-        apiKey: "sk-test-123",
         model: "haiku",
-        models: tiers({ haiku: { id: "claude-haiku-4-5" } }),
-        baseURL: "https://file.example.com",
+        providers: [
+          {
+            name: "test",
+            profile: "other",
+            apiKey: "sk-test-123",
+            baseURL: "https://file.example.com",
+            models: tiers({ haiku: { id: "claude-haiku-4-5" } }),
+          },
+        ],
+        currentProvider: "test",
         sessionDir: "/tmp/nova-sessions",
       }),
       "utf8",
     );
     const s = await loadSettings(path);
-    expect(s.apiKey).toBe("sk-test-123");
+    expect(resolveApiKey(s)).toBe("sk-test-123");
     expect(s.model).toBe("haiku");
-    expect(s.baseURL).toBe("https://file.example.com");
+    expect(activeProvider(s)?.baseURL).toBe("https://file.example.com");
     expect(s.sessionDir).toBe("/tmp/nova-sessions");
   });
 
@@ -323,19 +344,23 @@ describe("loadSettings", () => {
     const dir = await mkdtemp(join(tmpdir(), "nova-config-"));
     const s = await loadSettings(join(dir, "nova.config.json"));
     expect(s.model).toBe("pro");
-    expect(s.baseURL).toBeUndefined();
-    expect(s.apiKey).toBeUndefined();
+    expect(activeProvider(s)).toBeUndefined();
+    expect(resolveApiKey(s)).toBeUndefined();
     expect(s.sessionDir).toBeUndefined();
   });
 
   it("folds $NOVA_API_KEY in, overriding the file's apiKey", async () => {
     const dir = await mkdtemp(join(tmpdir(), "nova-config-"));
     const path = join(dir, "nova.config.json");
-    await writeFile(path, JSON.stringify({ apiKey: "from-config" }), "utf8");
+    await writeFile(
+      path,
+      JSON.stringify({ providers: [{ name: "test", profile: "other", apiKey: "from-config" }] }),
+      "utf8",
+    );
     const prior = process.env[API_KEY_ENV];
     process.env[API_KEY_ENV] = "from-env";
     try {
-      expect((await loadSettings(path)).apiKey).toBe("from-env");
+      expect(resolveApiKey(await loadSettings(path))).toBe("from-env");
     } finally {
       if (prior === undefined) delete process.env[API_KEY_ENV];
       else process.env[API_KEY_ENV] = prior;
@@ -348,17 +373,19 @@ describe("loadSettings", () => {
     await writeFile(
       path,
       JSON.stringify({
-        models: tiers({ pro: { id: "deepseek-v4-pro", maxTokens: 4096 } }),
+        ...withModels(tiers({ pro: { id: "deepseek-v4-pro", maxTokens: 4096 } })),
       }),
       "utf8",
     );
     const s = await loadSettings(path);
-    expect(s.models.pro?.maxTokens).toBe(4096);
+    expect(activeModels(s).pro?.maxTokens).toBe(4096);
   });
 });
 
 describe("resolveApiKey", () => {
-  const withKey = parseSettings({ apiKey: "from-config" });
+  const withKey = parseSettings({
+    providers: [{ name: "test", profile: "other", apiKey: "from-config" }],
+  });
   const keyless = parseSettings({});
   const env = (value?: string): NodeJS.ProcessEnv =>
     (value === undefined ? {} : { [API_KEY_ENV]: value }) as NodeJS.ProcessEnv;
@@ -562,12 +589,133 @@ describe("auto-memory path resolution", () => {
   });
 });
 
-describe("settings.transport", () => {
+describe("provider transport", () => {
   it("parses an explicit wire-protocol override", () => {
-    expect(parseSettings({ transport: "openai" }).transport).toBe("openai");
-    expect(parseSettings({ transport: "anthropic" }).transport).toBe("anthropic");
+    expect(activeProvider(parseSettings({ providers: [{ name: "x", transport: "openai" }] }))?.transport).toBe("openai");
+    expect(
+      activeProvider(parseSettings({ providers: [{ name: "x", transport: "anthropic" }] }))
+        ?.transport,
+    ).toBe("anthropic");
   });
   it("rejects a bogus transport value", () => {
-    expect(() => parseSettings({ transport: "gemini" })).toThrow();
+    expect(() => parseSettings({ providers: [{ name: "x", transport: "gemini" }] })).toThrow();
+  });
+});
+
+describe("providers array & currentProvider access", () => {
+  it("resolves all provider-local values from the active entry", () => {
+    const s = parseSettings({
+      providers: [
+        {
+          name: "a",
+          profile: "deepseek",
+          baseURL: "https://a.example.com",
+          transport: "openai",
+          apiKey: "ka",
+          models: tiers(),
+        },
+        {
+          name: "b",
+          profile: "moonshot",
+          baseURL: "https://b.example.com",
+          transport: "anthropic",
+          apiKey: "kb",
+          models: tiers(),
+        },
+      ],
+      currentProvider: "b",
+      model: "pro",
+    });
+    expect(activeProviderProfile(s)).toBe("moonshot");
+    expect(activeProvider(s)?.baseURL).toBe("https://b.example.com");
+    expect(activeProvider(s)?.transport).toBe("anthropic");
+    expect(resolveApiKey(s)).toBe("kb");
+    expect(activeModels(s).pro?.id).toBe("pro-id");
+    expect(s.providers).toHaveLength(2);
+  });
+
+  it("defaults currentProvider to the first entry", () => {
+    const s = parseSettings({
+      providers: [
+        {
+          name: "a",
+          profile: "deepseek",
+          baseURL: "https://a.example.com",
+          apiKey: "ka",
+          models: tiers(),
+        },
+      ],
+    });
+    expect(s.currentProvider).toBe("a");
+    expect(activeProviderProfile(s)).toBe("deepseek");
+    expect(activeProvider(s)?.baseURL).toBe("https://a.example.com");
+    expect(resolveApiKey(s)).toBe("ka");
+  });
+
+  it("rejects a currentProvider that does not reference an entry", () => {
+    const result = settingsSchema.safeParse({
+      providers: [{ name: "a", profile: "deepseek", apiKey: "ka" }],
+      currentProvider: "missing",
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues).toContainEqual(
+        expect.objectContaining({
+          path: ["currentProvider"],
+          message: 'currentProvider "missing" does not name a configured provider',
+        }),
+      );
+    }
+  });
+
+  it("rejects duplicate provider names", () => {
+    const result = settingsSchema.safeParse({
+      providers: [
+        { name: "same", profile: "deepseek", apiKey: "ka" },
+        { name: "same", profile: "moonshot", apiKey: "kb" },
+      ],
+      currentProvider: "same",
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues).toContainEqual(
+        expect.objectContaining({
+          path: ["providers", 1, "name"],
+          message: 'provider name "same" is duplicated — names must be unique',
+        }),
+      );
+    }
+  });
+
+  it("keeps the runtime schema new-only when the file adapter is bypassed", () => {
+    for (const field of ["provider", "baseURL", "apiKey", "models", "transport"]) {
+      expect(() => parseSettings({ [field]: field === "models" ? {} : "removed" })).toThrow(
+        /Unrecognized key/,
+      );
+    }
+  });
+
+  it("keeps an empty providers array as the unconfigured state", () => {
+    const s = parseSettings({});
+    expect(s.providers).toEqual([]);
+    expect(activeModels(s)).toEqual({});
+  });
+
+  it("merges a provider's headers over the global default", () => {
+    const s = parseSettings({
+      headers: { "X-Global": "1" },
+      providers: [
+        {
+          name: "a",
+          profile: "deepseek",
+          baseURL: "https://a.example.com",
+          apiKey: "k",
+          headers: { "X-Provider": "2" },
+          models: tiers(),
+        },
+      ],
+    });
+    expect(s.headers).toEqual({ "X-Global": "1" });
+    expect(activeProviderHeaders(s)).toEqual({ "X-Global": "1", "X-Provider": "2" });
   });
 });

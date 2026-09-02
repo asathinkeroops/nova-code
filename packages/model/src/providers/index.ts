@@ -32,7 +32,7 @@ export function isProviderId(id: string): id is ProviderId {
 }
 
 /**
- * Resolve the profile for a provider id (`settings.provider`). The config schema
+ * Resolve the profile for a provider entry's profile id. The config schema
  * types `provider` as a free-form string (it lives in `@nova/base`, a leaf
  * that can't import this registry, so it can't enumerate the ids), so an unknown
  * id — a typo, or a generic third-party provider named directly — falls back to

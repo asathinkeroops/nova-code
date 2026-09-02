@@ -2,7 +2,7 @@ import { computeThreshold, estimateTokens, sliceFromLastCompacted } from "@nova/
 import {
   resolveProfile,
 } from "@nova/model";
-import { resolveContextWindowSize } from "@nova/base";
+import { activeProviderProfile, resolveContextWindowSize } from "@nova/base";
 import { accent, ACCENT_HEX, blue, bold, cyan, dim, green, yellow, magenta } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { measureCtxOverhead } from "../context-usage.js";
@@ -36,7 +36,7 @@ export async function handleContext(ctx: CliContext): Promise<void> {
 
   // Weight the estimate by the active provider's tokenizer ratios (CJK vs. rest)
   // so the breakdown matches what `shouldAutoCompact` triggers on.
-  const weights = resolveProfile(ctx.settings.provider).tokenEstimate;
+  const weights = resolveProfile(activeProviderProfile(ctx.settings) ?? "other").tokenEstimate;
 
   // The non-conversation part of the request, measured by the SAME helper the
   // auto-compaction trigger uses — the panel and the trigger have to agree on

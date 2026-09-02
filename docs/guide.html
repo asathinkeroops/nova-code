@@ -436,7 +436,7 @@
   <div class="doc-hero-inner max-w-[1600px] mx-auto px-6 sm:px-10 lg:px-16">
     <div class="max-w-3xl fade-in">
       <h1>Nova-Code <span class="hl">使用手册</span></h1>
-      <p><strong>Nova</strong>（命令行二进制 <code>nova</code>）是一个跑在终端里的编码 agent —— 它读代码、跑命令、改文件，通过工具调用把一项任务推到完成。模型层面向<strong>国产大模型</strong>，内置两套传输协议：Anthropic 兼容（DeepSeek 与 Kimi/Moonshot 原生）与 OpenAI 兼容（Qwen / GLM / MiniMax / 豆包等 <code>chat/completions</code> 端点原生）。DeepSeek（默认 <code>deepseek-v4-pro</code>）与 Kimi（Moonshot）有专用 provider profile，其余 Anthropic 兼容端点走通用档 <code>other</code>（OpenAI 兼容端点不设独立 provider —— 在供应商自己的 profile 上把 <code>settings.transport</code> 设为 <code>"openai"</code> 即可）。</p>
+      <p><strong>Nova</strong>（命令行二进制 <code>nova</code>）是一个跑在终端里的编码 agent —— 它读代码、跑命令、改文件，通过工具调用把一项任务推到完成。模型层面向<strong>国产大模型</strong>，内置两套传输协议：Anthropic 兼容（DeepSeek 与 Kimi/Moonshot 原生）与 OpenAI 兼容（Qwen / GLM / MiniMax / 豆包等 <code>chat/completions</code> 端点原生）。DeepSeek（默认 <code>deepseek-v4-pro</code>）与 Kimi（Moonshot）有专用 provider profile，其余 Anthropic 兼容端点走通用档 <code>other</code>（OpenAI 兼容端点不设独立 provider —— 在供应商自己的 profile 连接上把 <code>providers[].transport</code> 设为 <code>"openai"</code> 即可）。</p>
       <p>本手册面向<strong>使用者</strong>：怎么装、怎么配、怎么在日常里把它用顺。若想了解内部架构（loop 契约、包依赖、扩展点），请读仓库根的 <code>CLAUDE.md</code> 与 <code>README.md</code>。</p>
       <div class="doc-hero-meta">
         <span>21 章 · 单文件文档</span>
@@ -540,17 +540,21 @@
       <!-- §3 -->
       <section id="sec-3" class="mb-20">
         <div class="flex items-center gap-3 mb-5"><span class="sec-num">03</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">首次配置向导</h2></div>
-        <p>第一次启动时，如果 <code>~/.nova/nova.config.json</code> 里缺少 <code>apiKey</code>，Nova 会进入首次配置向导。它从内置 provider 模板里取一个（模板已填好 <code>baseURL</code>、默认档位，<code>lite</code>/<code>pro</code>/<code>max</code> 模型表则由 provider 的<strong>内置默认表</strong>提供），所以<strong>唯一要交互问你的就是 API key</strong>（输入时掩码）。</p>
+        <p>第一次启动时，如果 <code>~/.nova/nova.config.json</code> 的当前 provider 缺少有效 <code>apiKey</code>、解析不到可用模型表，或缺少协议/profile 所需的 <code>baseURL</code>，Nova 会进入首次配置向导。它从内置 provider 模板里取一个（模板已填好 <code>baseURL</code>、默认档位，<code>lite</code>/<code>pro</code>/<code>max</code> 模型表则由 provider 的<strong>内置默认表</strong>提供），所以<strong>唯一要交互问你的就是 API key</strong>（输入时掩码；若只是在修复当前 provider 的 endpoint，则会复用已有 key）。</p>
         <p><strong>当前只有 DeepSeek 一个模板对外可选</strong>（Moonshot/Kimi 已内置但在内部测试期，暂从选择器隐藏；「Other provider」手填入口也暂时关闭）。既然只有一个 provider，向导会<strong>跳过选择器</strong>，直接问 DeepSeek 的 API key。它写入：</p>
         <ul class="space-y-2">
-          <li><code>provider: deepseek</code>、<code>transport: openai</code>、<code>baseURL: https://api.deepseek.com</code>（DeepSeek 的 OpenAI 兼容端点）、默认档位 <code>pro</code>（以及 goal 配置和 key 本身）</li>
+          <li>一个 provider 连接：<code>providers: [{ "name": "deepseek", "profile": "deepseek", "transport": "openai", "baseURL": "https://api.deepseek.com", "apiKey": "&lt;key&gt;" }]</code>，并设 <code>currentProvider: "deepseek"</code>（DeepSeek 的 OpenAI 兼容端点）、默认档位 <code>pro</code>（以及 goal 配置和 key 本身）</li>
           <li>模型表<strong>不写盘</strong>：<code>lite</code>→<code>deepseek-v4-flash-vision-exp</code>，<code>pro</code>/<code>max</code>→<code>deepseek-v4-pro</code>（三档靠 per-tier <code>thinking</code> 拉开梯度）来自代码里的内置默认</li>
         </ul>
         <div class="callout callout-info">
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
-          <div><div class="callout-title">默认模型表不落盘</div><p><code>models</code> 的默认值按 <code>provider</code> 内置在代码里，加载配置时才层叠进来；配置文件里只放<strong>你自己的覆盖项</strong>。这样 Nova 升级带来的新模型 id、新价格、新上下文窗口，老装机也能直接吃到，而不会被向导当年写进文件的那份表钉死。旧版本写过整张表的配置，启动时会被<strong>改写成它实际表达的覆盖项</strong>（通常是空的，或一条 <code>/effort</code> 设过的 <code>thinking</code>），取值完全不变。</p><p class="mt-3">想覆盖某一档，只写要改的字段即可，例如 <code>"models": { "pro": { "thinking": "low" } }</code> —— 其余字段（<code>id</code>、<code>pricing</code>、<code>maxTokens</code>…）继续跟随内置默认。<strong>但如果你把某档的 <code>id</code> 改成别的模型</strong>，该档就整条以你的为准（不再继承内置的价格与上限）；反过来，同 <code>id</code> 的档位无法「删掉」某个内置字段（省略即继承）。<code>/effort</code> 持久化写的也正是这种最小覆盖。</p></div>
+          <div><div class="callout-title">默认模型表不落盘</div><p><code>providers[].models</code> 的默认值按 provider profile 内置在代码里，加载配置时才层叠进对应的 <code>providers[]</code> 条目；配置文件里只放<strong>你自己的覆盖项</strong>。这样 Nova 升级带来的新模型 id、新价格、新上下文窗口也能直接生效。若某个 <code>providers[]</code> 条目带着 Nova 曾写出的完整默认表，启动时会把它缩减成实际覆盖项（通常为空，或一条 <code>/effort</code> 设过的 <code>thinking</code>），取值不变。</p><p class="mt-3">想覆盖某一档，只写要改的字段即可，例如 <code>"models": { "pro": { "thinking": "low" } }</code> —— 其余字段（<code>id</code>、<code>pricing</code>、<code>maxTokens</code>…）继续跟随内置默认。<strong>但如果你把某档的 <code>id</code> 改成别的模型</strong>，该档就整条以你的为准（不再继承内置的价格与上限）；反过来，同 <code>id</code> 的档位无法「删掉」某个内置字段（省略即继承）。<code>/effort</code> 持久化写的也正是这种最小覆盖。</p></div>
         </div>
-        <p>按 <span class="kbd">Ctrl+C</span> 可中止向导。<code>apiKey</code> 已存在则跳过向导；导出了环境变量 <code>NOVA_API_KEY</code> 且配置里已有 <code>models</code> 表时同样跳过（只有环境变量、还没有 <code>models</code> 表时，向导仍会跑，但不再问你 key，也不会把这个 key 写进配置文件）。要接别的端点，直接<strong>手动编辑</strong> <code>~/.nova/nova.config.json</code> —— <strong>provider 与传输协议（<code>transport</code>）是两个独立维度</strong>：同一家供应商（如 DeepSeek）可同时有 Anthropic 兼容端点（<code>https://api.deepseek.com/anthropic</code>）与 OpenAI 兼容端点（<code>https://api.deepseek.com</code>），换协议只需改 <code>transport</code> + <code>baseURL</code>，DeepSeek 的错误翻译 / 余额探针 / 文档链接原样保留。通用档 <code>other</code>（通用 Anthropic 兼容端点）无内置档位表，需按 <code>lite</code>/<code>pro</code>/<code>max</code> 三档骨架填全，完整字段见 <a class="inline-link" href="#sec-20">§20</a>。OpenAI 兼容端点<strong>不设独立 provider</strong>：在现有供应商 profile 上把 <code>transport</code> 设为 <code>"openai"</code> 即可。</p>
+        <p>按 <span class="kbd">Ctrl+C</span> 可中止向导。当前 provider 同时有有效 API key 和可用模型表时才跳过向导；导出的环境变量 <code>NOVA_API_KEY</code> 可以满足 key 条件，但只有环境变量、还没有模型表时，向导仍会跑（不再问你 key，也不会把这个 key 写进配置文件）。要接别的端点，直接<strong>手动编辑</strong> <code>~/.nova/nova.config.json</code> —— <strong>provider profile 与传输协议（<code>transport</code>）是两个独立维度</strong>：同一家供应商（如 DeepSeek）可同时有 Anthropic 兼容端点（<code>https://api.deepseek.com/anthropic</code>）与 OpenAI 兼容端点（<code>https://api.deepseek.com</code>），换协议只需在对应的 <code>providers[]</code> 连接里改 <code>transport</code> + <code>baseURL</code>，DeepSeek 的错误翻译 / 余额探针 / 文档链接原样保留。通用档 <code>other</code>（通用 Anthropic 兼容端点）无内置档位表，需按 <code>lite</code>/<code>pro</code>/<code>max</code> 三档骨架填全，完整字段见 <a class="inline-link" href="#sec-20">§20</a>。OpenAI 兼容端点<strong>不设独立 provider</strong>：在现有供应商 profile 的连接上把 <code>providers[].transport</code> 设为 <code>"openai"</code> 即可。</p>
+        <div class="callout callout-info">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          <div><div class="callout-title">Headless 模式不会运行交互向导</div><p>但旧顶层配置的一次性迁移会照常先执行；迁移后若当前 provider 仍缺少有效 API key、解析不到模型表，或缺少协议/profile 所需的 <code>baseURL</code>，<code>nova -p</code>、管道和 CI 启动才会直接报配置错误。请先交互启动一次，或手动补齐 <code>providers</code> / <code>currentProvider</code>。</p></div>
+        </div>
         <div class="callout callout-warn">
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg>
           <div><div class="callout-title">apiKey 仍为空？</div><p>如果启动时 <code>apiKey</code> 仍为空（且没有 <code>NOVA_API_KEY</code>），Nova 会报错退出并提示去配置文件里补上。</p></div>
@@ -719,12 +723,12 @@
           <li>五档：<code>off</code> / <code>low</code> / <code>medium</code> / <code>high</code> / <code>max</code></li>
           <li>显式预算：传一个正整数（如 <code>-t 4096</code>），它会覆盖等级映射，直接当作 <code>budget_tokens</code></li>
         </ul>
-        <p class="mt-5"><strong>思考等级是 per-tier（按档位）的属性，没有全局 <code>thinking</code> 配置项</strong> —— 它写在 <code>models.&lt;tier&gt;.thinking</code> 里，切档（<code>/model</code>）会把当前思考等级换成该档的值。这也是 lite/pro/max 能在同一个模型 id 上拉出能力梯度的原因（DeepSeek 内置默认：lite→<code>low</code>、pro→<code>high</code>、max→<code>max</code>）。档位没写 <code>thinking</code> 时回退到 <code>max</code>。</p>
+        <p class="mt-5"><strong>思考等级是 per-tier（按档位）的属性，没有全局 <code>thinking</code> 配置项</strong> —— 它写在 <code>providers[].models.&lt;tier&gt;.thinking</code> 里，切档（<code>/model</code>）会把当前思考等级换成该档的值。这也是 lite/pro/max 能在同一个模型 id 上拉出能力梯度的原因（DeepSeek 内置默认：lite→<code>low</code>、pro→<code>high</code>、max→<code>max</code>）。档位没写 <code>thinking</code> 时回退到 <code>max</code>。</p>
         <p class="mt-5 font-medium" style="color:var(--text)">设置方式：</p>
         <ul class="space-y-2">
           <li>启动时：<code>nova -t high "..."</code> 或 <code>nova -t 4096 "..."</code>（本次会话临时覆盖）</li>
           <li>运行时：<code>/effort high</code>（查看用 <code>/effort</code>）—— 写回当前档位，本会话内生效</li>
-          <li>持久：改配置里该档的 <code>models.&lt;tier&gt;.thinking</code></li>
+          <li>持久：改当前 provider 连接里该档的 <code>providers[].models.&lt;tier&gt;.thinking</code></li>
         </ul>
         <div class="callout callout-warn">
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg>
@@ -1225,17 +1229,20 @@
       <!-- §20 -->
       <section id="sec-20" class="mb-20">
         <div class="flex items-center gap-3 mb-5"><span class="sec-num">20</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">配置文件完整参考</h2></div>
-        <p>配置文件位于 <code>~/.nova/nova.config.json</code>，是一份 JSON。下面列出全部字段及默认值（来自 zod schema，<strong>每个可配项都有默认值，缺省即用默认</strong>）。</p>
+        <p>配置文件位于 <code>~/.nova/nova.config.json</code>，是一份 JSON。下面列出全部字段及默认值（来自 zod schema，<strong>每个可配项都有默认值，缺省即用默认</strong>）。运行时 provider 配置只接受 <code>providers</code> / <code>currentProvider</code> 结构；启动检测到旧的顶层 <code>provider</code>、<code>baseURL</code>、<code>apiKey</code>、<code>models</code>、<code>transport</code> 时，会先把它们一次性迁移成一个 provider 连接、原子写回，再用新 schema 校验。若文件已经有非空 <code>providers</code>，它优先，残留的旧顶层字段只会被清除。</p>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">顶层与模型</h3>
         <div class="tbl-wrap"><table class="doc"><thead><tr><th>字段</th><th>默认</th><th>说明</th></tr></thead><tbody>
-          <tr><td><code>apiKey</code></td><td>（无）</td><td>provider API key（首次向导会写入）。<strong>环境变量 <code>NOVA_API_KEY</code> 优先于此项</strong>：设了就用它，配置文件里的值作为兜底。想把 key 留在环境里、不落到明文配置文件时用这个</td></tr>
-          <tr><td><code>provider</code></td><td><code>"deepseek"</code></td><td>驱动 thinking 参数、错误翻译、重试策略的 <strong>provider profile</strong>（供应商适配）：<code>deepseek</code>（effort 旋钮 + 错误翻译 + 状态码重试，默认走 Anthropic 端点，可用 <code>transport</code> 切到 OpenAI 端点）/ <code>moonshot</code> / <code>other</code>（通用 Anthropic 兼容端点，用 <code>budget_tokens</code>）。OpenAI 兼容端点不设独立 provider —— 用 <code>transport: "openai"</code> 在供应商 profile 上切换。未知 id 回退到 <code>other</code></td></tr>
-          <tr><td><code>transport</code></td><td>（无）</td><td><strong>传输协议</strong>，与 <code>provider</code> 正交：<code>"anthropic"</code>（@anthropic-ai/sdk 的 Messages 格式）/ <code>"openai"</code>（OpenAI 兼容 <code>chat/completions</code>，官方 openai SDK）。省略 → 用 provider profile 的默认（内置 profile 均默认 anthropic）。一家供应商两个端点（DeepSeek）时用这个切换，DeepSeek 适配原样保留；thinking 旋钮随协议变化（Anthropic 端点用 <code>output_config.effort</code>，OpenAI 端点用 <code>thinking.type</code> 开关 + <code>reasoning_effort</code> 三档强度）</td></tr>
-<tr><td><code>model</code></td><td><code>"pro"</code></td><td>当前<strong>档位</strong>：<code>models</code> 表中的 key（<code>lite</code>/<code>pro</code>/<code>max</code>），<strong>永远不是裸模型 id</strong></td></tr>
-          <tr><td><code>models</code></td><td><code>{}</code></td><td>命名的模型档位表，value 为<strong>档位对象</strong>，每档带自己的 <code>id</code>、<code>maxTokens</code>、<code>contextWindowSize</code>、<code>thinking</code>、<code>modalities</code>、<code>pricing</code>、可选 <code>description</code>。非空时<strong>必须含 <code>lite</code>/<code>pro</code>/<code>max</code> 三档</strong>（schema 强制）。默认表按 <code>provider</code> 内置在代码里、加载时层叠进来（<strong>不写进配置文件</strong>，见 <a class="inline-link" href="#sec-3">§3</a>）；这里只写覆盖项</td></tr>
-          <tr><td><code>baseURL</code></td><td>（无）</td><td>模型端点 URL，格式随协议：Anthropic 兼容端点（如 DeepSeek 的 <code>https://api.deepseek.com/anthropic</code>；<code>deepseek</code>/<code>moonshot</code>/<code>other</code> 缺省用 SDK 默认端点）或 OpenAI 兼容端点根（如 DeepSeek 的 <code>https://api.deepseek.com</code>，SDK 自动拼 <code>/chat/completions</code>；<code>transport: "openai"</code> 时必须给）</td></tr>
-          <tr><td><code>headers</code></td><td>（无）</td><td>附加在<strong>每个模型请求</strong>上的 HTTP 头，形如 <code>{"User-Agent": "nova/1.0", "X-Tenant": "acme"}</code>。并入 SDK 默认头，同名以这里为准（<code>authorization</code> / <code>x-api-key</code> 也可覆盖，供网关用非标准鉴权头）；只作用于模型端点，余额探测 / MCP / websearch 各有自己的传输层。头名按 HTTP token 校验、头值不允许 CR/LF，写错在加载配置时报错</td></tr>
+          <tr><td><code>providers</code></td><td><code>[]</code></td><td><strong>provider 连接数组</strong>，每一项是一个 provider 连接：<code>name</code>（数组内唯一键，<code>currentProvider</code> 引用它）、<code>profile</code>（行为 profile id，<code>deepseek</code>/<code>moonshot</code>/<code>other</code>，缺省 = <code>name</code>）、<code>baseURL</code>、<code>apiKey</code>、<code>transport</code>、<code>models</code>、可选 <code>headers</code>。<strong>配置文件的 provider 相关字段全部在这里</strong>，顶层不再有</td></tr>
+          <tr><td><code>currentProvider</code></td><td>（无 → 取第一个）</td><td>当前激活的 provider 连接名，引用 <code>providers</code> 数组某一项的 <code>name</code>；省略时取第一个。空数组 = 未配置（首启向导会补）</td></tr>
+          <tr><td><code>providers[].profile</code></td><td>（无 → 取该项 <code>name</code>）</td><td>驱动 thinking 参数、错误翻译、重试策略的 <strong>provider profile</strong>（供应商适配）：<code>deepseek</code>（effort 旋钮 + 错误翻译 + 状态码重试，默认走 Anthropic 端点，可用 <code>providers[].transport</code> 切到 OpenAI 端点）/ <code>moonshot</code> / <code>other</code>（通用 Anthropic 兼容端点）。OpenAI 兼容端点不设独立 provider —— 用 <code>providers[].transport: "openai"</code> 在供应商 profile 上切换。未知 id 回退到 <code>other</code></td></tr>
+          <tr><td><code>providers[].transport</code></td><td>（无）</td><td><strong>传输协议</strong>，与 <code>profile</code> 正交：<code>"anthropic"</code>（@anthropic-ai/sdk 的 Messages 格式）/ <code>"openai"</code>（OpenAI 兼容 <code>chat/completions</code>，官方 openai SDK）。省略 → 用 profile 的默认（内置 profile 均默认 anthropic）。一家供应商两个端点（DeepSeek）时用它切换，DeepSeek 适配原样保留；thinking 旋钮随协议变化（Anthropic 端点用 <code>output_config.effort</code>，OpenAI 端点用 <code>thinking.type</code> 开关 + <code>reasoning_effort</code> 三档强度）</td></tr>
+          <tr><td><code>providers[].apiKey</code></td><td>（无）</td><td>该 provider 连接的 API key（首次向导会写入）。<strong>环境变量 <code>NOVA_API_KEY</code> 优先于当前 provider 的此项</strong>：设了就用它，配置文件里的值作为兜底。想把 key 留在环境里、不落到明文配置文件时用这个</td></tr>
+          <tr><td><code>providers[].models</code></td><td><code>{}</code></td><td>该 provider 的命名模型档位表，value 为<strong>档位对象</strong>，每档带自己的 <code>id</code>、<code>maxTokens</code>、<code>contextWindowSize</code>、<code>thinking</code>、<code>modalities</code>、<code>pricing</code>、可选 <code>description</code>。非空时<strong>必须含 <code>lite</code>/<code>pro</code>/<code>max</code> 三档</strong>（schema 强制）。默认表按 <code>profile</code> 内置在代码里、加载时层叠进来（<strong>不写进配置文件</strong>，见 <a class="inline-link" href="#sec-3">§3</a>）；这里只写覆盖项</td></tr>
+          <tr><td><code>providers[].baseURL</code></td><td>（无）</td><td>该 provider 连接的模型端点 URL，格式随协议：Anthropic 兼容端点（如 DeepSeek 的 <code>https://api.deepseek.com/anthropic</code>）或 OpenAI 兼容端点根（如 DeepSeek 的 <code>https://api.deepseek.com</code>，SDK 自动拼 <code>/chat/completions</code>；<code>providers[].transport: "openai"</code> 时必须给）</td></tr>
+          <tr><td><code>providers[].headers</code></td><td>（无）</td><td>该 provider 连接附加的 HTTP 头，按头名覆盖全局 <code>headers</code>（见下）</td></tr>
+          <tr><td><code>model</code></td><td><code>"pro"</code></td><td>当前<strong>档位</strong>：当前 provider 的 <code>models</code> 表中的 key（<code>lite</code>/<code>pro</code>/<code>max</code>），<strong>永远不是裸模型 id</strong></td></tr>
+          <tr><td><code>headers</code></td><td>（无）</td><td>附加在<strong>每个模型请求</strong>上的 HTTP 头（全局默认，形如 <code>{"User-Agent": "nova/1.0", "X-Tenant": "acme"}</code>），按头名并入 SDK 的默认头；某连接的 <code>providers[].headers</code> 覆盖同名。只作用于模型端点，余额探测 / MCP / websearch 各有自己的传输层。头名按 HTTP token 校验、头值不允许 CR/LF，写错在加载配置时报错</td></tr>
           <tr><td><code>sessionDir</code></td><td><code>~/.nova/sessions</code></td><td>session 存放目录</td></tr>
           <tr><td><code>language</code></td><td><code>"auto"</code></td><td><strong>模型回复语言</strong>（注入 system prompt），同时也是 TUI 界面语言的默认来源；<code>auto</code> 跟随系统 locale（<code>$LC_ALL</code>/<code>$LANG</code>/<code>$LANGUAGE</code>，macOS 还读 <code>AppleLocale</code>），否则填 BCP-47 标签如 <code>en</code>/<code>zh-CN</code>。加载时 <code>auto</code> 会被解析成具体标签</td></tr>
           <tr><td><code>locale</code></td><td><code>"auto"</code></td><td><strong>仅 TUI 静态文案</strong>的语言覆盖（菜单/提示/状态行）；<code>auto</code> = 跟随 <code>language</code>。内置 zh-CN 与 EN，其它标签回落英文。两者可不同（中文界面 + 英文回复），见 <a class="inline-link" href="#sec-5">§5</a></td></tr>
@@ -1245,7 +1252,7 @@
         </tbody></table></div>
         <div class="callout callout-info">
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
-          <div><p><strong>每档输出上限 / 上下文窗口是 per-tier 的</strong>：写在 <code>models.&lt;tier&gt;.maxTokens</code>（schema 缺省 32768，DeepSeek 内置默认三档均为 393216 = 384×1024）和 <code>models.&lt;tier&gt;.contextWindowSize</code>（缺省 1048576 = 1024×1024），不再是顶层字段。<code>models.&lt;tier&gt;.thinking</code> 让同一模型 id 拉出 lite/pro/max 能力梯度（见 <a class="inline-link" href="#sec-7">§7</a>）；<code>models.&lt;tier&gt;.pricing</code> 提供 <code>/usage</code> 成本估算单价。</p></div>
+          <div><p><strong>每档输出上限 / 上下文窗口是 per-tier 的</strong>：写在 <code>providers[].models.&lt;tier&gt;.maxTokens</code>（schema 缺省 32768，DeepSeek 内置默认三档均为 393216 = 384×1024）和 <code>providers[].models.&lt;tier&gt;.contextWindowSize</code>（缺省 1048576 = 1024×1024）。<code>providers[].models.&lt;tier&gt;.thinking</code> 让同一模型 id 拉出 lite/pro/max 能力梯度（见 <a class="inline-link" href="#sec-7">§7</a>）；<code>providers[].models.&lt;tier&gt;.pricing</code> 提供 <code>/usage</code> 成本估算单价。</p></div>
         </div>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)"><code>permissions</code></h3>
@@ -1272,7 +1279,7 @@
         </tbody></table></div>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">思考等级（thinking）</h3>
-        <p><strong>没有顶层 <code>thinking</code> 配置项</strong> —— 思考等级是 per-tier 的，写在 <code>models.&lt;tier&gt;.thinking</code>（<code>off</code>/<code>low</code>/<code>medium</code>/<code>high</code>/<code>max</code>；缺省回退 <code>max</code>）。<code>-t/--think</code>、<code>/effort</code> 是会话内覆盖，见 <a class="inline-link" href="#sec-7">§7</a>。</p>
+        <p><strong>没有顶层 <code>thinking</code> 配置项</strong> —— 思考等级是 per-tier 的，写在 <code>providers[].models.&lt;tier&gt;.thinking</code>（<code>off</code>/<code>low</code>/<code>medium</code>/<code>high</code>/<code>max</code>；缺省回退 <code>max</code>）。<code>-t/--think</code>、<code>/effort</code> 是会话内覆盖，见 <a class="inline-link" href="#sec-7">§7</a>。</p>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)"><code>compact</code></h3>
         <div class="tbl-wrap"><table class="doc"><thead><tr><th>字段</th><th>默认</th><th>说明</th></tr></thead><tbody>
@@ -1307,7 +1314,7 @@
         </tbody></table></div>
         <div class="callout callout-info">
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
-          <div><p>单价本身是 <strong>per-tier</strong> 的：写在 <code>models.&lt;tier&gt;.pricing</code>（<code>input</code>/<code>output</code>/<code>cacheRead</code>/<code>cacheWrite</code> 每百万 token，<code>currency</code> 选 <code>USD</code>→<code>$</code> 或 <code>CNY</code>→<code>¥</code>）。用当前档位自己的费率算钱；某档没写 <code>pricing</code> 就只显示 token、不显示金额。</p></div>
+          <div><p>单价本身是 <strong>per-tier</strong> 的：写在 <code>providers[].models.&lt;tier&gt;.pricing</code>（<code>input</code>/<code>output</code>/<code>cacheRead</code>/<code>cacheWrite</code> 每百万 token，<code>currency</code> 选 <code>USD</code>→<code>$</code> 或 <code>CNY</code>→<code>¥</code>）。用当前档位自己的费率算钱；某档没写 <code>pricing</code> 就只显示 token、不显示金额。</p></div>
         </div>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)"><code>background</code> / <code>queue</code> — 后台命令与输入队列</h3>
@@ -1379,7 +1386,7 @@
               <span>启动报 apiKey 未设置</span>
               <svg class="w-4 h-4 text-mute transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
             </summary>
-            <p class="px-5 pb-4 pt-0 text-sm m-0 max-w-none">跑一次首启向导填上，或手动编辑 <code>~/.nova/nova.config.json</code> 的 <code>apiKey</code>/<code>baseURL</code>/<code>model</code>；也可以只导出环境变量 <code>NOVA_API_KEY</code>（优先于配置文件里的 <code>apiKey</code>，<code>/doctor</code> 会标明当前 key 的来源）。</p>
+            <p class="px-5 pb-4 pt-0 text-sm m-0 max-w-none">跑一次首启向导填上，或手动编辑 <code>~/.nova/nova.config.json</code> 的 <code>providers[].apiKey</code>/<code>providers[].baseURL</code>/<code>model</code>（并设好 <code>currentProvider</code>）；也可以只导出环境变量 <code>NOVA_API_KEY</code>（优先于配置文件里的 <code>apiKey</code>，<code>/doctor</code> 会标明当前 key 的来源）。</p>
           </details>
           <details class="group bg-surface border border-line rounded-xl overflow-hidden">
             <summary class="cursor-pointer list-none px-5 py-3.5 flex items-center justify-between gap-3 font-medium select-none" style="color:var(--text)">
@@ -1449,14 +1456,14 @@
               <span>长回复被 <code>max_tokens</code> 截断</span>
               <svg class="w-4 h-4 text-mute transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
             </summary>
-            <p class="px-5 pb-4 pt-0 text-sm m-0 max-w-none">Nova 的 loop 会自动检测 <code>max_tokens</code> 截断并重新提示模型继续。默认最多连续续传 3 次（<code>maxTokensContinuations: 3</code>），每次有进展时计数器重置。设为 <code>0</code> 可禁用此特性。若长回复频繁被截断，也可以直接调高该档的 <code>models.&lt;tier&gt;.maxTokens</code>（DeepSeek 内置默认已是 393216）。</p>
+            <p class="px-5 pb-4 pt-0 text-sm m-0 max-w-none">Nova 的 loop 会自动检测 <code>max_tokens</code> 截断并重新提示模型继续。默认最多连续续传 3 次（<code>maxTokensContinuations: 3</code>），每次有进展时计数器重置。设为 <code>0</code> 可禁用此特性。若长回复频繁被截断，也可以直接调高该档的 <code>providers[].models.&lt;tier&gt;.maxTokens</code>（DeepSeek 内置默认已是 393216）。</p>
           </details>
           <details class="group bg-surface border border-line rounded-xl overflow-hidden">
             <summary class="cursor-pointer list-none px-5 py-3.5 flex items-center justify-between gap-3 font-medium select-none" style="color:var(--text)">
               <span>如何切换模型？</span>
               <svg class="w-4 h-4 text-mute transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
             </summary>
-            <p class="px-5 pb-4 pt-0 text-sm m-0 max-w-none">REPL 内用 <code>/model</code>（无参数弹出交互列表），或 <code>/model &lt;tier&gt;</code>（如 <code>/model pro</code>）—— 只接受配置过的<strong>档位名</strong>，裸模型 id 会被拒绝。CLI 启动时用 <code>-m</code> / <code>--model</code>（同样只认档位名）。模型档位在配置的 <code>models</code> 字段定义，非空时须含 <code>lite</code>/<code>pro</code>/<code>max</code>。</p>
+            <p class="px-5 pb-4 pt-0 text-sm m-0 max-w-none">REPL 内用 <code>/model</code>（无参数弹出交互列表），或 <code>/model &lt;tier&gt;</code>（如 <code>/model pro</code>）—— 只接受配置过的<strong>档位名</strong>，裸模型 id 会被拒绝。CLI 启动时用 <code>-m</code> / <code>--model</code>（同样只认档位名）。模型档位在当前 provider 连接的 <code>providers[].models</code> 字段定义，非空时须含 <code>lite</code>/<code>pro</code>/<code>max</code>。</p>
           </details>
           <details class="group bg-surface border border-line rounded-xl overflow-hidden">
             <summary class="cursor-pointer list-none px-5 py-3.5 flex items-center justify-between gap-3 font-medium select-none" style="color:var(--text)">

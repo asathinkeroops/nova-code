@@ -174,9 +174,10 @@ const MOONSHOT_MODELS_DECIMAL: Record<string, ModelProfile> = {
 };
 
 /**
- * Built-in tier tables, keyed by `settings.provider`. These are the DEFAULTS,
+ * Built-in tier tables, keyed by a provider entry's `profile` (falling back to
+ * its `name`). These are the DEFAULTS,
  * and they are deliberately NOT written into `nova.config.json` — they are
- * layered in at parse time (see {@link mergeBuiltinModels}) so that shipping a
+ * layered in at parse time (see {@link mergeProviderModels}) so that shipping a
  * better/cheaper model id, a corrected price, or a bigger context window reaches
  * every existing install on upgrade instead of being frozen in whatever the
  * setup wizard once wrote to disk.
@@ -219,16 +220,12 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Layer a config's `models` table on top of its provider's built-in defaults.
- * Runs as a pre-parse step on the RAW config object (see `settingsSchema`), so
- * an entry that only carries an override (`{ "pro": { "thinking": "low" } }`)
- * still satisfies the schema's `id` requirement and the lite/pro/max ladder.
+ * Layer one provider entry's `models` table on top of its built-in defaults.
+ * The profile id is `entry.profile` falling back to `entry.name` (a connection
+ * that doubles as its profile needs no separate field). Returns a new entry with
+ * the merged table; entries with no built-in table pass through untouched.
  *
  * Rules:
- * - Only applies when the config names a `provider` explicitly. A keyless config
- *   is the pre-setup state, and `models: {}` there is what tells setup (and
- *   `nova doctor`) that the install is unconfigured — filling it in would make
- *   an install with no endpoint and no key look ready.
  * - A tier that keeps the built-in `id` (or omits `id`) is MERGED field-by-field
  *   over the built-in, so a config can override one knob and inherit the rest.
  *   The flip side: it cannot UNSET a built-in field (an omitted `pricing` is
@@ -237,23 +234,47 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  *   different model, so inheriting the built-in's price/limits would be wrong.
  * - Extra tiers a provider doesn't ship are passed through untouched.
  */
-export function mergeBuiltinModels(raw: unknown): unknown {
-  if (!isPlainObject(raw)) return raw;
-  const provider = typeof raw["provider"] === "string" ? raw["provider"].trim() : "";
-  const builtin = provider ? BUILTIN_PROVIDER_MODELS[provider] : undefined;
-  if (!builtin) return raw;
-  const user = isPlainObject(raw["models"]) ? raw["models"] : {};
+function mergeProviderEntryModels(entry: Record<string, unknown>): Record<string, unknown> {
+  const profile =
+    typeof entry["profile"] === "string"
+      ? entry["profile"].trim()
+      : typeof entry["name"] === "string"
+        ? entry["name"].trim()
+        : "";
+  const builtin = profile ? BUILTIN_PROVIDER_MODELS[profile] : undefined;
+  if (!builtin) return entry;
+  const user = isPlainObject(entry["models"]) ? entry["models"] : {};
   const models: Record<string, unknown> = structuredClone(builtin);
-  for (const [tier, entry] of Object.entries(user)) {
+  for (const [tier, e] of Object.entries(user)) {
     const base = models[tier];
-    if (!isPlainObject(entry) || !isPlainObject(base)) {
-      models[tier] = entry;
+    if (!isPlainObject(e) || !isPlainObject(base)) {
+      models[tier] = e;
       continue;
     }
-    const id = entry["id"];
-    models[tier] = id === undefined || id === base["id"] ? { ...base, ...entry } : entry;
+    const id = e["id"];
+    models[tier] = id === undefined || id === base["id"] ? { ...base, ...e } : e;
   }
-  return { ...raw, models };
+  return { ...entry, models };
+}
+
+/**
+ * Layer each provider entry's `models` overrides on top of its built-in
+ * defaults. Runs as a pre-parse step on the raw config object (see
+ * `settingsSchema`). `currentProvider` defaults to the first entry only when it
+ * is omitted; malformed values remain visible to schema validation.
+ */
+export function mergeProviderModels(raw: unknown): unknown {
+  if (!isPlainObject(raw)) return raw;
+  if (!Array.isArray(raw["providers"])) return raw;
+  const providers = raw["providers"].map((p) =>
+    isPlainObject(p) ? mergeProviderEntryModels(p) : p,
+  );
+  const next: Record<string, unknown> = { ...raw, providers };
+  if (providers.length > 0 && next["currentProvider"] === undefined) {
+    const first = providers[0] as Record<string, unknown>;
+    next["currentProvider"] = first?.["name"];
+  }
+  return next;
 }
 
 function deepEqual(a: unknown, b: unknown): boolean {
@@ -281,7 +302,7 @@ function deepEqual(a: unknown, b: unknown): boolean {
  *   leaving it out is what lets the tier follow the built-in, which is the whole
  *   point. Dropping a field the entry never carried costs nothing either — a
  *   same-`id` tier inherits the built-in's fields regardless (see
- *   {@link mergeBuiltinModels}), so the effective value is the same both ways.
+ *   {@link mergeProviderModels}), so the effective value is the same both ways.
  * - Different `id`, or a tier the shipped table doesn't have → keep the entry
  *   verbatim. It says something the override form can't (a different model must
  *   not inherit the built-in's price/limits), so it is not ours to rewrite.
@@ -332,6 +353,40 @@ function reduceToOverrides(
  * untouched and no write happens) and never throws — a config that can't be read
  * or rewritten simply keeps its table. Returns true when the file was rewritten.
  */
+/**
+ * Reduce one provider entry's on-disk tier table to just the overrides it
+ * expresses over a table Nova itself wrote (see {@link AUTO_WRITTEN_MODEL_TABLES},
+ * keyed by the entry's `profile` falling back to `name`). Returns
+ * `{ entry, changed }` — `changed` is false when the entry needs no rewrite.
+ */
+function reduceProviderEntryModels(
+  entry: Record<string, unknown>,
+): { entry: Record<string, unknown>; changed: boolean } {
+  const profile =
+    typeof entry["profile"] === "string"
+      ? entry["profile"].trim()
+      : typeof entry["name"] === "string"
+        ? entry["name"].trim()
+        : "";
+  const known = profile ? AUTO_WRITTEN_MODEL_TABLES[profile] : undefined;
+  const user = isPlainObject(entry["models"]) ? entry["models"] : {};
+  if (!known?.length || Object.keys(user).length === 0) {
+    return { entry, changed: false };
+  }
+  // Several snapshots can explain a table; the one that explains the most of it
+  // is the one this entry was written from.
+  let best = reduceToOverrides(user, known[0] as Record<string, ModelProfile>);
+  for (const snapshot of known.slice(1)) {
+    const next = reduceToOverrides(user, snapshot);
+    if (next.retained < best.retained) best = next;
+  }
+  if (deepEqual(best.models, user)) return { entry, changed: false }; // nothing to strip
+  const nextEntry = { ...entry };
+  if (Object.keys(best.models).length === 0) delete nextEntry["models"];
+  else nextEntry["models"] = best.models;
+  return { entry: nextEntry, changed: true };
+}
+
 export async function stripDefaultModels(configPath: string): Promise<boolean> {
   let raw: Record<string, unknown>;
   try {
@@ -341,25 +396,18 @@ export async function stripDefaultModels(configPath: string): Promise<boolean> {
   } catch {
     return false; // missing / unreadable / malformed — nothing to migrate.
   }
-  const user = raw["models"];
-  if (!isPlainObject(user)) return false;
-  const provider = typeof raw["provider"] === "string" ? raw["provider"].trim() : "";
-  const known = provider ? AUTO_WRITTEN_MODEL_TABLES[provider] : undefined;
-  if (!known?.length) return false;
-  // Several snapshots can explain a table; the one that explains the most of it
-  // is the one this config was written from.
-  let best = reduceToOverrides(user, known[0] as Record<string, ModelProfile>);
-  for (const snapshot of known.slice(1)) {
-    const next = reduceToOverrides(user, snapshot);
-    if (next.retained < best.retained) best = next;
-  }
-  if (deepEqual(best.models, user)) return false; // nothing to strip
-  const next = { ...raw };
-  if (Object.keys(best.models).length === 0) delete next["models"];
-  else next["models"] = best.models;
+  if (!Array.isArray(raw["providers"])) return false;
+  let changed = false;
+  const providers = raw["providers"].map((p) => {
+    if (!isPlainObject(p)) return p;
+    const r = reduceProviderEntryModels(p);
+    if (r.changed) changed = true;
+    return r.entry;
+  });
+  if (!changed) return false;
   try {
     await mkdir(dirname(configPath), { recursive: true });
-    await writeFile(configPath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+    await writeFile(configPath, `${JSON.stringify({ ...raw, providers }, null, 2)}\n`, "utf8");
     return true;
   } catch {
     return false;

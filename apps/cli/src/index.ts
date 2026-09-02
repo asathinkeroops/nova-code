@@ -1,9 +1,15 @@
 import { Command } from "commander";
 import {
+  activeModels,
+  API_KEY_ENV,
+  DEFAULT_CONFIG_PATH,
   isThinkingLevel,
+  migrateLegacyProviderConfig,
+  resolveApiKey,
+  stripDefaultModels,
+  type Settings,
   type ThinkingLevel,
 } from "@nova/base";
-import { API_KEY_ENV, DEFAULT_CONFIG_PATH, stripDefaultModels, type Settings } from "@nova/base";
 import { createContext } from "./context.js";
 import {
   buildDoctorCommand,
@@ -22,6 +28,7 @@ import { runRepl } from "./repl.js";
 import { Screen, fatalExit } from "./screen.js";
 import { pruneOldSessions } from "./session.js";
 import { ensureSettings } from "./setup.js";
+import { settingsReadiness } from "./startup-readiness.js";
 import { buildUpgradeCommand } from "./upgrade-cli.js";
 import { readCliVersion } from "./version.js";
 import { ensureWorkspaceTrust, isWorkspaceTrusted } from "./workspace-trust.js";
@@ -55,10 +62,11 @@ interface ThinkOverride {
  */
 function applyCliOverrides(settings: Settings, opts: CliOptions): ThinkOverride {
   if (opts.model) {
+    const models = activeModels(settings);
     // Alias-only: --model names a configured tier, not a bare provider id.
-    if (!Object.prototype.hasOwnProperty.call(settings.models, opts.model)) {
+    if (!Object.prototype.hasOwnProperty.call(models, opts.model)) {
       throw new Error(
-        `--model "${opts.model}" is not a configured tier — one of: ${Object.keys(settings.models).join(", ")}`,
+        `--model "${opts.model}" is not a configured tier — one of: ${Object.keys(models).join(", ")}`,
       );
     }
     settings.model = opts.model;
@@ -133,9 +141,24 @@ async function runHeadlessMode(
     dieHeadless(err instanceof Error ? err.message : String(err), 2);
   }
 
-  if (!settings.apiKey) {
+  const readiness = settingsReadiness(settings);
+  if (readiness === "missing-api-key") {
     dieHeadless(
       `apiKey is not set in nova.config.json (or equivalent settings file), nor in $${API_KEY_ENV}.`,
+      1,
+    );
+  }
+  if (readiness === "missing-models") {
+    dieHeadless(
+      "the current provider has no configured models; run nova interactively once to finish " +
+        "setup, or configure providers/currentProvider in nova.config.json.",
+      1,
+    );
+  }
+  if (readiness === "missing-base-url") {
+    dieHeadless(
+      "the current provider has no usable baseURL; run nova interactively once to finish " +
+        "setup, or configure providers[].baseURL in nova.config.json.",
       1,
     );
   }
@@ -193,6 +216,10 @@ async function runHeadlessMode(
 }
 
 async function run(positional: string[], opts: CliOptions): Promise<void> {
+  // Convert the removed flat provider fields into one provider entry before any
+  // other config cleanup or validation. Runtime Settings still has one shape.
+  await migrateLegacyProviderConfig(DEFAULT_CONFIG_PATH);
+
   // Cleanup for configs written by older versions, which persisted the
   // provider's whole tier table. Those tables are built-ins now (layered in at
   // parse time), so a copy on disk would pin the install to the ids / prices /
@@ -272,7 +299,7 @@ async function run(positional: string[], opts: CliOptions): Promise<void> {
       await fatalExit(screen, err instanceof Error ? err.message : String(err));
     }
 
-    if (!settings.apiKey) {
+    if (!resolveApiKey(settings)) {
       await fatalExit(
         screen,
         `apiKey is not set in nova.config.json (or equivalent settings file), nor in $${API_KEY_ENV}.`,

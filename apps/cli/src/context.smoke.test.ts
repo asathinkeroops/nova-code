@@ -23,12 +23,23 @@ import type { CliContext } from "./ctx-types.js";
  * tests — and its value is entirely in *executing* the assembly path.
  *
  * Everything that would reach the network or the developer's real `~/.nova` is
- * switched off below; `apiKey` is a placeholder because the model client is
- * constructed but never called.
+ * switched off below; the provider key is a placeholder because the model
+ * client is constructed but never called.
  */
 function isolatedSettings(sessionDir: string): Settings {
   return settingsSchema.parse({
-    apiKey: "test-key-not-used",
+    providers: [
+      {
+        name: "other",
+        profile: "other",
+        apiKey: "test-key-not-used",
+        models: {
+          lite: { id: "test-lite" },
+          pro: { id: "test-pro" },
+          max: { id: "test-max" },
+        },
+      },
+    ],
     sessionDir,
     // No outbound connections from a test run.
     mcp: { enabled: false },

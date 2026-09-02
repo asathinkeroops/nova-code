@@ -28,13 +28,13 @@ export interface ModelConfig {
   /**
    * Provider profile driving default transport, thinking-param and
    * error/retry behavior. Required: the caller resolves it once from
-   * `settings.provider` (see `resolveProfile`) and passes a concrete profile —
+   * the active provider entry's `profile` (see `resolveProfile`) and passes a concrete profile —
    * the adapter never guesses from the model name.
    */
   provider: ProviderProfile;
   /**
    * Wire protocol override, when the caller wants to differ from the profile's
-   * default transport. Comes from `settings.transport`. A vendor that ships
+   * default transport. Comes from the active provider entry's `transport`. A vendor that ships
    * both endpoints (DeepSeek: `/anthropic` and the plain OpenAI-compatible
    * `https://api.deepseek.com`) keeps ONE profile and switches wires here.
    * The thinking knob is transport-sensitive — the profile returns the wire
@@ -131,7 +131,7 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 
 /**
  * Create a model client for the profile's wire protocol. The EFFECTIVE
- * transport is `config.transport` (from `settings.transport`) falling back to
+ * transport is `config.transport` (from the active provider entry) falling back to
  * the profile's `transport` default, falling back to "anthropic". "anthropic"
  * goes through the `@anthropic-ai/sdk` client; "openai" goes through the
  * OpenAI-compatible `chat/completions` transport (`openai.ts`, official

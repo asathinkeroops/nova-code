@@ -38,6 +38,10 @@ import {
   type InterjectFn,
 } from "@nova/tools";
 import {
+  activeModels,
+  activeProvider,
+  activeProviderHeaders,
+  activeProviderProfile,
   API_KEY_ENV,
   createLogger,
   DEFAULT_CHEAP_TIER,
@@ -49,6 +53,7 @@ import {
   resolveModelId,
   resolveSkillsIndexBudget,
   resolveModelModalities,
+  resolveApiKey,
   resolveThinkingLevel,
   Transcript,
   type Logger,
@@ -175,10 +180,17 @@ export async function createContext(
   screen: Screen,
   cliOpts: CliRuntimeOptions,
 ): Promise<CliContext> {
-  const apiKey = settings.apiKey;
-  if (!apiKey) {
-    throw new Error(`apiKey is not set in settings (nor in $${API_KEY_ENV})`);
+  const provider = activeProvider(settings);
+  if (!provider) {
+    throw new Error("currentProvider does not name a configured provider");
   }
+  const apiKey = resolveApiKey(settings);
+  if (!apiKey) {
+    throw new Error(`active provider apiKey is not set (nor in $${API_KEY_ENV})`);
+  }
+  const models = activeModels(settings);
+  const providerProfile = activeProviderProfile(settings) ?? provider.name;
+  const headers = activeProviderHeaders(settings);
 
   const workspace = cliOpts.cwd ?? process.cwd();
   const noPretty = cliOpts.noPretty ?? false;
@@ -591,7 +603,8 @@ export async function createContext(
     screen.clearLiveDraft();
   };
 
-  // `name` may be a bare model id or a key into settings.models; resolveModelId
+  // `name` may be a bare model id or a key into the active provider's models;
+  // resolveModelId
   // maps a known alias to its concrete id and passes anything else through, so
   // both /model tiers and raw ids work. Resolving here means every caller —
   // ctx.model, predictModel, and the sub-agent model cache — gets alias support
@@ -601,13 +614,13 @@ export async function createContext(
     return createModel({
       apiKey,
       model,
-      provider: resolveProfile(settings.provider),
+      provider: resolveProfile(providerProfile),
       // Explicit wire-protocol override; omitted → the profile's default
-      // transport. Lets e.g. `provider: "deepseek"` run against DeepSeek's
+      // transport. Lets e.g. `profile: "deepseek"` run against DeepSeek's
       // OpenAI-compatible endpoint (baseURL without the /anthropic suffix).
-      ...(settings.transport ? { transport: settings.transport } : {}),
-      ...(settings.baseURL ? { baseURL: settings.baseURL } : {}),
-      ...(settings.headers ? { headers: settings.headers } : {}),
+      ...(provider.transport ? { transport: provider.transport } : {}),
+      ...(provider.baseURL ? { baseURL: provider.baseURL } : {}),
+      ...(headers ? { headers } : {}),
       ...(trackTokens
         ? { onStreamProgress: pushSpinnerTokens, onStreamText: pushLiveText, onRetry }
         : {}),
@@ -895,7 +908,7 @@ export async function createContext(
       // classifier never pollutes the turn's token counters.
       const classifierModel =
         autoCfg.model ??
-        (ctx.settings.models[DEFAULT_CHEAP_TIER] ? DEFAULT_CHEAP_TIER : ctx.settings.model);
+        (models[DEFAULT_CHEAP_TIER] ? DEFAULT_CHEAP_TIER : ctx.settings.model);
       const verdict = await classifyCommandRisk(command, {
         model: autoCfg.llmClassifier ? ctx.buildModel(classifierModel, false) : undefined,
         timeoutMs: autoCfg.classifierTimeoutMs,
@@ -940,7 +953,7 @@ export async function createContext(
     // Both read live so the threshold follows a /model switch to another tier
     // (different window) or another provider (different tokenizer ratios).
     getContextWindowSize: () => resolveContextWindowSize(ctx.settings, ctx.settings.model),
-    getTokenEstimate: () => resolveProfile(ctx.settings.provider).tokenEstimate,
+    getTokenEstimate: () => resolveProfile(providerProfile).tokenEstimate,
     getOverheadTokens: () => fixedOverheadTotal(measureCtxOverhead(ctx)),
     onPreCompact: async ({ before }) => {
       const r = await ctx.userHooks.firePreCompact({

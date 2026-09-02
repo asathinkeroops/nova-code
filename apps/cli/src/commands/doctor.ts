@@ -8,7 +8,11 @@ import {
 import {
   estimateTextTokens,
 } from "@nova/base";
-import { resolveContextWindowSize, type SlashOutcome } from "@nova/base";
+import {
+  activeProviderProfile,
+  resolveContextWindowSize,
+  type SlashOutcome,
+} from "@nova/base";
 import { ACCENT_HEX, bold, dim, green } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { buildFixPrompt, diagnoseConfig, formatIssues, summarizeReport } from "../doctor.js";
@@ -26,7 +30,7 @@ function contextUsageLines(ctx: CliContext): string[] {
   const window = resolveContextWindowSize(ctx.settings, ctx.settings.model);
   // Weight the estimate by the active provider's tokenizer ratios, matching
   // `/context` and what `shouldAutoCompact` triggers on.
-  const weights = resolveProfile(ctx.settings.provider).tokenEstimate;
+  const weights = resolveProfile(activeProviderProfile(ctx.settings) ?? "other").tokenEstimate;
   const estimateChars = (s: string): number => estimateTextTokens(s, weights);
   const systemTokens = estimateChars(
     buildSystemPrompt({

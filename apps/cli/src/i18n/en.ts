@@ -542,16 +542,17 @@ export const en = {
     configFailedValidationTitle: "config failed validation",
     noApiKeyTitle: "no apiKey configured",
     noApiKeyHint:
-      'nova will run first-time setup, or add "apiKey" to your config / export $NOVA_API_KEY',
+      'nova will run first-time setup, or add "apiKey" to the current providers[] entry / export $NOVA_API_KEY',
     apiKeyFromEnv: (envVar: string): string =>
       `apiKey: taken from $${envVar} (overrides the config file)`,
     noModelsTitle: "apiKey is set but no models are configured",
-    noModelsHint: (tiers: string): string => `add a "models" table with all tiers (${tiers})`,
+    noModelsHint: (tiers: string): string =>
+      `add a "models" table with all tiers to the current providers[] entry (${tiers})`,
     unknownProviderTitle: (provider: string): string =>
       `provider "${provider}" is not a built-in profile`,
     unknownProviderDetail: `using the generic "other" fallback (no effort knob, error translation, or balance)`,
     unknownProviderHint: (providers: string): string =>
-      `set "provider" to one of: ${providers} — or keep it if this endpoint is a plain Anthropic-compatible one`,
+      `set "profile" on the current providers[] entry to one of: ${providers} — or keep it if this endpoint is a plain Anthropic-compatible one`,
     invalidHookFileTitle: (name: string): string => `invalid hook file: ${name}`,
     invalidHookFileHint: "fix or remove it — nova skips it and continues",
     mcpDisabled: "MCP: disabled (mcp.enabled = false)",

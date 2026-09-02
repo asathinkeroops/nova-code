@@ -30,7 +30,14 @@ function makeCtx(viewers: Viewer[], o: StubOpts = {}): CliContext {
     skillsBlock: o.skillsBlock ?? "",
     settings: {
       model: "test-model",
-      models: { "test-model": { id: "test-model", contextWindowSize: windowTokens } },
+      providers: [
+        {
+          name: "test",
+          profile: "other",
+          models: { "test-model": { id: "test-model", contextWindowSize: windowTokens } },
+        },
+      ],
+      currentProvider: "test",
       compact: { auto: o.autoCompact ?? { enabled: true } },
     },
     tools: {

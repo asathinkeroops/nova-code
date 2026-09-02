@@ -16,8 +16,14 @@ const noopLogger = {
 
 function settingsWith(mcp: unknown) {
   return parseSettings({
-    apiKey: "x",
-    baseURL: "https://api.anthropic.com",
+    providers: [
+      {
+        name: "other",
+        profile: "other",
+        apiKey: "x",
+        baseURL: "https://api.anthropic.com",
+      },
+    ],
     model: "pro",
     ...(mcp ? { mcp } : {}),
   });

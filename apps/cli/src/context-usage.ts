@@ -1,7 +1,7 @@
 import { measureFixedOverhead, type FixedOverhead } from "@nova/agent";
 import { MCP_TOOL_PREFIX } from "@nova/mcp";
 import { resolveProfile } from "@nova/model";
-import type { TokenEstimate } from "@nova/base";
+import { activeProviderProfile, type TokenEstimate } from "@nova/base";
 import type { CliContext } from "./ctx-types.js";
 
 /** MCP tools are namespaced; split out because they often dominate the schema budget. */
@@ -24,7 +24,8 @@ export function measureCtxOverhead(ctx: CliContext, weights?: TokenEstimate): Fi
     skillsBlock: ctx.skillsBlock,
     ...(ctx.settings.language !== undefined ? { language: ctx.settings.language } : {}),
     tools: ctx.tools.definitions(),
-    tokenEstimate: weights ?? resolveProfile(ctx.settings.provider).tokenEstimate,
+    tokenEstimate:
+      weights ?? resolveProfile(activeProviderProfile(ctx.settings) ?? "other").tokenEstimate,
     isMcpTool,
   });
 }

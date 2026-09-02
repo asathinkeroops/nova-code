@@ -6,10 +6,13 @@ import {
   PROVIDER_IDS,
 } from "@nova/model";
 import {
+  activeModels,
+  activeProviderProfile,
   API_KEY_ENV,
   apiKeyFromEnv,
   DEFAULT_CONFIG_PATH,
   loadProjectHooks,
+  migrateLegacyProviderConfig,
   parseSettings,
   REQUIRED_MODEL_TIERS,
   resolveApiKey,
@@ -80,13 +83,10 @@ function zodIssues(err: unknown): ZodLikeIssue[] {
   return [];
 }
 
-/** A guaranteed-valid, all-defaults Settings, normalized like loadSettings does
- *  (`language` resolved, `$NOVA_API_KEY` folded in). */
+/** A guaranteed-valid, all-defaults Settings, normalized like loadSettings does. */
 function defaultSettings(): Settings {
   const settings = parseSettings({});
   settings.language = resolveLanguage(settings);
-  const apiKey = resolveApiKey(settings);
-  if (apiKey !== undefined) settings.apiKey = apiKey;
   return settings;
 }
 
@@ -120,6 +120,11 @@ export async function diagnoseConfig(
   const info: string[] = [];
   let settings: Settings | undefined;
   let exists = true;
+
+  // One-time compatibility boundary: rewrite the removed flat provider fields
+  // before the new-only schema sees the file. The adapter is idempotent and
+  // leaves malformed/unreadable files untouched for the diagnostics below.
+  await migrateLegacyProviderConfig(configPath);
 
   // --- Global config file: JSON + schema (schema also covers model/tier
   //     completeness and mcp.servers validity). ---
@@ -155,11 +160,6 @@ export async function diagnoseConfig(
       try {
         settings = parseSettings(raw);
         settings.language = resolveLanguage(settings);
-        // The REPL boots through this function, not loadSettings, so the same
-        // env-key fold has to happen here or `$NOVA_API_KEY` would be invisible
-        // to everything downstream (see resolveApiKey).
-        const apiKey = resolveApiKey(settings);
-        if (apiKey !== undefined) settings.apiKey = apiKey;
       } catch (err) {
         const zi = zodIssues(err);
         if (zi.length > 0) {
@@ -187,7 +187,8 @@ export async function diagnoseConfig(
   // empty/keyless config is the valid pre-setup state) but which mean the config
   // can't actually drive the agent as written.
   if (settings) {
-    const hasApiKey = typeof settings.apiKey === "string" && settings.apiKey.trim().length > 0;
+    const profile = activeProviderProfile(settings);
+    const hasApiKey = Boolean(resolveApiKey(settings)?.trim());
     if (!hasApiKey) {
       issues.push({
         level: "warn",
@@ -199,7 +200,7 @@ export async function diagnoseConfig(
       // env key overrides (and can differ from) the one in the config file.
       info.push(t.doctor.apiKeyFromEnv(API_KEY_ENV));
     }
-    if (hasApiKey && Object.keys(settings.models).length === 0) {
+    if (hasApiKey && Object.keys(activeModels(settings)).length === 0) {
       issues.push({
         level: "warn",
         title: t.doctor.noModelsTitle,
@@ -212,10 +213,10 @@ export async function diagnoseConfig(
     // choice for a plain Anthropic-compatible endpoint, but usually it's a typo
     // — flag it so the user isn't surprised by the missing effort knob / error
     // translation / balance readout.
-    if (!isProviderId(settings.provider)) {
+    if (profile && !isProviderId(profile)) {
       issues.push({
         level: "warn",
-        title: t.doctor.unknownProviderTitle(settings.provider),
+        title: t.doctor.unknownProviderTitle(profile),
         detail: t.doctor.unknownProviderDetail,
         hint: t.doctor.unknownProviderHint(PROVIDER_IDS.join(", ")),
       });

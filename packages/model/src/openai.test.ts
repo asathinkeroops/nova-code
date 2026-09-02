@@ -704,7 +704,7 @@ describe("createModel transport dispatch", () => {
 
   it("switches a deepseek provider to the openai wire via the transport override", async () => {
     // The transport is orthogonal to the provider: DeepSeek serves both
-    // endpoints, and `settings.transport: "openai"` + the plain baseURL must
+    // endpoints, and `providers[].transport: "openai"` + the plain baseURL must
     // route through the OpenAI SDK while keeping DeepSeek's profile.
     mockCreate.mockResolvedValueOnce(streamOf([textChunk("ok"), doneChunk("stop")]));
     const m = createModel({

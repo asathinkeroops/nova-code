@@ -131,7 +131,11 @@ echo "summarize the current diff" | nova --output-format jsonl
 nova upgrade                       # update to the latest version (also auto-checked at startup)
 ```
 
-First launch currently asks directly for a DeepSeek API key and writes `provider: "deepseek"`, `transport: "openai"`, `baseURL: "https://api.deepseek.com"`, and the default `pro` tier to `~/.nova/nova.config.json`. To keep the key out of that plaintext file, export `NOVA_API_KEY`; it overrides `apiKey`, and setup never copies an environment key back to disk. The first time Nova enters a workspace, it also asks you to trust it; the trust record lives only in the user-level config.
+First launch currently asks directly for a DeepSeek API key and writes a provider connection (`providers: [{ "name": "deepseek", "profile": "deepseek", "transport": "openai", "baseURL": "https://api.deepseek.com", "apiKey": "<key>" }]` with `currentProvider: "deepseek"`) and the default `pro` tier to `~/.nova/nova.config.json`. To keep the key out of that plaintext file, export `NOVA_API_KEY`; it overrides the current provider's `apiKey`, and setup never copies an environment key back to disk. The first time Nova enters a workspace, it also asks you to trust it; the trust record lives only in the user-level config.
+
+Runtime settings only use the `providers` / `currentProvider` shape. When startup finds the former top-level `provider`, `baseURL`, `apiKey`, `models`, or `transport` fields, it performs a one-time atomic migration into a provider connection and writes the new shape back before parsing it.
+
+Headless mode does not run the interactive setup flow. If the current provider has no effective API key or model table, or lacks the `baseURL` required by its transport/profile, Nova exits with a configuration error; run it interactively once or complete `providers` / `currentProvider` manually first.
 
 DeepSeek's built-in ladder is `lite` → `deepseek-v4-flash-vision-exp` (image input), and `pro` / `max` → `deepseek-v4-pro`, with a different thinking depth on each tier. **Provider defaults are built into the code and never written to the config file**; the file carries only your overrides, so upgrades can deliver new model ids, prices, and context windows. `/model` persists the selected tier, while `--model` only overrides the current launch. `settings.locale` controls TUI text (bundled zh-CN / EN), while `settings.language` controls model replies and defaults to the system locale. See the [Chinese user guide](docs/guide.md) for more providers and the full configuration reference.
 

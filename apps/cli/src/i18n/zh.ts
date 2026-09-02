@@ -81,8 +81,7 @@ export const zh: DeepPartial<Catalog> = {
   },
 
   render: {
-    tagline:
-      "面向国产大模型的编程智能体 —— 高缓存命中率 · 系统级沙箱 · 工具齐备 · 开箱即用。 ",
+    tagline: "面向国产大模型的编程智能体 —— 高缓存命中率 · 系统级沙箱 · 工具齐备 · 开箱即用。 ",
     thinking: "思考",
     redacted: "（已隐去）",
     showLess: "… 收起",
@@ -287,14 +286,16 @@ export const zh: DeepPartial<Catalog> = {
     invalidSettingTitle: (path: string): string => `无效的设置：${path}`,
     configFailedValidationTitle: "配置未通过校验",
     noApiKeyTitle: "未配置 apiKey",
-    noApiKeyHint: '将运行首次设置，或在配置中添加 "apiKey" / 导出环境变量 $NOVA_API_KEY',
+    noApiKeyHint:
+      '将运行首次设置，或在当前 providers[] 连接中添加 "apiKey" / 导出环境变量 $NOVA_API_KEY',
     apiKeyFromEnv: (envVar: string): string => `apiKey：取自 $${envVar}（覆盖配置文件中的值）`,
     noModelsTitle: "已设置 apiKey，但未配置任何模型",
-    noModelsHint: (tiers: string): string => `添加包含所有层级的 "models" 表（${tiers}）`,
+    noModelsHint: (tiers: string): string =>
+      `在当前 providers[] 连接中添加包含所有层级的 "models" 表（${tiers}）`,
     unknownProviderTitle: (provider: string): string => `提供方 "${provider}" 不是内置配置`,
     unknownProviderDetail: '使用通用的 "other" 回退（无强度调节、错误翻译或余额查询）',
     unknownProviderHint: (providers: string): string =>
-      `将 "provider" 设为以下之一：${providers} —— 若该端点是标准的 Anthropic 兼容端点，也可保持不变`,
+      `将当前 providers[] 连接的 "profile" 设为以下之一：${providers} —— 若该端点是标准的 Anthropic 兼容端点，也可保持不变`,
     invalidHookFileTitle: (name: string): string => `无效的钩子文件：${name}`,
     invalidHookFileHint: "修复或删除它 —— nova 会跳过它并继续",
     mcpDisabled: "MCP：已禁用（mcp.enabled = false）",

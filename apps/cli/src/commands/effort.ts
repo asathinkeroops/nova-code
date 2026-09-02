@@ -3,7 +3,7 @@ import {
   THINKING_LEVELS,
   type ThinkingLevel,
 } from "@nova/base";
-import { saveModelProfileOverride } from "@nova/base";
+import { activeModels, saveModelProfileOverride } from "@nova/base";
 import { ACCENT_HEX, dim, type Rgb } from "../colors.js";
 import { thinkingLevelLabel, refreshBanner, type CliContext } from "../context.js";
 import { t } from "../i18n/index.js";
@@ -59,14 +59,15 @@ function refreshThinkingUi(ctx: CliContext): void {
  * (ctx.thinkingBudgetOverride) is always session-only — there's no per-tier
  * budget field — so it takes the lighter `refreshThinkingUi` path instead.
  *
- * Only the `thinking` field is written: `ctx.settings.models` is the RESOLVED
+ * Only the `thinking` field is written: the active provider's `models` is the
+ * RESOLVED
  * table (provider built-ins already merged in), so persisting it wholesale would
  * freeze today's model ids / prices / limits into nova.config.json and cut the
  * install off from future default updates.
  */
 async function persistTierThinking(ctx: CliContext): Promise<void> {
   refreshThinkingUi(ctx);
-  const tier = ctx.settings.models[ctx.settings.model];
+  const tier = activeModels(ctx.settings)[ctx.settings.model];
   if (!tier) return;
   tier.thinking = ctx.thinkingLevel;
   try {

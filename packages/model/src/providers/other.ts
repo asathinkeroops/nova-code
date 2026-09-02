@@ -10,7 +10,7 @@ import type { ProviderProfile } from "./types.js";
  * retries malformed tool-call JSON generically.
  *
  * The generic profile's default transport is "anthropic". Forcing
- * `settings.transport: "openai"` against an OpenAI-compatible gateway works for
+ * `providers[].transport: "openai"` against an OpenAI-compatible gateway works for
  * the wire itself, but there is no generic thinking knob on that protocol —
  * reasoning follows the selected model — so the budget is ignored there.
  */

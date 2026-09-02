@@ -3,7 +3,8 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
-import { mergeBuiltinModels } from "./models.js";
+import { migrateLegacyProviderConfig } from "./migration.js";
+import { mergeProviderModels } from "./models.js";
 
 export const DEFAULT_CONFIG_PATH = join(homedir(), ".nova", "nova.config.json");
 
@@ -304,6 +305,45 @@ export const modelEntrySchema = modelProfileSchema;
 
 export type ModelEntry = z.infer<typeof modelEntrySchema>;
 
+// A single provider *connection* in the `providers` array. This is the new home
+// for what used to be the top-level `provider` / `baseURL` / `apiKey` /
+// `models` / `transport` fields — each entry owns the settings that belong to a
+// provider, not to the install: the endpoint, the API key, the tier table, and
+// the wire protocol.
+//
+// `name` is the array-unique key that `currentProvider` references. `profile`
+// is the behavior-profile id (deepseek/moonshot/other) that drives the
+// thinking-knob and error/retry policy; it defaults to `name`, so a connection
+// that doubles as a profile needs no separate field. A single profile may appear
+// in several entries (different keys / endpoints), which is what makes an array
+// worth more than the flat config it replaces.
+export const providerEntrySchema = z.object({
+  name: z
+    .string()
+    .min(1)
+    .describe("Unique key in the providers array; `currentProvider` references it."),
+  profile: z
+    .string()
+    .min(1)
+    .optional()
+    .describe("Provider-profile id (deepseek/moonshot/other); defaults to `name`."),
+  baseURL: z.string().url().optional().describe("Endpoint for this provider connection."),
+  apiKey: z.string().min(1).optional().describe("API key for this provider connection."),
+  transport: z
+    .enum(["anthropic", "openai"])
+    .optional()
+    .describe("Wire protocol for this connection; defaults to the profile's default."),
+  models: z
+    .record(modelEntrySchema)
+    .default({})
+    .describe("This provider's tier table (built-ins layered in before validation)."),
+  headers: httpHeadersSchema
+    .optional()
+    .describe("Extra HTTP headers for requests to this connection."),
+});
+
+export type ProviderEntry = z.infer<typeof providerEntrySchema>;
+
 // One-line blurbs for the built-in tiers, shown next to each row in the /model
 // picker. Keyed by tier name (lite/pro/max); a user `models` entry in
 // profile-object form can override its own via `description`. Falls back to ""
@@ -360,77 +400,47 @@ export const pluginSourceSchema = z.union([
 
 export type PluginSource = z.infer<typeof pluginSourceSchema>;
 
+/**
+ * The active provider entry: the entry `currentProvider` names, else the first
+ * entry. Used by schema invariants and runtime accessors. Returns undefined for
+ * a pre-setup config with no providers.
+ */
+function activeProviderEntry(val: {
+  providers?: ProviderEntry[];
+  currentProvider?: string;
+}): ProviderEntry | undefined {
+  if (!val.providers || val.providers.length === 0) return undefined;
+  if (val.currentProvider === undefined) return val.providers[0];
+  return val.providers.find((p) => p.name === val.currentProvider);
+}
+
 const settingsObjectSchema = z.object({
-  // The model API key. Stored in plaintext here, so `$NOVA_API_KEY` is offered
-  // as an alternative and OVERRIDES this value when set — see resolveApiKey,
-  // which folds the two into `settings.apiKey` at load.
-  apiKey: z.string().min(1).optional(),
-  // The active tier: a KEY into `models` (lite/pro/max), never a bare model id.
-  // Enforced by the schema-level refine below — a value that isn't a configured
-  // tier is a config error (skipped only while `models` is still empty, i.e. an
-  // unconfigured config pre-setup). Tier → concrete id resolution is alias-only
-  // (resolveModelId); switch at runtime with /model. The default is a
-  // placeholder that a chosen provider template (or the user's config)
-  // overwrites alongside `models`.
+  // The active tier: a KEY into the ACTIVE provider's `models` (lite/pro/max),
+  // never a bare model id. Enforced by the schema-level refine below — a value
+  // that isn't a configured tier is a config error (skipped only while the
+  // active provider's tier table is still empty, i.e. an unconfigured config
+  // pre-setup). Tier → concrete id resolution is alias-only (resolveModelId);
+  // switch at runtime with /model. The default is a placeholder that a chosen
+  // provider template (or the user's config) overwrites alongside `models`.
   model: z.string().default(DEFAULT_MODEL_TIER),
-  // Named model tiers, e.g. { "lite": { id: "deepseek-v4-flash-vision-exp", ... }, "pro": { ... } }.
-  // Every value is a profile object carrying its own maxTokens / contextWindowSize
-  // / thinking (and optionally baseURL / apiKey). Distinct tiers may share one
-  // concrete `id` and differ only in their per-tier knobs (e.g. pro/max both →
-  // deepseek-v4-pro, differing in `thinking`), which is why all tier lookups are
-  // keyed by the alias, never reverse-mapped from the id. No schema default:
-  // the table a config NAMING A PROVIDER sees comes from that provider's
-  // built-in table (BUILTIN_PROVIDER_MODELS, layered in pre-parse by
-  // mergeBuiltinModels) — the config file itself only carries OVERRIDES, so
-  // shipped model/price/limit updates reach existing installs. Providers with
-  // no built-in table (e.g. `other`) must spell the ladder out. An empty table
-  // means "unconfigured" (a keyless, pre-setup config).
-  models: z.record(modelEntrySchema).default({}),
-  // No schema default: the base endpoint is provider-specific, so it is only
-  // written when a provider template is chosen (or the user sets it). Callers
-  // treat an absent value as "use the SDK's own default endpoint" — see the
-  // `config.baseURL ? …` guards in model.ts / context.ts. The DeepSeek setup
-  // template writes its own endpoint explicitly (see provider-templates.ts).
-  baseURL: z.string().url().optional(),
-  // Extra HTTP headers sent with EVERY model request (a custom `User-Agent`, a
-  // gateway's tenant/routing header, a corporate proxy token). Merged into the
-  // SDK client's own default headers, so an entry here wins for that header
-  // name — including `authorization` / `x-api-key`, which some gateways want in
-  // a non-standard shape; nothing is stripped or reserved. Applies to the model
-  // endpoint only (the balance probe, MCP and websearch have their own
-  // transports). Names/values are validated at load, so a malformed header is a
-  // config error rather than a first-request crash.
+  // Provider connections. Each entry owns its endpoint, key, tier table and
+  // wire protocol; there are no parallel top-level provider fields.
+  //
+  // `currentProvider` names the active entry by `name`; omitted → the first
+  // entry. An empty array is the pre-setup state (a keyless, unconfigured
+  // config parsed before setup runs), just like the old empty `models` table.
+  providers: z.array(providerEntrySchema).default([]),
+  currentProvider: z.string().min(1).optional(),
+  // Extra HTTP headers sent with EVERY model request as the GLOBAL default (a
+  // custom `User-Agent`, a gateway's tenant/routing header, a corporate proxy
+  // token). A provider entry's own `headers` overrides these by name for that
+  // connection. Merged into the SDK client's own default headers, so an entry
+  // here wins for that header name — including `authorization` / `x-api-key`,
+  // which some gateways want in a non-standard shape; nothing is stripped or
+  // reserved. Applies to the model endpoint only (the balance probe, MCP and
+  // websearch have their own transports). Names/values are validated at load,
+  // so a malformed header is a config error rather than a first-request crash.
   headers: httpHeadersSchema.optional(),
-  // Which provider profile drives thinking-param and error/retry behavior.
-  // "deepseek" — DeepSeek (its Anthropic-compatible endpoint by default, see
-  // `transport` below). "moonshot" — Kimi/Moonshot. "other" — any generic
-  // Anthropic-compatible endpoint. There is deliberately NO generic
-  // "openai" provider id: the openai WIRE is reached via `transport: "openai"`
-  // on a vendor's own profile (e.g. DeepSeek's OpenAI-compatible endpoint),
-  // not by inventing a vendor. Free-form string, not an enum: the profile
-  // registry is the single source of truth for the id set, and it lives in
-  // `@nova/model` — which this leaf package can't import to enumerate.
-  // `@nova/model`'s `resolveProfile` maps an unknown id (a typo, or a generic
-  // provider named directly) to the `other` fallback; `nova doctor` flags ids
-  // that aren't a built-in. Always present (defaults to "deepseek", this
-  // build's primary target), so downstream never has to guess a profile from
-  // the model name.
-  provider: z.string().min(1).default("deepseek"),
-  // Wire protocol for the model endpoint, INDEPENDENT of the provider (a
-  // vendor ≠ a protocol): "anthropic" routes through the @anthropic-ai/sdk
-  // Messages format; "openai" through the OpenAI-compatible
-  // `chat/completions` transport (official openai SDK). Omitted → the
-  // provider profile's default (deepseek / moonshot / other default to
-  // anthropic; the generic openai profile to openai). A vendor shipping both
-  // endpoints keeps ONE provider — e.g. DeepSeek serves its Anthropic-compat
-  // API at `https://api.deepseek.com/anthropic` AND the OpenAI-compat API at
-  // `https://api.deepseek.com` from the same key: set `transport: "openai"`
-  // (and the matching `baseURL`) to switch wires while keeping DeepSeek's
-  // error translation, balance probe and docs. The thinking knob is
-  // transport-sensitive: DeepSeek's `output_config.effort` exists only on
-  // its anthropic wire; the openai wire takes `thinking.type` + a
-  // `reasoning_effort` ladder instead.
-  transport: z.enum(["anthropic", "openai"]).optional(),
   sessionDir: z.string().min(1).optional(),
   // UI / response language. "auto" (the default) follows the current system
   // locale (resolved from $LANG / $LC_ALL / $LANGUAGE, see resolveLanguage());
@@ -603,7 +613,9 @@ const settingsObjectSchema = z.object({
       notifyIntervalHours: z.number().int().positive().default(6),
       command: z
         .string()
-        .default("npm install -g @asathinkeroops/nova-code@latest --registry https://registry.npmjs.org"),
+        .default(
+          "npm install -g @asathinkeroops/nova-code@latest --registry https://registry.npmjs.org",
+        ),
     })
     .default({
       enabled: true,
@@ -1203,37 +1215,62 @@ const settingsObjectSchema = z.object({
       marketplaces: {},
     }),
   })
-  // Two tier-table invariants, both skipped while `models` is empty — that's an
-  // unconfigured config (a fresh/missing file parsed before setup runs, which
-  // loadSettings must not reject); setup then writes a populated table that both
-  // checks apply to.
+  .strict()
+  // Two tier-table invariants, both skipped while the ACTIVE provider's table
+  // is empty — that's an unconfigured config (a fresh/missing file parsed before
+  // setup runs, which loadSettings must not reject); setup then writes a
+  // populated table that both checks apply to. Note the invariants read the
+  // selected provider's own table (activeProviderEntry).
   .superRefine((val, ctx) => {
-    if (Object.keys(val.models).length === 0) return;
+    const providerNames = new Set<string>();
+    for (const [index, provider] of val.providers.entries()) {
+      if (providerNames.has(provider.name)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["providers", index, "name"],
+          message: `provider name "${provider.name}" is duplicated — names must be unique`,
+        });
+      }
+      providerNames.add(provider.name);
+    }
+    if (val.currentProvider !== undefined && !providerNames.has(val.currentProvider)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["currentProvider"],
+        message: `currentProvider "${val.currentProvider}" does not name a configured provider`,
+      });
+    }
+
+    const active = activeProviderEntry(val);
+    const models = active?.models ?? {};
+    if (Object.keys(models).length === 0) return;
+    const path = ["providers"];
     // (1) The fixed ladder must be complete: every config must define all of
     // lite/pro/max (extra tiers are fine) so tier switching and the built-in
     // cheap/eval tiers always resolve, whatever the provider.
     const missing = REQUIRED_MODEL_TIERS.filter(
-      (t) => !Object.prototype.hasOwnProperty.call(val.models, t),
+      (t) => !Object.prototype.hasOwnProperty.call(models, t),
     );
     if (missing.length > 0) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ["models"],
+        path,
         message: `models must configure all tiers (${REQUIRED_MODEL_TIERS.join(
           ", ",
         )}) — missing: ${missing.join(", ")}`,
       });
     }
-    // (2) The active `model` must name a configured tier (a key in `models`),
-    // not a bare provider id — tier resolution is alias-only. A stray id here
-    // would silently miss every per-tier lookup (maxTokens/contextWindow/
-    // thinking/…), so reject it at the boundary with an actionable message.
-    if (!Object.prototype.hasOwnProperty.call(val.models, val.model)) {
+    // (2) The active `model` must name a configured tier (a key in the active
+    // provider's `models`), not a bare provider id — tier resolution is
+    // alias-only. A stray id here would silently miss every per-tier lookup
+    // (maxTokens/contextWindow/thinking/…), so reject it at the boundary with an
+    // actionable message.
+    if (!Object.prototype.hasOwnProperty.call(models, val.model)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["model"],
         message: `model "${val.model}" is not a configured tier — set it to one of: ${Object.keys(
-          val.models,
+          models,
         ).join(", ")}`,
       });
     }
@@ -1241,22 +1278,45 @@ const settingsObjectSchema = z.object({
 
 /**
  * The config schema, with the provider's built-in tier table layered in BEFORE
- * validation (see {@link mergeBuiltinModels}). Defaults therefore live in the
- * code, not in `nova.config.json`: a config that names a `provider` gets that
- * provider's `models` for free — and only what it spells out itself overrides —
- * so upgrading Nova upgrades the model ids, prices and limits with it.
+ * validation (see {@link mergeProviderModels}). Defaults therefore live in the
+ * code, not in `nova.config.json`: each provider entry gets its profile's models
+ * for free and only explicit overrides are stored.
  *
  * Every path into Settings goes through here ({@link loadSettings},
  * {@link parseSettings}, the CLI's `diagnoseConfig`), so no caller has to know
  * about the layering.
  */
-export const settingsSchema = z.preprocess(mergeBuiltinModels, settingsObjectSchema);
+export const settingsSchema = z.preprocess(mergeProviderModels, settingsObjectSchema);
 
 export type Settings = z.infer<typeof settingsSchema>;
 
+/** Runtime accessor for the active provider entry (see {@link activeProviderEntry}). */
+export function activeProvider(settings: Settings): ProviderEntry | undefined {
+  return activeProviderEntry(settings);
+}
+
+/** The active provider's resolved model tier table. */
+export function activeModels(settings: Settings): Record<string, ModelProfile> {
+  return activeProvider(settings)?.models ?? {};
+}
+
+/** Behavior-profile id for the active connection. */
+export function activeProviderProfile(settings: Settings): string | undefined {
+  const provider = activeProvider(settings);
+  return provider ? (provider.profile ?? provider.name) : undefined;
+}
+
+/** Global request headers with the active provider's headers layered on top. */
+export function activeProviderHeaders(settings: Settings): HttpHeaders | undefined {
+  const providerHeaders = activeProvider(settings)?.headers;
+  if (!settings.headers && !providerHeaders) return undefined;
+  return { ...(settings.headers ?? {}), ...(providerHeaders ?? {}) };
+}
+
 /**
  * Resolve a model tier name to the concrete id sent to the provider. Tier
- * resolution is ALIAS-ONLY: `name` is expected to be a key in `settings.models`
+ * resolution is ALIAS-ONLY: `name` is expected to be a key in the active
+ * provider's `models`
  * (the main `model` is validated as such — see {@link settingsSchema}). A name
  * that isn't a configured tier passes through unchanged — this is the escape
  * hatch for the auxiliary model fields (`subagent.model` values, `goal.evalModel`,
@@ -1264,7 +1324,7 @@ export type Settings = z.infer<typeof settingsSchema>;
  * main `model` never hits it.
  */
 export function resolveModelId(settings: Settings, name: string): string {
-  return settings.models[name]?.id ?? name;
+  return activeModels(settings)[name]?.id ?? name;
 }
 
 /**
@@ -1276,7 +1336,7 @@ export function resolveModelId(settings: Settings, name: string): string {
  * mutated, so this can be called fresh at each read site as /model switches.
  */
 export function resolveContextWindowSize(settings: Settings, name: string): number {
-  return settings.models[name]?.contextWindowSize ?? DEFAULT_CONTEXT_WINDOW_SIZE;
+  return activeModels(settings)[name]?.contextWindowSize ?? DEFAULT_CONTEXT_WINDOW_SIZE;
 }
 
 /** Bytes per token used when converting a context-window budget into a byte budget. */
@@ -1303,7 +1363,7 @@ export function resolveSkillsIndexBudget(settings: Settings, modelName: string):
  * name (lite/pro/max), and falls back to "" when there's nothing to show.
  */
 export function modelDescription(settings: Settings, name: string): string {
-  const entry = settings.models[name];
+  const entry = activeModels(settings)[name];
   if (entry?.description) return entry.description;
   return DEFAULT_MODEL_DESCRIPTIONS[name] ?? "";
 }
@@ -1314,7 +1374,7 @@ export function modelDescription(settings: Settings, name: string): string {
  * ALIAS-ONLY, matched by tier key (see {@link resolveContextWindowSize}).
  */
 export function resolveMaxTokens(settings: Settings, name: string): number {
-  return settings.models[name]?.maxTokens ?? DEFAULT_MAX_TOKENS;
+  return activeModels(settings)[name]?.maxTokens ?? DEFAULT_MAX_TOKENS;
 }
 
 /**
@@ -1324,7 +1384,7 @@ export function resolveMaxTokens(settings: Settings, name: string): number {
  * ALIAS-ONLY, matched by tier key (see {@link resolveContextWindowSize}).
  */
 export function resolveThinkingLevel(settings: Settings, name: string): ThinkingLevel {
-  return settings.models[name]?.thinking ?? DEFAULT_THINKING_LEVEL;
+  return activeModels(settings)[name]?.thinking ?? DEFAULT_THINKING_LEVEL;
 }
 
 /**
@@ -1333,7 +1393,7 @@ export function resolveThinkingLevel(settings: Settings, name: string): Thinking
  * matched by tier key (see {@link resolveContextWindowSize}).
  */
 export function resolveModelModalities(settings: Settings, name: string): ModelModalities {
-  return settings.models[name]?.modalities ?? { input: ["text"] };
+  return activeModels(settings)[name]?.modalities ?? { input: ["text"] };
 }
 
 /** Normalize a raw locale to a BCP-47-ish tag: take the part before any
@@ -1400,14 +1460,10 @@ export function apiKeyFromEnv(env: NodeJS.ProcessEnv = process.env): string | un
 }
 
 /**
- * The effective model API key: `$NOVA_API_KEY` when set, else the config file's
- * `apiKey`. Env wins because the config value is what first-run setup writes
+ * The effective model API key: `$NOVA_API_KEY` when set, else the active
+ * provider entry's `apiKey`. Env wins because the config value is what setup writes
  * (nearly everyone has one), so a config-first rule would make the env var
  * useless for its actual purposes — CI, and switching accounts per shell.
- *
- * Resolved once at load ({@link loadSettings}, and the CLI's `diagnoseConfig`,
- * which is the path the REPL actually boots through) so every downstream reader
- * of `settings.apiKey` sees the effective value with no plumbing of its own.
  *
  * An env-provided key MUST NOT be written back to disk — that would defeat the
  * point of keeping it out of the plaintext config. Every `saveSettings` call
@@ -1418,7 +1474,7 @@ export function resolveApiKey(
   settings: Settings,
   env: NodeJS.ProcessEnv = process.env,
 ): string | undefined {
-  return apiKeyFromEnv(env) ?? settings.apiKey;
+  return apiKeyFromEnv(env) ?? activeProvider(settings)?.apiKey;
 }
 
 const DEFAULT_DENY_BASH = [
@@ -1434,6 +1490,7 @@ export function isDangerousBash(command: string): boolean {
 }
 
 export async function loadSettings(configPath: string = DEFAULT_CONFIG_PATH): Promise<Settings> {
+  await migrateLegacyProviderConfig(configPath);
   let raw: unknown = {};
   try {
     const text = await readFile(configPath, "utf8");
@@ -1441,15 +1498,11 @@ export async function loadSettings(configPath: string = DEFAULT_CONFIG_PATH): Pr
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
   }
-  const settings = settingsSchema.parse(raw);
+  const settings = parseSettings(raw);
   // Resolve "auto" to the concrete system locale once, at load, so every
   // downstream read sees a real language tag. Idempotent: a non-"auto" value
   // (already-resolved or user-set) passes through unchanged.
   settings.language = resolveLanguage(settings);
-  // Same idea for the API key: fold `$NOVA_API_KEY` in once, here, so no reader
-  // has to know the key can come from somewhere other than the config file.
-  const apiKey = resolveApiKey(settings);
-  if (apiKey !== undefined) settings.apiKey = apiKey;
   return settings;
 }
 
@@ -1541,10 +1594,13 @@ export async function saveSettings(
  * Persist a per-tier profile change (e.g. `/effort` writing `models.pro.thinking`)
  * as an OVERRIDE, without copying the provider's built-in table into the config
  * file. Only the changed fields are merged into the on-disk `models.<tier>`
- * entry; everything else keeps coming from `BUILTIN_PROVIDER_MODELS`, so the
- * tier still tracks shipped updates to its id / price / limits.
+ * entry of the ACTIVE provider; everything else keeps coming from
+ * `BUILTIN_PROVIDER_MODELS`, so the tier still tracks shipped updates to its id /
+ * price / limits.
  *
- * Do NOT replace this with `saveSettings({ models: settings.models })` — the
+ * Writes into `providers[<currentProvider>].models`.
+ *
+ * Do NOT replace this with a write of the resolved provider model table — the
  * in-memory table is the RESOLVED one (built-ins already merged in), so saving
  * it would freeze today's defaults into the file, which is what this whole
  * layering exists to avoid.
@@ -1563,15 +1619,38 @@ export async function saveModelProfileOverride(
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
   }
-  const models =
-    raw["models"] && typeof raw["models"] === "object" && !Array.isArray(raw["models"])
-      ? { ...(raw["models"] as Record<string, unknown>) }
-      : {};
-  const existing = models[tier];
-  models[tier] = {
-    ...(existing && typeof existing === "object" && !Array.isArray(existing) ? existing : {}),
-    ...override,
-  };
-  await mkdir(dirname(configPath), { recursive: true });
-  await writeFile(configPath, `${JSON.stringify({ ...raw, models }, null, 2)}\n`, "utf8");
+  const providers = raw["providers"];
+  if (Array.isArray(providers) && providers.length > 0) {
+    const first = providers[0] as Record<string, unknown>;
+    const currentName =
+      typeof raw["currentProvider"] === "string" ? raw["currentProvider"] : first["name"];
+    const idx = providers.findIndex(
+      (p) =>
+        typeof p === "object" &&
+        p !== null &&
+        (p as Record<string, unknown>)["name"] === currentName,
+    );
+    if (idx < 0) {
+      throw new Error(
+        `currentProvider "${String(currentName)}" does not name a configured provider`,
+      );
+    }
+    const picked = providers[idx] as Record<string, unknown>;
+    const models =
+      picked["models"] && typeof picked["models"] === "object" && !Array.isArray(picked["models"])
+        ? { ...(picked["models"] as Record<string, unknown>) }
+        : {};
+    const existing = models[tier];
+    models[tier] = {
+      ...(existing && typeof existing === "object" && !Array.isArray(existing) ? existing : {}),
+      ...override,
+    };
+    picked["models"] = models;
+    providers[idx] = picked;
+    raw["providers"] = providers;
+    await mkdir(dirname(configPath), { recursive: true });
+    await writeFile(configPath, `${JSON.stringify(raw, null, 2)}\n`, "utf8");
+    return;
+  }
+  throw new Error("cannot save model override: no configured provider entry");
 }

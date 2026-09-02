@@ -104,7 +104,7 @@ slash 命令、快捷键、审批弹窗、记忆文件优先级（`NOVA.md` > `C
 
 需要在 `model.ts` 里引入第二条 transport 分支，并把 transport 选择提升为 profile 的一个字段。工作量集中在 `@nova/model` 一个包内，不触碰 loop 契约。
 
-> **落地记录**：传输协议与供应商解耦——`settings.transport`（`"anthropic" | "openai"`）独立于 `provider`，DeepSeek 一个 profile 同时服务 `/anthropic` 与 `https://api.deepseek.com` 两个端点（thinking 旋钮随协议变化：`effort` 仅 Anthropic 端点有）；`openai.ts` OpenAI 兼容传输（官方 `openai` SDK 流式 `chat/completions`，`maxRetries: 0` 交回 Nova 自己的重试循环；请求体仍逐字节组装以保前缀缓存）+ `createModel` 统一工厂与共享重试循环。**不设通用 `openai` provider** —— OpenAI 兼容端点通过 `transport: "openai"` 在供应商自己的 profile 上使用。CLI 调用点仅改名，loop 契约未触碰。**未做**（另行确认）：Qwen / GLM / MiniMax / 豆包各自专用 profile 与 setup 模板——现有通用 `openai` 档配 `baseURL` 已可接入。
+> **落地记录**：传输协议与供应商解耦——`providers[].transport`（`"anthropic" | "openai"`）独立于 `providers[].profile`，DeepSeek 一个 profile 同时服务 `/anthropic` 与 `https://api.deepseek.com` 两个端点（thinking 旋钮随协议变化：`effort` 仅 Anthropic 端点有）；`openai.ts` OpenAI 兼容传输（官方 `openai` SDK 流式 `chat/completions`，`maxRetries: 0` 交回 Nova 自己的重试循环；请求体仍逐字节组装以保前缀缓存）+ `createModel` 统一工厂与共享重试循环。**不设通用 `openai` provider** —— OpenAI 兼容端点通过 `transport: "openai"` 在供应商自己的 profile 上使用。CLI 调用点仅改名，loop 契约未触碰。**未做**（另行确认）：Qwen / GLM / MiniMax / 豆包各自专用 profile 与 setup 模板——现有通用 `openai` 档配 `baseURL` 已可接入。
 
 ### P1 · 做一份公开的 token / 缓存 benchmark
 

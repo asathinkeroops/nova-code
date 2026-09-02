@@ -19,10 +19,12 @@ export interface ProviderTemplate {
   /** Display name shown in the setup picker. */
   label: string;
   /**
-   * Settings persisted (besides the API key) when this template is chosen. Any
-   * omitted field falls back to the config-schema default. `baseURL` has no
-   * schema default (it is provider-specific), so a template must set at least
-   * `baseURL` and `provider` for a usable out-of-the-box config.
+   * Settings applied when this template is chosen. The provider-scoped pieces
+   * (`provider` = profile id, `transport`, `baseURL`) are composed into a
+   * `providers` array entry (name = this `id`, profile = this `provider`); the
+   * API key is collected separately and added to that entry. `model` and `goal`
+   * stay at the config top level. Any omitted field falls back to the
+   * config-schema default.
    *
    * Note what is NOT here: the `models` tier table. It lives in
    * `BUILTIN_PROVIDER_MODELS` (`@nova/base`), keyed by this `provider`, and
@@ -31,7 +33,7 @@ export interface ProviderTemplate {
    */
   settings: {
     // A built-in template targets a built-in profile, so this is the narrow
-    // `ProviderId` even though `settings.provider` itself is a free-form string.
+    // `ProviderId` even though a provider entry's `profile` is a free-form string.
     // Required: it is also the key into the built-in `models` table.
     provider: ProviderId;
     // Wire protocol for the model endpoint. Omitted → the profile's default
