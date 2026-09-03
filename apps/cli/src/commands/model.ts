@@ -36,15 +36,12 @@ function applyModel(ctx: CliContext, name: string): void {
   ctx.model = ctx.buildModel(name);
   ctx.predictModel = ctx.buildModel(name, false);
   // Re-seed the reasoning depth from the new tier's per-tier `thinking` level
-  // (the lite/pro/max ladder), clearing any ad-hoc /effort budget override so
-  // the tier's level takes hold. A tier that doesn't opt in leaves the current
-  // level untouched. The tier's level is not persisted to thinking.level — it
-  // lives in the model profile, and saving `model` below is enough to restore
-  // it next launch.
+  // (the lite/pro/max ladder). A tier that doesn't opt in leaves the current
+  // level untouched. The tier's level lives in the model profile, and saving
+  // `model` below is enough to restore it next launch.
   const tierThinking = resolveThinkingLevel(ctx.settings, name);
   if (tierThinking) {
     ctx.thinkingLevel = tierThinking;
-    ctx.thinkingBudgetOverride = undefined;
     ctx.screen.setThinkingLabel(thinkingLevelLabel(ctx));
   }
   refreshBanner(ctx);

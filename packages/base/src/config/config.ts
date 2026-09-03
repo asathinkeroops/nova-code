@@ -241,19 +241,17 @@ export const modelModalitiesSchema = z.object({
 
 export type ModelModalities = z.infer<typeof modelModalitiesSchema>;
 
-/** Discrete extended-thinking levels, shared by the global `thinking.level`
- *  setting and the per-tier `thinking` override in a model profile. Mirrors
- *  the keys of `text/thinking.ts`'s THINKING_BUDGETS, which maps each level to
- *  a token budget and re-exports this union as its `ThinkingLevel`. */
-export const thinkingLevelSchema = z.enum(["off", "low", "medium", "high", "max"]);
+/** Provider-neutral reasoning intent stored per model tier. Provider profiles
+ *  translate these semantic levels into their own wire parameters. `auto`
+ *  sends no explicit thinking control and leaves the choice to the model. */
+export const thinkingLevelSchema = z.enum(["auto", "off", "low", "medium", "high", "max"]);
 
 export type ThinkingLevel = z.infer<typeof thinkingLevelSchema>;
 
-/** Reasoning depth for a model that doesn't pin its own: the fallback used for
- *  bare model ids and any tier profile that omits `thinking`. Thinking is a
- *  per-tier property (there is no global `thinking` setting), so this is the
- *  only floor. "max" preserves the historical default. */
-export const DEFAULT_THINKING_LEVEL: ThinkingLevel = "max";
+/** Reasoning intent for a model that doesn't pin its own. Custom/bare models
+ *  should inherit the endpoint's default rather than assuming one provider's
+ *  maximum effort setting is accepted. */
+export const DEFAULT_THINKING_LEVEL: ThinkingLevel = "auto";
 
 // A named model "profile" / performance tier (lite / pro / max) in the `models`
 // table. Every entry is an object; the `id` is the concrete model id sent to
@@ -281,13 +279,13 @@ export const modelProfileSchema = z.object({
   apiKey: z.string().min(1).optional().describe("Per-tier API key override."),
   // Per-tier reasoning depth: selecting this tier sets the active thinking
   // level (the CLI seeds ctx.thinkingLevel from it on startup and on /model
-  // switch, so /effort can still override within a session). Omitted → the
-  // tier inherits the global `thinking.level`. This is what makes lite/pro/max
-  // a real capability ladder on a single model id.
+  // switch, so /effort can still override within a session). Omitted → `auto`,
+  // which leaves the endpoint default untouched. This is what makes
+  // lite/pro/max a real capability ladder on a single model id.
   thinking: thinkingLevelSchema
     .optional()
     .describe(
-      "Per-tier extended-thinking level; falls back to the global thinking.level when unset.",
+      "Per-tier reasoning level; auto leaves the endpoint default unchanged.",
     ),
   modalities: modelModalitiesSchema.default({ input: ["text"] }),
   // Per-tier token prices for the `/usage` cost estimate and the status-line
@@ -312,7 +310,7 @@ export type ModelEntry = z.infer<typeof modelEntrySchema>;
 // the wire protocol.
 //
 // `name` is the array-unique key that `currentProvider` references. `profile`
-// is the behavior-profile id (deepseek/moonshot/other) that drives the
+// is the behavior-profile id (deepseek/moonshot/generic) that drives the
 // thinking-knob and error/retry policy; it defaults to `name`, so a connection
 // that doubles as a profile needs no separate field. A single profile may appear
 // in several entries (different keys / endpoints), which is what makes an array
@@ -326,7 +324,7 @@ export const providerEntrySchema = z.object({
     .string()
     .min(1)
     .optional()
-    .describe("Provider-profile id (deepseek/moonshot/other); defaults to `name`."),
+    .describe("Provider-profile id (deepseek/moonshot/generic); defaults to `name`."),
   baseURL: z.string().url().optional().describe("Endpoint for this provider connection."),
   apiKey: z.string().min(1).optional().describe("API key for this provider connection."),
   transport: z

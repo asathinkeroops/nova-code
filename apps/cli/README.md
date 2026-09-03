@@ -10,7 +10,7 @@
 
 > 为 DeepSeek 量身打造的编程代理 — 高缓存命中率 · OS 级沙箱 · 工具齐全 · 开箱即用。
 
-Nova 读代码、跑命令、改文件——通过工具调用把任务推到完成。模型层围绕 **DeepSeek** 构建：thinking 映射到 effort（而非 `budget_tokens`）、错误码翻译成人话、余额与定价内建，整个请求管线为 DeepSeek 的自动上下文缓存做了调优，让缓存持续命中。模型端点可走 Anthropic 或 OpenAI 兼容协议，差异（thinking 形状、错误码、余额探针）由当前 `providers[]` 条目的 `profile` 吸收——DeepSeek 是第一优先级，Kimi（Moonshot）有专用适配（beta），其余 Anthropic 兼容端点走通用 `other` 档。
+Nova 读代码、跑命令、改文件——通过工具调用把任务推到完成。模型层围绕 **DeepSeek** 构建：thinking 映射到 effort（而非 `budget_tokens`）、错误码翻译成人话、余额与定价内建，整个请求管线为 DeepSeek 的自动上下文缓存做了调优，让缓存持续命中。模型端点可走 Anthropic 或 OpenAI 兼容协议，差异（thinking 形状、错误码、余额探针）由当前 `providers[]` 条目的 `profile` 吸收——DeepSeek 是第一优先级，Kimi（Moonshot）有专用适配（beta），其余端点走通用 `generic` 档，并对 408、409、429 和 5xx 做标准退避重试，同时遵循 `Retry-After`。
 
 ## 为什么选 Nova
 

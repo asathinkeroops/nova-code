@@ -42,6 +42,7 @@ import type {
   ToolExecutionResult,
   ToolUseBlock,
 } from "./types.js";
+import type { ThinkingLevel } from "./model-client.js";
 
 // ────────────────────────────────────────────────────────────────────────────
 // System prompt
@@ -254,8 +255,8 @@ export interface TurnOptions {
   maxTokensContinuations?: number;
   /** Max tool executions in flight per turn. Omit or `<= 0` for unbounded. */
   toolConcurrency?: number;
-  /** `> 0` asks the model to allocate that many tokens to extended thinking. */
-  thinkingBudgetTokens?: number;
+  /** Provider-neutral reasoning intent; the selected profile maps it to the wire. */
+  thinkingLevel?: ThinkingLevel;
 }
 
 /**

@@ -45,7 +45,7 @@ const withModels = (
   models: Record<string, unknown> = tiers(),
   settings: Record<string, unknown> = {},
 ) => ({
-  providers: [{ name: "test", profile: "other", models }],
+  providers: [{ name: "test", profile: "generic", models }],
   currentProvider: "test",
   ...settings,
 });
@@ -322,7 +322,7 @@ describe("loadSettings", () => {
         providers: [
           {
             name: "test",
-            profile: "other",
+            profile: "generic",
             apiKey: "sk-test-123",
             baseURL: "https://file.example.com",
             models: tiers({ haiku: { id: "claude-haiku-4-5" } }),
@@ -354,7 +354,7 @@ describe("loadSettings", () => {
     const path = join(dir, "nova.config.json");
     await writeFile(
       path,
-      JSON.stringify({ providers: [{ name: "test", profile: "other", apiKey: "from-config" }] }),
+      JSON.stringify({ providers: [{ name: "test", profile: "generic", apiKey: "from-config" }] }),
       "utf8",
     );
     const prior = process.env[API_KEY_ENV];
@@ -384,7 +384,7 @@ describe("loadSettings", () => {
 
 describe("resolveApiKey", () => {
   const withKey = parseSettings({
-    providers: [{ name: "test", profile: "other", apiKey: "from-config" }],
+    providers: [{ name: "test", profile: "generic", apiKey: "from-config" }],
   });
   const keyless = parseSettings({});
   const env = (value?: string): NodeJS.ProcessEnv =>

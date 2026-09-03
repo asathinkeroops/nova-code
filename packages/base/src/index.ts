@@ -15,7 +15,7 @@
  *   prompt/  the slash-command contract and the prompt-body expanders that
  *            turn `$ARGUMENTS` / `@file` / `!cmd` into text.
  *   text/    pure string helpers, shared across packages: XML escaping, YAML
- *            front matter, token estimation, thinking budgets.
+ *            front matter, token estimation, thinking-level helpers.
  *
  * Adding a file here is only correct if it has no `@nova/*` import. If it
  * needs one, it belongs in the package that owns its topic.
@@ -174,7 +174,7 @@ export {
   type YamlValue,
 } from "./text/front-matter.js";
 
-export { THINKING_BUDGETS, THINKING_LEVELS, isThinkingLevel, resolveBudget } from "./text/thinking.js";
+export { THINKING_LEVELS, isThinkingLevel } from "./text/thinking.js";
 
 export {
   DEFAULT_TOKEN_ESTIMATE,

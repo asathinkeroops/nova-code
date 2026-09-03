@@ -18,8 +18,8 @@ function settingsWith(mcp: unknown) {
   return parseSettings({
     providers: [
       {
-        name: "other",
-        profile: "other",
+        name: "generic",
+        profile: "generic",
         apiKey: "x",
         baseURL: "https://api.anthropic.com",
       },

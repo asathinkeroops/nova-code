@@ -10,6 +10,7 @@
  */
 
 import type { TokenEstimate } from "@nova/base";
+import type { ThinkingLevel } from "@nova/core";
 import type { ProviderError } from "./error.js";
 
 /**
@@ -29,16 +30,10 @@ import type { ProviderError } from "./error.js";
  */
 export type ModelTransport = "anthropic" | "openai";
 
-/** Wire params for the thinking knob, plus any `max_tokens` floor the format imposes. */
+/** Wire params for the provider's thinking/reasoning knob. */
 export interface ThinkingParams {
   /** Fields merged verbatim into the request body (e.g. `thinking`, `output_config`). */
   params: Record<string, unknown>;
-  /**
-   * Minimum `max_tokens` this thinking config requires, if any. Anthropic needs
-   * `max_tokens > budget_tokens`; the adapter bumps `max_tokens` to at least
-   * this. Omitted when the format imposes no floor (e.g. DeepSeek's effort knob).
-   */
-  minMaxTokens?: number;
 }
 
 /**
@@ -100,8 +95,9 @@ export interface ProviderProfile {
   transport?: ModelTransport;
 
   /**
-   * Build the thinking-knob wire params for a given budget (in tokens).
-   * `budget <= 0` means thinking is disabled. `model` is the concrete model id
+   * Build the thinking-knob wire params for a provider-neutral semantic level.
+   * `auto` means omit an explicit control and follow the endpoint default;
+   * `off` asks the endpoint to disable reasoning. `model` is the concrete model id
    * the request targets, passed so a profile whose thinking wire shape depends
    * on the model (e.g. Moonshot, where `kimi-k2.7-code` forbids `type:"disabled"`
    * while `kimi-k2.5` forbids the `keep` field) can branch on it; profiles whose
@@ -110,11 +106,15 @@ export interface ProviderProfile {
    * `transport` is the EFFECTIVE transport for this request (config override
    * when set, else the profile default) — the knob's wire shape is per-protocol:
    * DeepSeek's `output_config.effort` exists only on its Anthropic endpoint,
-   * and its OpenAI endpoint has no effort parameter at all (the reasoner always
-   * thinks, `chat` never does). A profile returns the shape matching the given
-   * transport, so the SAME provider works on both wires.
+   * while its OpenAI endpoint uses `reasoning_effort` alongside the thinking
+   * switch. A profile returns the shape matching the given transport, so the
+   * SAME provider works on both wires.
    */
-  thinking(budget: number, model: string | undefined, transport: ModelTransport): ThinkingParams;
+  thinking(
+    level: ThinkingLevel,
+    model: string | undefined,
+    transport: ModelTransport,
+  ): ThinkingParams;
 
   /**
    * Char→token ratios for this provider's tokenizer, used by the rough

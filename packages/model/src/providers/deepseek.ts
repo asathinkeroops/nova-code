@@ -1,5 +1,5 @@
 import { backoffMs } from "../retry.js";
-import { THINKING_BUDGETS } from "@nova/base";
+import type { ThinkingLevel } from "@nova/core";
 import { ProviderError, type ProviderErrorInfo } from "./error.js";
 import type { AccountBalance, BalanceProbe, ProviderProfile } from "./types.js";
 
@@ -252,19 +252,17 @@ async function fetchDeepSeekBalance(probe: BalanceProbe): Promise<AccountBalance
 // Provider profile
 // ────────────────────────────────────────────────────────────────────────────
 
-// DeepSeek only exposes "high" and "max" on its Anthropic-compatible wire.
-// Anything below our `max` budget (32k tokens, see THINKING_BUDGETS) rounds to
-// "high"; at-or-above rounds to "max" — matches DeepSeek's documented behavior
-// where low/medium are rewritten to high on their side.
-function budgetToEffort(budget: number): "high" | "max" {
-  return budget >= THINKING_BUDGETS.max ? "max" : "high";
+// DeepSeek only exposes "high" and "max" on its Anthropic-compatible wire;
+// lower positive Nova levels therefore use its documented "high" floor.
+function levelToEffort(level: ThinkingLevel): "high" | "max" {
+  return level === "max" ? "max" : "high";
 }
 
 // DeepSeek's OpenAI-compatible wire exposes the full "low"/"high"/"max" ladder
-// via `reasoning_effort`, so the budget maps three rungs there instead of two.
-function budgetToReasoningEffort(budget: number): "low" | "high" | "max" {
-  if (budget >= THINKING_BUDGETS.max) return "max";
-  if (budget >= THINKING_BUDGETS.high) return "high";
+// via `reasoning_effort`; `medium` uses the nearest lower supported rung.
+function levelToReasoningEffort(level: ThinkingLevel): "low" | "high" | "max" {
+  if (level === "max") return "max";
+  if (level === "high") return "high";
   return "low";
 }
 
@@ -276,8 +274,8 @@ function budgetToReasoningEffort(budget: number): "low" | "high" | "max" {
  * backoff schedule. The same profile also serves DeepSeek's OpenAI-compatible
  * endpoint (baseURL without the suffix, `providers[].transport: "openai"`): that
  * wire takes the thinking knob as `thinking: { type: "enabled"|"disabled" }`
- * plus `reasoning_effort: "low"|"high"|"max"` — see `budgetToReasoningEffort`
- * for the three-rung budget mapping. Error translation, balance probe and docs
+ * plus `reasoning_effort: "low"|"high"|"max"` — see `levelToReasoningEffort`
+ * for the three-rung level mapping. Error translation, balance probe and docs
  * are shared by both wires (same statuses, same `/user/balance`).
  */
 export const deepseekProfile: ProviderProfile = {
@@ -286,21 +284,22 @@ export const deepseekProfile: ProviderProfile = {
   // DeepSeek's documented ratios: ~0.3 tokens/char for English, ~0.6 for CJK.
   tokenEstimate: { cjk: 0.6, other: 0.3 },
 
-  thinking(budget, _model, transport) {
+  thinking(level, _model, transport) {
+    if (level === "auto") return { params: {} };
     if (transport === "openai") {
-      if (budget <= 0) return { params: { thinking: { type: "disabled" } } };
+      if (level === "off") return { params: { thinking: { type: "disabled" } } };
       return {
         params: {
           thinking: { type: "enabled" },
-          reasoning_effort: budgetToReasoningEffort(budget),
+          reasoning_effort: levelToReasoningEffort(level),
         },
       };
     }
-    if (budget <= 0) return { params: { thinking: { type: "disabled" } } };
+    if (level === "off") return { params: { thinking: { type: "disabled" } } };
     return {
       params: {
         thinking: { type: "enabled" },
-        output_config: { effort: budgetToEffort(budget) },
+        output_config: { effort: levelToEffort(level) },
       },
     };
   },

@@ -7,7 +7,7 @@ import type { ProviderProfile } from "./providers/index.js";
 import { createModel, type RetryNotice } from "./model.js";
 import { buildOpenAIRequestBody, toOpenAIMessages } from "./openai.js";
 import { deepseekProfile } from "./providers/deepseek.js";
-import { otherProfile } from "./providers/other.js";
+import { genericProfile } from "./providers/generic.js";
 import { ProviderError } from "./providers/error.js";
 
 // The transport goes through the official `openai` SDK, so these tests stub
@@ -44,10 +44,11 @@ const thinkingProfile: ProviderProfile = {
   id: "test-openai",
   transport: "openai",
   tokenEstimate: DEFAULT_TOKEN_ESTIMATE,
-  thinking(budget, _model, _transport) {
-    return budget > 0
-      ? { params: { enable_thinking: true, thinking_budget: budget } }
-      : { params: { enable_thinking: false } };
+  thinking(level, _model, _transport) {
+    if (level === "auto") return { params: {} };
+    return {
+      params: { enable_thinking: level !== "off", thinking_level: level },
+    };
   },
   onError(err) {
     return { retry: false, error: err };
@@ -305,11 +306,11 @@ describe("toOpenAIMessages", () => {
 describe("buildOpenAIRequestBody", () => {
   it("frames tools in the OpenAI function shape and sets stream_options", () => {
     const body = buildOpenAIRequestBody(
-      { ...baseReq, thinkingBudgetTokens: 16_000 },
+      { ...baseReq, thinkingLevel: "high" },
       { apiKey: "k", model: "m", baseURL: "https://x/v1", provider: thinkingProfile },
       {
         maxTokens: 16_000,
-        thinkingParams: { enable_thinking: true, thinking_budget: 16_000 },
+        thinkingParams: { enable_thinking: true, thinking_level: "high" },
         tools: [{ name: "noop", description: "no-op", input_schema: { type: "object" } }],
       },
     ) as unknown as Record<string, unknown>;
@@ -318,7 +319,7 @@ describe("buildOpenAIRequestBody", () => {
     expect(body.max_tokens).toBe(16_000);
     // The profile's thinking knob lands verbatim in the body.
     expect(body.enable_thinking).toBe(true);
-    expect(body.thinking_budget).toBe(16_000);
+    expect(body.thinking_level).toBe("high");
     expect(body.tools).toEqual([
       {
         type: "function",
@@ -350,7 +351,7 @@ describe("createModel openai transport", () => {
   it("streams chat.completions with the framed body", async () => {
     mockCreate.mockResolvedValueOnce(streamOf([textChunk("ok"), doneChunk("stop")]));
     const m = makeClient();
-    await m.call({ ...baseReq, thinkingBudgetTokens: 16_000 });
+    await m.call({ ...baseReq, thinkingLevel: "high" });
     const { body, opts } = lastCreate();
     expect(body.model).toBe("qwen3-coder-plus");
     expect(body.stream).toBe(true);
@@ -359,7 +360,7 @@ describe("createModel openai transport", () => {
       content: "sys",
     });
     expect(body.enable_thinking).toBe(true);
-    expect(body.thinking_budget).toBe(16_000);
+    expect(body.thinking_level).toBe("high");
     expect(opts).not.toHaveProperty("signal");
   });
 
@@ -612,6 +613,28 @@ describe("createModel openai transport retries", () => {
     expect(retries).toEqual([{ attempt: 1, maxAttempts: 10, delayMs: 1_000, status: 429 }]);
   });
 
+  it("retries a transient status through the generic profile", async () => {
+    vi.useFakeTimers();
+    mockCreate
+      .mockRejectedValueOnce(apiError(503, { retryAfter: "2" }))
+      .mockResolvedValueOnce(streamOf([textChunk("ok"), doneChunk("stop")]));
+    const retries: RetryNotice[] = [];
+    const m = createModel({
+      apiKey: "x",
+      model: "m",
+      baseURL: "https://gw.example.com/v1",
+      provider: genericProfile,
+      transport: "openai",
+      onRetry: (i) => retries.push(i),
+    });
+    const p = m.call(baseReq);
+    await vi.advanceTimersByTimeAsync(2_000);
+    const res = await p;
+    expect(res.content).toEqual([{ type: "text", text: "ok" }]);
+    expect(mockCreate).toHaveBeenCalledTimes(2);
+    expect(retries).toEqual([{ attempt: 1, maxAttempts: 10, delayMs: 2_000, status: 503 }]);
+  });
+
   it("throws a translated ProviderError for a non-retryable 402 without retrying", async () => {
     mockCreate.mockRejectedValueOnce(apiError(402, { detail: "balance empty" }));
     const m = createModel({
@@ -698,7 +721,7 @@ describe("createModel transport dispatch", () => {
   });
 
   it("leaves anthropic profiles on the Anthropic SDK (no OpenAI client)", () => {
-    createModel({ apiKey: "x", model: "claude-sonnet-4-5", provider: otherProfile });
+    createModel({ apiKey: "x", model: "claude-sonnet-4-5", provider: genericProfile });
     expect(clientOptions.length).toBe(0);
   });
 
@@ -714,7 +737,7 @@ describe("createModel transport dispatch", () => {
       provider: deepseekProfile,
       transport: "openai",
     });
-    const res = await m.call({ ...baseReq, thinkingBudgetTokens: 16_000 });
+    const res = await m.call({ ...baseReq, thinkingLevel: "high" });
     expect(res.content).toEqual([{ type: "text", text: "ok" }]);
     expect(clientOptions.length).toBe(1); // OpenAI client, not Anthropic
     expect(lastCreate().body.model).toBe("deepseek-reasoner");
@@ -723,7 +746,7 @@ describe("createModel transport dispatch", () => {
     // (`thinking` switch + `reasoning_effort` ladder).
     expect(lastCreate().body.output_config).toBeUndefined();
     expect(lastCreate().body.thinking).toEqual({ type: "enabled" });
-    expect(lastCreate().body.reasoning_effort).toBe("high"); // 16_000 budget → high
+    expect(lastCreate().body.reasoning_effort).toBe("high");
   });
 
   it("keeps a deepseek provider on the anthropic wire by default (no override)", () => {

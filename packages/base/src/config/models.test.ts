@@ -6,6 +6,7 @@ import {
   activeModels,
   loadSettings,
   parseSettings,
+  resolveThinkingLevel,
   saveModelProfileOverride,
 } from "./config.js";
 import {
@@ -55,9 +56,10 @@ describe("built-in model tables", () => {
 
   it("leaves a provider with no built-in table to spell out its own ladder", () => {
     const models = { lite: { id: "a" }, pro: { id: "b" }, max: { id: "c" } };
-    const s = parseSettings(providerConfig("other", { models }));
+    const s = parseSettings(providerConfig("generic", { models }));
     expect(activeModels(s).pro?.id).toBe("b");
     expect(Object.keys(activeModels(s)).sort()).toEqual(["lite", "max", "pro"]);
+    expect(resolveThinkingLevel(s, "pro")).toBe("auto");
   });
 
   it("merges a same-model override field-by-field over the built-in", () => {
@@ -178,7 +180,7 @@ describe("stripDefaultModels", () => {
     expect(await stripDefaultModels(configPath)).toBe(false);
     await write(providerConfig("deepseek", { apiKey: "k" }));
     expect(await stripDefaultModels(configPath)).toBe(false);
-    await write(providerConfig("other", { models: BUILTIN_PROVIDER_MODELS.deepseek }));
+    await write(providerConfig("generic", { models: BUILTIN_PROVIDER_MODELS.deepseek }));
     expect(await stripDefaultModels(configPath)).toBe(false);
   });
 });

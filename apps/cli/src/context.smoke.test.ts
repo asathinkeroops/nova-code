@@ -30,8 +30,8 @@ function isolatedSettings(sessionDir: string): Settings {
   return settingsSchema.parse({
     providers: [
       {
-        name: "other",
-        profile: "other",
+        name: "generic",
+        profile: "generic",
         apiKey: "test-key-not-used",
         models: {
           lite: { id: "test-lite" },

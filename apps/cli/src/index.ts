@@ -51,7 +51,6 @@ interface CliOptions {
 /** Session-only reasoning overrides parsed from `--think` (see CliRuntimeOptions). */
 interface ThinkOverride {
   thinkingLevelOverride?: ThinkingLevel;
-  thinkingBudgetOverride?: number;
 }
 
 /**
@@ -74,15 +73,11 @@ function applyCliOverrides(settings: Settings, opts: CliOptions): ThinkOverride 
   if (opts.maxTurns) settings.maxTurns = opts.maxTurns;
   if (!opts.think) return {};
   const raw = opts.think.trim();
-  const asNumber = Number.parseInt(raw, 10);
-  if (Number.isFinite(asNumber) && asNumber > 0 && String(asNumber) === raw) {
-    return { thinkingBudgetOverride: asNumber };
-  }
   if (isThinkingLevel(raw)) {
     return { thinkingLevelOverride: raw };
   }
   throw new Error(
-    `invalid --think value: ${raw} (expected off|low|medium|high|max or a positive integer)`,
+    `invalid --think value: ${raw} (expected auto|off|low|medium|high|max)`,
   );
 }
 
@@ -205,9 +200,6 @@ async function runHeadlessMode(
       ...(think.thinkingLevelOverride !== undefined
         ? { thinkingLevelOverride: think.thinkingLevelOverride }
         : {}),
-      ...(think.thinkingBudgetOverride !== undefined
-        ? { thinkingBudgetOverride: think.thinkingBudgetOverride }
-        : {}),
     });
   } catch (err) {
     dieHeadless(err instanceof Error ? err.message : String(err), 1);
@@ -324,9 +316,6 @@ async function run(positional: string[], opts: CliOptions): Promise<void> {
       ...(think.thinkingLevelOverride !== undefined
         ? { thinkingLevelOverride: think.thinkingLevelOverride }
         : {}),
-      ...(think.thinkingBudgetOverride !== undefined
-        ? { thinkingBudgetOverride: think.thinkingBudgetOverride }
-        : {}),
     });
 
     await pruneOldSessions(ctx);
@@ -348,7 +337,7 @@ program
   .option("-m, --model <tier>", "override active model tier (a key in `models`, e.g. lite/pro/max)")
   .option(
     "-t, --think <level>",
-    "extended thinking level (off|low|medium|high|max or a positive integer budget)",
+    "reasoning level (auto|off|low|medium|high|max)",
   )
   .option("--max-turns <n>", "override maxTurns", (v) => Number.parseInt(v, 10))
   .option("--cwd <dir>", "override working directory for tools")

@@ -268,8 +268,8 @@ export function createAgent(ctx: AgentContext): Agent {
         ...(turnOptions.toolConcurrency !== undefined
           ? { toolConcurrency: turnOptions.toolConcurrency }
           : {}),
-        ...(turnOptions.thinkingBudgetTokens && turnOptions.thinkingBudgetTokens > 0
-          ? { thinkingBudgetTokens: turnOptions.thinkingBudgetTokens }
+        ...(turnOptions.thinkingLevel !== undefined
+          ? { thinkingLevel: turnOptions.thinkingLevel }
           : {}),
         toolContext: { ...ctx.tools.contextFor(), signal: controller.signal },
         hooks,

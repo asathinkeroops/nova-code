@@ -13,7 +13,7 @@
 
 市面上很多工具只是"兼容" DeepSeek，Nova 是**从消息格式、缓存、错误处理到费用面板全链路吃透**了 DeepSeek 的 wire protocol 👇
 
-- 🧠 **思考模式自动映射**：按模型 ID 自动判别 wire format，`/effort high` 一行搞定，不用碰 `output_config` / `budget_tokens` 这些底层字段
+- 🧠 **思考模式自动映射**：语义等级交给 provider profile 按协议转换，`/effort high` 一行搞定，不用碰 `reasoning_effort` / adaptive thinking 这些底层字段
 - 🎯 **上下文缓存全自动命中**：消息历史严格 append-only，请求前缀逐字节稳定 → DeepSeek 服务端缓存每轮命中 → **响应更快、账单更省**
 - 🩺 **错误码翻译 + 智能重试**：400/401/402/422/429/500/503 全附中文诊断，429/500/503 自动指数退避重试，不用退出 REPL 翻日志
 - 📊 **实时费用可视化**：状态栏直连 `/user/balance` 显示账户余额，`/usage` 按 cache-read/write/uncached/output 拆账，缓存收益肉眼可见 💸

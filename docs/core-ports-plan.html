@@ -490,7 +490,7 @@ cli            ──►  以上全部（唯一的装配根）</code></pre>
           <thead><tr><th>变的东西</th><th>触发</th><th>端口里怎么表达</th></tr></thead>
           <tbody>
             <tr><td>模型</td><td><code>/model</code></td><td><code>model</code> 传一个转发壳，稳定对象、活的行为</td></tr>
-            <tr><td>思考预算 · effort</td><td><code>/think</code> · <code>/effort</code></td><td><code>options.turn()</code> 每轮调用</td></tr>
+            <tr><td>思考等级 · effort</td><td><code>/think</code> · <code>/effort</code></td><td><code>options.turn()</code> 每轮调用</td></tr>
             <tr><td>工具清单</td><td>MCP 后连接 · plan mode</td><td><code>tools.list()</code> 是方法</td></tr>
             <tr><td>设置</td><td><code>/config</code></td><td><code>options.turn()</code></td></tr>
             <tr><td>sessionId</td><td><code>/resume</code> · <code>/clear</code></td><td><code>systemPrompt.epoch()</code></td></tr>
@@ -698,7 +698,7 @@ compactor.compact(messages, ctx)    <span class="c">← 端口，链首</span>
             <tr><td><code>history</code></td><td>会话 <code>messages.jsonl</code> / screen store</td><td><code>{childId}.messages.jsonl</code> / <code>current() → []</code></td></tr>
             <tr><td><code>events</code></td><td>会话 <code>transcript.jsonl</code></td><td><code>{childId}.transcript.jsonl</code></td></tr>
             <tr><td><code>tools</code></td><td>全量注册表</td><td>过滤：剔 <code>createSubAgent</code>、readOnly 时剔写工具、再过 allow-list</td></tr>
-            <tr><td><code>options</code></td><td>设置切片</td><td>设置切片 + <code>def.maxTurns/maxTokens</code> 覆盖；思考预算 0</td></tr>
+            <tr><td><code>options</code></td><td>设置切片</td><td>设置切片 + <code>def.maxTurns/maxTokens</code> 覆盖；思考等级 off</td></tr>
             <tr><td><code>hooks</code></td><td>CLI 挂 9 个点</td><td>只挂 2 个点转发流式细节</td></tr>
             <tr><td>驱动</td><td><code>runTurn(用户输入)</code> / <code>continueTurn()</code></td><td><code>runTurn(任务)</code> 一次，取末条文本</td></tr>
           </tbody>

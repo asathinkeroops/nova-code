@@ -7,7 +7,7 @@ import {
   userText,
   userToolResults,
 } from "./messages.js";
-import type { ModelClient } from "./model-client.js";
+import type { ModelClient, ThinkingLevel } from "./model-client.js";
 import {
   assertAppendOnly,
   type Compactor,
@@ -81,12 +81,8 @@ export interface AgentLoopOptions {
    * strictly worse than the failed append.
    */
   history?: Pick<HistoryPort, "commit">;
-  /**
-   * When > 0, asks the model to allocate up to this many tokens to extended
-   * thinking. Forwarded to every `model.call` in the loop unless a
-   * `pre_request` hook overrides it.
-   */
-  thinkingBudgetTokens?: number;
+  /** Provider-neutral reasoning intent, forwarded unless `pre_request` overrides it. */
+  thinkingLevel?: ThinkingLevel;
   /**
    * Max number of tool executions to run concurrently within a single turn.
    * Granted tool calls beyond this cap queue and start as slots free up.
@@ -188,15 +184,13 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
       messages,
       tools: forcedFinalTurn ? [] : opts.tools,
       maxTokens: opts.maxTokens,
-      ...(opts.thinkingBudgetTokens && opts.thinkingBudgetTokens > 0
-        ? { thinkingBudgetTokens: opts.thinkingBudgetTokens }
-        : {}),
+      thinkingLevel: opts.thinkingLevel ?? "auto",
     };
     const requestOverride = await hooks.runBlocking("pre_request", baseRequest);
     const finalRequest = { ...baseRequest, ...(requestOverride ?? {}) };
 
     // `messages` overrides are persisted to the canonical history so the next
-    // iteration sees them; system/tools/maxTokens/thinkingBudgetTokens stay
+    // iteration sees them; system/tools/maxTokens/thinkingLevel stay
     // per-request. Identity returns (same array reference) are treated as a
     // no-op so a hook can probe payload.messages without forcing a re-emit.
     if (requestOverride?.messages && requestOverride.messages !== messages) {

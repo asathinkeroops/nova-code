@@ -30,7 +30,7 @@ function contextUsageLines(ctx: CliContext): string[] {
   const window = resolveContextWindowSize(ctx.settings, ctx.settings.model);
   // Weight the estimate by the active provider's tokenizer ratios, matching
   // `/context` and what `shouldAutoCompact` triggers on.
-  const weights = resolveProfile(activeProviderProfile(ctx.settings) ?? "other").tokenEstimate;
+  const weights = resolveProfile(activeProviderProfile(ctx.settings) ?? "generic").tokenEstimate;
   const estimateChars = (s: string): number => estimateTextTokens(s, weights);
   const systemTokens = estimateChars(
     buildSystemPrompt({

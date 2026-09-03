@@ -7,6 +7,7 @@ import type {
   ToolFollowupMessage,
   ToolUseBlock,
 } from "./types.js";
+import type { ThinkingLevel } from "./model-client.js";
 
 /**
  * Single source of truth for hook points.
@@ -64,7 +65,7 @@ export interface HookSpec {
   /**
    * Fires immediately before every `model.call`. Advisory subscribers (UI
    * spinners) return `undefined`; policy hooks return a partial override of
-   * any of `system / messages / tools / maxTokens / thinkingBudgetTokens`.
+   * any of `system / messages / tools / maxTokens / thinkingLevel`.
    *
    * A `messages` override is **persisted** back to the loop's canonical
    * history (so the next iteration sees it); other overrides are
@@ -76,14 +77,14 @@ export interface HookSpec {
       messages: MessageParam[];
       tools: ToolDefinition[];
       maxTokens: number;
-      thinkingBudgetTokens?: number;
+      thinkingLevel: ThinkingLevel;
     };
     decision: {
       system?: string;
       messages?: MessageParam[];
       tools?: ToolDefinition[];
       maxTokens?: number;
-      thinkingBudgetTokens?: number;
+      thinkingLevel?: ThinkingLevel;
     };
   };
   /** Fires after `model.call` returns or throws. */

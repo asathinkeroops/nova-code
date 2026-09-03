@@ -298,7 +298,7 @@ export function createSubAgentTool(deps: SubAgentDeps): ToolHandler {
           id,
         ),
         getModel: () => deps.getModel(def),
-        getThinkingBudget: () => 0,
+        getThinkingLevel: () => "off",
         getSettings,
         getTools: () => childTools,
         dispatch: deps.dispatch,

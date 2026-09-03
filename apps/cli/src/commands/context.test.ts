@@ -33,7 +33,7 @@ function makeCtx(viewers: Viewer[], o: StubOpts = {}): CliContext {
       providers: [
         {
           name: "test",
-          profile: "other",
+          profile: "generic",
           models: { "test-model": { id: "test-model", contextWindowSize: windowTokens } },
         },
       ],

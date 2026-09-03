@@ -182,7 +182,7 @@ const MOONSHOT_MODELS_DECIMAL: Record<string, ModelProfile> = {
  * every existing install on upgrade instead of being frozen in whatever the
  * setup wizard once wrote to disk.
  *
- * A provider with no entry here (e.g. the generic `other`) has no defaults, so
+ * A provider with no entry here (e.g. `generic`) has no defaults, so
  * its config must spell out the full `lite`/`pro`/`max` ladder itself.
  */
 export const BUILTIN_PROVIDER_MODELS: Record<string, Record<string, ModelProfile>> = {

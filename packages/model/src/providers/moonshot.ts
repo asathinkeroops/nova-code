@@ -236,13 +236,12 @@ function isPreservedThinkingModel(model: string): boolean {
  *
  *   - `kimi-k2.7-code` / `-highspeed`: thinking is ALWAYS on and preserved —
  *     the endpoint rejects `type:"disabled"` and treats `keep` as `"all"`. We
- *     always send `{ type: "enabled", keep: "all" }` and ignore the budget.
+ *     always send `{ type: "enabled", keep: "all" }` and ignore the level.
  *   - `kimi-k2.5` (and other toggle-able Kimi models): `type` switches on the
- *     budget; `keep` is NOT supported and must never be sent.
+ *     level; `keep` is NOT supported and must never be sent.
  *
- * Unlike the generic `budget_tokens` knob there is no `max_tokens` floor (like
- * DeepSeek's effort knob). Documented HTTP failures are translated (see the
- * error table) with 429/500/503 retried on the shared backoff schedule.
+ * Documented HTTP failures are translated (see the error table) with
+ * 429/500/503 retried on the shared backoff schedule.
  */
 export const moonshotProfile: ProviderProfile = {
   id: "moonshot",
@@ -250,7 +249,7 @@ export const moonshotProfile: ProviderProfile = {
   // Matches DeepSeek's ratios: ~0.3 tokens/char for English, ~0.6 for CJK.
   tokenEstimate: { cjk: 0.6, other: 0.3 },
 
-  thinking(budget, model, transport) {
+  thinking(level, model, transport) {
     // On the OpenAI-compatible wire there is no `thinking: { type, keep }`
     // knob — reasoning follows the selected model (Kimi K2 models reason
     // natively), so the knob stays empty there.
@@ -258,7 +257,8 @@ export const moonshotProfile: ProviderProfile = {
     if (isPreservedThinkingModel(model ?? "")) {
       return { params: { thinking: { type: "enabled", keep: "all" } } };
     }
-    if (budget <= 0) return { params: { thinking: { type: "disabled" } } };
+    if (level === "auto") return { params: {} };
+    if (level === "off") return { params: { thinking: { type: "disabled" } } };
     return { params: { thinking: { type: "enabled" } } };
   },
 

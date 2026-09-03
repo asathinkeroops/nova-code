@@ -209,7 +209,7 @@ export async function diagnoseConfig(
     }
     // `provider` is a free-form string (the schema can't enumerate core's
     // profile registry across the package boundary), so an id that isn't a
-    // built-in silently resolves to the generic `other` profile. That's a valid
+    // built-in silently resolves to the `generic` profile. That's a valid
     // choice for a plain Anthropic-compatible endpoint, but usually it's a typo
     // — flag it so the user isn't surprised by the missing effort knob / error
     // translation / balance readout.

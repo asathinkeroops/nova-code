@@ -1055,6 +1055,47 @@ describe("agentLoop · post_tool_use hook", () => {
 });
 
 describe("agentLoop · pre_request hook", () => {
+  it("forwards the semantic thinking level and lets the hook override it", async () => {
+    const hooks = new HookRegistry();
+    let hookLevel: string | undefined;
+    let modelLevel: string | undefined;
+    hooks.on("pre_request", ({ thinkingLevel }) => {
+      hookLevel = thinkingLevel;
+      return { thinkingLevel: "off" };
+    });
+    const model: ModelClient = {
+      call: async (req): Promise<AssistantTurn> => {
+        modelLevel = req.thinkingLevel;
+        return { content: [{ type: "text", text: "ok" }], stopReason: "end_turn" };
+      },
+    };
+
+    await agentLoop({
+      ...baseOpts(hooks),
+      thinkingLevel: "high",
+      model,
+      executeTool: makeExecutor(),
+    });
+
+    expect(hookLevel).toBe("high");
+    expect(modelLevel).toBe("off");
+  });
+
+  it("uses auto when no thinking level is configured", async () => {
+    const hooks = new HookRegistry();
+    let modelLevel: string | undefined;
+    const model: ModelClient = {
+      call: async (req): Promise<AssistantTurn> => {
+        modelLevel = req.thinkingLevel;
+        return { content: [{ type: "text", text: "ok" }], stopReason: "end_turn" };
+      },
+    };
+
+    await agentLoop({ ...baseOpts(hooks), model, executeTool: makeExecutor() });
+
+    expect(modelLevel).toBe("auto");
+  });
+
   it("rewrites the system prompt before model.call sees it", async () => {
     const hooks = new HookRegistry();
     let saw: string | undefined;

@@ -1,8 +1,4 @@
-import {
-  isThinkingLevel,
-  THINKING_LEVELS,
-  type ThinkingLevel,
-} from "@nova/base";
+import { isThinkingLevel, THINKING_LEVELS, type ThinkingLevel } from "@nova/base";
 import { activeModels, saveModelProfileOverride } from "@nova/base";
 import { ACCENT_HEX, dim, type Rgb } from "../colors.js";
 import { thinkingLevelLabel, refreshBanner, type CliContext } from "../context.js";
@@ -12,12 +8,14 @@ const TITLE = "/effort";
 
 /**
  * One-line blurb per reasoning depth, shown live under the slider so the tradeoff
- * (speed ↔ depth, and the token cost) is visible while choosing. Read from the
+ * (speed ↔ depth) is visible while choosing. Read from the
  * i18n catalog at call time (see the i18n invariant), keyed by every
  * {@link THINKING_LEVELS} entry.
  */
 function levelBlurb(level: ThinkingLevel): string {
   switch (level) {
+    case "auto":
+      return t.effort.blurbAuto;
     case "off":
       return t.effort.blurbOff;
     case "low":
@@ -38,6 +36,7 @@ function levelBlurb(level: ThinkingLevel): string {
  * tint here is only the non-truecolor fallback.
  */
 const LEVEL_TINT: Record<ThinkingLevel, Rgb> = {
+  auto: [180, 180, 180], // neutral — defer to the provider/model default
   off: [148, 148, 148], // grey — neutral, lowest effort
   low: [127, 217, 154], // green
   medium: [96, 165, 250], // blue
@@ -55,9 +54,7 @@ function refreshThinkingUi(ctx: CliContext): void {
  * Persist a level change into the ACTIVE tier's profile — thinking lives
  * per-tier now, so `/effort <level>` edits `models.<tier>.thinking` and a later
  * /model switch re-seeds from it. A bare model id (not a configured tier) has no
- * profile to write, so it stays session-only. The numeric budget override
- * (ctx.thinkingBudgetOverride) is always session-only — there's no per-tier
- * budget field — so it takes the lighter `refreshThinkingUi` path instead.
+ * profile to write, so it stays session-only.
  *
  * Only the `thinking` field is written: the active provider's `models` is the
  * RESOLVED
@@ -95,26 +92,13 @@ export async function handleEffort(ctx: CliContext, arg: string): Promise<void> 
     });
     if (!pick) return; // esc — leave the feed quiet
     ctx.thinkingLevel = pick;
-    ctx.thinkingBudgetOverride = undefined;
     await persistTierThinking(ctx);
     ctx.screen.card(`${dim(t.effort.setTo)} ${pick}`, { title: TITLE });
     return;
   }
 
-  const asNumber = Number.parseInt(arg, 10);
-  if (Number.isFinite(asNumber) && asNumber > 0 && String(asNumber) === arg) {
-    // Session-only numeric budget override (not persisted — no per-tier field).
-    ctx.thinkingBudgetOverride = asNumber;
-    refreshThinkingUi(ctx);
-    ctx.screen.card(
-      `${dim(t.effort.budgetSetTo)} ${asNumber} ${dim(t.effort.budgetSuffix(ctx.thinkingLevel))}`,
-      { title: TITLE },
-    );
-    return;
-  }
   if (isThinkingLevel(arg)) {
     ctx.thinkingLevel = arg;
-    ctx.thinkingBudgetOverride = undefined;
     await persistTierThinking(ctx);
     ctx.screen.card(`${dim(t.effort.setTo)} ${arg}`, { title: TITLE });
     return;

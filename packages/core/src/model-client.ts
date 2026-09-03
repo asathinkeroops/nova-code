@@ -11,18 +11,17 @@ export interface ModelClient {
   call(req: ModelRequest): Promise<AssistantTurn>;
 }
 
+/** Provider-neutral reasoning intent. Each provider maps it to its own wire format. */
+export type ThinkingLevel = "auto" | "off" | "low" | "medium" | "high" | "max";
+
 export interface ModelRequest {
   system: string;
   messages: MessageParam[];
   tools: ToolDefinition[];
   maxTokens: number;
   signal?: AbortSignal;
-  /**
-   * When > 0, enables extended thinking with the given token budget. Providers
-   * that require `max_tokens > budget_tokens` bump it themselves rather than
-   * failing.
-   */
-  thinkingBudgetTokens?: number;
+  /** Semantic reasoning intent; the provider profile owns the wire-level mapping. */
+  thinkingLevel?: ThinkingLevel;
 }
 
 /** A tool serialized to the exact wire shape sent to the model. */

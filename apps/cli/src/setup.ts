@@ -40,7 +40,7 @@ const EXAMPLE_CONFIG = `{
   "providers": [
     {
       "name": "<provider-name>",
-      "profile": "<deepseek|moonshot|other>",
+      "profile": "<deepseek|moonshot|generic>",
       "baseURL": "<anthropic-compatible-url>",
       "apiKey": "<your-api-key>",
       "transport": "<anthropic|openai>",

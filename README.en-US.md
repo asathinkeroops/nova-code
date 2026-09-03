@@ -68,7 +68,7 @@ No `cache_control` to tweak, no error-code docs to dig through. Install, drop in
 
 ### 🎚️ Multi-provider, three-tier ladder
 
-Three provider profiles are built in — DeepSeek, Moonshot (Kimi, beta), and generic Anthropic-compatible (`other`) — each with its own error table and rate-limit retries (DeepSeek and Kimi also probe account balance). First-run setup currently exposes only DeepSeek; other endpoints are configured manually. OpenAI-compatible endpoints reuse an existing vendor profile via `transport: "openai"`, not a separate provider. Models use `lite` / `pro` / `max` tiers, each with its own id, thinking, modalities, context window, and pricing.
+Three provider profiles are built in — DeepSeek, Moonshot (Kimi, beta), and generic (`generic`) — each handling its own thinking shape, errors, and retry policy (DeepSeek and Kimi also probe account balance); `generic` applies standard backoff retries to HTTP 408, 409, 429, and 5xx responses and honors `Retry-After`. First-run setup currently exposes only DeepSeek; other endpoints are configured manually. The endpoint protocol is selected independently with `transport: "anthropic" | "openai"`, so an OpenAI-compatible wire does not require a separate profile. Models use `lite` / `pro` / `max` tiers, each with its own id, thinking, modalities, context window, and pricing.
 
 </td>
 </tr>
@@ -181,7 +181,7 @@ Model-callable tools cover read/write, search, execution, code intelligence, and
 | Command | Capability |
 | --- | --- |
 | `/help` | See all commands |
-| `/model` · `/effort` | Persist the active model tier and its thinking level; an explicit numeric budget is session-only |
+| `/model` · `/effort` | Persist the active model tier and its thinking level (`auto`/`off`/`low`/`medium`/`high`/`max`) |
 | `/compact` | Summarize long history |
 | `/clear` · `/resume` · `/rewind` | Start sessions or resume history from the current workspace; rewind history with a previewed file-snapshot restore while preserving external changes as conflicts |
 | `/rename` | Give the current session a custom name (shown on the input frame) |

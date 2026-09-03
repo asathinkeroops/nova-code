@@ -115,7 +115,6 @@ import { resolveSession } from "./session.js";
 import { Screen, fatalExit } from "./screen.js";
 import type { CliContext, CliRuntimeOptions } from "./ctx-types.js";
 import {
-  currentThinkingBudget,
   persist,
   refreshBalance,
   refreshBanner,
@@ -135,7 +134,6 @@ import { t } from "./i18n/index.js";
 // split into ctx-types.ts / ctx-runtime.ts / builtin-commands.ts.
 export type { CliContext, CliRuntimeOptions } from "./ctx-types.js";
 export {
-  currentThinkingBudget,
   persist,
   refreshBalance,
   refreshBanner,
@@ -647,7 +645,6 @@ export async function createContext(
     // run. /effort adjusts it in-session; a later /model switch re-seeds from
     // the new tier.
     thinkingLevel: cliOpts.thinkingLevelOverride ?? resolveThinkingLevel(settings, settings.model),
-    thinkingBudgetOverride: cliOpts.thinkingBudgetOverride,
     goal: null,
     sessionName: null,
     cronStore,
@@ -1003,7 +1000,7 @@ export async function createContext(
     // Live binding: ctx.model is rebuilt on /model switch. Slicing to the
     // model-facing view is the loop's job now (compactor.view).
     getModel: () => ctx.model,
-    getThinkingBudget: () => currentThinkingBudget(ctx),
+    getThinkingLevel: () => ctx.thinkingLevel,
     getSettings: () => ({
       maxTokens: resolveMaxTokens(ctx.settings, ctx.settings.model),
       maxTurns: ctx.settings.maxTurns,

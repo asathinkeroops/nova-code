@@ -101,7 +101,7 @@ function makeOptions(
       cursorStore.value = c;
     },
     getModel: () => overrides.model,
-    getThinkingBudget: () => 0,
+    getThinkingLevel: () => "off",
     getSettings: () => ({ maxTokens: 1024, maxTurns: 5 }),
     getTools: () => [echoTool],
     dispatch: echoExecutor(),

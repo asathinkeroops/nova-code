@@ -194,19 +194,15 @@ export const en = {
     faster: "Faster",
     smarter: "Smarter",
     footer: "← → navigate · enter confirm · esc cancel",
+    blurbAuto: "Use the provider or model default without sending an explicit reasoning setting.",
     blurbOff:
       "Extended thinking off — the fastest replies. Best for simple edits and quick questions.",
-    blurbLow:
-      "Light reasoning (~2k tokens). A small budget for straightforward, single-step tasks.",
-    blurbMedium: "Balanced reasoning (~8k tokens). A solid default for everyday work.",
-    blurbHigh:
-      "Deep reasoning (~16k tokens). For harder, multi-step problems worth the extra latency.",
-    blurbMax:
-      "Maximum reasoning (~32k tokens). May use excessive tokens and overthink — use sparingly for the hardest tasks.",
+    blurbLow: "Light reasoning for straightforward, single-step tasks.",
+    blurbMedium: "Balanced reasoning for everyday work.",
+    blurbHigh: "Deep reasoning for harder, multi-step problems worth the extra latency.",
+    blurbMax: "Maximum reasoning — use sparingly for the hardest tasks.",
     setTo: "thinking set to",
-    budgetSetTo: "thinking budget set to",
-    budgetSuffix: (level: string): string => `tokens (level: ${level}, this session)`,
-    expected: "expected off|low|medium|high|max or a positive integer",
+    expected: "expected auto|off|low|medium|high|max",
     saveFailed: (msg: string): string => `failed to save settings: ${msg}`,
   },
 
@@ -551,9 +547,9 @@ export const en = {
       `add a "models" table with all tiers to the current providers[] entry (${tiers})`,
     unknownProviderTitle: (provider: string): string =>
       `provider "${provider}" is not a built-in profile`,
-    unknownProviderDetail: `using the generic "other" fallback (no effort knob, error translation, or balance)`,
+    unknownProviderDetail: `using the "generic" fallback (standard reasoning mapping, no provider-specific error translation or balance)`,
     unknownProviderHint: (providers: string): string =>
-      `set "profile" on the current providers[] entry to one of: ${providers} — or keep it if this endpoint is a plain Anthropic-compatible one`,
+      `set "profile" on the current providers[] entry to one of: ${providers} — or keep it for a plain compatible endpoint`,
     invalidHookFileTitle: (name: string): string => `invalid hook file: ${name}`,
     invalidHookFileHint: "fix or remove it — nova skips it and continues",
     mcpDisabled: "MCP: disabled (mcp.enabled = false)",

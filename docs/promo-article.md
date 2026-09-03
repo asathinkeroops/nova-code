@@ -6,7 +6,7 @@
 
 ## 为什么是 Nova？
 
-市面上的 AI 编程工具要么是 IDE 插件，要么是为 Anthropic/OpenAI 原生设计的 CLI。**Nova 是第一个为 DeepSeek 做了一等公民适配的终端编程智能体**。它不只是"兼容"DeepSeek —— 从消息格式、思考预算、上下文缓存到错误处理、定价面板，每一层都是按 DeepSeek 的特性调优的。开箱即用，不需要翻文档调 `cache_control`，不需要猜测 wire format，配好 API Key 就能跑。
+市面上的 AI 编程工具要么是 IDE 插件，要么是为 Anthropic/OpenAI 原生设计的 CLI。**Nova 是第一个为 DeepSeek 做了一等公民适配的终端编程智能体**。它不只是"兼容"DeepSeek —— 从消息格式、思考等级、上下文缓存到错误处理、定价面板，每一层都是按 DeepSeek 的特性调优的。开箱即用，不需要翻文档调 `cache_control`，不需要猜测 wire format，配好 API Key 就能跑。
 
 ---
 
@@ -14,7 +14,7 @@
 
 ### 1. 🧠 DeepSeek 深度调优，处处省心
 
-- **思考模式原生映射**：DeepSeek 的 `output_config.effort` 自动根据预算匹配 —— `< 32k → high，≥ 32k → max`。`/effort` 一条命令随时切换，`-t off|low|medium|high|max` 命令行直达。
+- **思考模式原生映射**：`auto|off|low|medium|high|max` 的语义等级一直传到 provider profile，再按 DeepSeek、OpenAI 或 Anthropic 协议转换。`/effort` 一条命令随时切换，`-t` 命令行直达。
 - **上下文缓存全自动**：消息历史是**只追加的**，从不原地修改 —— DeepSeek 服务端缓存持续命中，输入成本直降到缓读取价。微型压缩默认关闭（在 DeepSeek 上得不偿失），只在真正需要时才做一次前缀重置。
 - **余额 & 费用实时可见**：状态栏显示当次会话的**估算花费**和 DeepSeek **账户余额**（直接调 `/user/balance`）。`/usage` 按 token 桶拆分明细 —— cache-read / cache-write / uncached / output 各自多少钱，一目了然。
 - **错误码全翻译**：7 种 DeepSeek API 错误（400/401/402/422/429/500/503）被翻译成可读的中文错误提示并附修复建议，瞬态错误自动重试。

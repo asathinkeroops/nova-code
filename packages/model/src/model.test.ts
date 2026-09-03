@@ -3,7 +3,7 @@ import { z } from "zod";
 import { ProviderError } from "./providers/error.js";
 import { createModel, type RetryNotice } from "./model.js";
 import { deepseekProfile } from "./providers/deepseek.js";
-import { otherProfile } from "./providers/other.js";
+import { genericProfile } from "./providers/generic.js";
 
 // Stub the Anthropic SDK so we can inspect the params our adapter sends
 // without making a network call. The adapter streams, so `stream(...)` returns
@@ -70,21 +70,20 @@ describe("createModel thinking params", () => {
     streamEvents = [];
   });
 
-  it("sends budget_tokens for anthropic models", async () => {
+  it("maps a generic Anthropic level to adaptive thinking and effort", async () => {
     mockCreate.mockResolvedValueOnce(okResponse());
-    const m = createModel({ apiKey: "x", model: "claude-sonnet-4-5", provider: otherProfile });
-    await m.call({ ...baseReq, thinkingBudgetTokens: 16_000 });
+    const m = createModel({ apiKey: "x", model: "claude-sonnet-4-5", provider: genericProfile });
+    await m.call({ ...baseReq, thinkingLevel: "high" });
     const params = mockCreate.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(params.thinking).toEqual({ type: "enabled", budget_tokens: 16_000 });
-    expect(params.output_config).toBeUndefined();
-    // Anthropic requires max_tokens > budget_tokens — adapter auto-bumps.
-    expect(params.max_tokens).toBe(16_000 + 8192);
+    expect(params.thinking).toEqual({ type: "adaptive" });
+    expect(params.output_config).toEqual({ effort: "high" });
+    expect(params.max_tokens).toBe(8192);
   });
 
-  it("sends output_config.effort for deepseek models, no budget_tokens", async () => {
+  it("maps a DeepSeek level to output_config.effort", async () => {
     mockCreate.mockResolvedValueOnce(okResponse());
     const m = createModel({ apiKey: "x", model: "deepseek-reasoner", provider: deepseekProfile });
-    await m.call({ ...baseReq, thinkingBudgetTokens: 16_000 });
+    await m.call({ ...baseReq, thinkingLevel: "high" });
     const params = mockCreate.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(params.thinking).toEqual({ type: "enabled" });
     expect(params.output_config).toEqual({ effort: "high" });
@@ -92,10 +91,10 @@ describe("createModel thinking params", () => {
     expect(params.max_tokens).toBe(8192);
   });
 
-  it("rounds max-level budget to effort:max on deepseek", async () => {
+  it("maps max to effort:max on deepseek", async () => {
     mockCreate.mockResolvedValueOnce(okResponse());
     const m = createModel({ apiKey: "x", model: "deepseek-chat", provider: deepseekProfile });
-    await m.call({ ...baseReq, thinkingBudgetTokens: 32_000 });
+    await m.call({ ...baseReq, thinkingLevel: "max" });
     const params = mockCreate.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(params.output_config).toEqual({ effort: "max" });
   });
@@ -150,24 +149,24 @@ describe("createModel thinking params", () => {
   });
 
   it("drives the thinking shape from the provider, not the model string", async () => {
-    // A deepseek-named model on the `other` profile — it must send budget_tokens
-    // (anthropic shape), not effort. Proves the wire shape follows the passed
-    // provider, and the model id is just an id.
+    // A deepseek-named model on the `generic` profile must use Anthropic's
+    // adaptive thinking shape. The model id is just an id; the passed provider
+    // owns the wire mapping.
     mockCreate.mockResolvedValueOnce(okResponse());
-    const m = createModel({ apiKey: "x", model: "deepseek-chat", provider: otherProfile });
-    await m.call({ ...baseReq, thinkingBudgetTokens: 16_000 });
+    const m = createModel({ apiKey: "x", model: "deepseek-chat", provider: genericProfile });
+    await m.call({ ...baseReq, thinkingLevel: "high" });
     const params = mockCreate.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(params.thinking).toEqual({ type: "enabled", budget_tokens: 16_000 });
-    expect(params.output_config).toBeUndefined();
-    expect(params.max_tokens).toBe(16_000 + 8192);
+    expect(params.thinking).toEqual({ type: "adaptive" });
+    expect(params.output_config).toEqual({ effort: "high" });
+    expect(params.max_tokens).toBe(8192);
   });
 
-  it("sends explicit thinking: disabled and no output_config when budget is 0", async () => {
+  it("leaves thinking unset when no level is requested", async () => {
     mockCreate.mockResolvedValueOnce(okResponse());
     const m = createModel({ apiKey: "x", model: "deepseek-chat", provider: deepseekProfile });
     await m.call({ ...baseReq });
     const params = mockCreate.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(params.thinking).toEqual({ type: "disabled" });
+    expect(params.thinking).toBeUndefined();
     expect(params.output_config).toBeUndefined();
   });
 });
@@ -231,7 +230,7 @@ describe("createModel deepseek error handling", () => {
     vi.useFakeTimers();
     const jsonErr = new Error("Unexpected end of JSON input");
     mockCreate.mockRejectedValueOnce(jsonErr).mockResolvedValueOnce(okResponse());
-    const m = createModel({ apiKey: "x", model: "claude-sonnet-4-5", provider: otherProfile });
+    const m = createModel({ apiKey: "x", model: "claude-sonnet-4-5", provider: genericProfile });
     const p = m.call({ ...baseReq });
     await vi.advanceTimersByTimeAsync(1_000);
     const res = await p;
@@ -268,7 +267,7 @@ describe("createModel deepseek error handling", () => {
     mockCreate
       .mockRejectedValueOnce(new Error("terminated", { cause: socket }))
       .mockResolvedValueOnce(okResponse());
-    const m = createModel({ apiKey: "x", model: "claude-sonnet-4-5", provider: otherProfile });
+    const m = createModel({ apiKey: "x", model: "claude-sonnet-4-5", provider: genericProfile });
     const p = m.call({ ...baseReq });
     await vi.advanceTimersByTimeAsync(1_000);
     const res = await p;
@@ -324,10 +323,29 @@ describe("createModel deepseek error handling", () => {
     expect(mockCreate).toHaveBeenCalledTimes(1);
   });
 
-  it("does not translate or retry errors for non-deepseek models", async () => {
-    const orig = apiError(429);
+  it("retries transient errors for generic providers", async () => {
+    vi.useFakeTimers();
+    mockCreate.mockRejectedValueOnce(apiError(503)).mockResolvedValueOnce(okResponse());
+    const retries: RetryNotice[] = [];
+    const m = createModel({
+      apiKey: "x",
+      model: "claude-sonnet-4-5",
+      provider: genericProfile,
+      onRetry: (i) => retries.push(i),
+    });
+    const result = m.call({ ...baseReq });
+    await vi.advanceTimersByTimeAsync(1_000);
+    await expect(result).resolves.toMatchObject({ stopReason: "end_turn" });
+    expect(mockCreate).toHaveBeenCalledTimes(2);
+    expect(retries).toEqual([
+      expect.objectContaining({ status: 503, delayMs: 1_000, attempt: 1 }),
+    ]);
+  });
+
+  it("does not translate or retry permanent errors for generic providers", async () => {
+    const orig = apiError(400);
     mockCreate.mockRejectedValue(orig);
-    const m = createModel({ apiKey: "x", model: "claude-sonnet-4-5", provider: otherProfile });
+    const m = createModel({ apiKey: "x", model: "claude-sonnet-4-5", provider: genericProfile });
     const err = await m.call({ ...baseReq }).catch((e: unknown) => e);
     expect(err).toBe(orig); // untouched
     expect(mockCreate).toHaveBeenCalledTimes(1);
@@ -398,7 +416,7 @@ describe("createModel thinking backfill", () => {
     });
     streamEvents = [thinkingDelta("let me "), thinkingDelta("reason")];
     const m = createModel({ apiKey: "x", model: "deepseek-reasoner", provider: deepseekProfile });
-    const res = await m.call({ ...baseReq, thinkingBudgetTokens: 16_000 });
+    const res = await m.call({ ...baseReq, thinkingLevel: "high" });
     expect(res.content[0]).toEqual({
       type: "thinking",
       thinking: "let me reason",
@@ -413,8 +431,8 @@ describe("createModel thinking backfill", () => {
       usage: { input_tokens: 1, output_tokens: 1 },
     });
     streamEvents = [thinkingDelta("streamed but should be ignored")];
-    const m = createModel({ apiKey: "x", model: "claude-sonnet-4-5", provider: otherProfile });
-    const res = await m.call({ ...baseReq, thinkingBudgetTokens: 16_000 });
+    const m = createModel({ apiKey: "x", model: "claude-sonnet-4-5", provider: genericProfile });
+    const res = await m.call({ ...baseReq, thinkingLevel: "high" });
     expect(res.content[0]).toEqual({
       type: "thinking",
       thinking: "real reasoning",

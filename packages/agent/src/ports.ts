@@ -23,6 +23,7 @@ import type {
   ToolDefinition,
   ToolExecutor,
   ToolHost,
+  ThinkingLevel,
   TurnOptions,
 } from "@nova/core";
 import type { Logger as RuntimeLogger, Transcript } from "@nova/base";
@@ -159,7 +160,7 @@ export function createToolHost(opts: ToolHostOptions): ToolHost {
 
 export function createOptions(
   getSettings: () => AgentSettingsSlice,
-  getThinkingBudget: () => number,
+  getThinkingLevel: () => ThinkingLevel,
 ): OptionsProvider {
   return {
     turn: (): TurnOptions => {
@@ -169,7 +170,7 @@ export function createOptions(
         maxTurns: s.maxTurns,
         maxTokensContinuations: s.maxTokensContinuations,
         toolConcurrency: s.toolConcurrency,
-        thinkingBudgetTokens: getThinkingBudget(),
+        thinkingLevel: getThinkingLevel(),
       };
     },
   };

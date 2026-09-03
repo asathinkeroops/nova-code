@@ -68,7 +68,7 @@ Nova 读代码、跑命令、改文件 —— 通过工具调用把任务推到�
 
 ### 🎚️ 多 provider，三档阶梯
 
-内置 DeepSeek、Moonshot（Kimi，beta）和通用 Anthropic 兼容（`other`）三套 provider profile，各带错误码表与限流重试（DeepSeek / Kimi 另带余额探测）；当前首次配置向导只开放 DeepSeek，其余端点可手动配置。OpenAI 兼容端点通过 `transport: "openai"` 复用现有供应商 profile，不另造 provider。模型按 `lite` / `pro` / `max` 三档配置，每档独立设 id、thinking、模态、上下文窗口与定价。
+内置 DeepSeek、Moonshot（Kimi，beta）和通用（`generic`）三套 provider profile，各自处理 thinking 形状、错误与重试策略（DeepSeek / Kimi 另带余额探测）；`generic` 会对 408、409、429 和 5xx 做通用退避重试，并遵循 `Retry-After`。当前首次配置向导只开放 DeepSeek，其余端点可手动配置。端点协议由 `transport: "anthropic" | "openai"` 独立选择，不需要为 OpenAI 兼容协议另造 profile。模型按 `lite` / `pro` / `max` 三档配置，每档独立设 id、thinking、模态、上下文窗口与定价。
 
 </td>
 </tr>
@@ -181,7 +181,7 @@ DeepSeek 的内置模型梯度是 `lite` → `deepseek-v4-flash-vision-exp`（�
 | 命令 | 能力 |
 | --- | --- |
 | `/help` | 查看所有命令 |
-| `/model` · `/effort` | 持久切换模型档位、调整当前档位的思考等级；显式数字 budget 仅本会话生效 |
+| `/model` · `/effort` | 持久切换模型档位、调整当前档位的思考等级（`auto`/`off`/`low`/`medium`/`high`/`max`） |
 | `/compact` | 压缩长历史成摘要 |
 | `/clear` · `/resume` · `/rewind` | 开新会话、恢复当前 workspace 的历史会话；回退历史时预览并恢复 Nova 的文件快照，外部改动会作为冲突保留 |
 | `/rename` | 给当前会话起个名字（显示在输入框边框上） |

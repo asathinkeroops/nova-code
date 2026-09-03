@@ -23,7 +23,7 @@ export function settingsReadiness(
   if (!effectiveKey) return "missing-api-key";
   if (Object.keys(activeModels(settings)).length === 0) return "missing-models";
 
-  const profile = resolveProfile(activeProviderProfile(settings) ?? "other");
+  const profile = resolveProfile(activeProviderProfile(settings) ?? "generic");
   const transport = provider?.transport ?? profile.transport ?? "anthropic";
   // OpenAI-compatible requests cannot be framed without an endpoint. DeepSeek
   // and Moonshot also require one on their Anthropic-compatible wires; allowing

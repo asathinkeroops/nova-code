@@ -82,7 +82,7 @@ export async function evaluateGoalWithAgent(
       cursor = c;
     },
     getModel: () => ctx.buildModel(evalModelName, false),
-    getThinkingBudget: () => 0,
+    getThinkingLevel: () => "off",
     getSettings: () => ({
       maxTokens: resolveMaxTokens(ctx.settings, evalModelName),
       maxTurns: ctx.settings.goal.maxEvalTurns,

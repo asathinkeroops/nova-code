@@ -238,9 +238,9 @@ export function buildOpenAIRequestBody(
       function: { name: t.name, description: t.description, parameters: t.input_schema },
     }));
   }
-  // The profile's thinking knob is transport-agnostic: its `params` are merged
-  // verbatim into the body (e.g. `enable_thinking`, `thinking: { type }`) —
-  // provider-specific fields the SDK's params type doesn't know about.
+  // The transport treats the profile's mapped thinking params opaquely and
+  // merges them verbatim (e.g. `reasoning_effort`, `thinking: { type }`) —
+  // including provider-specific fields the SDK's params type doesn't know.
   for (const [key, value] of Object.entries(framing.thinkingParams)) {
     body[key] = value;
   }

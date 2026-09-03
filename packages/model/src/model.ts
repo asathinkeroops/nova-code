@@ -163,18 +163,18 @@ export function createModel(config: ModelConfig): ModelClient {
 
   return {
     async call(req: ModelRequest): Promise<AssistantTurn> {
-      const budget = req.thinkingBudgetTokens ?? 0;
+      const level = req.thinkingLevel ?? "auto";
       // The provider owns the thinking-knob wire shape for the EFFECTIVE
-      // transport (Anthropic `thinking.budget_tokens`, DeepSeek's effort on
-      // its anthropic wire — and no knob at all on the openai wire) plus any
-      // max_tokens floor the shape imposes (Anthropic needs
-      // max_tokens > budget_tokens; the OpenAI-family knobs don't).
-      const { params: thinkingParams, minMaxTokens } = provider.thinking(
-        budget,
+      // transport. The input stays semantic all the way down so a profile can
+      // map the same `low`/`high` intent to `reasoning_effort`, adaptive
+      // thinking, or a provider-specific switch without reverse-engineering a
+      // synthetic token budget.
+      const { params: thinkingParams } = provider.thinking(
+        level,
         config.model,
         transport,
       );
-      const maxTokens = minMaxTokens ? Math.max(req.maxTokens, minMaxTokens) : req.maxTokens;
+      const maxTokens = req.maxTokens;
 
       // One attempt = run the effective transport's branch once. The branch
       // streams (keeping the socket active against gateway resets) and returns

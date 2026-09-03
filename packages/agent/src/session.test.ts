@@ -58,7 +58,7 @@ function makeOptions(
     memory: { getMemory: () => ({ system: "", sources: [] }) },
     getModel: () => model,
     getSettings: () => ({ maxTokens: 1024, maxTurns: 3 }),
-    getThinkingBudget: () => 0,
+    getThinkingLevel: () => "off",
     getTools: () => TOOLS,
     dispatch: async (use: ToolUseBlock): Promise<ToolResultBlock> => ({
       type: "tool_result",

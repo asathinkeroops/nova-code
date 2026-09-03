@@ -9,6 +9,7 @@ import {
   type ModelClient,
   type PermissionGate,
   type SystemPromptProvider,
+  type ThinkingLevel,
   type ToolDefinition,
   type ToolExecutor,
 } from "@nova/core";
@@ -43,7 +44,7 @@ export interface AssembleAgentOptions {
 
   getModel: () => ModelClient;
   getSettings: () => AgentSettingsSlice;
-  getThinkingBudget: () => number;
+  getThinkingLevel: () => ThinkingLevel;
 
   getTools: () => ToolDefinition[];
   dispatch: ToolExecutor;
@@ -83,7 +84,7 @@ export function assembleAgent(opts: AssembleAgentOptions): Agent {
       getCursor: opts.getPersistCursor,
       setCursor: opts.setPersistCursor,
     }),
-    options: createOptions(opts.getSettings, opts.getThinkingBudget),
+    options: createOptions(opts.getSettings, opts.getThinkingLevel),
     logger: forwardLogger(opts.getLogger),
     ...(opts.getTranscript ? { events: transcriptSink(opts.getTranscript) } : {}),
     ...(opts.permission ? { permission: opts.permission } : {}),

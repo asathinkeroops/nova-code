@@ -1,6 +1,6 @@
 import { deepseekProfile } from "./deepseek.js";
+import { genericProfile } from "./generic.js";
 import { moonshotProfile } from "./moonshot.js";
-import { otherProfile } from "./other.js";
 import type { ProviderProfile } from "./types.js";
 
 export type {
@@ -18,7 +18,7 @@ export type { ProviderErrorInfo } from "./error.js";
 export const PROVIDERS = {
   deepseek: deepseekProfile,
   moonshot: moonshotProfile,
-  other: otherProfile,
+  generic: genericProfile,
 } as const satisfies Record<string, ProviderProfile>;
 
 export type ProviderId = keyof typeof PROVIDERS;
@@ -36,9 +36,9 @@ export function isProviderId(id: string): id is ProviderId {
  * types `provider` as a free-form string (it lives in `@nova/base`, a leaf
  * that can't import this registry, so it can't enumerate the ids), so an unknown
  * id — a typo, or a generic third-party provider named directly — falls back to
- * the `other` profile rather than throwing. Callers that want to flag an unknown
+ * the `generic` profile rather than throwing. Callers that want to flag an unknown
  * id (e.g. `nova doctor`) check {@link isProviderId} first.
  */
 export function resolveProfile(id: string): ProviderProfile {
-  return isProviderId(id) ? PROVIDERS[id] : PROVIDERS.other;
+  return isProviderId(id) ? PROVIDERS[id] : PROVIDERS.generic;
 }

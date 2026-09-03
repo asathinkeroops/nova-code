@@ -36,7 +36,7 @@ export async function handleContext(ctx: CliContext): Promise<void> {
 
   // Weight the estimate by the active provider's tokenizer ratios (CJK vs. rest)
   // so the breakdown matches what `shouldAutoCompact` triggers on.
-  const weights = resolveProfile(activeProviderProfile(ctx.settings) ?? "other").tokenEstimate;
+  const weights = resolveProfile(activeProviderProfile(ctx.settings) ?? "generic").tokenEstimate;
 
   // The non-conversation part of the request, measured by the SAME helper the
   // auto-compaction trigger uses — the panel and the trigger have to agree on

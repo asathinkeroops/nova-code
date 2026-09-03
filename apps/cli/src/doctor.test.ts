@@ -21,7 +21,7 @@ const providerConfig = (
   entry: Record<string, unknown> = {},
   settings: Record<string, unknown> = {},
 ) => ({
-  providers: [{ name: "test", profile: "other", ...entry }],
+  providers: [{ name: "test", profile: "generic", ...entry }],
   currentProvider: "test",
   model: "pro",
   ...settings,
@@ -153,14 +153,14 @@ describe("diagnoseConfig", () => {
     expect(warn?.level).toBe("warn");
   });
 
-  it("warns when provider is not a built-in profile (falls back to `other`)", async () => {
+  it("warns when provider is not a built-in profile (falls back to `generic`)", async () => {
     const path = await writeConfig(
       JSON.stringify(
         providerConfig({ profile: "deepsek", apiKey: "sk-test", models: VALID_MODELS }),
       ),
     );
     const { report } = await diagnoseConfig({ configPath: path });
-    // A free-form provider id is schema-valid — it just resolves to `other`.
+    // A free-form provider id is schema-valid — it just resolves to `generic`.
     expect(report.valid).toBe(true);
     const warn = report.issues.find((i) => i.title.includes('provider "deepsek"'));
     expect(warn?.level).toBe("warn");

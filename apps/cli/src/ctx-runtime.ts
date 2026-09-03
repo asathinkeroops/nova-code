@@ -1,14 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
-import {
-  resolveProfile,
-} from "@nova/model";
-import {
-  activeProvider,
-  activeProviderProfile,
-  resolveApiKey,
-  resolveBudget,
-} from "@nova/base";
+import { resolveProfile } from "@nova/model";
+import { activeProvider, activeProviderProfile, resolveApiKey } from "@nova/base";
 import { resolveContextWindowSize, resolveModelId } from "@nova/base";
 import { magenta } from "./colors.js";
 import { t } from "./i18n/index.js";
@@ -42,7 +35,7 @@ export function refreshBanner(ctx: CliContext): void {
     sessionId: ctx.session.id,
     contextWindowSize,
     thinkingLabel: thinkingLevelLabel(ctx),
-    provider: activeProviderProfile(ctx.settings) ?? "other",
+    provider: activeProviderProfile(ctx.settings) ?? "generic",
   });
   ctx.screen.setStatusMeta({
     sessionStartedAt: ctx.session.createdAt.getTime(),
@@ -62,7 +55,7 @@ export function refreshBanner(ctx: CliContext): void {
  */
 export async function refreshBalance(ctx: CliContext): Promise<void> {
   const provider = activeProvider(ctx.settings);
-  const profile = resolveProfile(activeProviderProfile(ctx.settings) ?? "other");
+  const profile = resolveProfile(activeProviderProfile(ctx.settings) ?? "generic");
   const balance = await profile.probeBalance?.({
     baseURL: provider?.baseURL,
     apiKey: resolveApiKey(ctx.settings),
@@ -172,15 +165,6 @@ export async function persist(ctx: CliContext): Promise<void> {
   }
 }
 
-export function currentThinkingBudget(ctx: CliContext): number {
-  return resolveBudget(ctx.thinkingLevel, ctx.thinkingBudgetOverride);
-}
-
 export function thinkingLevelLabel(ctx: CliContext): string | undefined {
-  const budget = currentThinkingBudget(ctx);
-  if (budget <= 0) return undefined;
-  if (ctx.thinkingBudgetOverride && ctx.thinkingBudgetOverride > 0) {
-    return `${budget}t`;
-  }
-  return ctx.thinkingLevel;
+  return ctx.thinkingLevel === "off" ? undefined : ctx.thinkingLevel;
 }

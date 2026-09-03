@@ -76,8 +76,8 @@
 ### 📉 两层上下文压缩
 `micro-compact`(轻量裁剪)+ `auto-compact`(逼近上下文阈值时摘要为单条消息),阈值 / 窗口百分比 / 摘要上限均可配。
 
-### 🎚 五档思考预算
-`off / low / medium / high / max`——给 DeepSeek 发 `output_config.effort`,给 Anthropic 发 `budget_tokens`,**按模型名自动切换线缆格式**(可手动覆写)。
+### 🎚 六档思考等级
+`auto / off / low / medium / high / max`——语义等级一直传到 provider profile，再按协议映射成 DeepSeek、OpenAI 或 Anthropic 支持的字段；`auto` 沿用 endpoint 默认。
 
 ### 🔐 权限引擎
 `allow / deny / ask` 规则 + 通配匹配 + 运行时「永远允许」+ cwd 作用域只读豁免。工具路径在匹配前**规范化(realpath)**,避免软链 / 相对路径绕过;规则解析出错时降级为 `ask`(绝不静默放行)。

@@ -1,6 +1,6 @@
 # Nova 使用手册
 
-> Nova（命令行二进制 `nova`，本手册中也称 *nova-code*）是一个跑在终端里的编码 agent —— 它读代码、跑命令、改文件，通过工具调用把一项任务推到完成。模型层面向**国产大模型**，内置两套传输协议：Anthropic 兼容（DeepSeek 与 Kimi/Moonshot 原生）与 OpenAI 兼容（Qwen / GLM / MiniMax / 豆包等 `chat/completions` 端点原生）。DeepSeek 与 Kimi 有专用 provider profile，其余 Anthropic 兼容端点走通用档 `other`（OpenAI 兼容端点不设独立 provider —— 在供应商自己的 profile 连接上把 `providers[].transport` 设为 `"openai"` 即可）。
+> Nova（命令行二进制 `nova`，本手册中也称 *nova-code*）是一个跑在终端里的编码 agent —— 它读代码、跑命令、改文件，通过工具调用把一项任务推到完成。模型层面向**国产大模型**，内置两套传输协议：Anthropic 兼容（DeepSeek 与 Kimi/Moonshot 原生）与 OpenAI 兼容（Qwen / GLM / MiniMax / 豆包等 `chat/completions` 端点原生）。DeepSeek 与 Kimi 有专用 provider profile，没有专用适配的端点走通用档 `generic`；具体协议由 `providers[].transport` 独立选择。
 
 本手册面向 **使用者**：怎么装、怎么配、怎么在日常里把它用顺。如果你想了解内部架构（loop 契约、包依赖、扩展点），请读 `CLAUDE.md` 与仓库根的 `README.md`。
 
@@ -37,7 +37,7 @@
 - **Agentic 编码循环** —— 给它一个目标，它自己读代码、改文件、跑命令，一步步把任务做完。同一轮里互相独立的工具调用以**有界并发**运行（默认每轮 3 个）。
 - **代码与系统工具** —— 文件 read / write / edit（文本、表格、**PDF**、图片都能读），`glob` + `grep` 搜索，`bash`（含 `run_in_background` 后台长任务），web fetch / search，向你提问。
 - **LSP 代码智能** —— 直连语言服务器做 go-to-definition、find-references、hover、诊断、符号搜索，比 grep 更懂作用域和类型。
-- **扩展 thinking** —— 五档（`off`/`low`/`medium`/`high`/`max`）或显式 token 预算。
+- **扩展 thinking** —— 六档语义等级（`auto`/`off`/`low`/`medium`/`high`/`max`），由 provider profile 转换为协议参数。
 - **Plan 模式与子 agent** —— 把庞大的调查/规划交给全新上下文的 worker，结论汇报回来，主对话保持干净。
 - **记忆、Skills、自定义命令、MCP** —— 项目/用户级的知识与工具扩展。
 - **多语言** —— 模型回复语言（`language`）与 TUI 界面语言（`locale`，内置 zh-CN / EN）分开配置，默认都跟随系统 locale。
@@ -81,7 +81,7 @@ echo "总结这个 diff" | pnpm dev  # 无 TTY：headless 跑一轮后退出
 >
 > 想覆盖某一档，只写要改的字段即可，例如 `"models": { "pro": { "thinking": "low" } }`——其余字段（`id`、`pricing`、`maxTokens`…）继续跟随内置默认。**但如果你把某档的 `id` 改成别的模型**，该档就整条以你的为准（不再继承内置的价格与上限）；反过来，同 `id` 的档位无法「删掉」某个内置字段（省略即继承）。`/effort` 持久化写的也正是这种最小覆盖。
 
-按 `Ctrl+C` 可中止向导。当前 provider 同时有有效 API key 和可用模型表时才跳过向导；导出的环境变量 `NOVA_API_KEY` 可以满足 key 条件，但只有环境变量、还没有模型表时，向导仍会跑（不再问你 key，也不会把这个 key 写进配置文件）。要接别的端点，直接**手动编辑** `~/.nova/nova.config.json`——**provider profile 与传输协议（`transport`）是两个独立维度**：同一家供应商（如 DeepSeek）可同时有 Anthropic 兼容端点（`https://api.deepseek.com/anthropic`）与 OpenAI 兼容端点（`https://api.deepseek.com`），换协议只需在对应的 `providers[]` 连接里改 `transport` + `baseURL`，DeepSeek 的错误翻译 / 余额探针 / 文档链接原样保留。通用档 `other`（通用 Anthropic 兼容端点）无内置档位表，需按 `lite`/`pro`/`max` 三档骨架填全，完整字段见 [§20](#20-配置文件完整参考)。OpenAI 兼容端点**不设独立 provider**：在现有供应商 profile 的连接上把 `providers[].transport` 设为 `"openai"` 即可。
+按 `Ctrl+C` 可中止向导。当前 provider 同时有有效 API key 和可用模型表时才跳过向导；导出的环境变量 `NOVA_API_KEY` 可以满足 key 条件，但只有环境变量、还没有模型表时，向导仍会跑（不再问你 key，也不会把这个 key 写进配置文件）。要接别的端点，直接**手动编辑** `~/.nova/nova.config.json`——**provider profile 与传输协议（`transport`）是两个独立维度**：同一家供应商（如 DeepSeek）可同时有 Anthropic 兼容端点（`https://api.deepseek.com/anthropic`）与 OpenAI 兼容端点（`https://api.deepseek.com`），换协议只需在对应的 `providers[]` 连接里改 `transport` + `baseURL`，DeepSeek 的错误翻译 / 余额探针 / 文档链接原样保留。通用档 `generic` 无内置档位表，会对 408、409、429 和 5xx 做退避重试，并遵循 `Retry-After`；配置时需按 `lite`/`pro`/`max` 三档骨架填全，完整字段见 [§20](#20-配置文件完整参考)。如果端点没有专用 profile，就使用 `profile: "generic"`；OpenAI 兼容协议另设 `transport: "openai"`。
 
 > 如果启动时 `apiKey` 仍为空（且没有 `NOVA_API_KEY`），Nova 会报错退出并提示去配置文件里补上。
 >
@@ -95,7 +95,7 @@ echo "总结这个 diff" | pnpm dev  # 无 TTY：headless 跑一轮后退出
 nova [prompt...]                   # 先跑一轮初始 prompt，再留在 REPL（交互）
   -p, --prompt <text>              # headless：跑一轮打印结果后退出（不进 REPL）
   -m, --model <tier>               # 临时切换模型档位（只认已配置档位名，如 lite/pro/max）
-  -t, --think off|low|medium|high|max   # thinking 等级，或一个正整数 token 预算
+  -t, --think auto|off|low|medium|high|max   # 临时覆盖 thinking 等级
       --max-turns <n>              # 单轮最大循环次数
       --cwd <dir>                  # 工具的工作目录（工作区根）
       --permission-mode default|acceptEdits|auto|plan   # 初始权限模式（默认 auto）
@@ -203,7 +203,7 @@ Nova 是一个全屏 Ink/React REPL：顶部是滚动的历史区，底部是固
 | 命令 | 作用 |
 |------|------|
 | `/help` | 显示帮助；列出按来源分组（Built-in / Project / User）的命令 |
-| `/effort [<level>]` | 查看或切换 thinking 等级（`off`/`low`/`medium`/`high`/`max` 或整数预算） |
+| `/effort [<level>]` | 查看或切换 thinking 等级（`auto`/`off`/`low`/`medium`/`high`/`max`） |
 | `/model [<tier>]` | 查看或切换当前会话的**模型档位**（`lite`/`pro`/`max` 等已配置档位，仅本次会话不持久化）；只接受配置过的档位名，裸模型 id 会被拒绝；无参数弹出交互列表 |
 | `/clear` | 清空当前会话历史（session 仍保留） |
 | `/rename [<name>\|clear]` | 给当前 session 起个名字（显示在输入框边框上）；`clear` 清除 |
@@ -237,17 +237,20 @@ Nova 是一个全屏 Ink/React REPL：顶部是滚动的历史区，底部是固
 
 ## 7. 思考等级（Thinking）
 
-Nova 把「extended thinking」暴露成五个等级，或一个显式的 token 预算。在 DeepSeek 上，等级映射到 `output_config.effort`（而不是 Anthropic 的 `budget_tokens`）。
+Nova 把思考强度保留为六个 provider-neutral 等级：`auto` / `off` / `low` / `medium` / `high` / `max`。等级会一直传到当前 provider profile，再由 profile 按协议转换，不会在上层提前换算成 token budget。
 
-- 五档：`off` / `low` / `medium` / `high` / `max`
-- 显式预算：传一个正整数（如 `-t 4096`），它会覆盖等级映射，直接当作 `budget_tokens`
+- `auto`：不发送显式推理参数，沿用 endpoint / 模型默认行为；这是未知兼容端点的安全默认值
+- `off`：请求关闭思考（若模型强制思考，endpoint 仍可能拒绝或忽略）
+- `low` / `medium` / `high` / `max`：表达递增的推理强度；兼容端点可能只支持其中一部分
+- 通用 `generic` profile：OpenAI 协议映射为 `reasoning_effort`，Anthropic 协议映射为 adaptive thinking + `output_config.effort`
+- 专用 profile：DeepSeek、Moonshot 分别按各自支持的字段与档位转换
 
-**思考等级是 per-tier（按档位）的属性，没有全局 `thinking` 配置项**——它写在 `providers[].models.<tier>.thinking` 里，切档（`/model`）会把当前思考等级换成该档的值。这也是 lite/pro/max 能在同一个模型 id 上拉出能力梯度的原因（DeepSeek 内置默认：lite→`low`、pro→`high`、max→`max`）。档位没写 `thinking` 时回退到 `max`。
+**思考等级是 per-tier（按档位）的属性，没有全局 `thinking` 配置项**——它写在 `providers[].models.<tier>.thinking` 里，切档（`/model`）会把当前思考等级换成该档的值。这也是 lite/pro/max 能在同一个模型 id 上拉出能力梯度的原因（DeepSeek 内置默认：lite→`low`、pro→`high`、max→`max`）。档位没写 `thinking` 时回退到 `auto`。
 
 设置方式：
 
-- 启动时：`nova -t high "..."` 或 `nova -t 4096 "..."`（本次会话的临时覆盖）
-- 运行时：`/effort high`（查看用 `/effort`）——会写回当前档位，在本会话内生效
+- 启动时：`nova -t high "..."`（本次会话的临时覆盖）
+- 运行时：`/effort high`（查看用 `/effort`）——会写回当前档位
 - 持久：直接改当前 provider 连接里该档的 `providers[].models.<tier>.thinking`
 
 更深的思考通常带来更好的规划，但更慢、更贵——按任务难度调档即可。
@@ -604,7 +607,7 @@ Skill 是「按需加载的专长说明书」。把 `SKILL.md` 放在：
 | `${CLAUDE_PROJECT_DIR}` / `${NOVA_PROJECT_DIR}` | 当前工作区根目录 |
 | `${CLAUDE_PLUGIN_ROOT}` / `${NOVA_PLUGIN_ROOT}` | 技能所属插件的根目录（仅插件提供的技能有） |
 | `${CLAUDE_SESSION_ID}` / `${NOVA_SESSION_ID}` | 当前会话 ID |
-| `${CLAUDE_EFFORT}` / `${NOVA_EFFORT}` | 当前思考等级（`off`/`low`/`medium`/`high`/`max`），随 `/effort` 变化 |
+| `${CLAUDE_EFFORT}` / `${NOVA_EFFORT}` | 当前思考等级（`auto`/`off`/`low`/`medium`/`high`/`max`），随 `/effort` 变化 |
 | `$ARGUMENTS` / `$ARGUMENTS[n]` / `$1`..`$N` | 你在 `/{name}` 后面敲的内容；正文没写占位符（或只绑走了一部分）时，剩下的会以 `ARGUMENTS: ...` 追加到末尾，不会丢；模型走 `loadSkill` 时这些占位符**原样保留**（没有参数可绑） |
 | `@相对路径` | 内嵌该文件内容（上限 100KB，超出截断）；解析不到文件就原样保留，所以邮箱和 `@scope/pkg` 安全 |
 | `` !`命令` `` | 执行并内嵌输出，走 bash 工具和沙箱；设 `skills.disableShellExecution: true` 后替换为一行提示且不执行 |
@@ -783,9 +786,9 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 
 | 字段 | 默认 | 说明 |
 |------|------|------|
-| `providers` | `[]` | **provider 连接数组**，每一项是一个 provider 连接：`name`（数组内唯一键，`currentProvider` 引用它）、`profile`（行为 profile id，`deepseek`/`moonshot`/`other`，缺省 = `name`）、`baseURL`、`apiKey`、`transport`、`models`、可选 `headers`。**配置文件的 provider 相关字段全部在这里**，顶层不再有 |
+| `providers` | `[]` | **provider 连接数组**，每一项是一个 provider 连接：`name`（数组内唯一键，`currentProvider` 引用它）、`profile`（行为 profile id，`deepseek`/`moonshot`/`generic`，缺省 = `name`）、`baseURL`、`apiKey`、`transport`、`models`、可选 `headers`。**配置文件的 provider 相关字段全部在这里**，顶层不再有 |
 | `currentProvider` | （无 → 取第一个） | 当前激活的 provider 连接名，引用 `providers` 数组某一项的 `name`；省略时取第一个。空数组 = 未配置（首启向导会补） |
-| `providers[].profile` | （无 → 取该项 `name`） | 驱动 thinking 参数、错误翻译、重试策略的 **provider profile**（供应商适配）：`deepseek`（effort 旋钮 + 错误翻译 + 状态码重试，默认走 Anthropic 端点，可用 `providers[].transport` 切到 OpenAI 端点）/ `moonshot` / `other`（通用 Anthropic 兼容端点）。OpenAI 兼容端点不设独立 provider —— 用 `providers[].transport: "openai"` 在供应商 profile 上切换。未知 id 回退到 `other` |
+| `providers[].profile` | （无 → 取该项 `name`） | 驱动 thinking 参数、错误翻译、重试策略的 **provider profile**（供应商适配）：`deepseek`（effort 旋钮 + 错误翻译 + 状态码重试）/ `moonshot` / `generic`（无供应商专属行为，但会重试 408/409/429/5xx 并遵循 `Retry-After`）。协议由 `providers[].transport: "anthropic" | "openai"` 独立选择；未知 profile id 回退到 `generic` |
 | `providers[].transport` | （无） | **传输协议**，与 `profile` 正交：`"anthropic"`（@anthropic-ai/sdk 的 Messages 格式）/ `"openai"`（OpenAI 兼容 `chat/completions`，官方 openai SDK）。省略 → 用 profile 的默认（内置 profile 均默认 anthropic）。一家供应商两个端点（DeepSeek）时用它切换，DeepSeek 适配原样保留；thinking 旋钮随协议变化（Anthropic 端点用 `output_config.effort`，OpenAI 端点用 `thinking.type` 开关 + `reasoning_effort` 三档强度） |
 | `providers[].apiKey` | （无） | 该 provider 连接的 API key（首次向导会写入）。**环境变量 `NOVA_API_KEY` 优先于当前 provider 的此项**：设了就用它，配置文件里的值作为兜底。想把 key 留在环境里、不落到明文配置文件时用这个 |
 | `providers[].models` | `{}` | 该 provider 的命名模型档位表，value 为**档位对象**，每档带自己的 `id`、`maxTokens`、`contextWindowSize`、`thinking`、`modalities`、`pricing`、可选 `description`。非空时**必须含 `lite`/`pro`/`max` 三档**（schema 强制）。默认表按 `profile` 内置在代码里、加载时层叠进来（**不写进配置文件**，见 [§3](#3-首次配置向导)）；这里只写覆盖项 |
@@ -830,7 +833,7 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 
 ### 思考等级（thinking）
 
-**没有顶层 `thinking` 配置项**——思考等级是 per-tier 的，写在 `providers[].models.<tier>.thinking`（`off`/`low`/`medium`/`high`/`max`；缺省回退 `max`）。`-t/--think`、`/effort` 是会话内覆盖，见 [§7](#7-思考等级thinking)。
+**没有顶层 `thinking` 配置项**——思考等级是 per-tier 的，写在 `providers[].models.<tier>.thinking`（`auto`/`off`/`low`/`medium`/`high`/`max`；缺省回退 `auto`）。`-t/--think` 是会话内覆盖，`/effort` 会写回当前档位，见 [§7](#7-思考等级thinking)。
 
 ### `pricing`（`/usage` 成本估算）
 

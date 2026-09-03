@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { parseSettings } from "@nova/base";
 import { describe, expect, it, vi } from "vitest";
 import {
-  currentThinkingBudget,
   persist,
   refreshBanner,
   refreshTaskFooter,
@@ -25,42 +24,20 @@ function makeCtx(partial: Partial<CliContext> = {}): CliContext {
   return { spinner: null, ...partial } as unknown as CliContext;
 }
 
-describe("currentThinkingBudget", () => {
-  it("maps a named level to its token budget", () => {
-    const ctx = makeCtx({ thinkingLevel: "medium", thinkingBudgetOverride: undefined });
-    expect(currentThinkingBudget(ctx)).toBe(8_000);
-  });
-
-  it("lets a positive override win over the level mapping", () => {
-    const ctx = makeCtx({ thinkingLevel: "off", thinkingBudgetOverride: 12_345 });
-    expect(currentThinkingBudget(ctx)).toBe(12_345);
-  });
-
-  it("returns 0 for the off level with no override", () => {
-    const ctx = makeCtx({ thinkingLevel: "off", thinkingBudgetOverride: undefined });
-    expect(currentThinkingBudget(ctx)).toBe(0);
-  });
-});
-
 describe("thinkingLevelLabel", () => {
-  it("is undefined when the effective budget is zero", () => {
-    const ctx = makeCtx({ thinkingLevel: "off", thinkingBudgetOverride: undefined });
+  it("is undefined when thinking is off", () => {
+    const ctx = makeCtx({ thinkingLevel: "off" });
     expect(thinkingLevelLabel(ctx)).toBeUndefined();
   });
 
-  it("shows the bare level name when no override is set", () => {
-    const ctx = makeCtx({ thinkingLevel: "high", thinkingBudgetOverride: undefined });
+  it("shows an explicit level", () => {
+    const ctx = makeCtx({ thinkingLevel: "high" });
     expect(thinkingLevelLabel(ctx)).toBe("high");
   });
 
-  it("shows a `<n>t` token label when an override is set", () => {
-    const ctx = makeCtx({ thinkingLevel: "off", thinkingBudgetOverride: 5_000 });
-    expect(thinkingLevelLabel(ctx)).toBe("5000t");
-  });
-
-  it("falls back to the level name when the override is non-positive", () => {
-    const ctx = makeCtx({ thinkingLevel: "low", thinkingBudgetOverride: 0 });
-    expect(thinkingLevelLabel(ctx)).toBe("low");
+  it("shows auto when the endpoint default is selected", () => {
+    const ctx = makeCtx({ thinkingLevel: "auto" });
+    expect(thinkingLevelLabel(ctx)).toBe("auto");
   });
 });
 
@@ -179,7 +156,7 @@ describe("refreshBanner", () => {
       providers: [
         {
           name: "test",
-          profile: "other",
+          profile: "generic",
           models: {
             lite: { id: "deepseek-v4-flash" },
             pro: { id: "deepseek-v4-pro" },
@@ -193,7 +170,6 @@ describe("refreshBanner", () => {
       workspace,
       settings,
       thinkingLevel: "high",
-      thinkingBudgetOverride: undefined,
       session: {
         id: "sess-1",
         createdAt: new Date(0),

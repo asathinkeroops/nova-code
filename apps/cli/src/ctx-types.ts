@@ -7,9 +7,7 @@ import type {
   PermissionGate,
   ToolExecutor,
 } from "@nova/core";
-import type {
-  ThinkingLevel,
-} from "@nova/base";
+import type { ThinkingLevel } from "@nova/base";
 import type { McpManager } from "@nova/mcp";
 import type { SlashRegistry } from "./slash-registry.js";
 import type { LspManager } from "@nova/lsp";
@@ -36,14 +34,8 @@ export interface CliRuntimeOptions {
   continue?: boolean;
   noTranscript?: boolean;
   noPretty?: boolean;
-  /**
-   * Session-only reasoning-depth overrides from `--think`. Thinking is a
-   * per-tier property, so these are NOT persisted — they just seed
-   * ctx.thinkingLevel / ctx.thinkingBudgetOverride for this run, over the active
-   * tier's level. `--think <level>` sets the former; `--think <n>` the latter.
-   */
+  /** Session-only reasoning-depth override from `--think <level>`. */
   thinkingLevelOverride?: ThinkingLevel;
-  thinkingBudgetOverride?: number;
 }
 
 /**
@@ -74,7 +66,6 @@ export interface CliContext {
    */
   predictModel: ModelClient;
   thinkingLevel: ThinkingLevel;
-  thinkingBudgetOverride: number | undefined;
 
   /**
    * Active `/goal` for this session, or null. While set, the REPL auto-continues

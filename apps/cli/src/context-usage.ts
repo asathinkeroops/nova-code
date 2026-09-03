@@ -25,7 +25,7 @@ export function measureCtxOverhead(ctx: CliContext, weights?: TokenEstimate): Fi
     ...(ctx.settings.language !== undefined ? { language: ctx.settings.language } : {}),
     tools: ctx.tools.definitions(),
     tokenEstimate:
-      weights ?? resolveProfile(activeProviderProfile(ctx.settings) ?? "other").tokenEstimate,
+      weights ?? resolveProfile(activeProviderProfile(ctx.settings) ?? "generic").tokenEstimate,
     isMcpTool,
   });
 }

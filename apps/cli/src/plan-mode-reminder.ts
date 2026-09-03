@@ -3,6 +3,7 @@ import {
   extractText,
   markSynthetic,
   type MessageParam,
+  type ThinkingLevel,
   type ToolDefinition,
 } from "@nova/core";
 import { isCompactionMarker } from "@nova/agent";
@@ -13,7 +14,7 @@ interface PreRequestPayload {
   messages: MessageParam[];
   tools: ToolDefinition[];
   maxTokens: number;
-  thinkingBudgetTokens?: number;
+  thinkingLevel?: ThinkingLevel;
 }
 
 interface PreRequestOverride {

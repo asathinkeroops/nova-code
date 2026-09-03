@@ -113,7 +113,7 @@ export async function predictNextInput(opts: PredictOptions): Promise<PredictRes
       messages: promptMessages,
       tools: [],
       maxTokens: Math.max(64, maxChars * 3),
-      thinkingBudgetTokens: 0,
+      thinkingLevel: "off",
       signal: controller.signal,
     });
     const raw = extractText(result.content).trim();

@@ -17,7 +17,7 @@ describe("settingsReadiness", () => {
 
   it("rejects a configured key without a model table", () => {
     const settings = parseSettings({
-      providers: [{ name: "other", profile: "other", apiKey: "sk-configured" }],
+      providers: [{ name: "generic", profile: "generic", apiKey: "sk-configured" }],
     });
     expect(settingsReadiness(settings, {})).toBe("missing-models");
   });
@@ -70,7 +70,7 @@ describe("settingsReadiness", () => {
       max: { id: "claude-max" },
     };
     const settings = parseSettings({
-      providers: [{ name: "other", profile: "other", apiKey: "sk-configured", models }],
+      providers: [{ name: "generic", profile: "generic", apiKey: "sk-configured", models }],
     });
 
     expect(settingsReadiness(settings, {})).toBe("ready");

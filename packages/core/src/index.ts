@@ -32,6 +32,7 @@ export {
   toWireTools,
   type ModelClient,
   type ModelRequest,
+  type ThinkingLevel,
   type WireTool,
 } from "./model-client.js";
 export { decide, type StopDecision } from "./stop-reason.js";

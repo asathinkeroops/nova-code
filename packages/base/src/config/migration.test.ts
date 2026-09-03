@@ -52,7 +52,7 @@ describe("adaptLegacyProviderConfig", () => {
   });
 
   it("keeps an existing providers array authoritative and removes stale flat fields", () => {
-    const providers = [{ name: "primary", profile: "other", apiKey: "new-key" }];
+    const providers = [{ name: "primary", profile: "generic", apiKey: "new-key" }];
     expect(
       adaptLegacyProviderConfig({
         providers,

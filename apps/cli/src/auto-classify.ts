@@ -226,7 +226,7 @@ export async function classifyCommandRisk(
       messages,
       tools: [],
       maxTokens: 256,
-      thinkingBudgetTokens: 0,
+      thinkingLevel: "off",
       signal: controller.signal,
     });
     const parsed = parseClassifierReply(extractText(result.content).trim());
