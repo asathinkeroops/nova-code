@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { Box, Text } from "ink";
 import type { Todo, TodoStatus } from "@nova/tools";
 import { magenta } from "../colors.js";
@@ -25,6 +25,15 @@ const STATUS_RANK: Record<TodoStatus, number> = {
 
 export interface TodoFooterProps {
   todos: Todo[];
+  /**
+   * Anchor for the spinner's elapsed clock. This is the SAME turn-start anchor
+   * the standalone spinner uses (the store's `spinner.startedAt`), so the footer
+   * counts up across the whole turn instead of resetting whenever the active
+   * todo changes — matching the standalone spinner's timing behaviour. Falls
+   * back to mount time only when no anchor is supplied (defensive; the viewport
+   * only renders this footer while a spinner is active).
+   */
+  startedAt?: number;
 }
 
 interface TodoRowProps {
@@ -100,16 +109,8 @@ function pickSpinnerTodo(todos: Todo[]): Todo | undefined {
   return undefined;
 }
 
-export function TodoFooter({ todos }: TodoFooterProps): React.ReactElement | null {
+export function TodoFooter({ todos, startedAt }: TodoFooterProps): React.ReactElement | null {
   const spinnerTodo = pickSpinnerTodo(todos);
-  const spinnerId = spinnerTodo?.id;
-
-  // Reset elapsed timer whenever the active todo (the one feeding the spinner
-  // label) changes — each task has its own clock.
-  const [startedAt, setStartedAt] = useState(() => Date.now());
-  useEffect(() => {
-    if (spinnerId) setStartedAt(Date.now());
-  }, [spinnerId]);
 
   if (!todoFooterVisible(todos)) return null;
 
@@ -135,7 +136,7 @@ export function TodoFooter({ todos }: TodoFooterProps): React.ReactElement | nul
           words: [`${t.footer.todoLabel} ${spinnerTodo.description}`],
           colorize: magenta,
         },
-        startedAt,
+        startedAt: startedAt ?? Date.now(),
         activeWord: `${t.footer.todoLabel} ${spinnerTodo.description}...`,
       }
     : null;

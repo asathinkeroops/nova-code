@@ -70,6 +70,7 @@ export const Viewport = React.memo(function Viewport({
     scrollOffset,
     stickToBottom,
     hasSpinner,
+    spinnerStartedAt,
     liveDraft,
     modal,
     todos,
@@ -92,6 +93,12 @@ export const Viewport = React.memo(function Viewport({
       // The <Spinner> component animates independently; token-count updates
       // (store.setSpinnerTokens) no longer re-render the entire Viewport.
       hasSpinner: s.spinner !== null,
+      // Turn-start anchor of the active spinner — stable within a turn (and
+      // within a slash-command spinner), so subscribing to it re-renders the
+      // Viewport only when the anchor actually changes (a turn start, or a new
+      // command spinner), never on animation/token ticks. The footers use it so
+      // their elapsed clock matches whatever standalone spinner is showing.
+      spinnerStartedAt: s.spinner?.startedAt ?? undefined,
       liveDraft: s.liveDraft,
       modal: s.modal,
       todos: s.todos,
@@ -256,8 +263,8 @@ export const Viewport = React.memo(function Viewport({
       {hasSpinner && !anyFooterVisible ? <SpinnerWrapper store={store} /> : null}
       {hasSpinner && anyFooterVisible ? (
         <>
-          <TaskFooter tasks={tasks} />
-          <TodoFooter todos={todos} />
+          <TaskFooter tasks={tasks} startedAt={spinnerStartedAt} />
+          <TodoFooter todos={todos} startedAt={spinnerStartedAt} />
         </>
       ) : null}
       <Box flexGrow={1} />

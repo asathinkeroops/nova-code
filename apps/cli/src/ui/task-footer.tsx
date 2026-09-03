@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { Box, Text } from "ink";
 import type { Task, TaskStatus } from "@nova/tools";
 import { ACCENT_HEX, accent } from "../colors.js";
@@ -25,6 +25,15 @@ const STATUS_RANK: Record<TaskStatus, number> = {
 
 export interface TaskFooterProps {
   tasks: Task[];
+  /**
+   * Anchor for the spinner's elapsed clock. This is the SAME turn-start anchor
+   * the standalone spinner uses (the store's `spinner.startedAt`), so the footer
+   * counts up across the whole turn instead of resetting whenever the active
+   * task changes — matching the standalone spinner's timing behaviour. Falls
+   * back to mount time only when no anchor is supplied (defensive; the viewport
+   * only renders this footer while a spinner is active).
+   */
+  startedAt?: number;
 }
 
 interface TaskRowProps {
@@ -107,16 +116,8 @@ function pickSpinnerTask(tasks: Task[]): Task | undefined {
   return undefined;
 }
 
-export function TaskFooter({ tasks }: TaskFooterProps): React.ReactElement | null {
+export function TaskFooter({ tasks, startedAt }: TaskFooterProps): React.ReactElement | null {
   const spinnerTask = pickSpinnerTask(tasks);
-  const spinnerId = spinnerTask?.id;
-
-  // Reset elapsed timer whenever the active task (the one feeding the spinner
-  // label) changes — each task has its own clock.
-  const [startedAt, setStartedAt] = useState(() => Date.now());
-  useEffect(() => {
-    if (spinnerId) setStartedAt(Date.now());
-  }, [spinnerId]);
 
   if (!taskFooterVisible(tasks)) return null;
 
@@ -142,7 +143,7 @@ export function TaskFooter({ tasks }: TaskFooterProps): React.ReactElement | nul
           words: [`${t.footer.taskLabel} ${spinnerTask.description}`],
           colorize: accent,
         },
-        startedAt,
+        startedAt: startedAt ?? Date.now(),
         activeWord: `${t.footer.taskLabel} ${spinnerTask.description}...`,
       }
     : null;
