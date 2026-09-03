@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  backgroundStatusText,
+  backgroundStatusLabel,
   cacheHitRate,
   cacheSegmentText,
   contextBar,
@@ -40,17 +40,17 @@ describe("formatDuration", () => {
   });
 });
 
-describe("backgroundStatusText", () => {
+describe("backgroundStatusLabel", () => {
   it("shows only the number of running background commands", () => {
-    expect(backgroundStatusText(1)).toBe("● 1 background task running");
-    expect(backgroundStatusText(2)).toBe("● 2 background tasks running");
+    expect(backgroundStatusLabel(1)).toBe("1 background task running");
+    expect(backgroundStatusLabel(2)).toBe("2 background tasks running");
   });
 
   it("hides when no command is running and reads the active locale", () => {
-    expect(backgroundStatusText(0)).toBeNull();
+    expect(backgroundStatusLabel(0)).toBeNull();
     setLocale("zh-CN");
     try {
-      expect(backgroundStatusText(2)).toBe("● 2 个后台任务运行中");
+      expect(backgroundStatusLabel(2)).toBe("2 个后台任务运行中");
     } finally {
       setLocale("en");
     }

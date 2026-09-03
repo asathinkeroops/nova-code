@@ -138,8 +138,7 @@ export const en = {
     autoMode: "✦ auto mode on",
     planMode: "⏸ plan mode on",
     bypass: "⚠ bypass permissions on",
-    backgroundRunning: (n: number): string =>
-      `${n} background task${n === 1 ? "" : "s"} running`,
+    backgroundRunning: (n: number): string => `${n} background task${n === 1 ? "" : "s"} running`,
     // Trailing labels on the cumulative-usage row (follow a number/amount).
     usageBalance: "balance",
     // The cache segment leads with its label and carries two rates:

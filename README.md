@@ -197,7 +197,7 @@ DeepSeek 的内置模型梯度是 `lite` → `deepseek-v4-flash-vision-exp`（�
 | `/loop` | 按间隔重复跑某条 prompt 或命令（`/loop <间隔> <prompt\|/cmd>`，`/loop stop` 停止） |
 | `/doctor` | 体检全局配置（JSON/schema、模型/key、hooks、MCP），报告问题，可交给 agent 就地修复 |
 | `/usage` · `/context` | 查看 token 用量、缓存命中、上下文占用 |
-| `/tasks` | 查看和管理后台命令（`bash` + `run_in_background`），支持 list / stop；运行中的后台任务数量会常驻显示在输入框下方 |
+| `/tasks` | 查看和管理后台命令（`bash` + `run_in_background`），支持 list / stop；运行中的后台任务数量会带呼吸圆点常驻显示在输入框下方 |
 | `/predict` | 开关下一条输入预测 |
 | `/exit` · `/quit` | 退出 |
 

@@ -839,7 +839,7 @@
           <tr><td><code>monitor</code></td><td><span class="pill pill-ap">需批准</span></td><td>起一个<strong>监听脚本</strong>：它 stdout 的<strong>每一行</strong>都变成一条通知推给模型。用于 <code>tail -f</code>、<code>inotifywait -m</code>、轮询循环。返回 <code>{id, pid, watching, persistent, log_path}</code></td></tr>
           <tr><td><code>stopMonitor</code></td><td><span class="pill pill-ro">只读</span></td><td>按 id 停掉一个监听</td></tr>
         </tbody></table></div>
-        <p class="mt-3">运行中的后台命令会以 <code>● 2 个后台任务运行中</code> 这样的数量状态常驻显示在输入框下方，全部结束后自动消失。完整列表、输出和停止操作仍在 <code>/tasks</code>。</p>
+        <p class="mt-3">运行中的后台命令会以 <code>● 2 个后台任务运行中</code> 这样的数量状态常驻显示在输入框下方，前面的圆点会用明暗呼吸表示仍在运行；全部结束后自动消失。完整列表、输出和停止操作仍在 <code>/tasks</code>。</p>
         <p class="mt-3">后台命令没有专门的读取工具：<code>output_path</code> 指向 <code>~/.nova/sessions/{id}/background/{命令id}.log</code>，这是命令 stdout+stderr 的<strong>完整</strong>日志，用普通的 <code>read</code> / <code>grep</code> 跟读即可（该目录已默认放行，不会每次弹权限）。</p>
         <p class="mt-3"><strong><code>monitor</code> 与后台命令的分工，按「你要被通知几次」划分</strong>：只要<strong>一次</strong>（构建结束、服务起来了）用 <code>bash</code> + <code>run_in_background</code> 配一个条件满足就退出的命令；<strong>每次发生都要</strong>才用 <code>monitor</code>。过滤写在命令里（<code>grep -E --line-buffered</code>）且<strong>必须覆盖失败</strong>——只匹配成功标记的过滤器在崩溃时同样沉默，而沉默和「还在跑」无法区分。stderr 不是事件流，只进 <code>log_path</code>。超过 <code>settings.monitor.maxEventsPerWindow</code>（默认 60 条/分钟）的监听会被直接杀掉并在通知里说明。</p>
         <p class="mt-3">命令结束时会由 <code>&lt;background-notification&gt;</code> 自动注入一条<strong>公告</strong>——只带 id、状态、退出原因和日志路径，<strong>不内联输出</strong>。这样输出<strong>只有一条投递通道</strong>（文件）：若通知里也内联一份，模型自己 <code>read</code> 过的内容就会被重复推送一遍，而且一个跑久的 dev server 结束时可能一次性往 append-only 历史里灌进上百 KB。状态和退出原因留在通知里，已经足够模型判断要不要再花一轮去读日志。</p>

@@ -69,9 +69,9 @@ export function permissionModeIndicator(mode: PermissionMode): PermissionModeInd
  * Compact status for the pinned mode row. Completed commands disappear because
  * their normal completion notification already lands in the conversation.
  */
-export function backgroundStatusText(runningCount: number): string | null {
+export function backgroundStatusLabel(runningCount: number): string | null {
   if (runningCount <= 0) return null;
-  return `● ${t.status.backgroundRunning(runningCount)}`;
+  return t.status.backgroundRunning(runningCount);
 }
 
 /** `49h48m42s`, dropping leading units that are zero. */

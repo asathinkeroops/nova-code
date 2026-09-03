@@ -197,7 +197,7 @@ Model-callable tools cover read/write, search, execution, code intelligence, and
 | `/loop` | Re-run a prompt or command on an interval (`/loop <interval> <prompt\|/cmd>`, `/loop stop` to end) |
 | `/doctor` | Health-check the global config (JSON/schema, model/key, hooks, MCP), report issues, optionally hand them to the agent to fix in place |
 | `/usage` · `/context` | See token usage, cache hits, context fill |
-| `/tasks` | View and manage background commands (`bash` + `run_in_background`) — list / stop; the active background-task count stays visible below the input |
+| `/tasks` | View and manage background commands (`bash` + `run_in_background`) — list / stop; the active background-task count stays visible below the input with a pulsing dot |
 | `/predict` | Toggle next-input prediction |
 | `/exit` · `/quit` | Quit |
 

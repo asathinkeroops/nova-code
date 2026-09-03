@@ -6,10 +6,11 @@ import { SetupView } from "./setup-view.js";
 import { TrustView } from "./trust-view.js";
 import { StatusLine } from "./status-line.js";
 import {
-  backgroundStatusText,
+  backgroundStatusLabel,
   permissionModeIndicator,
   permissionModeHint,
 } from "./status-format.js";
+import { BackgroundStatus } from "./background-status.js";
 import { setCursorTarget } from "./cursor-target.js";
 import {
   PickHorizontal,
@@ -242,14 +243,14 @@ export function App({ store }: AppProps): React.ReactElement {
   // the rest.
   const modeIndicator = shellMode ? null : permissionModeIndicator(permissionMode);
   const indicatorRows = modeIndicator ? 1 : 0;
-  const rawBackgroundStatus = backgroundStatusText(runningBackgroundCount);
+  const rawBackgroundStatus = backgroundStatusLabel(runningBackgroundCount);
   const modeRowWidth = modeIndicator
     ? visibleWidth(` ${modeIndicator.label} ${permissionModeHint()}`)
     : 0;
   const backgroundWidth = Math.max(0, termCols - modeRowWidth - 4);
   const backgroundStatus =
     rawBackgroundStatus && backgroundWidth >= 8
-      ? truncateToWidth(rawBackgroundStatus, backgroundWidth)
+      ? truncateToWidth(rawBackgroundStatus, backgroundWidth - 2)
       : null;
 
   // Leave a 1-row safety margin so the layout never sums to exactly termRows.
@@ -317,7 +318,7 @@ export function App({ store }: AppProps): React.ReactElement {
                 {backgroundStatus ? (
                   <>
                     <Text dimColor>{" │ "}</Text>
-                    <Text color="green">{backgroundStatus}</Text>
+                    <BackgroundStatus label={backgroundStatus} />
                   </>
                 ) : null}
               </Box>
