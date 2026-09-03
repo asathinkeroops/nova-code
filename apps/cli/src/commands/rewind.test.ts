@@ -47,4 +47,24 @@ describe("collectUserTurns", () => {
     expect(turn?.label.endsWith("...")).toBe(true);
     expect(turn?.label).not.toContain("\n");
   });
+
+  it("skips nova-injected synthetic messages (reminders, interruptions, …)", () => {
+    const messages: MessageParam[] = [
+      userTurn("a real ask"),
+      { role: "user", content: "<todo-reminder>Update your todos: store.ts", meta: { synthetic: true, kind: "todo-reminder" } },
+      assistant("took care of it"),
+      userTurn("another real ask"),
+      { role: "user", content: "<interrupted-by-user>", meta: { synthetic: true, kind: "interrupted" } },
+    ];
+    const turns = collectUserTurns(messages);
+    expect(turns.map((t) => t.turn)).toEqual([1, 2]);
+    expect(turns.map((t) => t.index)).toEqual([0, 3]);
+    expect(turns.every((t) => !t.text.startsWith("<todo-reminder>"))).toBe(true);
+  });
+
+  it("keeps a prompt that merely starts with a reminder tag (user forgery)", () => {
+    const turns = collectUserTurns([userTurn("<todo-reminder> I typed this myself")]);
+    expect(turns).toHaveLength(1);
+    expect(turns[0]?.text).toBe("<todo-reminder> I typed this myself");
+  });
 });

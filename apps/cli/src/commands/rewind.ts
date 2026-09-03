@@ -20,15 +20,21 @@ export interface UserTurn {
 }
 
 /**
- * Pull out the genuine user prompts from a history. A user-role message that
- * carries only tool_results (extractText is empty) is the loop feeding the
- * model, not something the user typed — those are skipped so the turn numbers
- * line up with what the user actually sent.
+ * Pull out the genuine user prompts from a history. Two things are excluded so
+ * the turn numbers line up with what the user actually sent:
+ *
+ * - A user-role message that carries only tool_results (extractText is empty)
+ *   is the loop feeding the model, not something the user typed.
+ * - A message marked `meta.synthetic` is a nova injection (todo/task reminder,
+ *   background notification, interruption marker, compaction boundary, …) — the
+ *   `meta` out-of-band marker, not the in-band `<...>` tag, is the source of
+ *   truth, so a user who literally types "<todo-reminder>" still rewinds.
  */
 export function collectUserTurns(messages: MessageParam[]): UserTurn[] {
   const turns: UserTurn[] = [];
   messages.forEach((m, index) => {
     if (m.role !== "user") return;
+    if (m.meta?.synthetic) return;
     const text = extractText(blocksOf(m)).trim();
     if (!text) return;
     const flat = text.replace(/\s+/g, " ");
