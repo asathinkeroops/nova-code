@@ -1,6 +1,6 @@
 {
   "name": "@asathinkeroops/nova-code",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "A terminal coding agent for Chinese LLMs — a finished product, not a framework kit.",
   "type": "module",
   "license": "MIT",
