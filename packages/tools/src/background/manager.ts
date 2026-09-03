@@ -176,6 +176,8 @@ function finalize(
 
 /** Event name carrying a finished command's public record. */
 const COMPLETE_EVENT = "complete";
+/** Event name carrying every user-visible status transition (start + finish). */
+const CHANGE_EVENT = "change";
 
 export class BackgroundCommandManager extends EventEmitter {
   private readonly records = new Map<string, InternalRecord>();
@@ -231,10 +233,25 @@ export class BackgroundCommandManager extends EventEmitter {
     };
   }
 
+  /**
+   * Subscribe to every command status transition. The CLI uses this to keep its
+   * pinned background-task indicator current without polling. Returns an
+   * unsubscribe function.
+   */
+  onChange(listener: (record: CommandRecord) => void): () => void {
+    this.on(CHANGE_EVENT, listener);
+    return () => {
+      this.off(CHANGE_EVENT, listener);
+    };
+  }
+
   /** Mark a finished command: queue it for the notifier and emit `complete`. */
   private markComplete(record: InternalRecord): void {
     this.completedIds.push(record.id);
-    this.emit(COMPLETE_EVENT, publicView(record));
+    const view = publicView(record);
+    // Refresh visible state before a completion listener wakes the idle REPL.
+    this.emit(CHANGE_EVENT, view);
+    this.emit(COMPLETE_EVENT, view);
   }
 
   start(input: StartInput): { id: string; pid: number; outputPath?: string } {
@@ -309,6 +326,7 @@ export class BackgroundCommandManager extends EventEmitter {
       ...(sink ? { outputPath: sink.path, sink: sink.stream } : {}),
     };
     this.records.set(id, record);
+    this.emit(CHANGE_EVENT, publicView(record));
 
     /** Shared tail of both lifecycle branches: close the log, then announce. */
     const settle = (status: CommandStatus, result: string, reason: string | undefined): void => {

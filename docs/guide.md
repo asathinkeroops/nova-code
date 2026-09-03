@@ -351,6 +351,8 @@ Nova 把「extended thinking」暴露成五个等级，或一个显式的 token 
 | `monitor` | 需批准 | 起一个**监听脚本**：它 stdout 的**每一行**都会变成一条通知推给模型。用于 `tail -f`、`inotifywait -m`、轮询循环等「每次发生都要知道」的场景。返回 `{id, pid, watching, persistent, log_path}` |
 | `stopMonitor` | 只读 | 按 id 停掉一个监听 |
 
+运行中的后台命令会以 `● 2 个后台任务运行中` 这样的数量状态常驻显示在输入框下方，全部结束后自动消失。完整列表、输出和停止操作仍在 `/tasks`。
+
 **`monitor` 和后台命令的分工，按「你要被通知几次」划分**：只要**一次**（构建结束、服务起来了）用 `bash` + `run_in_background`，配一个条件满足就退出的命令（`until grep -q 'ready' dev.log; do sleep 0.5; done`）；**每次发生都要**用 `monitor`。用 `tail -f` 去做「只通知一次」是典型误用——事件早触发了，监听还挂到超时。
 
 过滤要写在命令里（`grep -E --line-buffered`），而且**必须覆盖失败**：只匹配成功标记的过滤器在崩溃、hang、OOM 时同样一声不吭，而沉默和「还在跑」无法区分。stderr **不是**事件流，只进 `log_path`，需要它触发通知就 `2>&1` 合并。

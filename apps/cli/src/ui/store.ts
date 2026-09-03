@@ -135,6 +135,8 @@ export interface AppState {
   cards: Card[];
   todos: Todo[];
   tasks: Task[];
+  /** Number of commands currently running behind the pinned mode-row indicator. */
+  runningBackgroundCount: number;
   spinner: SpinnerSpec | null;
   /**
    * In-progress assistant content for the active request, streamed token by
@@ -427,6 +429,7 @@ export interface AppActions {
   setThinkingLabel: (label: string | undefined) => void;
   setTodos: (todos: Todo[]) => void;
   setTasks: (tasks: Task[]) => void;
+  setRunningBackgroundCount: (count: number) => void;
   startSpinner: (label: SpinnerLabel, hint?: string, startedAt?: number) => SpinnerHandle;
   /** Update the active spinner's live token counts (no-op if none). */
   setSpinnerTokens: (progress: { inputTokens?: number; outputTokens: number }) => void;
@@ -728,6 +731,7 @@ export function createAppStore(opts: AppStoreOptions = {}): AppStoreApi {
       cards: [],
       todos: [],
       tasks: [],
+      runningBackgroundCount: 0,
       spinner: null,
       liveDraft: null,
       modal: null,
@@ -822,6 +826,11 @@ export function createAppStore(opts: AppStoreOptions = {}): AppStoreApi {
       setTasks(tasks) {
         if (sameTasks(get().tasks, tasks)) return;
         set({ tasks });
+      },
+
+      setRunningBackgroundCount(count) {
+        if (get().runningBackgroundCount === count) return;
+        set({ runningBackgroundCount: count });
       },
 
       startSpinner(label, hint, startedAt) {

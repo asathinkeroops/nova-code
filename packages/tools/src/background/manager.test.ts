@@ -52,6 +52,19 @@ describe("BackgroundCommandManager", () => {
     expect(mgr.get(id)?.status).toBe("completed");
   });
 
+  it("emits changes when a command starts and finishes", async () => {
+    const mgr = new BackgroundCommandManager();
+    const statuses: string[] = [];
+    const unsubscribe = mgr.onChange((record) => statuses.push(record.status));
+    const { id } = mgr.start({ command: "sleep 0.1", cwd: process.cwd() });
+
+    expect(statuses).toEqual(["running"]);
+    await waitFor(() => mgr.get(id)?.status !== "running");
+    expect(statuses).toEqual(["running", "completed"]);
+
+    unsubscribe();
+  });
+
   it("list() returns all records with only the public fields", async () => {
     const mgr = new BackgroundCommandManager();
     const a = mgr.start({ command: "echo a", cwd: process.cwd() });

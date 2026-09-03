@@ -5,7 +5,11 @@ import { InputBox } from "./input-box.js";
 import { SetupView } from "./setup-view.js";
 import { TrustView } from "./trust-view.js";
 import { StatusLine } from "./status-line.js";
-import { permissionModeIndicator, permissionModeHint } from "./status-format.js";
+import {
+  backgroundStatusText,
+  permissionModeIndicator,
+  permissionModeHint,
+} from "./status-format.js";
 import { setCursorTarget } from "./cursor-target.js";
 import {
   PickHorizontal,
@@ -15,7 +19,7 @@ import {
 } from "./picker.js";
 import type { AppStoreApi } from "./store.js";
 import { Viewport } from "./viewport.js";
-import { visibleWidth } from "./width.js";
+import { truncateToWidth, visibleWidth } from "./width.js";
 import { setJumpButtonBounds } from "./jump-button.js";
 import { t } from "../i18n/index.js";
 
@@ -122,6 +126,7 @@ export function App({ store }: AppProps): React.ReactElement {
     termRows,
     termCols,
     imagePaste,
+    runningBackgroundCount,
   } = store(
     useShallow((s) => ({
       setup: s.setup,
@@ -137,6 +142,7 @@ export function App({ store }: AppProps): React.ReactElement {
       termRows: s.termRows,
       termCols: s.termCols,
       imagePaste: s.imagePaste,
+      runningBackgroundCount: s.runningBackgroundCount,
     })),
   );
   // Actions are stable across renders — grab them once via getState().
@@ -236,6 +242,15 @@ export function App({ store }: AppProps): React.ReactElement {
   // the rest.
   const modeIndicator = shellMode ? null : permissionModeIndicator(permissionMode);
   const indicatorRows = modeIndicator ? 1 : 0;
+  const rawBackgroundStatus = backgroundStatusText(runningBackgroundCount);
+  const modeRowWidth = modeIndicator
+    ? visibleWidth(` ${modeIndicator.label} ${permissionModeHint()}`)
+    : 0;
+  const backgroundWidth = Math.max(0, termCols - modeRowWidth - 4);
+  const backgroundStatus =
+    rawBackgroundStatus && backgroundWidth >= 8
+      ? truncateToWidth(rawBackgroundStatus, backgroundWidth)
+      : null;
 
   // Leave a 1-row safety margin so the layout never sums to exactly termRows.
   // Some terminals (Warp) push content one row up when the live region fills
@@ -299,6 +314,12 @@ export function App({ store }: AppProps): React.ReactElement {
               <Box>
                 <Text bold color={modeIndicator.color}>{` ${modeIndicator.label}`}</Text>
                 <Text dimColor>{` ${permissionModeHint()}`}</Text>
+                {backgroundStatus ? (
+                  <>
+                    <Text dimColor>{" │ "}</Text>
+                    <Text color="green">{backgroundStatus}</Text>
+                  </>
+                ) : null}
               </Box>
             ) : null}
           </Box>

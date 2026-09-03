@@ -617,6 +617,10 @@ export class Screen {
     this.store.getState().setTasks(tasks);
   }
 
+  setRunningBackgroundCount(count: number): void {
+    this.store.getState().setRunningBackgroundCount(count);
+  }
+
   setMessages(messages: MessageParam[]): void {
     this.store.getState().setMessages(messages);
   }

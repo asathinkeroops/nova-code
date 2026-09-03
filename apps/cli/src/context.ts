@@ -1130,6 +1130,16 @@ export async function createContext(
   ctx.toolsGuidance = renderToolsGuidance(ctx.tools.definitions());
 
   registerUiHooks(ctx);
+  // Keep the pinned mode-row indicator in sync from the manager's own push
+  // signal. This also catches background commands started by sub-agents, whose
+  // message lifecycle is separate from the main agent's UI hooks.
+  const refreshBackgroundCommands = (): void => {
+    screen.setRunningBackgroundCount(
+      backgroundManager.list().filter((command) => command.status === "running").length,
+    );
+  };
+  backgroundManager.onChange(refreshBackgroundCommands);
+  refreshBackgroundCommands();
 
   // Consume queued input MID-TASK: `pre_continue` fires at each tool-iteration
   // boundary, so a prompt the user typed while the agent is still working gets

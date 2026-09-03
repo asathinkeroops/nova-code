@@ -106,6 +106,7 @@ export const zh: DeepPartial<Catalog> = {
     autoMode: "✦ 自动模式已开启",
     planMode: "⏸ 计划模式已开启",
     bypass: "⚠ 跳过权限已开启",
+    backgroundRunning: (n: number): string => `${n} 个后台任务运行中`,
     usageBalance: "余额",
     usageCache: "缓存",
     usageCacheSession: "会话",
