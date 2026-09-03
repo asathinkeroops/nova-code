@@ -115,8 +115,6 @@ import { resolveSession } from "./session.js";
 import { Screen, fatalExit } from "./screen.js";
 import type { CliContext, CliRuntimeOptions } from "./ctx-types.js";
 import {
-  armToolSpinner,
-  clearToolSpinner,
   currentThinkingBudget,
   persist,
   refreshBalance,
@@ -125,6 +123,7 @@ import {
   refreshTodoFooter,
   scheduleTaskAutoClear,
   scheduleTodoAutoClear,
+  startWorkingSpinner,
   stopSpinner,
   thinkingLevelLabel,
 } from "./ctx-runtime.js";
@@ -136,8 +135,6 @@ import { t } from "./i18n/index.js";
 // split into ctx-types.ts / ctx-runtime.ts / builtin-commands.ts.
 export type { CliContext, CliRuntimeOptions } from "./ctx-types.js";
 export {
-  armToolSpinner,
-  clearToolSpinner,
   currentThinkingBudget,
   persist,
   refreshBalance,
@@ -146,6 +143,7 @@ export {
   refreshTodoFooter,
   scheduleTaskAutoClear,
   scheduleTodoAutoClear,
+  startWorkingSpinner,
   stopSpinner,
   thinkingLevelLabel,
 };
@@ -655,7 +653,6 @@ export async function createContext(
     cronStore,
     cronScheduler,
     spinner: null,
-    toolSpinnerTimer: null,
     todoAutoClearTimer: null,
     taskAutoClearTimer: null,
     taskStartedAt: null,
@@ -980,7 +977,6 @@ export async function createContext(
   });
 
   const askUser: AskUserFn = async (req) => {
-    clearToolSpinner(ctx);
     const signal = ctx.agent.currentSignal();
     return await ctx.screen.askUser(req, signal ? { signal } : undefined);
   };

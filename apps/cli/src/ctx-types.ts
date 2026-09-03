@@ -105,7 +105,6 @@ export interface CliContext {
 
   // ===== Mutable: UI / per-turn state =====
   spinner: Spinner | null;
-  toolSpinnerTimer: NodeJS.Timeout | null;
   /**
    * Pending "all todos/tasks completed → wipe the finished list" timers.
    * Scheduled on post_turn when a store is fully completed; after
@@ -119,10 +118,12 @@ export interface CliContext {
   taskAutoClearTimer: NodeJS.Timeout | null;
   /**
    * Epoch-ms the current agent turn's work began, or null between turns. The
-   * working spinner is torn down and recreated at every model-call / tool phase
-   * within a turn; anchoring the spinner's elapsed to this (set once per turn in
-   * hooks.ts, cleared on post_turn/error) keeps the timer counting up across the
-   * whole task instead of resetting each phase.
+   * working spinner is started once at turn start and runs for the whole turn
+   * (no per-request/tool-phase re-arming); anchoring its elapsed to this — set
+   * once per turn in hooks.ts, cleared on post_turn/error — keeps the timer
+   * counting up across the whole task instead of resetting each phase. An
+   * interactive permission dialog temporarily replaces the spinner on screen
+   * without touching this anchor.
    */
   taskStartedAt: number | null;
   nextPlaceholder: string;

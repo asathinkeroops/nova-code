@@ -1,12 +1,10 @@
-import { magenta } from "./colors.js";
 import { t } from "./i18n/index.js";
 import {
-  armToolSpinner,
-  clearToolSpinner,
   refreshTaskFooter,
   refreshTodoFooter,
   scheduleTaskAutoClear,
   scheduleTodoAutoClear,
+  startWorkingSpinner,
   stopSpinner,
   thinkingLevelLabel,
   type CliContext,
@@ -45,20 +43,25 @@ export function registerUiHooks(ctx: CliContext): void {
     }
   });
 
-  // `pre_request` is blocking — returning undefined keeps it advisory for us.
-  ctx.agent.on("pre_request", () => {
-    // Anchor the working-spinner timer to the first request of the turn, so it
-    // counts total task time rather than resetting each model-call / tool phase.
-    const startedAt = (ctx.taskStartedAt ??= Date.now());
-    ctx.spinner = ctx.screen.startSpinner(
-      { words: t.spinner.workingWords, colorize: magenta },
-      t.spinner.interruptHint,
-      startedAt,
-    );
+  // `pre_user_prompt` is the turn's single start point — fire the working
+  // spinner once per task instead of rebuilding it on every model call. It
+  // runs for the whole turn, through tool and permission phases; an interactive
+  // permission dialog simply replaces it on screen (the viewport renders the
+  // modal instead of the spinner) and it comes back when the dialog closes.
+  // It is torn down once at post_turn / error.
+  ctx.agent.on("pre_user_prompt", () => {
+    // Anchor the spinner timer to the turn start so it counts total task time
+    // rather than resetting on each request/tool phase.
+    ctx.taskStartedAt = Date.now();
+    startWorkingSpinner(ctx);
   });
 
   ctx.agent.on("post_request", ({ durationMs, error, usage }) => {
     if (error) {
+      // Read the label BEFORE stopping the spinner — stopSpinner nulls
+      // ctx.spinner, so a label read afterwards would always fall back to
+      // "working" instead of the word actually on screen.
+      const word = ctx.spinner?.label() ?? "working";
       stopSpinner(ctx);
       // No post_messages follows a failed/aborted request, so drop the partial
       // draft here — otherwise half-streamed text would hang under the error.
@@ -68,7 +71,6 @@ export function registerUiHooks(ctx: CliContext): void {
       const isUserAction = /denied at prompt|aborted|interrupted/i.test(error);
       if (!isUserAction) {
         const seconds = (durationMs / 1000).toFixed(1);
-        const word = ctx.spinner?.label() ?? "working";
         ctx.screen.card(t.hooks.requestFailed(word, seconds, error), {
           kind: "error",
           title: t.hooks.requestFailedTitle,
@@ -88,16 +90,6 @@ export function registerUiHooks(ctx: CliContext): void {
       // cache-hit-rate meter and `/usage`.
       ctx.screen.addUsage(usage);
     }
-  });
-
-  ctx.agent.on("pre_permission", () => clearToolSpinner(ctx));
-  ctx.agent.on("post_permission", ({ granted }) => {
-    if (granted) armToolSpinner(ctx);
-  });
-  // `post_tool_use` is blocking; advisory subscribers just arm/clear and
-  // return undefined.
-  ctx.agent.on("post_tool_use", () => {
-    clearToolSpinner(ctx);
   });
 
   ctx.agent.on("post_turn", () => {

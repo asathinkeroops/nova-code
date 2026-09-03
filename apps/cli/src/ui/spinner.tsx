@@ -76,9 +76,15 @@ function shimmer(text: string, frame: number): string {
 
 interface SpinnerProps {
   spec: SpinnerSpec;
+  /**
+   * Standalone spinners reserve a blank line above and below for breathing room.
+   * Footer-hosted spinners opt out so the list sits flush directly under the
+   * title row ("待办: …"), without the extra blank line from the built-in margin.
+   */
+  compact?: boolean;
 }
 
-export function Spinner({ spec }: SpinnerProps): React.ReactElement {
+export function Spinner({ spec, compact = false }: SpinnerProps): React.ReactElement {
   const [frame, setFrame] = useState(0);
 
   const label = spec.label;
@@ -101,7 +107,7 @@ export function Spinner({ spec }: SpinnerProps): React.ReactElement {
 
   // spec.startedAt is anchored to the task (turn) start, not this spinner
   // instance, so the timer counts up across the whole task instead of resetting
-  // when the working spinner is recreated per model-call / tool phase.
+  // when the working spinner is re-armed at a tool/permission phase.
   const elapsed = formatElapsed(Date.now() - spec.startedAt);
   // Advance the star pulse and color shimmer at half the repaint cadence so the
   // twinkle breathes instead of strobing. The tick itself stays at UI_FRAME_MS
@@ -126,7 +132,11 @@ export function Spinner({ spec }: SpinnerProps): React.ReactElement {
   }
 
   return (
-    <Box marginTop={1} marginBottom={1} flexDirection="column">
+    <Box
+      marginTop={compact ? 0 : 1}
+      marginBottom={compact ? 0 : 1}
+      flexDirection="column"
+    >
       <Text>{line}</Text>
     </Box>
   );

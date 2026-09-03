@@ -2,16 +2,14 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseSettings } from "@nova/base";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { TOOL_SPINNER_DELAY_MS } from "./constants.js";
+import { describe, expect, it, vi } from "vitest";
 import {
-  armToolSpinner,
-  clearToolSpinner,
   currentThinkingBudget,
   persist,
   refreshBanner,
   refreshTaskFooter,
   refreshTodoFooter,
+  startWorkingSpinner,
   stopSpinner,
   thinkingLevelLabel,
 } from "./ctx-runtime.js";
@@ -21,10 +19,10 @@ import type { CliContext } from "./ctx-types.js";
  * Build a mutable partial CliContext. Only the fields a given test touches need
  * to be set; everything else is left undefined and the whole thing is cast.
  * The object is intentionally a real mutable JS object so the spinner helpers
- * can read/write `ctx.spinner` and `ctx.toolSpinnerTimer` in place.
+ * can read/write `ctx.spinner` in place.
  */
-function makeCtx(partial: Partial<CliContext>): CliContext {
-  return { spinner: null, toolSpinnerTimer: null, ...partial } as unknown as CliContext;
+function makeCtx(partial: Partial<CliContext> = {}): CliContext {
+  return { spinner: null, ...partial } as unknown as CliContext;
 }
 
 describe("currentThinkingBudget", () => {
@@ -66,68 +64,56 @@ describe("thinkingLevelLabel", () => {
   });
 });
 
-describe("tool spinner lifecycle", () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  function spinnerCtx() {
-    const stop = vi.fn();
-    const startSpinner = vi.fn(() => ({ stop }));
-    const ctx = makeCtx({ screen: { startSpinner } as unknown as CliContext["screen"] });
-    return { ctx, startSpinner, stop };
-  }
-
-  it("starts the spinner only after the delay elapses", () => {
-    const { ctx, startSpinner } = spinnerCtx();
-    armToolSpinner(ctx);
-    expect(startSpinner).not.toHaveBeenCalled();
-    expect(ctx.toolSpinnerTimer).not.toBeNull();
-
-    vi.advanceTimersByTime(TOOL_SPINNER_DELAY_MS - 1);
-    expect(startSpinner).not.toHaveBeenCalled();
-
-    vi.advanceTimersByTime(1);
-    expect(startSpinner).toHaveBeenCalledOnce();
-    expect(ctx.spinner).not.toBeNull();
-    expect(ctx.toolSpinnerTimer).toBeNull();
-  });
-
-  it("re-arming before the delay coalesces to a single spinner", () => {
-    const { ctx, startSpinner } = spinnerCtx();
-    armToolSpinner(ctx);
-    armToolSpinner(ctx);
-    vi.advanceTimersByTime(TOOL_SPINNER_DELAY_MS);
-    expect(startSpinner).toHaveBeenCalledOnce();
-  });
-
-  it("clearToolSpinner before the delay cancels the pending spinner", () => {
-    const { ctx, startSpinner } = spinnerCtx();
-    armToolSpinner(ctx);
-    clearToolSpinner(ctx);
-    expect(ctx.toolSpinnerTimer).toBeNull();
-    vi.advanceTimersByTime(TOOL_SPINNER_DELAY_MS * 2);
-    expect(startSpinner).not.toHaveBeenCalled();
-    expect(ctx.spinner).toBeNull();
-  });
-
-  it("clearToolSpinner after start stops the running spinner", () => {
-    const { ctx, stop } = spinnerCtx();
-    armToolSpinner(ctx);
-    vi.advanceTimersByTime(TOOL_SPINNER_DELAY_MS);
-    expect(ctx.spinner).not.toBeNull();
-    clearToolSpinner(ctx);
-    expect(stop).toHaveBeenCalledOnce();
-    expect(ctx.spinner).toBeNull();
-  });
-
-  it("stopSpinner is a no-op when no spinner is running", () => {
-    const { ctx } = spinnerCtx();
+describe("stopSpinner", () => {
+  it("is a no-op when no spinner is running", () => {
+    const ctx = makeCtx();
     expect(() => stopSpinner(ctx)).not.toThrow();
     expect(ctx.spinner).toBeNull();
+  });
+});
+
+describe("startWorkingSpinner", () => {
+  it("starts the spinner anchored to taskStartedAt when idle", () => {
+    const stop = vi.fn();
+    const startSpinner = vi.fn(() => ({ stop }));
+    const ctx = makeCtx({
+      taskStartedAt: 1_000,
+      screen: { startSpinner } as unknown as CliContext["screen"],
+    });
+    startWorkingSpinner(ctx);
+    expect(startSpinner).toHaveBeenCalledOnce();
+    expect(startSpinner).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      1_000,
+    );
+    expect(ctx.spinner).not.toBeNull();
+  });
+
+  it("is a no-op when a spinner is already running", () => {
+    const stop = vi.fn();
+    const startSpinner = vi.fn(() => ({ stop }));
+    const ctx = makeCtx({
+      taskStartedAt: 1_000,
+      spinner: { stop } as unknown as CliContext["spinner"],
+      screen: { startSpinner } as unknown as CliContext["screen"],
+    });
+    startWorkingSpinner(ctx);
+    expect(startSpinner).not.toHaveBeenCalled();
+  });
+
+  it("seeds taskStartedAt when it is still null", () => {
+    const stop = vi.fn();
+    const startSpinner = vi.fn(() => ({ stop }));
+    const ctx = makeCtx({
+      screen: { startSpinner } as unknown as CliContext["screen"],
+    });
+    vi.useFakeTimers();
+    vi.setSystemTime(5_000);
+    startWorkingSpinner(ctx);
+    expect(ctx.taskStartedAt).toBe(5_000);
+    expect(startSpinner).toHaveBeenCalledOnce();
+    vi.useRealTimers();
   });
 });
 

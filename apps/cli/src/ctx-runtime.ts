@@ -10,8 +10,7 @@ import {
   resolveBudget,
 } from "@nova/base";
 import { resolveContextWindowSize, resolveModelId } from "@nova/base";
-import { accent } from "./colors.js";
-import { TOOL_SPINNER_DELAY_MS } from "./constants.js";
+import { magenta } from "./colors.js";
 import { t } from "./i18n/index.js";
 import { resolveSessionRates } from "./commands/usage.js";
 import type { CliContext } from "./ctx-types.js";
@@ -148,28 +147,20 @@ export function stopSpinner(ctx: CliContext): void {
 }
 
 /**
- * Tool execution spinner: starts 300ms after a tool enters its execution
- * phase, stops on post_tool_use. The delay swallows the visual flash for fast
- * tools (Read of small files, Glob with few hits, etc.).
+ * Start the turn's working spinner, anchored to the turn start so the elapsed
+ * timer never resets across model / tool phases. No-op when a spinner is
+ * already live, so it never flickers on a per-request basis. Called once per
+ * turn from the `pre_user_prompt` hook; the spinner then runs until post_turn /
+ * error.
  */
-export function armToolSpinner(ctx: CliContext): void {
-  if (ctx.toolSpinnerTimer) clearTimeout(ctx.toolSpinnerTimer);
-  ctx.toolSpinnerTimer = setTimeout(() => {
-    ctx.toolSpinnerTimer = null;
-    ctx.spinner = ctx.screen.startSpinner(
-      { words: t.spinner.workingWords, colorize: accent },
-      t.spinner.interruptHint,
-      ctx.taskStartedAt ?? undefined,
-    );
-  }, TOOL_SPINNER_DELAY_MS);
-}
-
-export function clearToolSpinner(ctx: CliContext): void {
-  if (ctx.toolSpinnerTimer) {
-    clearTimeout(ctx.toolSpinnerTimer);
-    ctx.toolSpinnerTimer = null;
-  }
-  stopSpinner(ctx);
+export function startWorkingSpinner(ctx: CliContext): void {
+  if (ctx.spinner) return;
+  ctx.taskStartedAt ??= Date.now();
+  ctx.spinner = ctx.screen.startSpinner(
+    { words: t.spinner.workingWords, colorize: magenta },
+    t.spinner.interruptHint,
+    ctx.taskStartedAt,
+  );
 }
 
 export async function persist(ctx: CliContext): Promise<void> {
