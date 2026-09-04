@@ -40,7 +40,7 @@ nova -p "解释这段代码"              # headless 模式：只跑一轮，输
 nova upgrade                       # 更新到最新版本（启动时也会自动检查并提示）
 ```
 
-首次启动进入交互式配置向导，写入 `~/.nova/nova.config.json`。provider 连接统一放在 `providers[]`，由 `currentProvider` 选择当前项；旧的顶层 `provider` / `baseURL` / `apiKey` / `models` / `transport` 会在启动时一次性迁移并写回新结构，运行时不保留双格式兼容。模型按 `lite` / `pro` / `max` 三档配置，每档可单独设定 thinking 等级与定价（`providers[].models.<档>.pricing`，支持 USD / CNY）；`/model`、`--model` 切换的是档位而非裸 provider id。
+首次启动进入交互式配置向导：可选择 DeepSeek 模板，或通过“自定义服务商”入口获取 `generic` profile 的配置骨架；DeepSeek 配置会写入 `~/.nova/nova.config.json`。provider 连接统一放在 `providers[]`，由 `currentProvider` 选择当前项；旧的顶层 `provider` / `baseURL` / `apiKey` / `models` / `transport` 会在启动时一次性迁移并写回新结构，运行时不保留双格式兼容。模型按 `lite` / `pro` / `max` 三档配置，每档可单独设定 thinking 等级与定价（`providers[].models.<档>.pricing`，支持 USD / CNY）；`/model`、`--model` 切换的是档位而非裸 provider id。
 
 `nova` 还带子命令：`nova doctor`（体检全局配置）、`nova mcp`（管理 MCP 服务器）、`nova plugin`（安装 / 启停插件）、`nova upgrade`（升级 CLI）。
 

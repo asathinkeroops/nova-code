@@ -69,8 +69,12 @@ describe("ensureSettings", () => {
       model: "pro",
     };
     await writeFile(configPath, JSON.stringify(raw), "utf8");
+    const pickHorizontal = vi
+      .fn()
+      .mockImplementation(({ items }: { items: unknown[] }) => items[0]);
     const screen = {
       beginSetup: vi.fn(),
+      pickHorizontal,
       setSetupPrompt: vi.fn(),
       promptInput: vi.fn().mockResolvedValue("sk-new"),
       pushSetupEntry: vi.fn(),
@@ -98,6 +102,14 @@ describe("ensureSettings", () => {
     expect(activeModels(settings).pro?.thinking).toBe("low");
     expect(screen.beginSetup).toHaveBeenCalledOnce();
     expect(screen.endSetup).toHaveBeenCalledOnce();
+    const picker = pickHorizontal.mock.calls[0]?.[0] as
+      | {
+          items: Array<{ kind: string }>;
+          badge: (choice: { kind: string }) => string | null;
+        }
+      | undefined;
+    expect(picker?.items.map((choice) => choice.kind)).toEqual(["template", "custom"]);
+    expect(picker?.badge(picker.items[0] as { kind: string })).toBeNull();
   });
 
   it("repairs a missing endpoint without asking for the existing provider key again", async () => {
@@ -116,6 +128,7 @@ describe("ensureSettings", () => {
     await writeFile(configPath, JSON.stringify(raw), "utf8");
     const screen = {
       beginSetup: vi.fn(),
+      pickHorizontal: vi.fn().mockImplementation(({ items }: { items: unknown[] }) => items[0]),
       setSetupPrompt: vi.fn(),
       promptInput: vi.fn(),
       pushSetupEntry: vi.fn(),
@@ -136,5 +149,37 @@ describe("ensureSettings", () => {
     });
     expect(screen.promptInput).not.toHaveBeenCalled();
     expect(activeProvider(settings)?.baseURL).toBe("https://api.deepseek.com");
+  });
+
+  it("maps the Custom provider choice to a generic-profile config skeleton", async () => {
+    const output: string[] = [];
+    const stdoutWrite = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation(((chunk: string | Uint8Array) => {
+        output.push(String(chunk));
+        return true;
+      }) as typeof process.stdout.write);
+    const processExit = vi.spyOn(process, "exit").mockImplementation((() => {
+      throw new Error("process.exit:0");
+    }) as typeof process.exit);
+    const screen = {
+      beginSetup: vi.fn(),
+      pickHorizontal: vi.fn().mockImplementation(({ items }: { items: unknown[] }) => items.at(-1)),
+      unmount: vi.fn().mockResolvedValue(undefined),
+      endSetup: vi.fn(),
+    } as unknown as Screen;
+
+    try {
+      await expect(ensureSettings(parseSettings({}), screen, configPath)).rejects.toThrow(
+        "process.exit:0",
+      );
+      const rendered = output.join("");
+      expect(rendered).toContain("generic");
+      expect(rendered).toContain("<anthropic|openai>");
+      expect(rendered).not.toContain("deepseek|moonshot|generic");
+    } finally {
+      stdoutWrite.mockRestore();
+      processExit.mockRestore();
+    }
   });
 });

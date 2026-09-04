@@ -70,9 +70,9 @@ echo "总结这个 diff" | pnpm dev  # 无 TTY：headless 跑一轮后退出
 
 ## 3. 首次配置向导
 
-第一次启动时，如果 `~/.nova/nova.config.json` 的当前 provider 缺少有效 `apiKey`、解析不到可用模型表，或缺少协议/profile 所需的 `baseURL`，Nova 会进入首次配置向导。它从内置 provider 模板里取一个（模板已填好 `baseURL`、默认档位，`lite`/`pro`/`max` 模型表则由 provider 的**内置默认表**提供），所以**唯一要交互问你的就是 API key**（输入时掩码；若只是在修复当前 provider 的 endpoint，则会复用已有 key）。
+第一次启动时，如果 `~/.nova/nova.config.json` 的当前 provider 缺少有效 `apiKey`、解析不到可用模型表，或缺少协议/profile 所需的 `baseURL`，Nova 会进入首次配置向导。选择内置 provider 模板时，模板已经填好 `baseURL`、默认档位，`lite`/`pro`/`max` 模型表则由 provider 的**内置默认表**提供，所以只需输入 API key（输入时掩码；若只是在修复当前 provider 的 endpoint，则会复用已有 key）。
 
-**当前只有 DeepSeek 一个模板对外可选**（Moonshot/Kimi 已内置但在内部测试期，暂从选择器隐藏；「Other provider」手填入口也暂时关闭）。既然只有一个 provider，向导会**跳过选择器**，直接问 DeepSeek 的 API key。它写入：
+**当前选择器提供 DeepSeek 和“自定义服务商”两个入口**（Moonshot/Kimi 已内置但在内部测试期，暂时隐藏）。“自定义服务商”固定对应 `profile: "generic"`，会打印一份配置骨架并退出向导，供你填写 `transport`、`baseURL`、API key 和三档模型；选择 DeepSeek 则继续询问 API key，并写入：
 
 - 一个 provider 连接：`providers: [{ "name": "deepseek", "profile": "deepseek", "transport": "openai", "baseURL": "https://api.deepseek.com", "apiKey": "<key>" }]`，并设 `currentProvider: "deepseek"`（DeepSeek 的 OpenAI 兼容端点）、默认档位 `pro`（以及 goal 配置和 key 本身）
 - 模型表**不写盘**：`lite`→`deepseek-v4-flash-vision-exp`，`pro`/`max`→`deepseek-v4-pro`（三档靠 per-tier `thinking` 拉开梯度）来自代码里的内置默认
@@ -81,7 +81,7 @@ echo "总结这个 diff" | pnpm dev  # 无 TTY：headless 跑一轮后退出
 >
 > 想覆盖某一档，只写要改的字段即可，例如 `"models": { "pro": { "thinking": "low" } }`——其余字段（`id`、`pricing`、`maxTokens`…）继续跟随内置默认。**但如果你把某档的 `id` 改成别的模型**，该档就整条以你的为准（不再继承内置的价格与上限）；反过来，同 `id` 的档位无法「删掉」某个内置字段（省略即继承）。`/effort` 持久化写的也正是这种最小覆盖。
 
-按 `Ctrl+C` 可中止向导。当前 provider 同时有有效 API key 和可用模型表时才跳过向导；导出的环境变量 `NOVA_API_KEY` 可以满足 key 条件，但只有环境变量、还没有模型表时，向导仍会跑（不再问你 key，也不会把这个 key 写进配置文件）。要接别的端点，直接**手动编辑** `~/.nova/nova.config.json`——**provider profile 与传输协议（`transport`）是两个独立维度**：同一家供应商（如 DeepSeek）可同时有 Anthropic 兼容端点（`https://api.deepseek.com/anthropic`）与 OpenAI 兼容端点（`https://api.deepseek.com`），换协议只需在对应的 `providers[]` 连接里改 `transport` + `baseURL`，DeepSeek 的错误翻译 / 余额探针 / 文档链接原样保留。通用档 `generic` 无内置档位表，会对 408、409、429 和 5xx 做退避重试，并遵循 `Retry-After`；配置时需按 `lite`/`pro`/`max` 三档骨架填全，完整字段见 [§20](#20-配置文件完整参考)。如果端点没有专用 profile，就使用 `profile: "generic"`；OpenAI 兼容协议另设 `transport: "openai"`。
+按 `Ctrl+C` 可中止向导。当前 provider 同时有有效 API key 和可用模型表时才跳过向导；导出的环境变量 `NOVA_API_KEY` 可以满足 key 条件，但只有环境变量、还没有模型表时，向导仍会跑（不再问你 key，也不会把这个 key 写进配置文件）。要接别的端点，在选择器里选“自定义服务商”，再按打印的骨架编辑 `~/.nova/nova.config.json`——这个入口固定使用 `profile: "generic"`，而传输协议由 `transport: "anthropic" | "openai"` 独立选择。通用档 `generic` 无内置档位表，会对 408、409、429 和 5xx 做退避重试，并遵循 `Retry-After`；配置时需按 `lite`/`pro`/`max` 三档骨架填全，完整字段见 [§20](#20-配置文件完整参考)。
 
 > 如果启动时 `apiKey` 仍为空（且没有 `NOVA_API_KEY`），Nova 会报错退出并提示去配置文件里补上。
 >

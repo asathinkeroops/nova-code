@@ -93,7 +93,6 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
       goal: { ...DEFAULT_GOAL, evalModel: "lite" },
     },
     apiKeyHint: "DeepSeek API key (input is masked)",
-    recommended: true,
   },
   {
     id: "moonshot",

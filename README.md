@@ -68,7 +68,7 @@ Nova 读代码、跑命令、改文件 —— 通过工具调用把任务推到�
 
 ### 🎚️ 多 provider，三档阶梯
 
-内置 DeepSeek、Moonshot（Kimi，beta）和通用（`generic`）三套 provider profile，各自处理 thinking 形状、错误与重试策略（DeepSeek / Kimi 另带余额探测）；`generic` 会对 408、409、429 和 5xx 做通用退避重试，并遵循 `Retry-After`。当前首次配置向导只开放 DeepSeek，其余端点可手动配置。端点协议由 `transport: "anthropic" | "openai"` 独立选择，不需要为 OpenAI 兼容协议另造 profile。模型按 `lite` / `pro` / `max` 三档配置，每档独立设 id、thinking、模态、上下文窗口与定价。
+内置 DeepSeek、Moonshot（Kimi，beta）和通用（`generic`）三套 provider profile，各自处理 thinking 形状、错误与重试策略（DeepSeek / Kimi 另带余额探测）；`generic` 会对 408、409、429 和 5xx 做通用退避重试，并遵循 `Retry-After`。首次配置向导提供 DeepSeek 模板和“自定义服务商”入口；后者会打印可直接填写的配置骨架。端点协议由 `transport: "anthropic" | "openai"` 独立选择，不需要为 OpenAI 兼容协议另造 profile。模型按 `lite` / `pro` / `max` 三档配置，每档独立设 id、thinking、模态、上下文窗口与定价。
 
 </td>
 </tr>
@@ -131,7 +131,7 @@ echo "总结当前 diff" | nova --output-format jsonl
 nova upgrade                       # 更新到最新版本（启动时也会自动检查并提示）
 ```
 
-首次启动目前会直接询问 DeepSeek API key，并把一个 provider 连接（`providers: [{ "name": "deepseek", "profile": "deepseek", "transport": "openai", "baseURL": "https://api.deepseek.com", "apiKey": "<key>" }]` 与 `currentProvider: "deepseek"`）和默认档位 `pro` 写入 `~/.nova/nova.config.json`。不想让 key 明文落盘时，可导出 `NOVA_API_KEY`；它优先于当前 provider 连接的 `apiKey`，向导也不会把环境变量中的 key 写回磁盘。首次进入一个工作区时还会要求确认信任，信任记录只保存在用户全局配置中。
+首次启动会先选择 DeepSeek 或“自定义服务商”。选择 DeepSeek 后询问 API key，并把一个 provider 连接（`providers: [{ "name": "deepseek", "profile": "deepseek", "transport": "openai", "baseURL": "https://api.deepseek.com", "apiKey": "<key>" }]` 与 `currentProvider: "deepseek"`）和默认档位 `pro` 写入 `~/.nova/nova.config.json`；选择自定义服务商则打印包含 `generic` profile 和 `transport` 的配置骨架。不想让 key 明文落盘时，可导出 `NOVA_API_KEY`；它优先于当前 provider 连接的 `apiKey`，向导也不会把环境变量中的 key 写回磁盘。首次进入一个工作区时还会要求确认信任，信任记录只保存在用户全局配置中。
 
 运行时只接受 `providers` / `currentProvider` 结构。检测到旧的顶层 `provider`、`baseURL`、`apiKey`、`models`、`transport` 时，启动会先把它们一次性迁移成 provider 连接并原子写回配置文件；后续只按新格式读取。
 

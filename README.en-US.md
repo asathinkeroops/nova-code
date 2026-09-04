@@ -68,7 +68,7 @@ No `cache_control` to tweak, no error-code docs to dig through. Install, drop in
 
 ### 🎚️ Multi-provider, three-tier ladder
 
-Three provider profiles are built in — DeepSeek, Moonshot (Kimi, beta), and generic (`generic`) — each handling its own thinking shape, errors, and retry policy (DeepSeek and Kimi also probe account balance); `generic` applies standard backoff retries to HTTP 408, 409, 429, and 5xx responses and honors `Retry-After`. First-run setup currently exposes only DeepSeek; other endpoints are configured manually. The endpoint protocol is selected independently with `transport: "anthropic" | "openai"`, so an OpenAI-compatible wire does not require a separate profile. Models use `lite` / `pro` / `max` tiers, each with its own id, thinking, modalities, context window, and pricing.
+Three provider profiles are built in — DeepSeek, Moonshot (Kimi, beta), and generic (`generic`) — each handling its own thinking shape, errors, and retry policy (DeepSeek and Kimi also probe account balance); `generic` applies standard backoff retries to HTTP 408, 409, 429, and 5xx responses and honors `Retry-After`. First-run setup offers the DeepSeek template and a Custom provider entry that prints a ready-to-fill configuration skeleton. The endpoint protocol is selected independently with `transport: "anthropic" | "openai"`, so an OpenAI-compatible wire does not require a separate profile. Models use `lite` / `pro` / `max` tiers, each with its own id, thinking, modalities, context window, and pricing.
 
 </td>
 </tr>
@@ -131,7 +131,7 @@ echo "summarize the current diff" | nova --output-format jsonl
 nova upgrade                       # update to the latest version (also auto-checked at startup)
 ```
 
-First launch currently asks directly for a DeepSeek API key and writes a provider connection (`providers: [{ "name": "deepseek", "profile": "deepseek", "transport": "openai", "baseURL": "https://api.deepseek.com", "apiKey": "<key>" }]` with `currentProvider: "deepseek"`) and the default `pro` tier to `~/.nova/nova.config.json`. To keep the key out of that plaintext file, export `NOVA_API_KEY`; it overrides the current provider's `apiKey`, and setup never copies an environment key back to disk. The first time Nova enters a workspace, it also asks you to trust it; the trust record lives only in the user-level config.
+First launch asks you to choose DeepSeek or Custom provider. DeepSeek then asks for an API key and writes a provider connection (`providers: [{ "name": "deepseek", "profile": "deepseek", "transport": "openai", "baseURL": "https://api.deepseek.com", "apiKey": "<key>" }]` with `currentProvider: "deepseek"`) and the default `pro` tier to `~/.nova/nova.config.json`; Custom provider prints a configuration skeleton containing the `generic` profile and `transport`. To keep the key out of that plaintext file, export `NOVA_API_KEY`; it overrides the current provider's `apiKey`, and setup never copies an environment key back to disk. The first time Nova enters a workspace, it also asks you to trust it; the trust record lives only in the user-level config.
 
 Runtime settings only use the `providers` / `currentProvider` shape. When startup finds the former top-level `provider`, `baseURL`, `apiKey`, `models`, or `transport` fields, it performs a one-time atomic migration into a provider connection and writes the new shape back before parsing it.
 

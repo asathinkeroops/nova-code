@@ -9,39 +9,31 @@ import {
   type ProviderEntry,
   type Settings,
 } from "@nova/base";
-import { accent, ACCENT_HEX, BLUE_RGB, dim, rgbFg } from "./colors.js";
+import { accent, ACCENT_HEX, dim } from "./colors.js";
 import { t } from "./i18n/index.js";
 import { PROVIDER_TEMPLATES, type ProviderTemplate } from "./provider-templates.js";
-import { pickerArrow } from "./ui/picker.js";
 import { fatalExit, type Screen } from "./screen.js";
 import { settingsReadiness } from "./startup-readiness.js";
 import { readCliVersion } from "./version.js";
 
 /**
  * A setup-picker entry: one of the built-in {@link PROVIDER_TEMPLATES}, or the
- * "other" escape hatch that sends the user to hand-author a config file.
+ * custom-provider escape hatch that prints a config skeleton for endpoints
+ * without a built-in template.
  */
-type Choice = { kind: "template"; template: ProviderTemplate } | { kind: "other" };
-
-/**
- * Whether the first-run picker offers the "Other provider" manual-config escape
- * hatch. Off while the bring-your-own-endpoint path is still unstable; the
- * branch it drives (`exitForManualConfig`) stays in place so flipping this back
- * to `true` re-opens it with no other change.
- */
-const SHOW_OTHER_PROVIDER = false;
+type Choice = { kind: "template"; template: ProviderTemplate } | { kind: "custom" };
 
 /**
  * A skeleton nova.config.json printed to the terminal when the user picks a
  * provider we have no template for, so they have the right shape to fill in.
  */
-const EXAMPLE_CONFIG = `{
+const CUSTOM_PROVIDER_CONFIG = `{
   "currentProvider": "<provider-name>",
   "providers": [
     {
       "name": "<provider-name>",
-      "profile": "<deepseek|moonshot|generic>",
-      "baseURL": "<anthropic-compatible-url>",
+      "profile": "generic",
+      "baseURL": "<compatible-api-url>",
       "apiKey": "<your-api-key>",
       "transport": "<anthropic|openai>",
       "models": {
@@ -102,10 +94,10 @@ function upsertRawProvider(raw: Record<string, unknown>, entry: ProviderEntry): 
  * config-file path plus a starter config, then exit cleanly so the user can
  * author nova.config.json and re-launch.
  */
-async function exitForManualConfig(screen: Screen, configPath: string): Promise<never> {
+async function exitForCustomConfig(screen: Screen, configPath: string): Promise<never> {
   await screen.unmount();
   const path = accent(configPath);
-  const json = highlight(EXAMPLE_CONFIG, { language: "json", ignoreIllegals: true });
+  const json = highlight(CUSTOM_PROVIDER_CONFIG, { language: "json", ignoreIllegals: true });
   process.stdout.write(
     `\n${t.setup.manualIntro(path)}\n\n` +
       `${t.setup.manualShape}\n\n${json}\n\n` +
@@ -144,38 +136,32 @@ export async function ensureSettings(
         kind: "template" as const,
         template,
       })),
-      // The "Other provider" manual-config escape hatch is withheld too while
-      // the bring-your-own-endpoint path is still shaking out — flip
-      // SHOW_OTHER_PROVIDER back to true to re-open it; the code below stays wired.
-      ...(SHOW_OTHER_PROVIDER ? [{ kind: "other" as const }] : []),
+      // Every compatible endpoint can still be configured through the generic
+      // profile even when it has no built-in template.
+      { kind: "custom" },
     ];
-    // With a single provider on offer there's nothing to choose — skip the
-    // overlay and go straight to its API-key prompt. The picker only earns its
-    // keep once a second option (another template, or "Other") is in play.
-    const choice =
-      choices.length === 1
-        ? (choices[0] as Choice)
-        : await screen.pickOne<Choice>({
-            items: choices,
-            header: t.setup.providerQuestion,
-            footer: dim(t.setup.providerFooter),
-            border: false,
-            topRuleColor: ACCENT_HEX,
-            render: (it, selected) => {
-              const name = it.kind === "other" ? t.setup.otherProvider : it.template.label;
-              let badge = "";
-              if (it.kind === "template") {
-                if (it.template.recommended) badge = `  ${accent(t.setup.recommended)}`;
-                else if (it.template.beta) badge = `  ${rgbFg(BLUE_RGB, t.setup.beta)}`;
-              }
-              return `${pickerArrow(selected)} ${name}${badge}`;
-            },
-          });
+    // This is a small set of high-level routes rather than a dense data list.
+    // Render it as compact horizontal choices so selection only highlights the
+    // active label instead of painting a terminal-wide background bar.
+    const choice = await screen.pickHorizontal<Choice>({
+      items: choices,
+      label: (it) => (it.kind === "custom" ? t.setup.customProvider : it.template.label),
+      badge: (it) => {
+        if (it.kind !== "template") return null;
+        if (it.template.recommended) return t.setup.recommended;
+        if (it.template.beta) return t.setup.beta;
+        return null;
+      },
+      header: t.setup.providerQuestion,
+      footer: dim(t.setup.providerFooter),
+      border: false,
+      topRuleColor: ACCENT_HEX,
+    });
     if (choice === null) return fatalExit(screen, t.setup.aborted);
 
-    // No built-in template for third-party providers: point the user at the
-    // config-file path and let them author nova.config.json themselves.
-    if (choice.kind === "other") return exitForManualConfig(screen, configPath);
+    // Custom providers use the generic profile: point the user at the config
+    // path and print the remaining transport/endpoint/model fields to fill in.
+    if (choice.kind === "custom") return await exitForCustomConfig(screen, configPath);
 
     // A templated provider: its baseURL / model come from the template's
     // settings (and its tier table from the built-ins), so only the API key is
@@ -183,8 +169,7 @@ export async function ensureSettings(
     const { template } = choice;
     // If setup is repairing the active provider's endpoint/model table, reuse
     // its existing key. Never carry a key across profiles: a custom provider's
-    // credential must not be copied into the DeepSeek template merely because
-    // DeepSeek is currently the only visible setup choice.
+    // credential must not be copied into a different built-in template.
     const current = activeProvider(settings);
     const activeProviderKey =
       (current?.profile ?? current?.name) === template.settings.provider
