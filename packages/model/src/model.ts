@@ -26,6 +26,14 @@ export interface ModelConfig {
    */
   headers?: Record<string, string>;
   /**
+   * Extra JSON fields merged verbatim into every request's BODY — gateway
+   * extensions the wire SDKs don't model (`enable_thinking`, `extra_body`,
+   * `user`, …). Shallow-merged last, so an entry wins by name over anything
+   * the adapter or provider profile set; nothing is reserved. Comes from
+   * `settings.requestParams`.
+   */
+  requestParams?: Record<string, unknown>;
+  /**
    * Provider profile driving default transport, thinking-param and
    * error/retry behavior. Required: the caller resolves it once from
    * the active provider entry's `profile` (see `resolveProfile`) and passes a concrete profile —
@@ -270,6 +278,12 @@ function anthropicStreamOnce(
         messages: toWireMessages(req.messages) as Anthropic.MessageParam[],
         tools: tools as Anthropic.Tool[],
         ...thinkingParams,
+        // User-defined body extensions win by name over everything above —
+        // matching the headers contract ("nothing is reserved"). Spread last
+        // (and conditionally) so an unset config leaves the body byte-identical.
+        ...(config.requestParams && Object.keys(config.requestParams).length > 0
+          ? config.requestParams
+          : {}),
       } as Anthropic.MessageStreamParams,
       req.signal ? { signal: req.signal } : undefined,
     );

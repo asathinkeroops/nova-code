@@ -52,6 +52,7 @@ interface OpenAIModelConfig {
   model: string;
   baseURL?: string;
   headers?: Record<string, string>;
+  requestParams?: Record<string, unknown>;
   provider: ProviderProfile;
   onStreamProgress?: (progress: StreamProgress) => void;
   onStreamText?: (delta: StreamTextDelta) => void;
@@ -243,6 +244,15 @@ export function buildOpenAIRequestBody(
   // including provider-specific fields the SDK's params type doesn't know.
   for (const [key, value] of Object.entries(framing.thinkingParams)) {
     body[key] = value;
+  }
+  // User-defined body extensions win by name over everything above — matching
+  // the headers contract ("nothing is reserved"). Written last so the
+  // serialization order stays byte-stable across turns and an unset config
+  // leaves the body exactly as before.
+  if (config.requestParams) {
+    for (const [key, value] of Object.entries(config.requestParams)) {
+      body[key] = value;
+    }
   }
   return body as unknown as ChatCompletionCreateParamsStreaming;
 }

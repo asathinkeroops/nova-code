@@ -230,6 +230,18 @@ export const httpHeadersSchema = z.record(httpHeaderNameSchema, httpHeaderValueS
 
 export type HttpHeaders = z.infer<typeof httpHeadersSchema>;
 
+/**
+ * Extra JSON fields merged verbatim into every model request's BODY — the
+ * gateway extensions the wire SDKs don't model (`enable_thinking`,
+ * `extra_body`, `user`, `metadata`, …). Values are unrestricted JSON; the
+ * merge is shallow, so a provider entry's fields win by name over the global
+ * ones, and no field is reserved (an entry may even override `model` or
+ * `max_tokens`, matching the headers philosophy).
+ */
+export const requestParamsSchema = z.record(z.string(), z.unknown());
+
+export type RequestParams = z.infer<typeof requestParamsSchema>;
+
 /** Supported input/output modalities for a model tier. */
 export const modelModalitiesSchema = z.object({
   input: z
@@ -338,6 +350,9 @@ export const providerEntrySchema = z.object({
   headers: httpHeadersSchema
     .optional()
     .describe("Extra HTTP headers for requests to this connection."),
+  requestParams: requestParamsSchema
+    .optional()
+    .describe("Extra JSON fields merged into this connection's request body."),
 });
 
 export type ProviderEntry = z.infer<typeof providerEntrySchema>;
@@ -439,6 +454,14 @@ const settingsObjectSchema = z.object({
   // websearch have their own transports). Names/values are validated at load,
   // so a malformed header is a config error rather than a first-request crash.
   headers: httpHeadersSchema.optional(),
+  // Extra JSON fields merged into EVERY model request body as the global
+  // default — gateway extensions the wire SDKs don't model (`enable_thinking`,
+  // `extra_body`, `user`, …). A provider entry's own `requestParams` overrides
+  // these by name for that connection. The merge is shallow and no field is
+  // reserved (matching `headers`), so an entry here can even override `model`
+  // or `max_tokens`; the values ride the request body of both transports.
+  // Applies to the model endpoint only.
+  requestParams: requestParamsSchema.optional(),
   sessionDir: z.string().min(1).optional(),
   // UI / response language. "auto" (the default) follows the current system
   // locale (resolved from $LANG / $LC_ALL / $LANGUAGE, see resolveLanguage());
@@ -1309,6 +1332,13 @@ export function activeProviderHeaders(settings: Settings): HttpHeaders | undefin
   const providerHeaders = activeProvider(settings)?.headers;
   if (!settings.headers && !providerHeaders) return undefined;
   return { ...(settings.headers ?? {}), ...(providerHeaders ?? {}) };
+}
+
+/** Global request-body params with the active provider's params layered on top. */
+export function activeProviderRequestParams(settings: Settings): RequestParams | undefined {
+  const providerParams = activeProvider(settings)?.requestParams;
+  if (!settings.requestParams && !providerParams) return undefined;
+  return { ...(settings.requestParams ?? {}), ...(providerParams ?? {}) };
 }
 
 /**

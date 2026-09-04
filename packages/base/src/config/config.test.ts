@@ -7,6 +7,7 @@ import {
   activeProvider,
   activeProviderHeaders,
   activeProviderProfile,
+  activeProviderRequestParams,
   API_KEY_ENV,
   apiKeyFromEnv,
   resolveApiKey,
@@ -211,6 +212,21 @@ describe("model tiers", () => {
     expect(() => settingsSchema.parse({ headers: { "X-A": "v\r\nX-B: injected" } })).toThrow(
       /invalid HTTP header value/,
     );
+  });
+
+  it("keeps configured request-body params verbatim", () => {
+    const s = parseSettings({
+      requestParams: { enable_thinking: true, user: "me", nested: { a: [1, 2] } },
+    });
+    expect(s.requestParams).toEqual({
+      enable_thinking: true,
+      user: "me",
+      nested: { a: [1, 2] },
+    });
+  });
+
+  it("leaves requestParams undefined when unset", () => {
+    expect(parseSettings({}).requestParams).toBeUndefined();
   });
 
   it("accepts a `model` that names a configured tier", () => {
@@ -717,5 +733,26 @@ describe("providers array & currentProvider access", () => {
     });
     expect(s.headers).toEqual({ "X-Global": "1" });
     expect(activeProviderHeaders(s)).toEqual({ "X-Global": "1", "X-Provider": "2" });
+  });
+
+  it("merges a provider's requestParams over the global default", () => {
+    const s = parseSettings({
+      requestParams: { enable_thinking: true, user: "global" },
+      providers: [
+        {
+          name: "a",
+          profile: "deepseek",
+          baseURL: "https://a.example.com",
+          apiKey: "k",
+          requestParams: { user: "provider" },
+          models: tiers(),
+        },
+      ],
+    });
+    expect(s.requestParams).toEqual({ enable_thinking: true, user: "global" });
+    expect(activeProviderRequestParams(s)).toEqual({
+      enable_thinking: true,
+      user: "provider",
+    });
   });
 });

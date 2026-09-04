@@ -42,6 +42,7 @@ import {
   activeProvider,
   activeProviderHeaders,
   activeProviderProfile,
+  activeProviderRequestParams,
   API_KEY_ENV,
   createLogger,
   DEFAULT_CHEAP_TIER,
@@ -187,6 +188,7 @@ export async function createContext(
   const models = activeModels(settings);
   const providerProfile = activeProviderProfile(settings) ?? provider.name;
   const headers = activeProviderHeaders(settings);
+  const requestParams = activeProviderRequestParams(settings);
 
   const workspace = cliOpts.cwd ?? process.cwd();
   const noPretty = cliOpts.noPretty ?? false;
@@ -617,6 +619,7 @@ export async function createContext(
       ...(provider.transport ? { transport: provider.transport } : {}),
       ...(provider.baseURL ? { baseURL: provider.baseURL } : {}),
       ...(headers ? { headers } : {}),
+      ...(requestParams ? { requestParams } : {}),
       ...(trackTokens
         ? { onStreamProgress: pushSpinnerTokens, onStreamText: pushLiveText, onRetry }
         : {}),

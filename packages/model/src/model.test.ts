@@ -169,6 +169,34 @@ describe("createModel thinking params", () => {
     expect(params.thinking).toBeUndefined();
     expect(params.output_config).toBeUndefined();
   });
+
+  it("merges configured requestParams into the anthropic body, last", async () => {
+    mockCreate.mockResolvedValueOnce(okResponse());
+    const m = createModel({
+      apiKey: "x",
+      model: "deepseek-chat",
+      provider: deepseekProfile,
+      requestParams: { enable_thinking: true, user: "me", max_tokens: 123 },
+    });
+    await m.call({ ...baseReq, thinkingLevel: "high" });
+    const params = mockCreate.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(params.enable_thinking).toBe(true);
+    expect(params.user).toBe("me");
+    // User params win by name over the adapter's own fields.
+    expect(params.max_tokens).toBe(123);
+    // The standard fields still ride along untouched.
+    expect(params.model).toBe("deepseek-chat");
+    expect(params.thinking).toEqual({ type: "enabled" });
+  });
+
+  it("leaves the anthropic body untouched when no requestParams are configured", async () => {
+    mockCreate.mockResolvedValueOnce(okResponse());
+    const m = createModel({ apiKey: "x", model: "deepseek-chat", provider: deepseekProfile });
+    await m.call({ ...baseReq });
+    const params = mockCreate.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(params.user).toBeUndefined();
+    expect(params.max_tokens).toBe(8192);
+  });
 });
 
 function apiError(status: number): Error & { status: number } {

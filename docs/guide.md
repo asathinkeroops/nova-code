@@ -786,7 +786,7 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 
 | 字段 | 默认 | 说明 |
 |------|------|------|
-| `providers` | `[]` | **provider 连接数组**，每一项是一个 provider 连接：`name`（数组内唯一键，`currentProvider` 引用它）、`profile`（行为 profile id，`deepseek`/`moonshot`/`generic`，缺省 = `name`）、`baseURL`、`apiKey`、`transport`、`models`、可选 `headers`。**配置文件的 provider 相关字段全部在这里**，顶层不再有 |
+| `providers` | `[]` | **provider 连接数组**，每一项是一个 provider 连接：`name`（数组内唯一键，`currentProvider` 引用它）、`profile`（行为 profile id，`deepseek`/`moonshot`/`generic`，缺省 = `name`）、`baseURL`、`apiKey`、`transport`、`models`、可选 `headers` 与 `requestParams`。**配置文件的 provider 相关字段全部在这里**，顶层不再有 |
 | `currentProvider` | （无 → 取第一个） | 当前激活的 provider 连接名，引用 `providers` 数组某一项的 `name`；省略时取第一个。空数组 = 未配置（首启向导会补） |
 | `providers[].profile` | （无 → 取该项 `name`） | 驱动 thinking 参数、错误翻译、重试策略的 **provider profile**（供应商适配）：`deepseek`（effort 旋钮 + 错误翻译 + 状态码重试）/ `moonshot` / `generic`（无供应商专属行为，但会重试 408/409/429/5xx 并遵循 `Retry-After`）。协议由 `providers[].transport: "anthropic" | "openai"` 独立选择；未知 profile id 回退到 `generic` |
 | `providers[].transport` | （无） | **传输协议**，与 `profile` 正交：`"anthropic"`（@anthropic-ai/sdk 的 Messages 格式）/ `"openai"`（OpenAI 兼容 `chat/completions`，官方 openai SDK）。省略 → 用 profile 的默认（内置 profile 均默认 anthropic）。一家供应商两个端点（DeepSeek）时用它切换，DeepSeek 适配原样保留；thinking 旋钮随协议变化（Anthropic 端点用 `output_config.effort`，OpenAI 端点用 `thinking.type` 开关 + `reasoning_effort` 三档强度） |
@@ -794,8 +794,10 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 | `providers[].models` | `{}` | 该 provider 的命名模型档位表，value 为**档位对象**，每档带自己的 `id`、`maxTokens`、`contextWindowSize`、`thinking`、`modalities`、`pricing`、可选 `description`。非空时**必须含 `lite`/`pro`/`max` 三档**（schema 强制）。默认表按 `profile` 内置在代码里、加载时层叠进来（**不写进配置文件**，见 [§3](#3-首次配置向导)）；这里只写覆盖项 |
 | `providers[].baseURL` | （无） | 该 provider 连接的模型端点 URL，格式随协议：Anthropic 兼容端点（如 DeepSeek 的 `https://api.deepseek.com/anthropic`）或 OpenAI 兼容端点根（如 DeepSeek 的 `https://api.deepseek.com`，SDK 自动拼 `/chat/completions`；`providers[].transport: "openai"` 时必须给） |
 | `providers[].headers` | （无） | 该 provider 连接附加的 HTTP 头，按头名覆盖全局 `headers`（见下） |
+| `providers[].requestParams` | （无） | 该 provider 连接附加的**请求体参数**，按字段名覆盖全局 `requestParams`（见下） |
 | `model` | `"pro"` | 当前**档位**：当前 provider 的 `models` 表中的 key（`lite`/`pro`/`max`），**永远不是裸模型 id** |
 | `headers` | （无） | 附加在**每个模型请求**上的 HTTP 头（全局默认，形如 `{"User-Agent": "nova/1.0", "X-Tenant": "acme"}`），按头名并入 SDK 的默认头；某连接的 `providers[].headers` 覆盖同名。只作用于模型端点，余额探测 / MCP / websearch 各有自己的传输层。头名按 HTTP token 校验、头值不允许 CR/LF，写错在加载配置时就报错 |
+| `requestParams` | （无） | 附加在**每个模型请求体**上的自定义 JSON 参数（全局默认，形如 `{"enable_thinking": true, "user": "me"}`）——网关/供应商的非标准扩展字段，SDK 类型里没有的字段原样并入请求体。浅合并，某连接的 `providers[].requestParams` 按字段名覆盖同名；**不保留任何字段**（可覆盖 `model`/`max_tokens` 等，与 `headers` 同一哲学）。空对象 = 不发任何扩展字段 |
 | `sessionDir` | （无→ `~/.nova/sessions`） | session 存放目录 |
 | `language` | `"auto"` | **模型回复语言**（注入 system prompt），同时也是 TUI 界面语言的默认来源；`auto` 跟随系统 locale（`$LC_ALL`/`$LANG`/`$LANGUAGE`，macOS 还读 `AppleLocale`），否则填 BCP-47 标签如 `en`/`zh-CN`。加载时 `auto` 会被解析成具体标签 |
 | `locale` | `"auto"` | **仅 TUI 静态文案**的语言覆盖（菜单/提示/状态行）；`auto` = 跟随 `language`。内置 zh-CN 与 EN，其它标签回落英文。两者可不同（中文界面 + 英文回复），见 [§5](#5-交互式界面tui) |

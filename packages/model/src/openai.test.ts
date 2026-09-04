@@ -327,6 +327,31 @@ describe("buildOpenAIRequestBody", () => {
       },
     ]);
   });
+
+  it("merges configured requestParams last, winning by name", () => {
+    const body = buildOpenAIRequestBody(
+      { ...baseReq, thinkingLevel: "high" },
+      {
+        apiKey: "k",
+        model: "m",
+        baseURL: "https://x/v1",
+        provider: thinkingProfile,
+        requestParams: { enable_thinking: false, user: "me", extra_body: { internal: true } },
+      },
+      {
+        maxTokens: 16_000,
+        thinkingParams: { enable_thinking: true, thinking_level: "high" },
+        tools: [],
+      },
+    ) as unknown as Record<string, unknown>;
+    // User params win over the profile's thinking knob and ride the body
+    // alongside the standard fields.
+    expect(body.enable_thinking).toBe(false);
+    expect(body.user).toBe("me");
+    expect(body.extra_body).toEqual({ internal: true });
+    expect(body.model).toBe("m");
+    expect(body.thinking_level).toBe("high");
+  });
 });
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -346,6 +371,24 @@ describe("createModel openai transport", () => {
       baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
       maxRetries: 0, // Nova owns the retry loop; SDK retries would double it
     });
+  });
+
+  it("sends configured requestParams in the openai body", async () => {
+    mockCreate.mockResolvedValueOnce(
+      streamOf([textChunk("hi"), doneChunk("stop")]) as unknown as Promise<never>,
+    );
+    const m = createModel({
+      apiKey: "sk-test",
+      model: "qwen3-coder-plus",
+      baseURL: "https://gw.example.com/v1",
+      provider: thinkingProfile,
+      requestParams: { user: "me", enable_thinking: false },
+    });
+    await m.call({ ...baseReq, thinkingLevel: "high" });
+    const { body } = lastCreate();
+    expect(body.user).toBe("me");
+    expect(body.enable_thinking).toBe(false);
+    expect(body.model).toBe("qwen3-coder-plus");
   });
 
   it("streams chat.completions with the framed body", async () => {
