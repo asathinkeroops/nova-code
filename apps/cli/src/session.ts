@@ -215,8 +215,8 @@ export interface SwitchSessionOptions {
    * Defaults to true.
    */
   resumed?: boolean;
-  /** Card body to show when the target session has no messages. */
-  emptyCard?: string;
+  /** Whether to show the ephemeral session-info card after a successful switch. */
+  showSessionCard?: boolean;
 }
 
 /**
@@ -305,17 +305,16 @@ export async function switchToSession(
 
   await ctx.screen.reset();
   refreshBanner(ctx);
-  const card =
-    newMessages.length === 0 && opts.emptyCard
-      ? opts.emptyCard
-      : `${newSession.id}\nlog: ${ctx.logPath}\n${newMessages.length} message(s)`;
   const sidecar = await loadDisplaySidecar(newSession.dir);
   ctx.screen.setUserDisplayOverrides(sidecar.userOverrides);
   ctx.screen.setToolDetails(sidecar.toolDetails);
-  // Restore the switched-in session's persisted cards, then push the ephemeral
-  // session-info notice (persist:false so it isn't re-recorded each switch).
+  // Restore the switched-in session's persisted cards. `/resume` also gets an
+  // ephemeral session-info notice; `/clear` opts out so a reset stays quiet.
   ctx.screen.setCards(await loadCards(newSession.dir));
-  ctx.screen.card(card, { kind: "info", title, persist: false });
+  if (opts.showSessionCard !== false) {
+    const card = `${newSession.id}\nlog: ${ctx.logPath}\n${newMessages.length} message(s)`;
+    ctx.screen.card(card, { kind: "info", title, persist: false });
+  }
   if (skipped > 0) {
     ctx.screen.card(t.resume.skippedMessages(skipped), { kind: "warn", title, persist: false });
   }

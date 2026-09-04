@@ -423,11 +423,6 @@ export const zh: DeepPartial<Catalog> = {
     usageWithName: (name: string): string => `用法：/agent ${name} <任务>`,
   },
 
-  clear: {
-    alreadyFresh: (id: string): string => `已经在全新会话 ${id} 上了`,
-    startedFresh: (id: string): string => `已启动新会话 ${id}`,
-  },
-
   cmdList: {
     reloaded: (files: number, skills: number, ms: number, tail: string): string =>
       `已重新加载 ${files} 个文件命令、${skills} 个技能，用时 ${ms}ms${tail}`,

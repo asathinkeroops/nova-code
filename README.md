@@ -183,7 +183,7 @@ DeepSeek 的内置模型梯度是 `lite` → `deepseek-v4-flash-vision-exp`（�
 | `/help` | 查看所有命令 |
 | `/model` · `/effort` | 持久切换模型档位、调整当前档位的思考等级（`auto`/`off`/`low`/`medium`/`high`/`max`） |
 | `/compact` | 压缩长历史成摘要 |
-| `/clear` · `/resume` · `/rewind` | 开新会话、恢复当前 workspace 的历史会话；回退历史时预览并恢复 Nova 的文件快照，外部改动会作为冲突保留 |
+| `/clear` · `/resume` · `/rewind` | 静默开新会话、恢复当前 workspace 的历史会话；回退历史时预览并恢复 Nova 的文件快照，外部改动会作为冲突保留 |
 | `/rename` | 给当前会话起个名字（显示在输入框边框上） |
 | `/plan` | 只读调研出实现方案，不动手 |
 | `/goal` | 设定成功条件后自动推进直到达成 |

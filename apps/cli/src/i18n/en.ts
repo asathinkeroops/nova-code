@@ -339,12 +339,6 @@ export const en = {
     usageWithName: (name: string): string => `usage: /agent ${name} <task>`,
   },
 
-  /** The `/clear` command (`commands/clear.ts`). */
-  clear: {
-    alreadyFresh: (id: string): string => `already on a fresh session ${id}`,
-    startedFresh: (id: string): string => `started fresh session ${id}`,
-  },
-
   /** The `/commands` slash-command list overlay (`commands/commands.ts`). */
   cmdList: {
     reloaded: (files: number, skills: number, ms: number, tail: string): string =>

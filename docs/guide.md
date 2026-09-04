@@ -205,7 +205,7 @@ Nova 是一个全屏 Ink/React REPL：顶部是滚动的历史区，底部是固
 | `/help` | 显示帮助；列出按来源分组（Built-in / Project / User）的命令 |
 | `/effort [<level>]` | 查看或切换 thinking 等级（`auto`/`off`/`low`/`medium`/`high`/`max`） |
 | `/model [<tier>]` | 查看或切换当前会话的**模型档位**（`lite`/`pro`/`max` 等已配置档位，仅本次会话不持久化）；只接受配置过的档位名，裸模型 id 会被拒绝；无参数弹出交互列表 |
-| `/clear` | 清空当前会话历史（session 仍保留） |
+| `/clear` | 静默清空当前会话历史（session 仍保留，不显示确认卡片） |
 | `/rename [<name>\|clear]` | 给当前 session 起个名字（显示在输入框边框上）；`clear` 清除 |
 | `/compact [focus…]` | 把历史压缩成单条摘要消息；可附带关注点提示 |
 | `/resume [<id>]` | 切换到当前 workspace 下的指定 session；不带参数则弹出当前 workspace 的列表选择 |

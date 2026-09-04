@@ -183,7 +183,7 @@ Model-callable tools cover read/write, search, execution, code intelligence, and
 | `/help` | See all commands |
 | `/model` · `/effort` | Persist the active model tier and its thinking level (`auto`/`off`/`low`/`medium`/`high`/`max`) |
 | `/compact` | Summarize long history |
-| `/clear` · `/resume` · `/rewind` | Start sessions or resume history from the current workspace; rewind history with a previewed file-snapshot restore while preserving external changes as conflicts |
+| `/clear` · `/resume` · `/rewind` | Silently start a fresh session, or resume history from the current workspace; rewind history with a previewed file-snapshot restore while preserving external changes as conflicts |
 | `/rename` | Give the current session a custom name (shown on the input frame) |
 | `/plan` | Investigate read-only and produce an implementation plan |
 | `/goal` | Set a success condition and auto-work toward it until met |
