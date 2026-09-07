@@ -49,7 +49,7 @@
 
 Nova 读代码、跑命令、改文件 —— 通过工具调用把任务推到完成。它是**开箱即用的成品**，不是需要自己拼装的框架：权限、工作区信任、沙箱、LSP、MCP、Skills、插件、可恢复会话都已就位，装好填 key 就能干活。
 
-模型接入由两个正交维度组成：**供应商适配（`provider`）**负责 thinking 形状、错误翻译、重试与余额探测，**传输协议（`transport`）**负责 Anthropic Messages 或 OpenAI `chat/completions` wire。当前首启向导默认接入 DeepSeek 的 OpenAI 兼容端点；同一个 DeepSeek profile 也能切到 `/anthropic`，而 Kimi / Qwen / GLM / MiniMax / 豆包等端点可通过内置 profile 或手动配置接入。整个请求管线围绕服务端自动前缀缓存设计，让重复上下文复用更多、token 花得更少。
+模型接入由两个正交维度组成：**供应商适配（`provider`）**负责 thinking 形状、错误翻译、重试与余额探测，**传输协议（`transport`）**负责 Anthropic Messages 或 OpenAI `chat/completions` wire。首启向导可直接接入 DeepSeek 或 GLM Coding Plan；同一个 DeepSeek profile 也能切到 `/anthropic`，Kimi / Qwen / MiniMax / 豆包等端点则可通过内置 profile 或手动配置接入。整个请求管线围绕服务端自动前缀缓存设计，让重复上下文复用更多、token 花得更少。
 
 <br>
 
@@ -61,14 +61,14 @@ Nova 读代码、跑命令、改文件 —— 通过工具调用把任务推到�
 
 ### ⚡ 双协议原生适配，开箱即用
 
-不用调 `cache_control`、不用翻错误码文档。装好，填 key，开干。thinking 按协议和供应商映射：DeepSeek 的 Anthropic wire 使用 `output_config.effort`，OpenAI wire 使用 `thinking.type` + `reasoning_effort`，Kimi 的 Anthropic wire 使用 `thinking.type`；HTTP 错误会翻成人话并附上充值 / 建 key 链接。DeepSeek / Qwen / GLM / MiniMax / 豆包等 `chat/completions` 端点走原生 OpenAI 传输，供应商的错误翻译与余额探针不会因换协议丢失。
+不用调 `cache_control`、不用翻错误码文档。装好，填 key，开干。thinking 按协议和供应商映射：DeepSeek 的 Anthropic wire 使用 `output_config.effort`，OpenAI wire 使用 `thinking.type` + `reasoning_effort`，Kimi 的 Anthropic wire 使用 `thinking.type`；GLM Coding Plan 保持强制思考，并把 Nova 档位映射到 `low` / `high` / `max`。HTTP 错误会翻成人话；GLM 还会优先识别响应体业务错误码，避免把套餐到期、额度耗尽等 429 误当作可重试限流。
 
 </td>
 <td width="50%" valign="top">
 
 ### 🎚️ 多 provider，三档阶梯
 
-内置 DeepSeek、Moonshot（Kimi，beta）和通用（`generic`）三套 provider profile，各自处理 thinking 形状、错误与重试策略（DeepSeek / Kimi 另带余额探测）；`generic` 会对 408、409、429 和 5xx 做通用退避重试，并遵循 `Retry-After`。首次配置向导提供 DeepSeek 模板和“自定义服务商”入口；后者会打印可直接填写的配置骨架。端点协议由 `transport: "anthropic" | "openai"` 独立选择，不需要为 OpenAI 兼容协议另造 profile。模型按 `lite` / `pro` / `max` 三档配置，每档独立设 id、thinking、模态、上下文窗口与定价。
+内置 DeepSeek、GLM Coding Plan、Moonshot（Kimi，beta）和通用（`generic`）四套 provider profile，各自处理 thinking 形状、错误与重试策略（DeepSeek / Kimi 另带余额探测）；`generic` 会对 408、409、429 和 5xx 做通用退避重试，并遵循 `Retry-After`。首次配置向导提供 DeepSeek、GLM Coding Plan 模板和“自定义服务商”入口；后者会打印可直接填写的配置骨架。端点协议由 `transport: "anthropic" | "openai"` 独立选择。模型按 `lite` / `pro` / `max` 三档配置，每档独立设 id、thinking、模态、上下文窗口与定价。
 
 </td>
 </tr>
@@ -131,13 +131,13 @@ echo "总结当前 diff" | nova --output-format jsonl
 nova upgrade                       # 更新到最新版本（启动时也会自动检查并提示）
 ```
 
-首次启动会先选择 DeepSeek 或“自定义服务商”。选择 DeepSeek 后询问 API key，并把一个 provider 连接（`providers: [{ "name": "deepseek", "profile": "deepseek", "transport": "openai", "baseURL": "https://api.deepseek.com", "apiKey": "<key>" }]` 与 `currentProvider: "deepseek"`）和默认档位 `pro` 写入 `~/.nova/nova.config.json`；选择自定义服务商则打印包含 `generic` profile 和 `transport` 的配置骨架。不想让 key 明文落盘时，可导出 `NOVA_API_KEY`；它优先于当前 provider 连接的 `apiKey`，向导也不会把环境变量中的 key 写回磁盘。首次进入一个工作区时还会要求确认信任，信任记录只保存在用户全局配置中。
+首次启动会先选择 DeepSeek、GLM Coding Plan 或“自定义服务商”。内置模板会询问 API key，并写入对应 provider 连接、端点与默认档位 `pro`；GLM Coding Plan 使用 `profile: "glm"`、`transport: "openai"` 和 `https://open.bigmodel.cn/api/coding/paas/v4`。选择自定义服务商则打印包含 `generic` profile 和 `transport` 的配置骨架。不想让 key 明文落盘时，可导出 `NOVA_API_KEY`；它优先于当前 provider 连接的 `apiKey`，向导也不会把环境变量中的 key 写回磁盘。首次进入一个工作区时还会要求确认信任，信任记录只保存在用户全局配置中。
 
-运行时只接受 `providers` / `currentProvider` 结构。检测到旧的顶层 `provider`、`baseURL`、`apiKey`、`models`、`transport` 时，启动会先把它们一次性迁移成 provider 连接并原子写回配置文件；后续只按新格式读取。
+运行时只接受 `providers` / `currentProvider` 结构。检测到旧的顶层 `provider`、`baseURL`、`apiKey`、`models`、`transport` 时，启动会先把它们一次性迁移成 provider 连接并原子写回配置文件；后续只按新格式读取。配置多个连接后，可用 `/connect` 交互选择，或用 `/connect <name>` 按 `providers[].name` 精确切换；选择会持久化到 `currentProvider`。
 
 Headless 模式不会运行交互向导；当前 provider 缺少 API key、解析不到模型表，或缺少协议所需的 `baseURL` 时会直接报错。请先交互启动一次完成配置，或手动补齐 `providers` / `currentProvider`。
 
-DeepSeek 的内置模型梯度是 `lite` → `deepseek-v4-flash-vision-exp`（支持图片输入），`pro` / `max` → `deepseek-v4-pro`，三档分别使用不同 thinking 深度。**默认模型表按 provider 内置在代码里，不写进配置文件**；你的配置只保存覆盖项，因此升级即可获得新的模型 id、价格和上下文窗口。`/model` 持久切换档位，`--model` 只覆盖本次启动；界面与回复语言分别由 `settings.locale`（TUI，内置 zh-CN / EN）和 `settings.language`（模型回复，默认跟随系统 locale）控制。更多 provider 与完整配置见[使用手册](docs/guide.md)。
+DeepSeek 的内置模型梯度是 `lite` → `deepseek-v4-flash-vision-exp`（支持图片输入），`pro` / `max` → `deepseek-v4-pro`；GLM Coding Plan 是 `lite` → `glm-5.3-flash`（多模态），`pro` / `max` → `glm-5.3`（文本），均为 1M 上下文、128K 最大输出，并按档位使用 `low` / `high` / `max` 思考强度。**默认模型表按 provider 内置在代码里，不写进配置文件**；你的配置只保存覆盖项，因此升级即可获得新的模型 id、价格和上下文窗口。`/model` 持久切换档位，`--model` 只覆盖本次启动；界面与回复语言分别由 `settings.locale`（TUI，内置 zh-CN / EN）和 `settings.language`（模型回复，默认跟随系统 locale）控制。更多 provider 与完整配置见[使用手册](docs/guide.md)。
 
 ### 📦 更多子命令
 
@@ -181,6 +181,7 @@ DeepSeek 的内置模型梯度是 `lite` → `deepseek-v4-flash-vision-exp`（�
 | 命令 | 能力 |
 | --- | --- |
 | `/help` | 查看所有命令 |
+| `/connect` | 查看并持久切换已配置的 provider 连接；`/connect <name>` 只接受精确的 `providers[].name` |
 | `/model` · `/effort` | 持久切换模型档位、调整当前档位的思考等级（`auto`/`off`/`low`/`medium`/`high`/`max`） |
 | `/compact` | 压缩长历史成摘要 |
 | `/clear` · `/resume` · `/rewind` | 静默开新会话、恢复当前 workspace 的历史会话；回退历史时预览并恢复 Nova 的文件快照，外部改动会作为冲突保留 |

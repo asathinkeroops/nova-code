@@ -49,7 +49,7 @@
 
 Nova reads code, runs commands, edits files — and drives your task to done through tool use. It's a **finished product**, not a kit you assemble yourself: permissions, workspace trust, sandbox, LSP, MCP, Skills, plugins, and resumable sessions are all in place — install, drop in a key, get to work.
 
-Model integration has two orthogonal dimensions: a **provider profile** handles thinking shape, error translation, retries, and balance probes, while the **transport** chooses the Anthropic Messages or OpenAI `chat/completions` wire. First-run setup currently connects DeepSeek's OpenAI-compatible endpoint by default; the same DeepSeek profile can switch to `/anthropic`, while Kimi, Qwen, GLM, MiniMax, Doubao, and other endpoints can be connected through built-in provider profiles or manual configuration. The whole request pipeline is designed around server-side automatic prefix caching, maximizing reuse of repeated context to reduce token cost.
+Model integration has two orthogonal dimensions: a **provider profile** handles thinking shape, error translation, retries, and balance probes, while the **transport** chooses the Anthropic Messages or OpenAI `chat/completions` wire. First-run setup can connect DeepSeek or GLM Coding Plan directly; the same DeepSeek profile can switch to `/anthropic`, while Kimi, Qwen, MiniMax, Doubao, and other endpoints can be connected through built-in provider profiles or manual configuration. The whole request pipeline is designed around server-side automatic prefix caching, maximizing reuse of repeated context to reduce token cost.
 
 <br>
 
@@ -61,14 +61,14 @@ Model integration has two orthogonal dimensions: a **provider profile** handles 
 
 ### ⚡ Native dual-protocol support, ready to run
 
-No `cache_control` to tweak, no error-code docs to dig through. Install, drop in your key, go. Thinking is mapped per vendor and wire: DeepSeek uses `output_config.effort` on the Anthropic wire and `thinking.type` + `reasoning_effort` on the OpenAI wire; Kimi uses `thinking.type` on its Anthropic wire. HTTP failures become plain-language guidance with top-up / new-key links. DeepSeek, Qwen, GLM, MiniMax, Doubao, and other `chat/completions` endpoints use the native OpenAI transport without losing provider-specific error translation or balance probes.
+No `cache_control` to tweak, no error-code docs to dig through. Install, drop in your key, go. Thinking is mapped per vendor and wire: DeepSeek uses `output_config.effort` on the Anthropic wire and `thinking.type` + `reasoning_effort` on the OpenAI wire; Kimi uses `thinking.type` on its Anthropic wire; GLM Coding Plan keeps mandatory thinking enabled and maps Nova's levels to `low` / `high` / `max`. HTTP failures become plain-language guidance; GLM business codes take precedence so expired plans and exhausted quotas are not mistaken for retryable HTTP 429 rate limits.
 
 </td>
 <td width="50%" valign="top">
 
 ### 🎚️ Multi-provider, three-tier ladder
 
-Three provider profiles are built in — DeepSeek, Moonshot (Kimi, beta), and generic (`generic`) — each handling its own thinking shape, errors, and retry policy (DeepSeek and Kimi also probe account balance); `generic` applies standard backoff retries to HTTP 408, 409, 429, and 5xx responses and honors `Retry-After`. First-run setup offers the DeepSeek template and a Custom provider entry that prints a ready-to-fill configuration skeleton. The endpoint protocol is selected independently with `transport: "anthropic" | "openai"`, so an OpenAI-compatible wire does not require a separate profile. Models use `lite` / `pro` / `max` tiers, each with its own id, thinking, modalities, context window, and pricing.
+Four provider profiles are built in — DeepSeek, GLM Coding Plan, Moonshot (Kimi, beta), and generic (`generic`) — each handling its own thinking shape, errors, and retry policy (DeepSeek and Kimi also probe account balance); `generic` applies standard backoff retries to HTTP 408, 409, 429, and 5xx responses and honors `Retry-After`. First-run setup offers DeepSeek and GLM Coding Plan templates plus a Custom provider entry that prints a ready-to-fill configuration skeleton. The endpoint protocol is selected independently with `transport: "anthropic" | "openai"`. Models use `lite` / `pro` / `max` tiers, each with its own id, thinking, modalities, context window, and pricing.
 
 </td>
 </tr>
@@ -131,13 +131,13 @@ echo "summarize the current diff" | nova --output-format jsonl
 nova upgrade                       # update to the latest version (also auto-checked at startup)
 ```
 
-First launch asks you to choose DeepSeek or Custom provider. DeepSeek then asks for an API key and writes a provider connection (`providers: [{ "name": "deepseek", "profile": "deepseek", "transport": "openai", "baseURL": "https://api.deepseek.com", "apiKey": "<key>" }]` with `currentProvider: "deepseek"`) and the default `pro` tier to `~/.nova/nova.config.json`; Custom provider prints a configuration skeleton containing the `generic` profile and `transport`. To keep the key out of that plaintext file, export `NOVA_API_KEY`; it overrides the current provider's `apiKey`, and setup never copies an environment key back to disk. The first time Nova enters a workspace, it also asks you to trust it; the trust record lives only in the user-level config.
+First launch asks you to choose DeepSeek, GLM Coding Plan, or Custom provider. A built-in template asks for an API key and writes its provider connection, endpoint, and the default `pro` tier; GLM Coding Plan uses `profile: "glm"`, `transport: "openai"`, and `https://open.bigmodel.cn/api/coding/paas/v4`. Custom provider prints a configuration skeleton containing the `generic` profile and `transport`. To keep the key out of that plaintext file, export `NOVA_API_KEY`; it overrides the current provider's `apiKey`, and setup never copies an environment key back to disk. The first time Nova enters a workspace, it also asks you to trust it; the trust record lives only in the user-level config.
 
-Runtime settings only use the `providers` / `currentProvider` shape. When startup finds the former top-level `provider`, `baseURL`, `apiKey`, `models`, or `transport` fields, it performs a one-time atomic migration into a provider connection and writes the new shape back before parsing it.
+Runtime settings only use the `providers` / `currentProvider` shape. When startup finds the former top-level `provider`, `baseURL`, `apiKey`, `models`, or `transport` fields, it performs a one-time atomic migration into a provider connection and writes the new shape back before parsing it. With multiple connections configured, use `/connect` to pick one or `/connect <name>` for an exact `providers[].name` match; the choice persists in `currentProvider`.
 
 Headless mode does not run the interactive setup flow. If the current provider has no effective API key or model table, or lacks the `baseURL` required by its transport/profile, Nova exits with a configuration error; run it interactively once or complete `providers` / `currentProvider` manually first.
 
-DeepSeek's built-in ladder is `lite` → `deepseek-v4-flash-vision-exp` (image input), and `pro` / `max` → `deepseek-v4-pro`, with a different thinking depth on each tier. **Provider defaults are built into the code and never written to the config file**; the file carries only your overrides, so upgrades can deliver new model ids, prices, and context windows. `/model` persists the selected tier, while `--model` only overrides the current launch. `settings.locale` controls TUI text (bundled zh-CN / EN), while `settings.language` controls model replies and defaults to the system locale. See the [Chinese user guide](docs/guide.md) for more providers and the full configuration reference.
+DeepSeek's built-in ladder is `lite` → `deepseek-v4-flash-vision-exp` (image input), and `pro` / `max` → `deepseek-v4-pro`. GLM Coding Plan maps `lite` to multimodal `glm-5.3-flash` and `pro` / `max` to text-only `glm-5.3`; every tier has a 1M context window, a 128K maximum output, and `low` / `high` / `max` thinking respectively. **Provider defaults are built into the code and never written to the config file**; the file carries only your overrides, so upgrades can deliver new model ids, prices, and context windows. `/model` persists the selected tier, while `--model` only overrides the current launch. `settings.locale` controls TUI text (bundled zh-CN / EN), while `settings.language` controls model replies and defaults to the system locale. See the [Chinese user guide](docs/guide.md) for more providers and the full configuration reference.
 
 ### 📦 More subcommands
 
@@ -181,6 +181,7 @@ Model-callable tools cover read/write, search, execution, code intelligence, and
 | Command | Capability |
 | --- | --- |
 | `/help` | See all commands |
+| `/connect` | View and persistently switch configured provider connections; `/connect <name>` requires an exact `providers[].name` |
 | `/model` · `/effort` | Persist the active model tier and its thinking level (`auto`/`off`/`low`/`medium`/`high`/`max`) |
 | `/compact` | Summarize long history |
 | `/clear` · `/resume` · `/rewind` | Silently start a fresh session, or resume history from the current workspace; rewind history with a previewed file-snapshot restore while preserving external changes as conflicts |
