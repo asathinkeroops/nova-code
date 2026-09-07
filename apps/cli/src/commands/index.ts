@@ -1,6 +1,7 @@
 export { handleAgent } from "./agent.js";
 export { handleAgents } from "./agents.js";
 export { handleClear } from "./clear.js";
+export { handleConnect } from "./connect.js";
 export { handleCommands } from "./commands.js";
 export { handleCompact } from "./compact.js";
 export { handleContext } from "./context.js";

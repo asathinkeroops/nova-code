@@ -252,6 +252,34 @@ describe("assembleSession", () => {
       await subAgentTool!.run({ description: "d", prompt: "p", type: "plan" }, { cwd: dir });
       expect(builds).toEqual(["same"]);
     });
+
+    it("rebuilds a cached id when the host's live connection key changes", async () => {
+      const builds: string[] = [];
+      let connection = "alpha";
+      const { subAgentTool } = assembleSession(
+        makeOptions(recordingModel([]), dir, {
+          subagent: subagentBlock(dir, {
+            buildModel: (id) => {
+              builds.push(`${connection}:${id}`);
+              return {
+                async call() {
+                  return textTurn("done");
+                },
+              };
+            },
+            getModelCacheKey: (id) => `${connection}:${id}`,
+            defaultModels: { explore: "pro" },
+          }),
+        }),
+      );
+
+      await subAgentTool!.run({ description: "d", prompt: "p", type: "explore" }, { cwd: dir });
+      await subAgentTool!.run({ description: "d", prompt: "p", type: "explore" }, { cwd: dir });
+      connection = "beta";
+      await subAgentTool!.run({ description: "d", prompt: "p", type: "explore" }, { cwd: dir });
+
+      expect(builds).toEqual(["alpha:pro", "beta:pro"]);
+    });
   });
 
   it("withholds excluded tools from the child", async () => {

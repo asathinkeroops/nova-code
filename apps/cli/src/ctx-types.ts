@@ -54,7 +54,7 @@ export interface CliContext {
   /** Per-session file snapshotter backing `/rewind`. Rebuilt on /resume. */
   snapshots: SnapshotStore;
 
-  // ===== Mutable: changes on /effort, /predict =====
+  // ===== Mutable: changes on /connect, /model, /effort, /predict =====
   settings: Settings;
   model: ModelClient;
   /**
@@ -149,9 +149,11 @@ export interface CliContext {
    */
   reloadMemory: () => Promise<MemoryBundle>;
 
+  /** Effective API key for the active provider connection; changes on `/connect`. */
+  apiKey: string;
+
   // ===== Read-only after init =====
   readonly agent: Agent;
-  readonly apiKey: string;
   readonly workspace: string;
   /**
    * Pre-rendered `<available-skills>` block. Not injected on its own — it is
@@ -230,7 +232,7 @@ export interface CliContext {
   /** Model-facing view (`view`) plus the boundary-appending summarizer (`compact`). */
   readonly compactor: Compactor;
 
-  // ===== Factory closures (close over apiKey / settings, etc.) =====
+  // ===== Factory closures (read the active provider from settings per call) =====
   readonly buildLogger: (destination: string) => Logger;
   readonly buildModel: (id: string, trackTokens?: boolean) => ModelClient;
 }

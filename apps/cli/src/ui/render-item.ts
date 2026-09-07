@@ -23,7 +23,7 @@ export interface BannerProps {
   contextWindowSize?: number;
   /** Thinking level label (e.g. "high", "max"), shown on the model line. */
   thinkingLabel?: string;
-  /** Active provider id (e.g. "deepseek"), shown last on the model line. */
+  /** Active provider connection name (e.g. "deepseek"), shown last on the model line. */
   provider?: string;
 }
 
@@ -539,9 +539,7 @@ function appendAssistantItems(
         const plan = planToRender(block, blocks);
         if (plan === null) continue;
         const key = `plan:${mi}:${i}`;
-        push(
-          intern(ctx, key, [block], () => ({ kind: "assistant-text", key, text: plan })),
-        );
+        push(intern(ctx, key, [block], () => ({ kind: "assistant-text", key, text: plan })));
         continue;
       }
       if (HIDDEN_TOOLS.has(block.name)) continue;

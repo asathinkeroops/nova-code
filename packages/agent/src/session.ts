@@ -71,12 +71,19 @@ export interface SubAgentSessionOptions {
   getSettings: () => AgentSettingsSlice;
 
   /**
-   * Builds a client for a resolved model id. Should return a NON-tracked client:
+   * Builds a client for the selected model name/id. Should return a NON-tracked client:
    * several sub-agents run concurrently and each reports its own running token
    * total, so a tracked one makes the host's live counter flicker between them.
-   * Called once per distinct id — {@link assembleSession} caches by id.
+   * Called once per distinct cache key — {@link assembleSession} caches by id
+   * unless {@link getModelCacheKey} supplies a wider runtime identity.
    */
   buildModel: (id: string) => ModelClient;
+  /**
+   * Optional live cache key for an id. Hosts whose model endpoint can change at
+   * runtime (for example `/connect`) must include that connection identity so
+   * the same `pro` alias cannot reuse a client from the previous endpoint.
+   */
+  getModelCacheKey?: (id: string) => string;
   /**
    * The model id a sub-agent falls back to — the host's active main model, so
    * children follow a `/model` switch when nothing more specific is set.
@@ -137,7 +144,8 @@ const NEVER_COMPACT: Compactor = {
  * everything, so a built-in default is adjustable one agent at a time without
  * disturbing the others.
  *
- * Clients are cached by RESOLVED id, so agents landing on the same id share one.
+ * Clients are cached by the host-provided cache key, falling back to the
+ * selected id, so agents landing on the same live connection/id share one.
  */
 function subAgentModelResolver(
   opts: SubAgentSessionOptions,
@@ -149,10 +157,11 @@ function subAgentModelResolver(
       opts.defaultModels?.[def.name] ??
       def.model ??
       opts.getFallbackModelId();
-    let model = cache.get(id);
+    const cacheKey = opts.getModelCacheKey?.(id) ?? id;
+    let model = cache.get(cacheKey);
     if (!model) {
       model = opts.buildModel(id);
-      cache.set(id, model);
+      cache.set(cacheKey, model);
     }
     return model;
   };

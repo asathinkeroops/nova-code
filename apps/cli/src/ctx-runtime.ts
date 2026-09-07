@@ -35,7 +35,10 @@ export function refreshBanner(ctx: CliContext): void {
     sessionId: ctx.session.id,
     contextWindowSize,
     thinkingLabel: thinkingLevelLabel(ctx),
-    provider: activeProviderProfile(ctx.settings) ?? "generic",
+    // Show the connection name, not only its behavior profile: two configured
+    // endpoints may share `generic` (or the same vendor profile), and /connect
+    // must leave the active connection unambiguous in the banner.
+    provider: activeProvider(ctx.settings)?.name ?? "generic",
   });
   ctx.screen.setStatusMeta({
     sessionStartedAt: ctx.session.createdAt.getTime(),

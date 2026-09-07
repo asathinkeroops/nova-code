@@ -4,6 +4,7 @@ import {
   handleAgent,
   handleAgents,
   handleClear,
+  handleConnect,
   handleCommands,
   handleCompact,
   handleContext,
@@ -66,10 +67,20 @@ export function registerBuiltinSlashCommands(ctx: CliContext): void {
   ctx.registry.register({
     name: "model",
     description: t.commands.model,
-    argHint: "[<name>|<id>]",
+    argHint: "[<tier>]",
     source: { kind: "builtin" },
     run: async (_c, args) => {
       await handleModel(ctx, args.trim());
+      return handled;
+    },
+  });
+  ctx.registry.register({
+    name: "connect",
+    description: t.commands.connect,
+    argHint: "[<provider-name>]",
+    source: { kind: "builtin" },
+    run: async (_c, args) => {
+      await handleConnect(ctx, args.trim());
       return handled;
     },
   });

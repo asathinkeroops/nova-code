@@ -59,11 +59,7 @@ describe("startWorkingSpinner", () => {
     });
     startWorkingSpinner(ctx);
     expect(startSpinner).toHaveBeenCalledOnce();
-    expect(startSpinner).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.anything(),
-      1_000,
-    );
+    expect(startSpinner).toHaveBeenCalledWith(expect.anything(), expect.anything(), 1_000);
     expect(ctx.spinner).not.toBeNull();
   });
 
@@ -192,6 +188,7 @@ describe("refreshBanner", () => {
     expect(banner.cwd).toBe(workspace);
     expect(banner.sessionId).toBe("sess-1");
     expect(banner.thinkingLabel).toBe("high");
+    expect(banner.provider).toBe("test");
 
     expect(setStatusMeta).toHaveBeenCalledOnce();
     const meta = setStatusMeta.mock.calls[0]![0] as Record<string, unknown>;

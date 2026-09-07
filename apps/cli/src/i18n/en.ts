@@ -27,6 +27,7 @@ export const en = {
     effort: "show or change the extended-thinking level",
     loop: "re-run a prompt or slash command on a fixed interval",
     model: "show or switch the active model tier",
+    connect: "show or switch the active provider connection",
     clear: "start a fresh session (the current one stays resumable)",
     compact: "summarize history into a single message",
     rename: "give this session a custom name (shown on the input frame)",
@@ -217,6 +218,29 @@ export const en = {
     configuredTiers: "configured tiers:",
     currentModel: "current model:",
     noTiers: 'no tiers configured — add a "models" map to nova.config.json',
+  },
+
+  /** The `/connect` provider-connection picker + result cards (`commands/connect.ts`). */
+  connect: {
+    navFooter: "↑↓ navigate · enter confirm · esc cancel",
+    selectProvider: "select provider connection",
+    connectedTo: "connected to",
+    alreadyConnected: "already connected to",
+    unknownProvider: (name: string): string => `unknown provider connection "${name}"`,
+    configuredProviders: (names: string): string => `configured provider connections: ${names}`,
+    noProviders: 'no provider connections configured — add a "providers" array to nova.config.json',
+    missingApiKey: (name: string): string =>
+      `provider connection "${name}" has no API key (and NOVA_API_KEY is not set)`,
+    missingModels: (name: string): string =>
+      `provider connection "${name}" has no configured model tiers`,
+    missingTiers: (name: string, tiers: string): string =>
+      `provider connection "${name}" is missing required model tiers: ${tiers}`,
+    missingBaseUrl: (name: string): string =>
+      `provider connection "${name}" is missing the baseURL required by its transport/profile`,
+    initializeFailed: (name: string, message: string): string =>
+      `could not initialize provider connection "${name}": ${message}`,
+    saveFailed: (message: string): string => `failed to save provider connection: ${message}`,
+    modelFallback: (model: string): string => ` · model tier changed to ${model}`,
   },
 
   /** The `/sandbox` status/result cards + spinner (`commands/sandbox.ts`). */

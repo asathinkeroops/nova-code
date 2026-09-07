@@ -20,6 +20,7 @@ export const zh: DeepPartial<Catalog> = {
     effort: "查看或修改扩展思考等级",
     loop: "按固定间隔重复运行一段提示词或斜杠命令",
     model: "查看或切换当前模型档位",
+    connect: "查看或切换当前 provider 连接",
     clear: "开启一个全新会话（当前会话仍可恢复）",
     compact: "将历史压缩为一条消息",
     rename: "为当前会话取一个自定义名称（显示在输入框边框上）",
@@ -175,6 +176,27 @@ export const zh: DeepPartial<Catalog> = {
     configuredTiers: "已配置的档位：",
     currentModel: "当前模型：",
     noTiers: '尚未配置档位 —— 在 nova.config.json 中添加 "models" 映射',
+  },
+
+  connect: {
+    navFooter: "↑↓ 导航 · enter 确认 · esc 取消",
+    selectProvider: "选择 provider 连接",
+    connectedTo: "已连接到",
+    alreadyConnected: "当前已经连接到",
+    unknownProvider: (name: string): string => `未知的 provider 连接 "${name}"`,
+    configuredProviders: (names: string): string => `已配置的 provider 连接：${names}`,
+    noProviders: '尚未配置 provider 连接 —— 在 nova.config.json 中添加 "providers" 数组',
+    missingApiKey: (name: string): string =>
+      `provider 连接 "${name}" 缺少 API key（且未设置 NOVA_API_KEY）`,
+    missingModels: (name: string): string => `provider 连接 "${name}" 没有配置模型档位`,
+    missingTiers: (name: string, tiers: string): string =>
+      `provider 连接 "${name}" 缺少必需的模型档位：${tiers}`,
+    missingBaseUrl: (name: string): string =>
+      `provider 连接 "${name}" 缺少其传输协议/profile 所需的 baseURL`,
+    initializeFailed: (name: string, message: string): string =>
+      `无法初始化 provider 连接 "${name}"：${message}`,
+    saveFailed: (message: string): string => `保存 provider 连接失败：${message}`,
+    modelFallback: (model: string): string => ` · 模型档位已切换为 ${model}`,
   },
 
   sandbox: {

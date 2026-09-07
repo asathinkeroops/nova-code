@@ -20,10 +20,7 @@ import {
   type ToolPromptSection,
   type ToolUseBlock,
 } from "@nova/core";
-import {
-  createModel,
-  resolveProfile,
-} from "@nova/model";
+import { createModel, resolveProfile } from "@nova/model";
 import { SlashRegistry } from "./slash-registry.js";
 import { LspManager, resolveServers } from "@nova/lsp";
 import {
@@ -185,10 +182,6 @@ export async function createContext(
   if (!apiKey) {
     throw new Error(`active provider apiKey is not set (nor in $${API_KEY_ENV})`);
   }
-  const models = activeModels(settings);
-  const providerProfile = activeProviderProfile(settings) ?? provider.name;
-  const headers = activeProviderHeaders(settings);
-  const requestParams = activeProviderRequestParams(settings);
 
   const workspace = cliOpts.cwd ?? process.cwd();
   const noPretty = cliOpts.noPretty ?? false;
@@ -608,18 +601,33 @@ export async function createContext(
   // ctx.model, predictModel, and the sub-agent model cache — gets alias support
   // for free, and the resolved id is what reaches cost/pricing matching.
   const buildModel = (name: string, trackTokens = true): ModelClient => {
+    // Resolve the connection on every construction. `/connect` mutates
+    // `currentProvider`, then rebuilds the main/predict clients through this
+    // factory; `/model`, sub-agents, compaction and classifiers consequently
+    // follow the new endpoint, key, transport and profile too.
+    const currentProvider = activeProvider(settings);
+    if (!currentProvider) {
+      throw new Error("currentProvider does not name a configured provider");
+    }
+    const currentApiKey = resolveApiKey(settings);
+    if (!currentApiKey) {
+      throw new Error(`active provider apiKey is not set (nor in $${API_KEY_ENV})`);
+    }
+    const currentProfile = activeProviderProfile(settings) ?? currentProvider.name;
+    const currentHeaders = activeProviderHeaders(settings);
+    const currentRequestParams = activeProviderRequestParams(settings);
     const model = resolveModelId(settings, name);
     return createModel({
-      apiKey,
+      apiKey: currentApiKey,
       model,
-      provider: resolveProfile(providerProfile),
+      provider: resolveProfile(currentProfile),
       // Explicit wire-protocol override; omitted → the profile's default
       // transport. Lets e.g. `profile: "deepseek"` run against DeepSeek's
       // OpenAI-compatible endpoint (baseURL without the /anthropic suffix).
-      ...(provider.transport ? { transport: provider.transport } : {}),
-      ...(provider.baseURL ? { baseURL: provider.baseURL } : {}),
-      ...(headers ? { headers } : {}),
-      ...(requestParams ? { requestParams } : {}),
+      ...(currentProvider.transport ? { transport: currentProvider.transport } : {}),
+      ...(currentProvider.baseURL ? { baseURL: currentProvider.baseURL } : {}),
+      ...(currentHeaders ? { headers: currentHeaders } : {}),
+      ...(currentRequestParams ? { requestParams: currentRequestParams } : {}),
       ...(trackTokens
         ? { onStreamProgress: pushSpinnerTokens, onStreamText: pushLiveText, onRetry }
         : {}),
@@ -905,7 +913,7 @@ export async function createContext(
       // classifier never pollutes the turn's token counters.
       const classifierModel =
         autoCfg.model ??
-        (models[DEFAULT_CHEAP_TIER] ? DEFAULT_CHEAP_TIER : ctx.settings.model);
+        (activeModels(ctx.settings)[DEFAULT_CHEAP_TIER] ? DEFAULT_CHEAP_TIER : ctx.settings.model);
       const verdict = await classifyCommandRisk(command, {
         model: autoCfg.llmClassifier ? ctx.buildModel(classifierModel, false) : undefined,
         timeoutMs: autoCfg.classifierTimeoutMs,
@@ -950,7 +958,8 @@ export async function createContext(
     // Both read live so the threshold follows a /model switch to another tier
     // (different window) or another provider (different tokenizer ratios).
     getContextWindowSize: () => resolveContextWindowSize(ctx.settings, ctx.settings.model),
-    getTokenEstimate: () => resolveProfile(providerProfile).tokenEstimate,
+    getTokenEstimate: () =>
+      resolveProfile(activeProviderProfile(ctx.settings) ?? "generic").tokenEstimate,
     getOverheadTokens: () => fixedOverheadTotal(measureCtxOverhead(ctx)),
     onPreCompact: async ({ before }) => {
       const r = await ctx.userHooks.firePreCompact({
@@ -1028,6 +1037,10 @@ export async function createContext(
       // would make the parent spinner's "↓ ~N tok" flicker between agents and
       // read as garbage — hence trackTokens=false.
       buildModel: (id) => buildModel(id, false),
+      // The agent package caches sub-agent clients. Include the live connection
+      // name so `/connect` cannot reuse a `pro`/`max` client built for the prior
+      // provider; names are unique within `providers[]`.
+      getModelCacheKey: (id) => `${activeProvider(ctx.settings)?.name ?? ""}\u0000${id}`,
       defaultModels: DEFAULT_SUBAGENT_MODELS,
       getModelOverrides: () => ctx.settings.subagent.model,
       // Sub-agents follow /model when nothing more specific is configured.
