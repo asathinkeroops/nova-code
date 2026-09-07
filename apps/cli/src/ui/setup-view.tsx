@@ -24,7 +24,9 @@ export interface SetupState {
 
 /** Pick the branding art for the API-key prompt from the chosen provider. */
 function ProviderArt({ provider }: { provider?: string }): React.ReactElement | null {
-  return provider === "moonshot" ? <MoonshotArt /> : <DeepSeekArt />;
+  if (provider === "deepseek") return <DeepSeekArt />;
+  if (provider === "moonshot") return <MoonshotArt />;
+  return null;
 }
 
 export function SetupView({ state }: { state: SetupState }): React.ReactElement {

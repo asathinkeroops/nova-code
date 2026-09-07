@@ -1,7 +1,4 @@
-import type {
-  ModelTransport,
-  ProviderId,
-} from "@nova/model";
+import type { ModelTransport, ProviderId } from "@nova/model";
 import { DEFAULT_GOAL, DEFAULT_MODEL_TIER } from "@nova/base";
 
 /**
@@ -69,8 +66,8 @@ export interface ProviderTemplate {
 }
 
 /**
- * The built-in templates, in picker order. Only DeepSeek today; the registry
- * exists so more presets are a one-line append rather than a control-flow edit.
+ * The built-in templates, in picker order. The registry keeps setup data out of
+ * the control flow; hidden entries stay usable from manually-authored config.
  */
 export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
   {
@@ -93,6 +90,18 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
       goal: { ...DEFAULT_GOAL, evalModel: "lite" },
     },
     apiKeyHint: "DeepSeek API key (input is masked)",
+  },
+  {
+    id: "glm",
+    label: "GLM Coding Plan",
+    settings: {
+      provider: "glm",
+      transport: "openai",
+      baseURL: "https://open.bigmodel.cn/api/coding/paas/v4",
+      model: DEFAULT_MODEL_TIER,
+      goal: { ...DEFAULT_GOAL, evalModel: "lite" },
+    },
+    apiKeyHint: "GLM Coding Plan API key (input is masked)",
   },
   {
     id: "moonshot",

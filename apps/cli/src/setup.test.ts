@@ -108,8 +108,45 @@ describe("ensureSettings", () => {
           badge: (choice: { kind: string }) => string | null;
         }
       | undefined;
-    expect(picker?.items.map((choice) => choice.kind)).toEqual(["template", "custom"]);
+    expect(picker?.items.map((choice) => choice.kind)).toEqual(["template", "template", "custom"]);
     expect(picker?.badge(picker.items[0] as { kind: string })).toBeNull();
+  });
+
+  it("writes the built-in GLM Coding Plan connection and resolves its model ladder", async () => {
+    const pickHorizontal = vi
+      .fn()
+      .mockImplementation(({ items }: { items: unknown[] }) => items[1]);
+    const setSetupPrompt = vi.fn();
+    const screen = {
+      beginSetup: vi.fn(),
+      pickHorizontal,
+      setSetupPrompt,
+      promptInput: vi.fn().mockResolvedValue("glm-plan-key"),
+      pushSetupEntry: vi.fn(),
+      endSetup: vi.fn(),
+    } as unknown as Screen;
+    const settings = parseSettings({});
+
+    await ensureSettings(settings, screen, configPath);
+
+    const saved = JSON.parse(await readFile(configPath, "utf8")) as {
+      currentProvider: string;
+      providers: Array<Record<string, unknown>>;
+    };
+    expect(saved.currentProvider).toBe("glm");
+    expect(saved.providers).toEqual([
+      {
+        name: "glm",
+        profile: "glm",
+        baseURL: "https://open.bigmodel.cn/api/coding/paas/v4",
+        transport: "openai",
+        apiKey: "glm-plan-key",
+        models: {},
+      },
+    ]);
+    expect(activeModels(settings).lite?.id).toBe("glm-5.3-flash");
+    expect(activeModels(settings).pro?.id).toBe("glm-5.3");
+    expect(setSetupPrompt).toHaveBeenCalledWith(expect.objectContaining({ provider: "glm" }));
   });
 
   it("repairs a missing endpoint without asking for the existing provider key again", async () => {
@@ -153,12 +190,12 @@ describe("ensureSettings", () => {
 
   it("maps the Custom provider choice to a generic-profile config skeleton", async () => {
     const output: string[] = [];
-    const stdoutWrite = vi
-      .spyOn(process.stdout, "write")
-      .mockImplementation(((chunk: string | Uint8Array) => {
-        output.push(String(chunk));
-        return true;
-      }) as typeof process.stdout.write);
+    const stdoutWrite = vi.spyOn(process.stdout, "write").mockImplementation(((
+      chunk: string | Uint8Array,
+    ) => {
+      output.push(String(chunk));
+      return true;
+    }) as typeof process.stdout.write);
     const processExit = vi.spyOn(process, "exit").mockImplementation((() => {
       throw new Error("process.exit:0");
     }) as typeof process.exit);

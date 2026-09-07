@@ -54,6 +54,25 @@ describe("settingsReadiness", () => {
     expect(settingsReadiness(settings, {})).toBe("missing-base-url");
   });
 
+  it("uses GLM's built-in OpenAI transport and model table", () => {
+    const missingEndpoint = parseSettings({
+      providers: [{ name: "glm", profile: "glm", apiKey: "plan-key" }],
+    });
+    expect(settingsReadiness(missingEndpoint, {})).toBe("missing-base-url");
+
+    const ready = parseSettings({
+      providers: [
+        {
+          name: "glm",
+          profile: "glm",
+          baseURL: "https://open.bigmodel.cn/api/coding/paas/v4",
+          apiKey: "plan-key",
+        },
+      ],
+    });
+    expect(settingsReadiness(ready, {})).toBe("ready");
+  });
+
   it("requires baseURL for DeepSeek and Moonshot on their Anthropic wires", () => {
     for (const profile of ["deepseek", "moonshot"] as const) {
       const settings = parseSettings({
