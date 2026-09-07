@@ -50,6 +50,33 @@ describe("built-in model tables", () => {
     expect(s.model).toBe("pro");
   });
 
+  it("ships the GLM Coding Plan ladder with the documented limits and modalities", () => {
+    const s = parseSettings(providerConfig("glm"));
+    expect(activeModels(s)).toMatchObject({
+      lite: {
+        id: "glm-5.3-flash",
+        maxTokens: 131_072,
+        contextWindowSize: 1_048_576,
+        thinking: "low",
+        modalities: { input: ["text", "image"] },
+      },
+      pro: {
+        id: "glm-5.3",
+        maxTokens: 131_072,
+        contextWindowSize: 1_048_576,
+        thinking: "high",
+        modalities: { input: ["text"] },
+      },
+      max: {
+        id: "glm-5.3",
+        maxTokens: 131_072,
+        contextWindowSize: 1_048_576,
+        thinking: "max",
+        modalities: { input: ["text"] },
+      },
+    });
+  });
+
   it("keeps an unconfigured (provider-less) config empty so setup still runs", () => {
     expect(activeModels(parseSettings({}))).toEqual({});
   });

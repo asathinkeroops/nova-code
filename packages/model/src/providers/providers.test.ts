@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { deepseekProfile } from "./deepseek.js";
 import { ProviderError } from "./error.js";
 import { genericProfile } from "./generic.js";
+import { glmProfile } from "./glm.js";
 import { isProviderId, PROVIDER_IDS, PROVIDERS, resolveProfile } from "./index.js";
 import { moonshotProfile } from "./moonshot.js";
 
@@ -14,12 +15,14 @@ function apiError(status: number, retryAfter?: string): Error & { status: number
 describe("resolveProfile", () => {
   it("maps a provider id to its profile", () => {
     expect(resolveProfile("deepseek")).toBe(deepseekProfile);
+    expect(resolveProfile("glm")).toBe(glmProfile);
     expect(resolveProfile("moonshot")).toBe(moonshotProfile);
     expect(resolveProfile("generic")).toBe(genericProfile);
   });
 
   it("registers the built-in profiles under their id", () => {
     expect(PROVIDERS.deepseek).toBe(deepseekProfile);
+    expect(PROVIDERS.glm).toBe(glmProfile);
     expect(PROVIDERS.moonshot).toBe(moonshotProfile);
     expect(PROVIDERS.generic).toBe(genericProfile);
   });
@@ -34,13 +37,14 @@ describe("resolveProfile", () => {
 
 describe("provider id helpers", () => {
   it("PROVIDER_IDS lists exactly the registry keys", () => {
-    expect([...PROVIDER_IDS].sort()).toEqual(["deepseek", "generic", "moonshot"]);
+    expect([...PROVIDER_IDS].sort()).toEqual(["deepseek", "generic", "glm", "moonshot"]);
     expect([...PROVIDER_IDS].sort()).toEqual(Object.keys(PROVIDERS).sort());
   });
 
   it("isProviderId narrows built-in ids and rejects the rest", () => {
     expect(isProviderId("deepseek")).toBe(true);
     expect(isProviderId("generic")).toBe(true);
+    expect(isProviderId("glm")).toBe(true);
     expect(isProviderId("other")).toBe(false);
     expect(isProviderId("deepsek")).toBe(false);
     expect(isProviderId("")).toBe(false);
@@ -53,10 +57,11 @@ describe("provider id helpers", () => {
     }
   });
 
-  it("profiles predate the transport field and default to anthropic", () => {
+  it("uses the provider's native default transport", () => {
     expect(deepseekProfile.transport).toBeUndefined();
     expect(moonshotProfile.transport).toBeUndefined();
     expect(genericProfile.transport).toBeUndefined();
+    expect(glmProfile.transport).toBe("openai");
   });
 });
 
@@ -92,7 +97,7 @@ describe("deepseekProfile.onError", () => {
     expect(d).toMatchObject({ retry: true, delayMs: 1_000 });
     // The status now rides on the translated error, not a separate decision field.
     expect((d as { error: unknown }).error).toBeInstanceOf(ProviderError);
-    expect(((d as { error: ProviderError }).error).status).toBe(503);
+    expect((d as { error: ProviderError }).error.status).toBe(503);
   });
   it("does not retry a non-retryable status, surfaces the translated error", () => {
     const d = deepseekProfile.onError(apiError(402), 1);
@@ -205,6 +210,6 @@ describe("transport is orthogonal to provider", () => {
   it("deepseek keeps DeepSeek's error translation regardless of transport", () => {
     const d = deepseekProfile.onError(apiError(503), 1);
     expect(d.retry).toBe(true);
-    expect(((d as { error: ProviderError }).error).provider).toBe("deepseek");
+    expect((d as { error: ProviderError }).error.provider).toBe("deepseek");
   });
 });

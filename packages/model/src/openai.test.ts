@@ -149,7 +149,7 @@ function doneChunk(finishReason: string): ChatCompletionChunk {
   return chunk({ choices: [choice({}, finishReason)] });
 }
 
-function usageChunk(usage: Record<string, number>): ChatCompletionChunk {
+function usageChunk(usage: Record<string, unknown>): ChatCompletionChunk {
   return chunk({ choices: [], usage: usage as unknown as ChatCompletionChunk["usage"] });
 }
 
@@ -524,6 +524,32 @@ describe("createModel openai transport", () => {
       cacheReadInputTokens: 40,
     });
     // The three buckets still sum to the reported prompt total.
+    expect(
+      res.usage!.inputTokens +
+        res.usage!.cacheReadInputTokens! +
+        (res.usage!.cacheCreationInputTokens ?? 0),
+    ).toBe(100);
+  });
+
+  it("maps GLM's standard nested cached-token usage", async () => {
+    mockCreate.mockResolvedValueOnce(
+      streamOf([
+        textChunk("ok"),
+        usageChunk({
+          prompt_tokens: 100,
+          completion_tokens: 5,
+          prompt_tokens_details: { cached_tokens: 40 },
+        }),
+        doneChunk("stop"),
+      ]),
+    );
+    const m = makeClient(thinkingProfile);
+    const res = await m.call(baseReq);
+    expect(res.usage).toEqual({
+      inputTokens: 60,
+      outputTokens: 5,
+      cacheReadInputTokens: 40,
+    });
     expect(
       res.usage!.inputTokens +
         res.usage!.cacheReadInputTokens! +

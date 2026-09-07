@@ -1,5 +1,6 @@
 import { deepseekProfile } from "./deepseek.js";
 import { genericProfile } from "./generic.js";
+import { glmProfile } from "./glm.js";
 import { moonshotProfile } from "./moonshot.js";
 import type { ProviderProfile } from "./types.js";
 
@@ -17,6 +18,7 @@ export type { ProviderErrorInfo } from "./error.js";
 /** Registry of built-in provider profiles, keyed by their stable id. */
 export const PROVIDERS = {
   deepseek: deepseekProfile,
+  glm: glmProfile,
   moonshot: moonshotProfile,
   generic: genericProfile,
 } as const satisfies Record<string, ProviderProfile>;

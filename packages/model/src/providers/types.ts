@@ -96,12 +96,14 @@ export interface ProviderProfile {
 
   /**
    * Build the thinking-knob wire params for a provider-neutral semantic level.
-   * `auto` means omit an explicit control and follow the endpoint default;
-   * `off` asks the endpoint to disable reasoning. `model` is the concrete model id
-   * the request targets, passed so a profile whose thinking wire shape depends
-   * on the model (e.g. Moonshot, where `kimi-k2.7-code` forbids `type:"disabled"`
-   * while `kimi-k2.5` forbids the `keep` field) can branch on it; profiles whose
-   * knob is model-independent (DeepSeek, generic) simply ignore it.
+   * `auto` means follow the endpoint default (normally by omitting an explicit
+   * strength); `off` asks the endpoint to disable reasoning. A profile for a
+   * mandatory-thinking model may safely degrade `off` to its lowest supported
+   * rung. `model` is the concrete model id the request targets, passed so a
+   * profile whose thinking wire shape depends on the model (e.g. Moonshot, where
+   * `kimi-k2.7-code` forbids `type:"disabled"` while `kimi-k2.5` forbids the
+   * `keep` field) can branch on it; profiles whose knob is model-independent
+   * (DeepSeek, GLM, generic) simply ignore it.
    *
    * `transport` is the EFFECTIVE transport for this request (config override
    * when set, else the profile default) — the knob's wire shape is per-protocol:

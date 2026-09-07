@@ -42,6 +42,35 @@ const DEEPSEEK_MODELS: Record<string, ModelProfile> = {
 };
 
 /**
+ * GLM Coding Plan tiers. Both GLM-5.3 variants expose a 1M context window and
+ * 128K maximum output. The Flash model is the vision-capable lite rung; pro and
+ * max share the text-only flagship id and differ by reasoning effort.
+ */
+const GLM_MODELS: Record<string, ModelProfile> = {
+  lite: {
+    id: "glm-5.3-flash",
+    maxTokens: 131_072, // 128 KiB-tokens
+    contextWindowSize: 1_048_576, // 1 MiB-tokens
+    thinking: "low",
+    modalities: { input: ["text", "image"] },
+  },
+  pro: {
+    id: "glm-5.3",
+    maxTokens: 131_072,
+    contextWindowSize: 1_048_576,
+    thinking: "high",
+    modalities: { input: ["text"] },
+  },
+  max: {
+    id: "glm-5.3",
+    maxTokens: 131_072,
+    contextWindowSize: 1_048_576,
+    thinking: "max",
+    modalities: { input: ["text"] },
+  },
+};
+
+/**
  * Moonshot (Kimi) tiers. All three rungs run 256K-context / 256K-output code
  * models. `lite` maps to `kimi-k2.5` with thinking off (fast & cheap); `pro` and
  * `max` map to the always-thinking code models `kimi-k2.7-code-highspeed` and
@@ -187,6 +216,7 @@ const MOONSHOT_MODELS_DECIMAL: Record<string, ModelProfile> = {
  */
 export const BUILTIN_PROVIDER_MODELS: Record<string, Record<string, ModelProfile>> = {
   deepseek: DEEPSEEK_MODELS,
+  glm: GLM_MODELS,
   moonshot: MOONSHOT_MODELS,
 };
 
@@ -359,9 +389,10 @@ function reduceToOverrides(
  * keyed by the entry's `profile` falling back to `name`). Returns
  * `{ entry, changed }` — `changed` is false when the entry needs no rewrite.
  */
-function reduceProviderEntryModels(
-  entry: Record<string, unknown>,
-): { entry: Record<string, unknown>; changed: boolean } {
+function reduceProviderEntryModels(entry: Record<string, unknown>): {
+  entry: Record<string, unknown>;
+  changed: boolean;
+} {
   const profile =
     typeof entry["profile"] === "string"
       ? entry["profile"].trim()

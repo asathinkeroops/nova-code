@@ -27,8 +27,8 @@ import type { StreamProgress, StreamTextDelta } from "./model.js";
  *
  *   - `delta.reasoning_content` (DeepSeek / Qwen / GLM reasoning) — absent from
  *     the SDK's `Delta` type, read via a narrow cast;
- *   - `usage.prompt_cache_hit_tokens` / `prompt_cache_miss_tokens` — absent
- *     from `CompletionUsage`, same treatment;
+ *   - legacy `usage.prompt_cache_hit_tokens` / `prompt_cache_miss_tokens`
+ *     (DeepSeek / Qwen) — absent from `CompletionUsage`, same treatment;
  *   - the per-profile thinking knob (`enable_thinking`, `thinking: { … }`) —
  *     not in `ChatCompletionCreateParams`, injected into the body verbatim.
  *
@@ -267,7 +267,7 @@ type StreamDelta = ChatCompletionChunk.Choice.Delta & {
   reasoning?: string | null;
 };
 
-/** A `usage` widened with the cache-hit extension (DeepSeek / Qwen). */
+/** A `usage` widened with the legacy cache extensions (DeepSeek / Qwen). */
 type StreamUsage = NonNullable<ChatCompletionChunk["usage"]> & {
   prompt_cache_hit_tokens?: number;
   prompt_cache_miss_tokens?: number;
@@ -400,7 +400,14 @@ export async function openAIStreamOnce(
     // Bucket semantics must match the Anthropic branch's contract: `inputTokens`
     // is the NON-cached input, and the total prompt is the sum of all three
     // buckets (cost.ts and the context-usage meter both add them).
-    const hit = usage.prompt_cache_hit_tokens ?? 0;
+    // OpenAI's standard shape (also used by GLM) nests cache reads under
+    // `prompt_tokens_details.cached_tokens`; DeepSeek and some Qwen gateways
+    // expose the older top-level extension instead. Prefer the legacy value
+    // when both are present so an endpoint cannot be counted twice.
+    const nestedHit = usage.prompt_tokens_details?.cached_tokens;
+    const legacyHit = usage.prompt_cache_hit_tokens;
+    const hit = legacyHit ?? nestedHit ?? 0;
+    const hasHit = legacyHit !== undefined || nestedHit !== undefined;
     const miss = usage.prompt_cache_miss_tokens ?? 0;
     const uncached = (usage.prompt_tokens ?? 0) - hit - miss;
     // Two bucket shapes exist among the gateways this transport serves:
@@ -424,7 +431,7 @@ export async function openAIStreamOnce(
     turn.usage = {
       inputTokens: isTwoBucket ? miss : uncached,
       outputTokens: usage.completion_tokens ?? 0,
-      ...(usage.prompt_cache_hit_tokens !== undefined ? { cacheReadInputTokens: hit } : {}),
+      ...(hasHit ? { cacheReadInputTokens: hit } : {}),
       // Only the three-bucket shape carries a separate cache-write bucket;
       // DeepSeek folds the write into `miss` and bills it at full price.
       ...(!isTwoBucket && usage.prompt_cache_miss_tokens !== undefined
