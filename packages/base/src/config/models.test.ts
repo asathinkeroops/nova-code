@@ -57,7 +57,7 @@ describe("built-in model tables", () => {
         id: "glm-5.3-flash",
         maxTokens: 131_072,
         contextWindowSize: 1_048_576,
-        thinking: "low",
+        thinking: "high",
         modalities: { input: ["text", "image"] },
       },
       pro: {

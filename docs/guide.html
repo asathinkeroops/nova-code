@@ -730,7 +730,7 @@
           <li>通用 <code>generic</code> profile：OpenAI 协议映射为 <code>reasoning_effort</code>，Anthropic 协议映射为 adaptive thinking + <code>output_config.effort</code></li>
           <li>专用 profile：DeepSeek、Moonshot 分别按各自支持的字段与档位转换；GLM-5.3 系列强制思考，因此 <code>off</code> / <code>low</code>→<code>low</code>、<code>medium</code> / <code>high</code>→<code>high</code>、<code>max</code>→<code>max</code></li>
         </ul>
-        <p class="mt-5"><strong>思考等级是 per-tier（按档位）的属性，没有全局 <code>thinking</code> 配置项</strong> —— 它写在 <code>providers[].models.&lt;tier&gt;.thinking</code> 里，切档（<code>/model</code>）会把当前思考等级换成该档的值。这也是 lite/pro/max 能在同一个模型 id 上拉出能力梯度的原因（DeepSeek 与 GLM 内置默认均为 lite→<code>low</code>、pro→<code>high</code>、max→<code>max</code>）。档位没写 <code>thinking</code> 时回退到 <code>auto</code>。</p>
+        <p class="mt-5"><strong>思考等级是 per-tier（按档位）的属性，没有全局 <code>thinking</code> 配置项</strong> —— 它写在 <code>providers[].models.&lt;tier&gt;.thinking</code> 里，切档（<code>/model</code>）会把当前思考等级换成该档的值。这也是 lite/pro/max 能在同一个模型 id 上拉出能力梯度的原因（DeepSeek 内置默认为 lite→<code>low</code>、pro→<code>high</code>、max→<code>max</code>；GLM 为 lite→<code>high</code>、pro→<code>high</code>、max→<code>max</code>）。档位没写 <code>thinking</code> 时回退到 <code>auto</code>。</p>
         <p class="mt-5 font-medium" style="color:var(--text)">设置方式：</p>
         <ul class="space-y-2">
           <li>启动时：<code>nova -t high "..."</code>（本次会话临时覆盖）</li>

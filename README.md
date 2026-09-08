@@ -137,7 +137,7 @@ nova upgrade                       # 更新到最新版本（启动时也会自�
 
 Headless 模式不会运行交互向导；当前 provider 缺少 API key、解析不到模型表，或缺少协议所需的 `baseURL` 时会直接报错。请先交互启动一次完成配置，或手动补齐 `providers` / `currentProvider`。
 
-DeepSeek 的内置模型梯度是 `lite` → `deepseek-v4-flash-vision-exp`（支持图片输入），`pro` / `max` → `deepseek-v4-pro`；GLM Coding Plan 是 `lite` → `glm-5.3-flash`（多模态），`pro` / `max` → `glm-5.3`（文本），均为 1M 上下文、128K 最大输出，并按档位使用 `low` / `high` / `max` 思考强度。**默认模型表按 provider 内置在代码里，不写进配置文件**；你的配置只保存覆盖项，因此升级即可获得新的模型 id、价格和上下文窗口。`/model` 持久切换档位，`--model` 只覆盖本次启动；界面与回复语言分别由 `settings.locale`（TUI，内置 zh-CN / EN）和 `settings.language`（模型回复，默认跟随系统 locale）控制。更多 provider 与完整配置见[使用手册](docs/guide.md)。
+DeepSeek 的内置模型梯度是 `lite` → `deepseek-v4-flash-vision-exp`（支持图片输入），`pro` / `max` → `deepseek-v4-pro`；GLM Coding Plan 是 `lite` → `glm-5.3-flash`（多模态），`pro` / `max` → `glm-5.3`（文本），均为 1M 上下文、128K 最大输出，思考强度 lite / pro 为 `high`、max 为 `max`。**默认模型表按 provider 内置在代码里，不写进配置文件**；你的配置只保存覆盖项，因此升级即可获得新的模型 id、价格和上下文窗口。`/model` 持久切换档位，`--model` 只覆盖本次启动；界面与回复语言分别由 `settings.locale`（TUI，内置 zh-CN / EN）和 `settings.language`（模型回复，默认跟随系统 locale）控制。更多 provider 与完整配置见[使用手册](docs/guide.md)。
 
 ### 📦 更多子命令
 

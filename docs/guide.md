@@ -249,7 +249,7 @@ Nova 把思考强度保留为六个 provider-neutral 等级：`auto` / `off` / `
 - 通用 `generic` profile：OpenAI 协议映射为 `reasoning_effort`，Anthropic 协议映射为 adaptive thinking + `output_config.effort`
 - 专用 profile：DeepSeek、Moonshot 分别按各自支持的字段与档位转换；GLM-5.3 系列强制思考，因此 `off` / `low`→`low`、`medium` / `high`→`high`、`max`→`max`
 
-**思考等级是 per-tier（按档位）的属性，没有全局 `thinking` 配置项**——它写在 `providers[].models.<tier>.thinking` 里，切档（`/model`）会把当前思考等级换成该档的值。这也是 lite/pro/max 能在同一个模型 id 上拉出能力梯度的原因（DeepSeek 与 GLM 内置默认均为 lite→`low`、pro→`high`、max→`max`）。档位没写 `thinking` 时回退到 `auto`。
+**思考等级是 per-tier（按档位）的属性，没有全局 `thinking` 配置项**——它写在 `providers[].models.<tier>.thinking` 里，切档（`/model`）会把当前思考等级换成该档的值。这也是 lite/pro/max 能在同一个模型 id 上拉出能力梯度的原因（DeepSeek 内置默认为 lite→`low`、pro→`high`、max→`max`；GLM 为 lite→`high`、pro→`high`、max→`max`）。档位没写 `thinking` 时回退到 `auto`。
 
 设置方式：
 

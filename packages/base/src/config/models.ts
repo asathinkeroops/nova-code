@@ -51,7 +51,7 @@ const GLM_MODELS: Record<string, ModelProfile> = {
     id: "glm-5.3-flash",
     maxTokens: 131_072, // 128 KiB-tokens
     contextWindowSize: 1_048_576, // 1 MiB-tokens
-    thinking: "low",
+    thinking: "high",
     modalities: { input: ["text", "image"] },
   },
   pro: {
