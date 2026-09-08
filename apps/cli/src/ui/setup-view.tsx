@@ -5,6 +5,7 @@ import { t } from "../i18n/index.js";
 import { LOGO, LOGO_ROW_HEX } from "./logo.js";
 import { DeepSeekArt } from "./deepseek-art-view.js";
 import { MoonshotArt } from "./moonshot-art-view.js";
+import { GlmArt } from "./glm-art-view.js";
 
 export interface SetupEntry {
   kind: "ok" | "err";
@@ -26,6 +27,7 @@ export interface SetupState {
 function ProviderArt({ provider }: { provider?: string }): React.ReactElement | null {
   if (provider === "deepseek") return <DeepSeekArt />;
   if (provider === "moonshot") return <MoonshotArt />;
+  if (provider === "glm") return <GlmArt />;
   return null;
 }
 
