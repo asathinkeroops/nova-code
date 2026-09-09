@@ -371,3 +371,27 @@ describe("token usage accounting", () => {
     expect(store.getState()).toBe(first);
   });
 });
+
+describe("output rate", () => {
+  it("starts null and follows the latest request's rate", () => {
+    const store = createAppStore();
+    expect(store.getState().outputTokensPerSec).toBeNull();
+    store.getState().setOutputTokensPerSec(42.5);
+    expect(store.getState().outputTokensPerSec).toBe(42.5);
+  });
+
+  it("ignores a repeat so the live push can't churn a re-render", () => {
+    const store = createAppStore();
+    store.getState().setOutputTokensPerSec(42.5);
+    const first = store.getState();
+    store.getState().setOutputTokensPerSec(42.5);
+    expect(store.getState()).toBe(first);
+  });
+
+  it("clears on /clear — the new session has no request of its own yet", () => {
+    const store = createAppStore();
+    store.getState().setOutputTokensPerSec(42.5);
+    store.getState().reset();
+    expect(store.getState().outputTokensPerSec).toBeNull();
+  });
+});

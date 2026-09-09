@@ -150,6 +150,8 @@ export const en = {
     usageCacheTotal: "total",
     usageIn: "in",
     usageOut: "out",
+    // Unit for the output-rate segment; the same glyphs in both catalogs.
+    usageRate: "tok/s",
   },
 
   /** Working-spinner labels and hints (`hooks.ts`, `ctx-runtime.ts`, `repl.ts`). */

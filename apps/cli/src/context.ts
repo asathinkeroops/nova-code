@@ -100,6 +100,7 @@ import { buildGuideAgentDefinition, NOVA_GUIDE_AGENT } from "./guide/agent.js";
 import { ensureFresh, resolveGuideSourceDir } from "./guide/provisioner.js";
 import { readCliVersion } from "./version.js";
 import { UI_FRAME_MS } from "./ui/frame.js";
+import { createOutputRateTracker } from "./output-rate.js";
 import { appendToolDetail, loadDisplaySidecar } from "./display-sidecar.js";
 import { appendCard, appendCardsCleared, loadCards } from "./card-store.js";
 import { registerUiHooks } from "./hooks.js";
@@ -534,7 +535,14 @@ export async function createContext(
   // True while a DeepSeek retry hint is parked on the spinner. Cleared once the
   // retried request actually starts streaming output again (see below).
   let retryHintShown = false;
+  // Per-request output-rate tracker behind the StatusLine's `tok/s` segment;
+  // settled at `post_request` (hooks.ts), which also resets it.
+  const outputRate = createOutputRateTracker();
   const pushSpinnerTokens = (progress: { inputTokens?: number; outputTokens: number }): void => {
+    const now = Date.now();
+    // Feed the tracker on every chunk — its window boundaries must not be
+    // quantized by the UI throttle below.
+    outputRate.onProgress(progress.outputTokens, now);
     // Output flowing again means we're past the retry backoff — restore the
     // default interrupt hint so a stale "retry n/max" doesn't linger on the
     // (now succeeding) request.
@@ -542,10 +550,13 @@ export async function createContext(
       retryHintShown = false;
       screen.setSpinnerHint(t.spinner.interruptHint);
     }
-    const now = Date.now();
     if (now - lastTokenPush < 80) return;
     lastTokenPush = now;
     screen.setSpinnerTokens(progress);
+    // Publish only a matured rate: while the window is too young to divide by,
+    // the previous request's number stays on screen instead of flickering out.
+    const live = outputRate.liveRate();
+    if (live !== null) screen.setOutputTokensPerSec(live);
   };
   // Transient model failures are retried inside the model adapter — DeepSeek's
   // 429/500/503 (carry a `status`), malformed tool-call JSON, and dropped
@@ -560,6 +571,10 @@ export async function createContext(
   }): void => {
     logger.warn(info, "model retry");
     retryHintShown = true;
+    // The retry restarts the stream from zero output tokens, so close the rate
+    // window too — otherwise it would span the backoff and report the pause as
+    // slow generation.
+    outputRate.reset();
     const secs = Math.round(info.delayMs / 100) / 10;
     const cause = info.status !== undefined ? String(info.status) : (info.reason ?? "error");
     screen.setSpinnerHint(`retry ${info.attempt}/${info.maxAttempts - 1} (${cause}, ${secs}s)`);
@@ -664,6 +679,7 @@ export async function createContext(
     todoAutoClearTimer: null,
     taskAutoClearTimer: null,
     taskStartedAt: null,
+    outputRate,
     nextPlaceholder: "",
     planGateArmed: false,
     planApprovalAskedThisTurn: false,

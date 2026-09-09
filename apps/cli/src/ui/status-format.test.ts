@@ -9,6 +9,7 @@ import {
   formatDuration,
   formatElapsed,
   formatPercent,
+  formatRate,
   formatTokenCount,
   permissionModeIndicator,
   shellModeIndicator,
@@ -98,6 +99,22 @@ describe("formatTokenCount", () => {
   it("leaves small counts as-is", () => {
     expect(formatTokenCount(512)).toBe("512");
     expect(formatTokenCount(1023)).toBe("1023");
+  });
+});
+
+describe("formatRate", () => {
+  it("keeps one decimal below 100 tok/s", () => {
+    expect(formatRate(42.53)).toBe("42.5");
+    expect(formatRate(9.94)).toBe("9.9");
+  });
+  it("rounds to whole numbers from 100 up", () => {
+    expect(formatRate(120.4)).toBe("120");
+    expect(formatRate(999.6)).toBe("1000");
+  });
+  it("renders non-positive or non-finite input as 0", () => {
+    expect(formatRate(0)).toBe("0");
+    expect(formatRate(-3)).toBe("0");
+    expect(formatRate(Number.NaN)).toBe("0");
   });
 });
 

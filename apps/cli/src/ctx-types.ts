@@ -23,6 +23,7 @@ import type { Logger, Session, Settings, Transcript } from "@nova/base";
 import type { PermissionEngine, SandboxControl } from "@nova/safety";
 import type { GoalState } from "./goal.js";
 import type { CronScheduler } from "./cron-scheduler.js";
+import type { OutputRateTracker } from "./output-rate.js";
 import type { LoadedPlugin } from "./plugins/loader.js";
 import type { UserHooks } from "./user-hooks.js";
 import type { SnapshotStore } from "./snapshots.js";
@@ -117,6 +118,13 @@ export interface CliContext {
    * without touching this anchor.
    */
   taskStartedAt: number | null;
+  /**
+   * Per-request output-rate tracker behind the StatusLine's `tok/s` segment.
+   * Fed by the streaming progress callback (see `pushSpinnerTokens`) and settled
+   * at `post_request`, which also resets it — a failed or aborted request must
+   * not leak its window into the next one.
+   */
+  outputRate: OutputRateTracker;
   nextPlaceholder: string;
   /**
    * Plan-mode approval gate state, both reset/armed by `runTurn` in repl.ts.

@@ -298,6 +298,14 @@ export interface AppState {
   /** Session-cumulative output (completion) tokens. Reset on `reset()`. */
   sessionOutputTokens: number;
   /**
+   * Output rate of the most recent model request, in tokens per second, for the
+   * StatusLine's `tok/s` segment. Measured over the streaming window (first to
+   * last output chunk), so it excludes prompt upload and time-to-first-token.
+   * Null until a request has produced output; reset to null on `reset()`
+   * (/clear) — the new session has no request of its own yet.
+   */
+  outputTokensPerSec: number | null;
+  /**
    * Same three prompt-token buckets as above, but **all-time across every
    * session on this machine** — the "累计 / total" half of the StatusLine cache
    * meter. Seeded at boot from `~/.nova/usage.json` ({@link seedLifetimeUsage})
@@ -508,6 +516,8 @@ export interface AppActions {
     cacheReadInputTokens?: number;
     cacheCreationInputTokens?: number;
   }) => void;
+  /** Set the latest request's measured output rate (null hides the segment). */
+  setOutputTokensPerSec: (rate: number | null) => void;
   /**
    * Set the all-time (cross-session) prompt-token counters to absolute totals —
    * called at boot with what `~/.nova/usage.json` holds, and again after each
@@ -762,6 +772,7 @@ export function createAppStore(opts: AppStoreOptions = {}): AppStoreApi {
       cacheCreationTokens: 0,
       uncachedInputTokens: 0,
       sessionOutputTokens: 0,
+      outputTokensPerSec: null,
       lifetimeCacheReadTokens: 0,
       lifetimeCacheCreationTokens: 0,
       lifetimeUncachedInputTokens: 0,
@@ -1024,6 +1035,7 @@ export function createAppStore(opts: AppStoreOptions = {}): AppStoreApi {
           cacheCreationTokens: 0,
           uncachedInputTokens: 0,
           sessionOutputTokens: 0,
+          outputTokensPerSec: null,
           userDisplayOverrides: {},
           toolDetails: {},
           expandedItems: {},
@@ -1176,6 +1188,11 @@ export function createAppStore(opts: AppStoreOptions = {}): AppStoreApi {
       setContextTokens(tokens) {
         if (get().contextTokens === tokens) return;
         set({ contextTokens: tokens });
+      },
+
+      setOutputTokensPerSec(rate) {
+        if (get().outputTokensPerSec === rate) return;
+        set({ outputTokensPerSec: rate });
       },
 
       addUsage(usage) {

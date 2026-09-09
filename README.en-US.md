@@ -217,7 +217,7 @@ Each session is permanently bound to the workspace where it was created. `nova -
 | 📝 Declarative extensions | `.nova/commands/*.md`, `.nova/agents/*.md`, and `.nova/skills/*/SKILL.md` declare commands, sub-agents, and skills; `.nova/hooks.json` / `.nova/hooks.local.json` declare lifecycle shell hooks |
 | 🧩 Plugins | `nova plugin` installs / enables / disables plugins from a local path, GitHub, git URL, or marketplace; one plugin can contribute commands, agents, skills, hooks, MCP / LSP servers, and `bin/`, in the Claude Code-compatible format; plugin loading is opt-in |
 | 🗂️ Memory | Static memory layers global → user → project, choosing one file per layer by `NOVA.md` > `CLAUDE.md` > `AGENTS.md`; agent-maintained auto-memory is isolated per project and persists across sessions |
-| 💻 TUI | Full-screen Ink/React REPL, streaming output + mouse; `@path` / `/` completion, `!command` shell passthrough, pasted/dropped images, <kbd>↑</kbd> <kbd>↓</kbd> history; status line with tokens, cache hits, provider balance, git branch, and context fill |
+| 💻 TUI | Full-screen Ink/React REPL, streaming output + mouse; `@path` / `/` completion, `!command` shell passthrough, pasted/dropped images, <kbd>↑</kbd> <kbd>↓</kbd> history; status line with tokens, output rate, cache hits, provider balance, git branch, and context fill |
 | 🌐 Multilingual | UI and model-reply language configured independently: `settings.language` drives the model's reply language (defaults to the system locale), `settings.locale` overrides the TUI's static text (bundled zh-CN / EN); the two can differ (e.g. Chinese UI + English replies), and an unsupported tag falls back to English |
 
 <br>

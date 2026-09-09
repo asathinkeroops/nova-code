@@ -90,6 +90,13 @@ export function registerUiHooks(ctx: CliContext): void {
       // cache-hit-rate meter and `/usage`.
       ctx.screen.addUsage(usage);
     }
+    // Settle the per-request output-rate window for the StatusLine's `tok/s`
+    // segment. Called unconditionally: the tracker is per request, so a failed
+    // or output-less one must close its window rather than let the next
+    // request extend it. A null rate leaves the previous number on screen
+    // instead of blanking the segment.
+    const rate = ctx.outputRate.finish(usage?.outputTokens ?? 0, durationMs);
+    if (rate !== null) ctx.screen.setOutputTokensPerSec(rate);
   });
 
   ctx.agent.on("post_turn", () => {

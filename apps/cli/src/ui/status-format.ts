@@ -121,6 +121,18 @@ export function formatTokenCount(tokens: number): string {
 }
 
 /**
+ * Output rate for the StatusLine's `tok/s` segment: one decimal below 100
+ * (42.53 → "42.5"), whole numbers above it (120.4 → "120") — past three digits
+ * the fraction is noise. Non-finite or non-positive input renders "0".
+ */
+export function formatRate(tokensPerSec: number): string {
+  if (!Number.isFinite(tokensPerSec) || tokensPerSec <= 0) return "0";
+  const rounded =
+    tokensPerSec >= 100 ? Math.round(tokensPerSec) : Math.round(tokensPerSec * 10) / 10;
+  return `${rounded}`;
+}
+
+/**
  * Prompt-cache hit rate over *all* prompt input tokens: the fraction served
  * from cache out of (cache read + cache creation + uncached input). DeepSeek's
  * Anthropic-compatible usage splits every prompt into those three buckets, so

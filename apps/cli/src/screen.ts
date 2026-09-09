@@ -526,6 +526,10 @@ export class Screen {
     this.store.getState().setSpinnerTokens(progress);
   }
 
+  setOutputTokensPerSec(rate: number | null): void {
+    this.store.getState().setOutputTokensPerSec(rate);
+  }
+
   setSpinnerHint(hint: string | undefined): void {
     this.store.getState().setSpinnerHint(hint);
   }

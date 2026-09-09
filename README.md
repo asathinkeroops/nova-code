@@ -217,7 +217,7 @@ DeepSeek 的内置模型梯度是 `lite` → `deepseek-v4-flash-vision-exp`（�
 | 📝 声明式扩展 | `.nova/commands/*.md`、`.nova/agents/*.md`、`.nova/skills/*/SKILL.md` 声明命令、子 agent 与 skills；`.nova/hooks.json` / `.nova/hooks.local.json` 声明生命周期 shell hooks |
 | 🧩 插件 | `nova plugin` 从本地路径 / GitHub / git URL / marketplace 安装、启停插件；一个插件可贡献命令、agent、skill、hooks、MCP / LSP server 与 `bin/`，兼容 Claude Code 插件格式；插件加载默认关闭，需显式启用 |
 | 🗂️ 记忆 | 静态记忆按全局 → 用户 → 项目叠加，每层按 `NOVA.md` > `CLAUDE.md` > `AGENTS.md` 选一个；另有按项目隔离、跨会话持久的 agent 自动记忆 |
-| 💻 交互体验 | 全屏 Ink/React REPL，流式输出 + 鼠标；`@path` / `/` 补全、`!command` shell 直通、图片粘贴 / 拖拽、<kbd>↑</kbd> <kbd>↓</kbd> 翻历史；状态行显示 token、缓存命中、provider 余额、git 分支与上下文占用 |
+| 💻 交互体验 | 全屏 Ink/React REPL，流式输出 + 鼠标；`@path` / `/` 补全、`!command` shell 直通、图片粘贴 / 拖拽、<kbd>↑</kbd> <kbd>↓</kbd> 翻历史；状态行显示 token、输出速率、缓存命中、provider 余额、git 分支与上下文占用 |
 | 🌐 多语言 | 界面与模型回复语言分开配置：`settings.language` 控制模型回复语言（默认跟随系统 locale），`settings.locale` 单独覆盖 TUI 静态文案（内置 zh-CN / EN），二者可不同（如中文界面 + 英文回复）；不支持的语言标签回落到英文 |
 
 <br>

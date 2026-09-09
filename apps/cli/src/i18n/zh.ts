@@ -114,6 +114,8 @@ export const zh: DeepPartial<Catalog> = {
     usageCacheTotal: "累计",
     usageIn: "输入",
     usageOut: "输出",
+    // Unit for the output-rate segment; the same glyphs in both catalogs.
+    usageRate: "tok/s",
   },
 
   spinner: {

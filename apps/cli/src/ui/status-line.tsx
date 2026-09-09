@@ -12,6 +12,7 @@ import {
   contextBar,
   displayCwd,
   fitSegments,
+  formatRate,
   formatTokenCount,
   shellModeIndicator,
   type StatusSegment,
@@ -79,6 +80,7 @@ export function StatusLine({ store, shellMode = false }: StatusLineProps): React
     lifetimeCacheCreationTokens,
     lifetimeUncachedInputTokens,
     sessionOutputTokens,
+    outputTokensPerSec,
     accountBalance,
     termCols,
   } = store(
@@ -96,6 +98,7 @@ export function StatusLine({ store, shellMode = false }: StatusLineProps): React
       lifetimeCacheCreationTokens: s.lifetimeCacheCreationTokens,
       lifetimeUncachedInputTokens: s.lifetimeUncachedInputTokens,
       sessionOutputTokens: s.sessionOutputTokens,
+      outputTokensPerSec: s.outputTokensPerSec,
       accountBalance: s.accountBalance,
       termCols: s.termCols,
     })),
@@ -194,6 +197,17 @@ export function StatusLine({ store, shellMode = false }: StatusLineProps): React
       icon: "↓",
       text: `${formatTokenCount(sessionOutputTokens)} ${t.status.usageOut}`,
       color: "magenta",
+    });
+  }
+  // Generation speed of the most recent request, measured over its streaming
+  // window (see output-rate.ts) — the tail of the row, so a narrow terminal
+  // drops it first. `↯` rather than an emoji: emoji render double-width but
+  // `visibleWidth` counts them as 1, under-reserving the layout.
+  if (outputTokensPerSec !== null && outputTokensPerSec > 0) {
+    usage.push({
+      icon: "↯",
+      text: `${formatRate(outputTokensPerSec)} ${t.status.usageRate}`,
+      color: "yellow",
     });
   }
   // Estimated session cost is deliberately NOT shown: provider prices move fast
