@@ -4,17 +4,19 @@ import type { ModelProfile } from "./config.js";
 
 /**
  * DeepSeek's built-in performance tiers. Three fixed rungs — lite / pro / max:
- * `lite` maps to the cheap vision-capable `deepseek-v4-flash-vision-exp`; `pro`
- * and `max` share the capable `deepseek-v4-pro` id and differ only in reasoning
- * depth via the per-tier `thinking` level (low → high → max), a genuine
- * speed/cost ↔ capability ladder on the available models.
+ * `lite` maps to the cheap natively-multimodal `deepseek-flash` (DeepSeek's
+ * V4.1-Flash id, which replaced both `deepseek-v4-flash` and the experimental
+ * `deepseek-v4-flash-vision-exp` on 2026-09-10); `pro` and `max` share the
+ * capable `deepseek-v4-pro` id and differ only in reasoning depth via the
+ * per-tier `thinking` level (low → high → max), a genuine speed/cost ↔
+ * capability ladder on the available models.
  *
  * Token magnitudes here are binary: "384K" output / "1M" context mean 384 × 1024
  * and 1024 × 1024, matching how {@link formatTokenCount} renders them in the UI.
  */
 const DEEPSEEK_MODELS: Record<string, ModelProfile> = {
   lite: {
-    id: "deepseek-v4-flash-vision-exp",
+    id: "deepseek-flash",
     maxTokens: 393_216, // 384 KiB-tokens
     contextWindowSize: 1_048_576, // 1 MiB-tokens
     thinking: "low",
@@ -105,6 +107,40 @@ const MOONSHOT_MODELS: Record<string, ModelProfile> = {
     thinking: "max",
     modalities: { input: ["text", "image"] },
     pricing: { input: 6.5, output: 27, cacheRead: 1.3, cacheWrite: 6.5, currency: "CNY" },
+  },
+};
+
+/**
+ * The tier tables as they shipped while the lite tier pointed at the
+ * experimental `deepseek-v4-flash-vision-exp` (binary magnitudes). Frozen — see
+ * {@link AUTO_WRITTEN_MODEL_TABLES}: a config still carrying this table was
+ * written by Nova, not hand-tuned, and must reduce away rather than pin the
+ * install to an id DeepSeek has since retired.
+ */
+const DEEPSEEK_MODELS_VISION: Record<string, ModelProfile> = {
+  lite: {
+    id: "deepseek-v4-flash-vision-exp",
+    maxTokens: 393_216,
+    contextWindowSize: 1_048_576,
+    thinking: "low",
+    modalities: { input: ["text", "image"] },
+    pricing: { input: 1, output: 2, cacheRead: 0.02, cacheWrite: 1, currency: "CNY" },
+  },
+  pro: {
+    id: "deepseek-v4-pro",
+    maxTokens: 393_216,
+    contextWindowSize: 1_048_576,
+    thinking: "high",
+    modalities: { input: ["text"] },
+    pricing: { input: 3, output: 6, cacheRead: 0.025, cacheWrite: 3, currency: "CNY" },
+  },
+  max: {
+    id: "deepseek-v4-pro",
+    maxTokens: 393_216,
+    contextWindowSize: 1_048_576,
+    thinking: "max",
+    modalities: { input: ["text"] },
+    pricing: { input: 3, output: 6, cacheRead: 0.025, cacheWrite: 3, currency: "CNY" },
   },
 };
 
@@ -233,9 +269,15 @@ export const BUILTIN_PROVIDER_MODELS: Record<string, Record<string, ModelProfile
  * indistinguishable from a hand-tuned one, and would be pinned to it forever.
  */
 export const AUTO_WRITTEN_MODEL_TABLES: Record<string, Record<string, ModelProfile>[]> = {
-  // Current table first, then the flash-era one, then the decimal-magnitude one
-  // the setup wizard wrote verbatim up to CLI 0.2.5.
-  deepseek: [DEEPSEEK_MODELS, DEEPSEEK_MODELS_FLASH, DEEPSEEK_MODELS_DECIMAL],
+  // Current table first, then the vision-exp-era one, the flash-era one, and
+  // finally the decimal-magnitude one the setup wizard wrote verbatim up to
+  // CLI 0.2.5.
+  deepseek: [
+    DEEPSEEK_MODELS,
+    DEEPSEEK_MODELS_VISION,
+    DEEPSEEK_MODELS_FLASH,
+    DEEPSEEK_MODELS_DECIMAL,
+  ],
   moonshot: [MOONSHOT_MODELS, MOONSHOT_MODELS_DECIMAL],
 };
 

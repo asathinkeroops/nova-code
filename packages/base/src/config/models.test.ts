@@ -43,7 +43,7 @@ describe("built-in model tables", () => {
       ...providerConfig("deepseek", { baseURL: "https://api.deepseek.com/anthropic" }),
     });
     expect(Object.keys(activeModels(s)).sort()).toEqual(["lite", "max", "pro"]);
-    expect(activeModels(s).lite?.id).toBe("deepseek-v4-flash-vision-exp");
+    expect(activeModels(s).lite?.id).toBe("deepseek-flash");
     expect(activeModels(s).pro?.id).toBe("deepseek-v4-pro");
     // The default `model` tier resolves against the filled table, so a config
     // carrying nothing but provider + key is complete.
@@ -95,7 +95,7 @@ describe("built-in model tables", () => {
     // Everything not overridden still tracks the built-in.
     expect(activeModels(s).pro?.id).toBe(BUILTIN_PROVIDER_MODELS.deepseek?.pro?.id);
     expect(activeModels(s).pro?.pricing).toEqual(BUILTIN_PROVIDER_MODELS.deepseek?.pro?.pricing);
-    expect(activeModels(s).lite?.id).toBe("deepseek-v4-flash-vision-exp");
+    expect(activeModels(s).lite?.id).toBe("deepseek-flash");
   });
 
   it("replaces (never merges) a tier that names a different model id", () => {
@@ -155,6 +155,23 @@ describe("stripDefaultModels", () => {
     expect(activeModels(s).pro?.maxTokens).toBe(393_216);
   });
 
+  it("drops the vision-exp-era table, so a retired lite id can't pin the install", async () => {
+    // The lite rung moved from the experimental `deepseek-v4-flash-vision-exp`
+    // to `deepseek-flash`; an install still carrying the old table must follow
+    // the new built-in rather than sit on an id DeepSeek has retired.
+    const stale = AUTO_WRITTEN_MODEL_TABLES.deepseek?.find(
+      (t) => t.lite?.id === "deepseek-v4-flash-vision-exp",
+    );
+    expect(stale).toBeDefined();
+    await write(providerConfig("deepseek", { models: stale }));
+    expect(await stripDefaultModels(configPath)).toBe(true);
+    const raw = await readRaw();
+    expect((raw.providers as Record<string, unknown>[])[0]?.models).toBeUndefined();
+    const s = await loadSettings(configPath);
+    expect(activeModels(s).lite?.id).toBe("deepseek-flash");
+    expect(activeModels(s).lite?.maxTokens).toBe(393_216);
+  });
+
   it("reduces a table that drifted by one field to just that override", async () => {
     // What older versions produced: /effort persisted the whole table to change
     // one thinking level, so most real configs differ by a field or two.
@@ -172,7 +189,7 @@ describe("stripDefaultModels", () => {
     // The user's choice survives; everything else is back on the built-ins.
     const s = await loadSettings(configPath);
     expect(activeModels(s).lite?.thinking).toBe("high");
-    expect(activeModels(s).lite?.id).toBe("deepseek-v4-flash-vision-exp");
+    expect(activeModels(s).lite?.id).toBe("deepseek-flash");
     expect(activeModels(s).lite?.pricing).toEqual(deepseek.lite?.pricing);
     expect(activeModels(s).pro?.thinking).toBe("high");
   });
@@ -191,7 +208,7 @@ describe("stripDefaultModels", () => {
     });
     const s = await loadSettings(configPath);
     expect(activeModels(s).pro?.id).toBe("deepseek-reasoner");
-    expect(activeModels(s).lite?.id).toBe("deepseek-v4-flash-vision-exp");
+    expect(activeModels(s).lite?.id).toBe("deepseek-flash");
   });
 
   it("is idempotent — an already-reduced table is left alone", async () => {
@@ -255,7 +272,7 @@ describe("providers array structure", () => {
       currentProvider: "a",
     });
     expect(Object.keys(activeModels(s)).sort()).toEqual(["lite", "max", "pro"]);
-    expect(activeModels(s).lite?.id).toBe("deepseek-v4-flash-vision-exp");
+    expect(activeModels(s).lite?.id).toBe("deepseek-flash");
     expect(activeModels(s).pro?.thinking).toBe("low");
     expect(activeModels(s).pro?.id).toBe(BUILTIN_PROVIDER_MODELS.deepseek?.pro?.id);
   });

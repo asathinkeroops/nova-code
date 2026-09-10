@@ -76,7 +76,7 @@ echo "总结这个 diff" | pnpm dev  # 无 TTY：headless 跑一轮后退出
 
 - DeepSeek：`providers: [{ "name": "deepseek", "profile": "deepseek", "transport": "openai", "baseURL": "https://api.deepseek.com", "apiKey": "<key>" }]`，并设 `currentProvider: "deepseek"`
 - GLM Coding Plan：`providers: [{ "name": "glm", "profile": "glm", "transport": "openai", "baseURL": "https://open.bigmodel.cn/api/coding/paas/v4", "apiKey": "<key>" }]`，并设 `currentProvider: "glm"`
-- 默认档位均为 `pro`，模型表**不写盘**：DeepSeek 是 `lite`→`deepseek-v4-flash-vision-exp`、`pro`/`max`→`deepseek-v4-pro`；GLM 是 `lite`→`glm-5.3-flash`（多模态）、`pro`/`max`→`glm-5.3`（文本），三档均为 1M 上下文、128K 最大输出
+- 默认档位均为 `pro`，模型表**不写盘**：DeepSeek 是 `lite`→`deepseek-flash`（原生多模态）、`pro`/`max`→`deepseek-v4-pro`；GLM 是 `lite`→`glm-5.3-flash`（多模态）、`pro`/`max`→`glm-5.3`（文本），三档均为 1M 上下文、128K 最大输出
 
 > **默认模型表不落盘。** `providers[].models` 的默认值按 provider profile 内置在代码里，加载配置时才层叠进对应的 `providers[]` 条目；配置文件里只放**你自己的覆盖项**。这样 Nova 升级带来的新模型 id、新价格、新上下文窗口也能直接生效。若某个 `providers[]` 条目带着 Nova 曾写出的完整默认表，启动时会把它缩减成实际覆盖项（通常为空，或一条 `/effort` 设过的 `thinking`），取值不变。
 >
