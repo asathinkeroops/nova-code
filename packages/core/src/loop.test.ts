@@ -638,7 +638,7 @@ describe("agentLoop · stop_reason state machine", () => {
     const continuation = result.messages.find(
       (m) => m.role === "user" && typeof m.content === "string" && m.content.includes("cut off"),
     );
-    expect(continuation).toBeDefined();
+    expect(continuation?.meta).toEqual({ synthetic: true, kind: "max-tokens-continuation" });
     // No terminating stop was emitted for the truncation itself.
     const stops = events.filter((e) => e.kind === "post_stop");
     expect(stops).toHaveLength(1);
@@ -757,7 +757,7 @@ describe("agentLoop · stop_reason state machine", () => {
       (m) =>
         m.role === "user" && typeof m.content === "string" && /maximum of 3 turns/.test(m.content),
     );
-    expect(injected).toBeDefined();
+    expect(injected?.meta).toEqual({ synthetic: true, kind: "turn-limit" });
   });
 
   it("emits assistant / user / stop advisory events around a tool_use turn", async () => {

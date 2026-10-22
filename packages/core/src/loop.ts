@@ -4,6 +4,7 @@ import {
   assistantMessage,
   blocksOf,
   extractToolUses,
+  markSynthetic,
   userText,
   userToolResults,
 } from "./messages.js";
@@ -147,8 +148,11 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
       forcedFinalTurn = true;
       messages = appendMessage(
         messages,
-        userText(
-          `You have reached the maximum of ${opts.maxTurns} turns. Do not call any more tools — provide your final response now based on what you have gathered so far.`,
+        markSynthetic(
+          userText(
+            `You have reached the maximum of ${opts.maxTurns} turns. Do not call any more tools — provide your final response now based on what you have gathered so far.`,
+          ),
+          "turn-limit",
         ),
       );
       await hooks.runAdvisory("post_messages", { messages });
@@ -293,9 +297,12 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
       truncationContinuations++;
       messages = appendMessage(
         messages,
-        userText(
-          "Your previous response was cut off because it reached the output length limit. " +
-            "Continue exactly from where you left off — do not repeat what you already wrote.",
+        markSynthetic(
+          userText(
+            "Your previous response was cut off because it reached the output length limit. " +
+              "Continue exactly from where you left off — do not repeat what you already wrote.",
+          ),
+          "max-tokens-continuation",
         ),
       );
       await hooks.runAdvisory("post_messages", { messages });

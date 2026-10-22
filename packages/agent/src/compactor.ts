@@ -13,7 +13,12 @@
 
 import type { Compactor, MessageParam, ModelClient } from "@nova/core";
 import type { TokenEstimate } from "@nova/base";
-import { autoCompact, shouldAutoCompact, sliceFromLastCompacted } from "./compact.js";
+import {
+  autoCompact,
+  computeThreshold,
+  shouldAutoCompact,
+  sliceFromLastCompacted,
+} from "./compact.js";
 
 /**
  * Auto-compaction policy — the `compact.auto` slice of the settings schema,
@@ -118,26 +123,20 @@ export function buildCompactor(opts: BuildCompactorOptions): Compactor {
     // is actually sent), not the full retained history — otherwise the ever-
     // growing archive would re-trigger on every turn.
     const view = sliceFromLastCompacted(messages);
+    // Read live for both auto and manual compaction. The appendix must leave
+    // room below the trigger, including the system prompt and tool schemas.
+    const contextWindowSize = getContextWindowSize();
+    const thresholdTokens = computeThreshold({
+      contextWindowSize,
+      ...(auto.thresholdTokens !== undefined ? { thresholdTokens: auto.thresholdTokens } : {}),
+      ...(auto.contextWindowPercent !== undefined
+        ? { contextWindowPercent: auto.contextWindowPercent }
+        : {}),
+    });
+    const overheadTokens = req.overheadTokens ?? getOverheadTokens?.() ?? 0;
+    const tokenEstimate = getTokenEstimate?.();
     if (req.reason === "auto") {
-      const trigger = shouldAutoCompact(
-        view,
-        {
-          // Read live: follows the active model tier's window after a /model switch.
-          contextWindowSize: getContextWindowSize(),
-          ...(auto.thresholdTokens !== undefined ? { thresholdTokens: auto.thresholdTokens } : {}),
-          ...(auto.contextWindowPercent !== undefined
-            ? { contextWindowPercent: auto.contextWindowPercent }
-            : {}),
-          // System prompt + tool schemas ride on every request; the threshold has
-          // to see them or it fires only once the real prompt is already over.
-          ...(req.overheadTokens !== undefined
-            ? { overheadTokens: req.overheadTokens }
-            : getOverheadTokens
-              ? { overheadTokens: getOverheadTokens() }
-              : {}),
-        },
-        getTokenEstimate?.(),
-      );
+      const trigger = shouldAutoCompact(view, { thresholdTokens, overheadTokens }, tokenEstimate);
       if (!trigger) return messages;
     }
 
@@ -150,6 +149,15 @@ export function buildCompactor(opts: BuildCompactorOptions): Compactor {
     }
     const result = await autoCompact(view, {
       model: getModel(),
+      recentHistorySource: messages,
+      ...(tokenEstimate ? { tokenEstimate } : {}),
+      // Reserve 20% of the trigger budget for new work rather than filling the
+      // window back up with copied history. The model-written body is untouched;
+      // if it already exceeds this budget, no recent-history appendix is added.
+      maxCompactedTokens: Math.max(
+        0,
+        Math.floor(Math.min(thresholdTokens, contextWindowSize) * 0.8) - overheadTokens,
+      ),
       ...(req.focus ? { focus: req.focus } : {}),
       ...(auto.maxSummaryTokens !== undefined ? { maxSummaryTokens: auto.maxSummaryTokens } : {}),
     });

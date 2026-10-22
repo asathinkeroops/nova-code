@@ -538,6 +538,10 @@ Output: … — read or grep it if you need the command's output.</background-no
 
 手动压缩：随时 `/compact`，可附带关注点（如 `/compact 保留关于鉴权的部分`）让摘要更聚焦。
 
+**摘要末尾保留最近原文**：自动压缩和 `/compact` 都先生成摘要正文，再由程序从完整历史中提取最近 **3 个模型交互轮次**，按原顺序附在同一条 `<compacted>` 消息末尾。每轮包含一次 assistant 回复、全部工具调用与结果及其关联内容；末尾尚未回复的真实用户输入另行保留。最新一条真实用户输入优先单独保留，不会被连续工具调用挤掉，重复记录只附加一次。附录按 `meta.synthetic` 排除 Todo/Task 提醒、框架续写提示等注入消息，不把它们当成用户输入；`role: user` 的工具结果仍随调用保留。框架续写提示带来源标记，记录在历史与 transcript 中，不显示为用户气泡。新写入的历史记录带格式版本，恢复时不再根据正文标签猜测来源；旧无版本记录仍兼容迁移。附录保留文本、角色和工具参数/结果，图片数据换成占位描述，因此不保留视觉内容，也不会重放工具调用。旧摘要不作为原文复制，连续压缩不会由程序嵌套旧附录。排除的注入消息仍参与摘要生成，完整历史也照常保留。模型仍只看到「最新摘要（含附录）＋新消息」。
+
+正文的生成上限 `compact.auto.maxSummaryTokens` 默认 **4000 token**，不含程序附加的记录。附录最多 **16000 估算 token**，并使用当前 provider 的估算比例检查整条摘要的大小：只有「含附录的摘要＋system / 工具固定开销」不超过触发阈值的 **80%** 才追加，给后续工作留出空间。预算先分配给最新真实用户输入，再从新到旧添加完整轮次，不截断单条记录或拆开工具调用与结果；空间不足时可能只保留用户输入。若这条输入或摘要正文已超出预算，则不附加原文，摘要正文仍保留。
+
 **缓存计量**：每个响应的 `cache_read_input_tokens` / `cache_creation_input_tokens` 都会累加进本 session 的用量统计，状态行能看到每轮有多少命中了缓存。
 
 ---
@@ -856,7 +860,8 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 |------|------|------|
 | `auto.enabled` | `true` | 上下文吃紧时自动压缩（追加 `<compacted>` 边界，见 [§12](#12-上下文管理与压缩)） |
 | `auto.contextWindowPercent` | `0.9` | 触发阈值占上下文窗口的比例，按**整个请求**计（含 system / 工具 schema，与 `/context` 同口径） |
-| `auto.thresholdTokens` / `maxSummaryTokens` | （内置常量） | 绝对阈值覆写（优先于比例）/ 摘要长度上限 |
+| `auto.thresholdTokens` | 未设置 | 绝对触发阈值覆写，优先于比例 |
+| `auto.maxSummaryTokens` | `4000` | 模型生成的摘要正文上限；不含程序附加的最近原文，自动与手动压缩共用 |
 
 ### `invariants`（工具不变量，dispatcher 强制）
 

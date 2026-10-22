@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AssistantTurn, MessageParam, ModelClient } from "@nova/core";
-import { isCompactionMarker } from "./compact.js";
+import {
+  messageParamSchema,
+  type AssistantTurn,
+  type MessageParam,
+  type ModelClient,
+} from "@nova/core";
+import { estimateTokens, isCompactionMarker } from "./compact.js";
 import { buildCompactor, manualCompact, type BuildCompactorOptions } from "./compactor.js";
 
 function fakeModel(text = "SUMMARY"): ModelClient {
@@ -127,6 +132,87 @@ describe("buildCompactor — the auto path", () => {
     });
     await c.compact([bigUser()], { reason: "auto" });
     expect(vi.mocked(model.call).mock.calls[0]?.[0]?.maxTokens).toBe(123);
+  });
+
+  it.each(["auto", "manual"] as const)(
+    "appends one enriched boundary on the %s path",
+    async (reason) => {
+      const originals: MessageParam[] = [
+        bigUser(),
+        { role: "assistant", content: "old answer" },
+        ...[1, 2, 3, 4].flatMap((i) => [
+          { role: "user" as const, content: `exact request ${i}` },
+          { role: "assistant" as const, content: `exact reply ${i}` },
+        ]),
+      ];
+      const c = build();
+      const next = await c.compact(originals, { reason });
+      expect(next).toHaveLength(originals.length + 1);
+      originals.forEach((message, i) => expect(next[i]).toBe(message));
+      const view = c.view(next);
+      expect(view).toHaveLength(1);
+      expect(view[0]?.content).toContain("exact request 2");
+      expect(view[0]?.content).toContain("exact reply 4");
+      expect(view[0]?.content).not.toContain("exact request 1");
+      expect(estimateTokens(view)).toBeLessThan(8_000);
+      expect(await c.compact(next, { reason: "auto" })).toBe(next);
+    },
+  );
+
+  it("retains originals behind a previous boundary after reload and repeated compaction", async () => {
+    const originals: MessageParam[] = [
+      { role: "user", content: "exact original request" },
+      { role: "assistant", content: "exact original answer" },
+    ];
+    const c = build();
+    const first = await c.compact(originals, { reason: "manual" });
+    // Check canonical serialization; persistence.test.ts covers the disk format
+    // version and legacy migration through the actual save/load path.
+    const restored = first.map((m) => messageParamSchema.parse(JSON.parse(JSON.stringify(m))));
+    expect(c.view(restored)).toEqual(c.view(first));
+    const pending: MessageParam = { role: "user", content: "next request" };
+    const second = await c.compact([...restored, pending], { reason: "manual" });
+    expect(second).toHaveLength(first.length + 2);
+    const content = c.view(second)[0]?.content as string;
+    expect(content).toContain("exact original request");
+    expect(content).toContain("next request");
+    expect(content.match(/<recent-history>/g)).toHaveLength(1);
+    // Further requests only extend the stable summary prefix.
+    expect(c.view([...second, pending])).toEqual([...c.view(second), pending]);
+    expect(c.view(second.slice(0, first.length))).toEqual(c.view(first));
+  });
+
+  it("limits copied history against the live window and fixed request overhead", async () => {
+    const messages: MessageParam[] = [
+      { role: "user", content: "x".repeat(1_500) },
+      { role: "assistant", content: "exact answer" },
+    ];
+    let window = 200_000;
+    let overhead = 0;
+    const c = build({
+      auto: { enabled: true },
+      getContextWindowSize: () => window,
+      getOverheadTokens: () => overhead,
+    });
+    const roomy = await c.compact(messages, { reason: "manual" });
+    expect(c.view(roomy)[0]?.content).toContain("<recent-history>");
+    window = 1_000;
+    overhead = 600;
+    const tight = await c.compact(messages, { reason: "manual" });
+    expect(c.view(tight)[0]?.content).not.toContain("<recent-history>");
+    expect(estimateTokens(c.view(tight)) + overhead).toBeLessThan(window * 0.9);
+  });
+
+  it("does not let an absolute trigger above the window expand the appendix budget", async () => {
+    const c = build({
+      auto: { enabled: false, thresholdTokens: 1_000_000 },
+      getContextWindowSize: () => 1_000,
+      getOverheadTokens: () => 600,
+    });
+    const next = await c.compact([{ role: "user", content: "x".repeat(1_500) }], {
+      reason: "manual",
+    });
+    expect(c.view(next)[0]?.content).not.toContain("<recent-history>");
   });
 });
 

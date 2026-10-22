@@ -144,12 +144,7 @@ describe("createAgent.runTurn", () => {
     // post_messages fires first (immediate sync of the appended user message),
     // pre_request fires before each model.call, post_request after, post_turn
     // last. Drop pre_user_prompt because it expects a blocking signature.
-    const points: HookPoint[] = [
-      "post_messages",
-      "pre_request",
-      "post_request",
-      "post_turn",
-    ];
+    const points: HookPoint[] = ["post_messages", "pre_request", "post_request", "post_turn"];
     for (const p of points) {
       agent.on(p, () => {
         order.push(p);
@@ -289,6 +284,42 @@ describe("createAgent.runTurn", () => {
     expect(persisted[injected[0]!.data.index]?.content).toBe(
       "<todo-reminder>finish the thing</todo-reminder>",
     );
+  });
+
+  it("persists loop control prompts as synthetic and mirrors them in the transcript", async () => {
+    const messagesPath = join(tmp, "messages.jsonl");
+    const transcriptPath = join(tmp, "transcript.jsonl");
+    const model = mockModel([
+      { content: [{ type: "text", text: "half a thought" }], stopReason: "max_tokens" },
+      {
+        content: [{ type: "tool_use", id: "t1", name: "echo", input: { msg: "hi" } }],
+        stopReason: "tool_use",
+      },
+      { content: [{ type: "text", text: "done" }], stopReason: "end_turn" },
+    ]);
+    const agent = assembleAgent(
+      makeOptions({
+        model,
+        messagesPath,
+        transcriptPath,
+        getSettings: () => ({ maxTokens: 1024, maxTurns: 2, maxTokensContinuations: 2 }),
+      }),
+    );
+
+    const result = await agent.runTurn("go");
+    expect(result.ok).toBe(true);
+
+    const injected = await readInjections(transcriptPath);
+    expect(injected.map((record) => record.data.kind)).toEqual([
+      "max-tokens-continuation",
+      "turn-limit",
+    ]);
+    const persisted = await loadMessages(messagesPath);
+    expect(persisted[0]).toEqual({ role: "user", content: "go" });
+    for (const { data } of injected) {
+      expect(persisted[data.index]).toEqual(data.message);
+      expect(persisted[data.index]?.meta).toEqual({ synthetic: true, kind: data.kind });
+    }
   });
 
   it("records the interrupt marker in the transcript too", async () => {
@@ -610,9 +641,11 @@ describe("createAgent · hooks", () => {
 
     // The is_error tool_result is in the persisted history.
     const persisted = await loadMessages(messagesPath);
-    const blocks = persisted.flatMap((m) =>
-      Array.isArray(m.content) ? m.content : [],
-    ) as Array<{ type: string; is_error?: boolean; content?: unknown }>;
+    const blocks = persisted.flatMap((m) => (Array.isArray(m.content) ? m.content : [])) as Array<{
+      type: string;
+      is_error?: boolean;
+      content?: unknown;
+    }>;
     const result_block = blocks.find((b) => b.type === "tool_result");
     expect(result_block).toBeDefined();
     expect(result_block?.is_error).toBe(true);

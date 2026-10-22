@@ -12,11 +12,7 @@ import { evaluateGoalWithAgent } from "./goal-eval.js";
 import { clearGoal, saveGoal } from "./goal.js";
 import { listWorkspaceFiles } from "./file-index.js";
 import { formatDuration } from "@nova/tools";
-import {
-  askPlanApproval,
-  shouldGatePlanApproval,
-  PLAN_APPROVED_PROMPT,
-} from "./plan-approval.js";
+import { askPlanApproval, shouldGatePlanApproval, PLAN_APPROVED_PROMPT } from "./plan-approval.js";
 import { predictNextInput } from "./predict.js";
 import { toUiSlashCommands } from "./slash.js";
 import { checkForUpdate } from "./update.js";
@@ -488,7 +484,10 @@ async function runTurnWithStopHooks(
         break;
       }
       stopContinuations++;
-      ok = await runTurn(ctx, decision.reason || "A Stop hook requested that you keep going.");
+      ok = await runTurn(ctx, decision.reason || "A Stop hook requested that you keep going.", {
+        synthetic: true,
+        kind: "stop-hook",
+      });
       continue;
     }
     // Stop hooks satisfied — consult an active /goal for one more turn. The
