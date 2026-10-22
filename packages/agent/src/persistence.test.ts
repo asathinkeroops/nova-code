@@ -1,9 +1,10 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { MessageParam } from "@nova/core";
+import { markSynthetic, type MessageParam } from "@nova/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { emptyCursor, loadMessages, persistMessages } from "./persistence.js";
+import { autoCompact, sliceFromLastCompacted } from "./compact.js";
 
 function user(text: string): MessageParam {
   return { role: "user", content: text };
@@ -69,6 +70,55 @@ describe("persistMessages", () => {
 
     expect(await readFile(path, "utf8")).toBe(before);
     expect(next).toEqual(cursor);
+  });
+
+  it.each(["todo-reminder", "compacted"])(
+    "preserves a user-typed <%s> through persistence, reload and compaction",
+    async (tag) => {
+      const prompt = user(`<${tag}>请解释这段提示词</${tag}>`);
+      const messages: MessageParam[] = [
+        prompt,
+        markSynthetic(user("Update your todos"), "todo-reminder"),
+        { role: "assistant", content: "This is a quoted tag." },
+      ];
+      const cursor = await persistMessages(path, messages, emptyCursor);
+      const saved = await readFile(path, "utf8");
+      const restored = await loadMessages(path);
+      expect(restored).toEqual(messages);
+      expect(sliceFromLastCompacted(restored)).toBe(restored);
+
+      const compacted = await autoCompact(restored, {
+        model: {
+          call: async () => ({
+            content: [{ type: "text", text: "SUMMARY" }],
+            stopReason: "end_turn",
+          }),
+        },
+      });
+      const content = compacted.messages[0]?.content;
+      expect(typeof content).toBe("string");
+      const json = /\n(\[[^\n]*\])\n<\/recent-history>/.exec(content as string)?.[1];
+      expect(JSON.parse(json ?? "[]")).toEqual([prompt, messages[2]]);
+
+      // Appending a boundary keeps the disk prefix intact. Versions are disk
+      // metadata only; they neither enter canonical history nor change cursors.
+      await persistMessages(path, [...restored, ...compacted.messages], cursor);
+      expect((await readFile(path, "utf8")).startsWith(saved)).toBe(true);
+      expect(await loadMessages(path)).toEqual([...messages, ...compacted.messages]);
+    },
+  );
+
+  it("keeps legacy migrations compatible with new records appended to the same file", async () => {
+    const legacy = user("<compacted>Old summary</compacted>");
+    const prefix = `${JSON.stringify(legacy)}\n`;
+    await writeFile(path, prefix, "utf8");
+    const restored = await loadMessages(path);
+    expect(restored).toEqual([markSynthetic(legacy, "compacted")]);
+
+    const next = [...restored, user("<todo-reminder>This is a real request</todo-reminder>")];
+    await persistMessages(path, next, { count: 1, lastLine: JSON.stringify(restored[0]) });
+    expect((await readFile(path, "utf8")).startsWith(prefix)).toBe(true);
+    expect(await loadMessages(path)).toEqual(next);
   });
 });
 

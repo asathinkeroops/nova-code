@@ -1,9 +1,20 @@
 import { appendFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import { z } from "zod";
 import { messageParamSchema, migrateLegacyMeta, type MessageParam } from "@nova/core";
+
+// Version the disk record, not the canonical message or the model request.
+// In this format an absent meta means exactly that; only unversioned legacy
+// records need the old tag-based inference. Per-record versions also allow
+// appending safely to an old session without rewriting its retained prefix.
+const MESSAGE_FORMAT_VERSION = 1;
+const persistedMessageSchema = messageParamSchema.extend({
+  formatVersion: z.literal(MESSAGE_FORMAT_VERSION).optional(),
+});
 
 export interface PersistCursor {
   count: number;
+  /** Canonical JSON of the last message, excluding the disk format version. */
   lastLine: string | null;
 }
 
@@ -11,7 +22,10 @@ export const emptyCursor: PersistCursor = { count: 0, lastLine: null };
 
 function encode(msgs: MessageParam[]): string {
   if (msgs.length === 0) return "";
-  return msgs.map((m) => JSON.stringify(m)).join("\n") + "\n";
+  return (
+    msgs.map((m) => JSON.stringify({ ...m, formatVersion: MESSAGE_FORMAT_VERSION })).join("\n") +
+    "\n"
+  );
 }
 
 function cursorOf(msgs: MessageParam[]): PersistCursor {
@@ -35,7 +49,7 @@ async function appendChunk(path: string, msgs: MessageParam[]): Promise<void> {
 /**
  * Persist `messages` to `path` as JSONL. Decides append vs. atomic rewrite by
  * comparing against `cursor`: if the on-disk prefix is still intact, only the
- * delta is appended; otherwise (clear / compact / divergence) the file is
+ * delta is appended; otherwise (clear / rewind / divergence) the file is
  * rewritten atomically. Returns the new cursor.
  */
 export async function persistMessages(
@@ -95,7 +109,8 @@ export async function loadMessages(
   for (const [i, line] of lines.entries()) {
     if (line.length === 0) continue;
     try {
-      messages.push(migrateLegacyMeta(messageParamSchema.parse(JSON.parse(line))));
+      const { formatVersion, ...message } = persistedMessageSchema.parse(JSON.parse(line));
+      messages.push(formatVersion === undefined ? migrateLegacyMeta(message) : message);
     } catch (err) {
       opts.onSkip?.({
         line: i + 1,

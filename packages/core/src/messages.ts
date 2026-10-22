@@ -58,9 +58,10 @@ const LEGACY_TAG_KINDS: ReadonlyArray<readonly [string, SyntheticKind]> = [
 
 /**
  * Back-fill `meta` on a message loaded from a session written before the field
- * existed, by matching its legacy opening tag. New messages already carry `meta`,
- * so this is a one-way, load-time upgrade for old transcripts only — it keeps
- * their compaction boundaries sliceable and their reminder bubbles hidden.
+ * existed, by matching its legacy opening tag. Call ONLY for unversioned disk
+ * records: current-format user messages can legitimately have no `meta` and
+ * start with these tags. This one-way upgrade keeps old compaction boundaries
+ * sliceable and old reminder bubbles hidden.
  */
 export function migrateLegacyMeta(msg: MessageParam): MessageParam {
   if (msg.meta || msg.role !== "user") return msg;
