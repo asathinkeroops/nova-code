@@ -2,6 +2,9 @@
 // and the @nova/tools invariants ledger share one notion of "the real file".
 // Re-exported here for the CLI's existing call sites; PATH_INPUT_TOOLS stays
 // CLI-local because @nova/base must not know specific tool identifiers.
+import { canonicalizePath } from "@nova/base";
+import { aliasedPath } from "@nova/tools";
+
 export { canonicalizePath, canonicalizeRoots } from "@nova/base";
 
 /**
@@ -21,3 +24,41 @@ export const PATH_INPUT_TOOLS: ReadonlySet<string> = new Set([
   "glob",
   "grep",
 ]);
+
+/**
+ * Tools whose schema accepts a `filePath`/`file_path`/`file` alias for `path`
+ * (the `withAliases` wrapper in @nova/tools). Only these need alias resolution
+ * at the gate: glob/grep use a bare `z.object({ path })`, so a stray alias on
+ * those is ignored by the tool and must be ignored by the gate too — otherwise
+ * the gate would judge a different directory than the call searches.
+ */
+const PATH_ALIAS_TOOLS: ReadonlySet<string> = new Set(["read", "write", "edit"]);
+
+/**
+ * Canonicalize a raw tool input's path for the permission gate.
+ *
+ * The gate runs BEFORE the dispatcher validates the input, so it must resolve
+ * the path exactly the way the tool schema will: `path` first, then — for the
+ * tools that accept them — the `filePath`/`file_path`/`file` aliases. Reading
+ * `input.path` directly treated an alias-only call as "no path" and fell back
+ * to `"."` — i.e. the workspace root — so a write/read addressed via
+ * `filePath` was judged as an in-workspace operation and auto-granted, then
+ * executed against the real out-of-workspace target. Hence `aliasedPath` here,
+ * not `input.path`.
+ *
+ * Returns a shallow copy with `path` replaced by the canonical form; the alias
+ * keys are preserved. Tools outside {@link PATH_INPUT_TOOLS} are returned
+ * untouched. An absent/empty path falls back to `"."` (glob/grep's documented
+ * "search the cwd" default); for read/write/edit the schema rejects the call
+ * afterwards, so the fallback cannot grant anything the tool would accept.
+ */
+export async function canonicalizeGateInput(
+  tool: string,
+  input: Record<string, unknown>,
+  workspace: string,
+): Promise<Record<string, unknown>> {
+  if (!PATH_INPUT_TOOLS.has(tool)) return input;
+  const raw = PATH_ALIAS_TOOLS.has(tool) ? aliasedPath(input) : input.path;
+  const target = typeof raw === "string" && raw.length > 0 ? raw : ".";
+  return { ...input, path: await canonicalizePath(workspace, target) };
+}

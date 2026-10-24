@@ -226,7 +226,7 @@ DeepSeek 的内置模型梯度是 `lite` → `deepseek-flash`（原生多模态�
 | 特性 | 能力 |
 | --- | --- |
 | 🧠 子 agent | 带全新上下文、独立工具集干活：`explore` 只读检索、`plan` 只读规划、`general-purpose` 全权限、`nova-code-guide` 答疑，可自定义；每个 agent 可经 `subagent.model` 单独指定模型档位 |
-| 🛡️ 权限与沙箱 | 首次进入目录先过工作区信任门；默认 `auto` 模式以静态规则 + 小模型分类器判断 bash 风险：规则判不准的才交给分类器，超时或判为风险一律转人工确认（绝不静默放行），<kbd>shift</kbd>+<kbd>tab</kbd> 可切 `default` / `acceptEdits` / `auto` / `plan`；OS 级沙箱把子进程写入隔离在工作区（macOS Seatbelt / Linux bubblewrap），默认关闭、可一键开启 |
+| 🛡️ 权限与沙箱 | 首次进入目录先过工作区信任门；默认 `auto` 模式以静态规则 + 小模型分类器判断 bash 风险：规则判不准的才交给分类器，超时或判为风险一律转人工确认（绝不静默放行）；工作区外的读先走只读白名单（系统/工具链目录、包管理器缓存、临时目录），其余首次询问并可「本会话内允许读取该目录」，越界的敏感路径始终逐次确认；<kbd>shift</kbd>+<kbd>tab</kbd> 可切 `default` / `acceptEdits` / `auto` / `plan`；OS 级沙箱把子进程写入隔离在工作区（macOS Seatbelt / Linux bubblewrap），默认关闭、可一键开启 |
 | 📄 文件防护 | 改文件前强制先读、检测外部改动，避免误覆盖 |
 | 🔌 MCP | 接入 `stdio` / `http` / `sse` 服务器；工具进入统一权限门，resources 通过只读工具访问，prompts 映射成 slash 命令，远程服务器支持 OAuth 2.0 + PKCE |
 | 📚 Skills | 把可复用操作手册写成 `SKILL.md`，模型按需加载，省 token 又能随仓库分发 |

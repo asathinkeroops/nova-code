@@ -1,12 +1,12 @@
 import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
-import type { PermissionDecision, PermissionInput } from "@nova/safety";
+import { sessionGrantDir, type PermissionDecision, type PermissionInput } from "@nova/safety";
 import { ACCENT_HEX, cyan } from "../colors.js";
 import { t } from "../i18n/index.js";
 import { countWrappedLines } from "./measure.js";
 import { PENDING_DOT, renderCommandBody } from "./render-strings.js";
 
-export type ApprovalAnswer = "yes" | "no" | "always-allow";
+export type ApprovalAnswer = "yes" | "no" | "always-allow" | "always-allow-dir";
 
 // Read `t` at call time (never at module top-level — see i18n invariant): the
 // catalog is chosen by `setLocale` after this module is first evaluated.
@@ -90,13 +90,42 @@ interface Option {
 }
 
 // Labels are looked up at render time (see i18n invariant), keyed by `value`.
-const OPTIONS: Option[] = [
-  { value: "yes", hint: "y", shortcut: "y", color: "green" },
-  { value: "no", hint: "n", shortcut: "n", color: "red" },
-  { value: "always-allow", hint: "a", shortcut: "a", color: ACCENT_HEX },
-];
+const MAX_DIR_CHARS = 36;
 
-function optionLabel(value: ApprovalAnswer): string {
+function grantDirFor(input: PermissionInput): string | undefined {
+  return sessionGrantDir(input.tool, input.input);
+}
+
+/** Keep the option on one row: show the tail, which is the distinguishing part. */
+function abbreviateDir(dir: string): string {
+  return dir.length > MAX_DIR_CHARS ? `…${dir.slice(-(MAX_DIR_CHARS - 1))}` : dir;
+}
+
+/**
+ * Options for this prompt. The directory-scoped grant is offered only for the
+ * read family — `sessionGrantDir` returns undefined for every other tool and for
+ * sensitive targets, so write/edit/bash keep the original three choices.
+ */
+function optionsFor(input: PermissionInput): Option[] {
+  const dir = grantDirFor(input);
+  return [
+    { value: "yes", hint: "y", shortcut: "y", color: "green" },
+    { value: "no", hint: "n", shortcut: "n", color: "red" },
+    { value: "always-allow", hint: "a", shortcut: "a", color: ACCENT_HEX },
+    ...(dir
+      ? [
+          {
+            value: "always-allow-dir" as const,
+            hint: "d",
+            shortcut: "d",
+            color: ACCENT_HEX,
+          },
+        ]
+      : []),
+  ];
+}
+
+function optionLabel(value: ApprovalAnswer, input: PermissionInput): string {
   switch (value) {
     case "yes":
       return t.approval.allowOnce;
@@ -104,6 +133,8 @@ function optionLabel(value: ApprovalAnswer): string {
       return t.approval.deny;
     case "always-allow":
       return t.approval.alwaysAllow;
+    case "always-allow-dir":
+      return t.approval.alwaysAllowDir(abbreviateDir(grantDirFor(input) ?? ""));
   }
 }
 
@@ -125,7 +156,7 @@ function optionLabel(value: ApprovalAnswer): string {
  *   bash instead shows a `● bash`  = 1 + renderCommandBody rows (+1 if
  *     header + `⎿`-gutter command       truncated), mirroring the message feed
  *   options box marginTop          = 1
- *   one row per option             = OPTIONS.length
+ *   options (wrapped individually) = Σ countWrappedLines(option row)
  */
 /**
  * Modal content width given `cols` — the width available to the modal box,
@@ -148,13 +179,22 @@ export function approvalInnerWidth(cols: number): number {
 export function approvalRows(input: PermissionInput, cols: number): number {
   const inner = approvalInnerWidth(cols);
   const { text: detail, truncated } = clampDetail(describeToolInput(input.input));
+  // Each option is a row like "❯ <label> (<hint>)". A directory-scoped grant
+  // label contains a path, so at narrow widths it can wrap — measure instead of
+  // assuming one row per option, or the reservation under-reserves and the
+  // viewport paints over the modal.
+  const optionRows = optionsFor(input).reduce(
+    (rows, opt) =>
+      rows + countWrappedLines(`  ${optionLabel(opt.value, input)} (${opt.hint})`, inner),
+    0,
+  );
   const base =
     2 + // border top + bottom
     2 + // outer marginTop + marginBottom
     countWrappedLines(promptFor(input.tool, input.input), inner) +
     1 + // blank gap line
     1 + // options box marginTop
-    OPTIONS.length;
+    optionRows;
   if (input.tool === "bash") {
     // `● bash` header row + the command rendered as `⎿`-gutter body rows
     // (renderCommandBody already wraps to `inner`, so each line is one row) +
@@ -203,6 +243,7 @@ export function ApprovalPrompt({
   onScroll,
 }: ApprovalPromptProps): React.ReactElement {
   const [cursor, setCursor] = useState(0);
+  const options = optionsFor(input);
 
   useInput((char, key) => {
     if (key.escape) {
@@ -219,20 +260,20 @@ export function ApprovalPrompt({
       return;
     }
     if (key.upArrow || char === "k") {
-      setCursor((c) => (c - 1 + OPTIONS.length) % OPTIONS.length);
+      setCursor((c) => (c - 1 + options.length) % options.length);
       return;
     }
     if (key.downArrow || char === "j") {
-      setCursor((c) => (c + 1) % OPTIONS.length);
+      setCursor((c) => (c + 1) % options.length);
       return;
     }
     if (key.return) {
-      const chosen = OPTIONS[cursor];
+      const chosen = options[cursor];
       if (chosen) onAnswer(chosen.value);
       return;
     }
     const k = char?.toLowerCase();
-    const match = OPTIONS.find((o) => o.shortcut === k);
+    const match = options.find((o) => o.shortcut === k);
     if (match) onAnswer(match.value);
   });
 
@@ -270,12 +311,12 @@ export function ApprovalPrompt({
       )}
 
       <Box flexDirection="column" marginTop={1}>
-        {OPTIONS.map((opt, i) => {
+        {options.map((opt, i) => {
           const active = i === cursor;
           return (
             <Text key={opt.value} color={active ? opt.color : undefined}>
               {active ? "❯ " : "  "}
-              <Text>{optionLabel(opt.value)}</Text>
+              <Text>{optionLabel(opt.value, input)}</Text>
               <Text dimColor> ({opt.hint})</Text>
             </Text>
           );

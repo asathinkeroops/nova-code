@@ -74,44 +74,54 @@ describe("approvalInnerWidth", () => {
 
 describe("approvalRows", () => {
   // Fixed chrome around the detail: border(2) + outer margins(2) + prompt(1) +
-  // gap(1) + options marginTop(1) + 3 options = 10, plus the detail's own rows.
-  const BASE = 10;
+  // gap(1) + options marginTop(1) + options rows, plus the detail's own rows.
+  // Read-family tools get a fourth option ("allow this directory"), so their
+  // base is one row taller than bash/monitor's.
+  const BASE_READ = 11;
+  const BASE_OTHER = 10;
 
   it("reserves BASE+1 rows for a one-line generic detail (old hardcoded 7 was too small)", () => {
     const rows = approvalRows(permInput("read", { path: "/tmp/x.ts" }), 80);
-    expect(rows).toBe(BASE + 1);
+    expect(rows).toBe(BASE_READ + 1);
     expect(rows).toBeGreaterThan(7);
+  });
+
+  it("adds exactly one row for the directory grant on read-family tools", () => {
+    // Same one-line detail, one option more than a non-read tool.
+    const read = approvalRows(permInput("read", { path: "/tmp/x.ts" }), 80);
+    const fetch = approvalRows(permInput("webfetch", { url: "https://x.dev" }), 80);
+    expect(read).toBe(fetch + 1);
   });
 
   it("accounts for wrapping when a generic detail is wider than the terminal", () => {
     // inner width = cols - 4 = 16. A long path wraps onto multiple rows
     // (the "read " tool prefix adds to the same logical line).
     const wide = approvalRows(permInput("read", { path: "/" + "x".repeat(50) }), 20);
-    expect(wide).toBeGreaterThan(BASE + 1);
+    expect(wide).toBeGreaterThan(BASE_READ + 1);
   });
 
   describe("bash mirrors the message-stream layout (`● bash` header + `⎿` body)", () => {
     it("one-line command: header row + one body row", () => {
       const rows = approvalRows(permInput("bash", { command: "pnpm test" }), 80);
-      expect(rows).toBe(BASE + 2);
+      expect(rows).toBe(BASE_OTHER + 2);
       expect(rows).toBeGreaterThan(7);
     });
 
     it("grows by one body row per command line", () => {
       const three = approvalRows(permInput("bash", { command: "a\nb\nc" }), 80);
-      expect(three).toBe(BASE + 1 + 3); // header + 3 body rows
+      expect(three).toBe(BASE_OTHER + 1 + 3); // header + 3 body rows
     });
 
     it("wraps long command lines under the `⎿` gutter", () => {
       const wide = approvalRows(permInput("bash", { command: "x".repeat(50) }), 20);
-      expect(wide).toBeGreaterThan(BASE + 2);
+      expect(wide).toBeGreaterThan(BASE_OTHER + 2);
     });
 
     it("caps body growth at MAX_DETAIL_LINES and adds a truncated row", () => {
       const huge = Array.from({ length: 100 }, (_, i) => `line ${i}`).join("\n");
       const rows = approvalRows(permInput("bash", { command: huge }), 80);
       // header(1) + 16 clamped body rows + truncated notice(1).
-      expect(rows).toBe(BASE + 1 + 16 + 1);
+      expect(rows).toBe(BASE_OTHER + 1 + 16 + 1);
     });
   });
 });

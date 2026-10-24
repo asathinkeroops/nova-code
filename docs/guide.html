@@ -891,7 +891,7 @@
         <div class="tbl-wrap"><table class="doc"><thead><tr><th>模式</th><th>状态行</th><th>行为</th></tr></thead><tbody>
           <tr><td><code>default</code></td><td><span style="color:#b8c1cf;white-space:nowrap">○ manual mode on</span></td><td>不改变任何裁决，<code>write</code>/<code>edit</code>/<code>bash</code> 照常落到引擎的 <code>ask</code></td></tr>
           <tr><td><code>acceptEdits</code></td><td><span style="color:#3ddc84;white-space:nowrap">⏵⏵ accept edits on</span></td><td><strong>工作区内</strong>的 <code>write</code>/<code>edit</code> 自动放行（不再逐次询问）；<code>bash</code> 与工作区外的写仍然询问</td></tr>
-          <tr><td><code>auto</code><br><span class="text-xs" style="color:var(--muted)">启动默认</span></td><td><span style="color:#ffb454;white-space:nowrap">✦ auto mode on</span></td><td><strong>自主模式</strong>：在 <code>acceptEdits</code> 基础上，命令工具（<code>bash</code>，含 <code>run_in_background</code>）也自动放行、无人值守运行（先过一层风险分类器）。比 <code>acceptEdits</code> 更宽，但仍窄于 <code>bypassPermissions</code> —— 工作区外的写和用户 <code>deny</code> 规则不被绕过</td></tr>
+          <tr><td><code>auto</code><br><span class="text-xs" style="color:var(--muted)">启动默认</span></td><td><span style="color:#ffb454;white-space:nowrap">✦ auto mode on</span></td><td><strong>自主模式</strong>：在 <code>acceptEdits</code> 基础上，命令工具（<code>bash</code>，含 <code>run_in_background</code>）也自动放行、无人值守运行（先过一层风险分类器）；工作区外的读先走只读白名单（系统/工具链目录、包管理器缓存、临时目录），其余首次询问并可「本会话内允许读取该目录」。比 <code>acceptEdits</code> 更宽，但仍窄于 <code>bypassPermissions</code> —— 工作区外的写、敏感路径和用户 <code>deny</code> 规则不被绕过</td></tr>
           <tr><td><code>plan</code></td><td><span style="color:#22d3ee;white-space:nowrap">⏸ plan mode on</span></td><td><strong>只读</strong>：<code>write</code>/<code>edit</code>/<code>bash</code> 一律拒绝，逼模型先调查、给出分步计划，而不动手改 —— 与只读 <code>/plan</code> 子 agent 同源</td></tr>
         </tbody></table></div>
         <div class="callout callout-info">
@@ -916,18 +916,27 @@
         </ul>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">读操作被限定在工作区</h3>
-        <p><code>read</code>/<code>glob</code>/<code>grep</code> 的路径在裁决前会被<strong>规范化（resolve + realpath）</strong>，再检查是否落在「工作区根」内：</p>
+        <p><code>read</code>/<code>glob</code>/<code>grep</code> 的路径在裁决前会被<strong>规范化（resolve + realpath）</strong>，再检查是否落在「读根」内：</p>
         <ul class="space-y-2">
-          <li>工作区根 = <code>--cwd</code>（或当前目录）+ <code>permissions.additionalDirectories</code> 里列出的目录。</li>
+          <li>读根 = <code>--cwd</code>（或当前目录）+ <code>permissions.additionalDirectories</code> + <code>permissions.readOnlyDirectories</code> + 内置的 Nova Code Guide 检出目录。</li>
+          <li><strong><code>readOnlyDirectories</code> 只放宽读</strong>：不进写根、不进 <code>auto</code>/<code>acceptEdits</code> 的写自动放行，也不进沙箱写白名单。<code>additionalDirectories</code> 则是读写都放宽（并进沙箱写根），只为读放宽时请用前者。</li>
           <li><code>..</code> 穿越、符号链接逃逸都会被折算成真实路径后再判断，因此 <code>../../etc/passwd</code>、<code>link→/etc</code> 这类逃逸会被正确拦下。</li>
           <li><code>glob</code>/<code>grep</code> 不带 <code>path</code> 时自动注入工作区根，所以无参搜索默认就在工作区内。</li>
         </ul>
+        <p><code>auto</code> 模式下，读根之外还有两层，目标是让「读依赖源码/工具链」这类高频操作不再逐个确认：</p>
+        <ul class="space-y-2">
+          <li><strong>只读白名单</strong>：系统与工具链目录（<code>/usr</code>、<code>/opt/homebrew</code>、<code>/Library/Developer</code>）、语言与包管理器缓存（<code>~/.nvm</code>、<code>~/.cargo/registry</code>、<code>~/go/pkg/mod</code>、<code>~/.npm/_cacache</code>、<code>~/.m2/repository</code> 等）、临时目录（<code>/tmp</code>、<code>$TMPDIR</code>）自动放行。</li>
+          <li><strong>目录级会话放行</strong>：其余越界读第一次会问，审批框里可选「本会话内允许读取 <code>&lt;dir&gt;</code>」，之后该目录（含子目录）的 <code>read</code>/<code>glob</code>/<code>grep</code> 都静默；换目录才再问一次。</li>
+          <li><strong>越界的敏感路径永远不吃目录授权</strong>：<code>~/.ssh</code>、<code>~/.aws</code>、<code>~/.gnupg</code>、<code>~/.nova</code>（含会话记录）、shell history、浏览器凭据目录、<code>/etc/shadow</code>，以及 <code>*.pem</code>/<code>*.key</code>/<code>id_rsa*</code>/<code>.env*</code> 这类文件名，仍逐次询问，并且不会提供「允许此目录」选项——所以一次「允许 ~」也不会静默暴露密钥。（工作区内的同名文件仍按现有工作区规则放行。）</li>
+        </ul>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">交互式审批</h3>
+        <p>需要询问时弹出选项（读类工具会多一个目录授权项）：</p>
         <div class="tbl-wrap"><table class="doc"><thead><tr><th>选项</th><th>快捷键</th><th>效果</th></tr></thead><tbody>
           <tr><td>Allow once</td><td><span class="kbd">y</span></td><td>只放行这一次，下次同样的调用还会再问</td></tr>
           <tr><td>Deny</td><td><span class="kbd">n</span> / <span class="kbd">Esc</span></td><td>拒绝本次调用</td></tr>
           <tr><td>Always allow this tool</td><td><span class="kbd">a</span></td><td>本 session 内该工具今后都放行（仅存内存，不写盘）</td></tr>
+          <tr><td>Always allow reads in <code>&lt;dir&gt;</code></td><td><span class="kbd">d</span></td><td>本 session 内该目录（含子目录）的 <code>read</code>/<code>glob</code>/<code>grep</code> 全部放行；仅读类工具且目标不是敏感路径时出现（仅存内存，不写盘）</td></tr>
         </tbody></table></div>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">自定义权限规则</h3>
@@ -1273,7 +1282,8 @@
           <tr><td><code>defaultEffect</code></td><td><code>"ask"</code></td><td>无规则命中时的兜底（<code>allow</code>/<code>deny</code>/<code>ask</code>）</td></tr>
           <tr><td><code>rules</code></td><td><code>[]</code></td><td>规则数组（首个匹配生效），见 <a class="inline-link" href="#sec-10">§10</a></td></tr>
           <tr><td><code>deny</code></td><td><code>[]</code></td><td>裸工具名黑名单：启动时从注册表摘除，模型看不到也调不了（比 <code>rules</code> 的 <code>deny</code> 更硬），系统提示里与之绑定的说明同步消失，见 <a class="inline-link" href="#sec-10">§10</a></td></tr>
-          <tr><td><code>additionalDirectories</code></td><td><code>[]</code></td><td>工作区之外、读工具可免询问触及的目录</td></tr>
+          <tr><td><code>additionalDirectories</code></td><td><code>[]</code></td><td>工作区之外、<strong>读写都放宽</strong>的目录（同时进沙箱写根）；只为读放宽请用 <code>readOnlyDirectories</code></td></tr>
+          <tr><td><code>readOnlyDirectories</code></td><td><code>[]</code></td><td>工作区之外、<strong>仅读</strong>工具可免询问触及的目录（不放宽写，也不进沙箱写根）</td></tr>
           <tr><td><code>autoMode.llmClassifier</code></td><td><code>true</code></td><td><code>auto</code> 模式下把规则判不定的命令交给 LLM 风险分类器；关掉则一律弹确认</td></tr>
           <tr><td><code>autoMode.model</code></td><td>（无→便宜档）</td><td>分类器用的模型（裸 id 或档位名），独立于 <code>/model</code></td></tr>
           <tr><td><code>autoMode.classifierTimeoutMs</code></td><td><code>8000</code></td><td>分类器超时；超时按「有风险」处理（弹确认，不静默执行）</td></tr>

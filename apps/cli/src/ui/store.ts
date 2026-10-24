@@ -53,7 +53,7 @@ export interface LiveDraft {
   thinking: string;
 }
 
-export type ApprovalAnswer = "yes" | "no" | "always-allow";
+export type ApprovalAnswer = "yes" | "no" | "always-allow" | "always-allow-dir";
 
 export type CardKind = "info" | "warn" | "error";
 

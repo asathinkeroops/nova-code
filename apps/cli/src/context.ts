@@ -83,7 +83,13 @@ import { dim } from "./colors.js";
 import { measureCtxOverhead } from "./context-usage.js";
 import { loadGoal } from "./goal.js";
 import { buildMcpManager } from "./mcp.js";
-import { canonicalizePath, canonicalizeRoots, PATH_INPUT_TOOLS } from "./path-safety.js";
+import {
+  canonicalizeGateInput,
+  canonicalizePath,
+  canonicalizeRoots,
+  PATH_INPUT_TOOLS,
+} from "./path-safety.js";
+import { AUTO_READ_TOOLS, isAutoAllowedReadPath } from "./read-policy.js";
 import {
   applyToolDenylist,
   MODE_COMMAND_TOOLS,
@@ -519,7 +525,7 @@ export async function createContext(
   // lifecycle hooks above: capture → tool → result bookkeeping all remain
   // inside the same per-path serialized transaction.
   const dispatch: ToolExecutor = async (use, toolCtx) => {
-    // ctx.sandbox is assigned after allowedRoots below; its bridge is undefined
+    // ctx.sandbox is assigned after the sandbox write roots are computed below; its bridge is undefined
     // when sandboxing is inactive. Read lazily — dispatch only runs during a
     // turn, long after ctx.sandbox is set.
     const bridge = ctx.sandbox?.bridge;
@@ -757,17 +763,22 @@ export async function createContext(
     return answer;
   };
 
-  // The workspace cwd is always an allowed root; users widen the set via
-  // permissions.additionalDirectories. Canonicalized once here so the engine's
-  // `within` matcher compares real on-disk paths (a symlinked cwd still matches).
-  const allowedRoots = await canonicalizeRoots(
-    [
-      workspace,
-      ...settings.permissions.additionalDirectories,
-      // The Nova Code Guide checkout is a read root so the guide sub-agent's
-      // read/grep/glob calls into it pass the workspace-containment gate.
-      ...(guideDir ? [guideDir] : []),
-    ],
+  // Two root sets on purpose:
+  //  - writeRoots: where write/edit run without a prompt in auto/acceptEdits,
+  //    and where the OS sandbox permits filesystem writes. The workspace cwd
+  //    plus `permissions.additionalDirectories` (that setting has always meant
+  //    "read AND write" — see config.ts).
+  //  - readRoots: what read/glob/grep may touch without a prompt. The write set
+  //    plus `permissions.readOnlyDirectories` and the Nova Code Guide checkout
+  //    (a read-only reference tree — auto mode must not be able to write it).
+  // Canonicalized once here so the engine's `within` matcher compares real
+  // on-disk paths (a symlinked cwd still matches).
+  const writeRoots = await canonicalizeRoots(
+    [workspace, ...settings.permissions.additionalDirectories],
+    workspace,
+  );
+  const readRoots = await canonicalizeRoots(
+    [...writeRoots, ...settings.permissions.readOnlyDirectories, ...(guideDir ? [guideDir] : [])],
     workspace,
   );
   // The agent maintains its own auto-memory store under this directory; auto-allow
@@ -790,13 +801,13 @@ export async function createContext(
   );
   const permission = new PermissionEngine({
     defaultEffect: settings.permissions.defaultEffect,
-    rules: resolvePermissionRules(settings, allowedRoots, autoMemoryDir, sessionCaptureDirs),
+    rules: resolvePermissionRules(settings, readRoots, autoMemoryDir, sessionCaptureDirs),
     ask: askWithSignal,
   });
   (ctx as { permission: PermissionEngine }).permission = permission;
 
   // OS command sandbox (opt-in). Confines subprocess writes to the same
-  // allowedRoots the permission engine uses, plus the auto-memory store: that
+  // writeRoots the permission engine's write grants use, plus the auto-memory store: that
   // store now lives OUTSIDE the workspace (under ~/.nova), so — unlike the old
   // in-repo `.nova/memory` — it must be added to the sandbox write allowlist for
   // a shelled-out memory write to succeed when the sandbox is on. Network is
@@ -804,7 +815,7 @@ export async function createContext(
   // createSandbox never throws — on an unsupported platform / missing deps /
   // disabled it returns an inactive control and tools run unsandboxed. The bridge
   // is read by the dispatch closure above via the `sandboxBridge` variable.
-  const sandboxWriteRoots = autoMemoryDir ? [...allowedRoots, autoMemoryDir] : allowedRoots;
+  const sandboxWriteRoots = autoMemoryDir ? [...writeRoots, autoMemoryDir] : writeRoots;
   const sandboxControl = await createSandbox({
     enabled: settings.sandbox.enabled,
     writeRoots: sandboxWriteRoots,
@@ -866,19 +877,18 @@ export async function createContext(
     // Canonicalize path-bearing inputs (resolve + realpath) BEFORE the engine
     // sees them, so the decision is made on the file actually touched — not the
     // raw string. This closes `..` traversal and symlink escape, and makes both
-    // workspace and user-defined rules match canonical absolute paths. We never
-    // mutate the caller's input (the tool still runs on its own copy); the
-    // canonical path is used for evaluation only.
-    let evalInput = input as Record<string, unknown>;
-    if (PATH_INPUT_TOOLS.has(tool)) {
-      const raw = evalInput.path;
-      // glob/grep treat an absent/empty `path` as the cwd; gate against the
-      // canonical workspace root in that case so the `within` rule allows it
-      // (a path-less glob/grep is the common in-workspace search) instead of
-      // missing on `undefined` and falling through to ask.
-      const target = typeof raw === "string" && raw.length > 0 ? raw : ".";
-      evalInput = { ...evalInput, path: await canonicalizePath(workspace, target) };
-    }
+    // workspace and user-defined rules match canonical absolute paths. The
+    // path is resolved through `aliasedPath` (filePath/file_path/file) because
+    // schema-level alias normalization happens later, in the dispatcher: reading
+    // `input.path` here would judge an alias-only call as "no path" and gate it
+    // against the workspace root instead of its real target. We never mutate the
+    // caller's input (the tool still runs on its own copy); the canonical path
+    // is used for evaluation only.
+    const evalInput = await canonicalizeGateInput(
+      tool,
+      input as Record<string, unknown>,
+      workspace,
+    );
     // PreToolUse hooks run BEFORE the permission system (Claude Code semantics):
     // they see the raw tool input and can deny, allow (bypass mode + rules), or
     // ask (force a confirmation even when the gate would auto-allow). A "none"
@@ -901,24 +911,49 @@ export async function createContext(
     }
     // Input-box permission mode (shift+tab cycles default/acceptEdits/auto/plan).
     // Applied AFTER canonicalization so accept-edits containment is judged on
-    // the real on-disk path, and BEFORE the engine so plan-mode denial and
-    // accept-edits auto-grant short-circuit the normal `ask` flow. A null
-    // decision means "no mode opinion — defer to the engine rules below".
+    // the real on-disk path. A null decision means "no mode opinion — defer to
+    // the rules/prompt flow below".
     const mode = ctx.screen.getPermissionMode();
     const modeDecision = resolveModeDecision(
       mode,
       tool,
       PATH_INPUT_TOOLS.has(tool) ? (evalInput.path as string) : undefined,
-      allowedRoots,
+      writeRoots,
       { canSelfExit: settings.planMode.agentTools },
     );
+    // Plan mode is an outright denial: it outranks every grant below, including
+    // a session-scoped always-allow. Read-only has to stay read-only.
+    if (modeDecision?.granted === false) return modeDecision;
+    // A user-configured `deny` rule is absolute. The mode grants below
+    // (acceptEdits/auto writes) and auto's classifier shortcut would otherwise
+    // return without ever consulting the engine, silently overriding it.
+    // `deniedByRule` keeps the engine's first-match-wins semantics.
+    const ruleDenial = permission.deniedByRule({ tool, input: evalInput });
+    if (ruleDenial) return { granted: false, reason: ruleDenial.reason };
     if (modeDecision) return modeDecision;
+    // `auto` mode's read fast path: toolchain / package-manager / temp trees
+    // (see read-policy.ts) are read-only by construction, and reading them is
+    // the common out-of-workspace operation. Runs after the deny rules above,
+    // so an explicit user deny still wins; sensitive paths are excluded inside
+    // the helper. Everything else keeps the normal ask flow, where
+    // "always allow reads in <dir>" turns N prompts into one per directory.
+    if (mode === "auto" && AUTO_READ_TOOLS.has(tool)) {
+      const readPath = evalInput.path;
+      if (typeof readPath === "string" && isAutoAllowedReadPath(readPath)) {
+        return { granted: true };
+      }
+    }
     // `auto` mode runs commands unattended, but only after a risk classifier
     // clears them (static rules first, then an LLM call for the rest). A risky
     // verdict falls back to a confirmation prompt — Claude Code's auto-mode
     // fallback-to-prompting — rather than denying outright, so the user keeps
     // control while genuinely-safe commands run without interruption.
-    if (mode === "auto" && MODE_COMMAND_TOOLS.has(tool)) {
+    // A remembered "always allow this tool" skips the classifier, but NOT the
+    // engine: falling through to `permission.check` still enforces the
+    // dangerous-bash hard deny, which `evaluate` applies before any runtime
+    // allow. Returning a bare grant here would let a session grant swallow it.
+    const sessionAllowed = permission.isSessionAllowed({ tool, input: evalInput });
+    if (mode === "auto" && MODE_COMMAND_TOOLS.has(tool) && !sessionAllowed) {
       const command = typeof evalInput.command === "string" ? evalInput.command : "";
       const autoCfg = ctx.settings.permissions.autoMode;
       // Classifier model is independent of the agent's /model. Precedence:
@@ -943,9 +978,14 @@ export async function createContext(
         },
         { tool, input: evalInput },
       );
-      return answer === "no"
-        ? { granted: false, reason: "denied at auto-mode risk prompt" }
-        : { granted: true };
+      if (answer === "no") {
+        return { granted: false, reason: "denied at auto-mode risk prompt" };
+      }
+      // The prompt is outside PermissionEngine.check (auto's classifier owns
+      // the decision), so record the same tool-scoped grant here — otherwise
+      // "Always allow this tool" would be forgotten before the next command.
+      if (answer === "always-allow") permission.allowToolForSession(tool);
+      return { granted: true };
     }
     try {
       await permission.check({ tool, input: evalInput });

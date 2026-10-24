@@ -15,9 +15,12 @@ export {
   PermissionEngine,
   PermissionDeniedError,
   isWithin,
+  isSensitiveReadPath,
+  sessionGrantDir,
   type PermissionConfig,
   type PermissionDecision,
   type PermissionInput,
   type PermissionEffect,
+  type AskAnswer,
   type AskCallback,
 } from "./permission.js";

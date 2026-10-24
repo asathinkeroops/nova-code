@@ -433,7 +433,7 @@ Output: … — read or grep it if you need the command's output.</background-no
 |------|--------|------|
 | `default` | ○ manual mode on（浅灰） | 不改变任何裁决，`write`/`edit`/`bash` 照常落到引擎的 `ask` |
 | `acceptEdits` | ⏵⏵ accept edits on（绿） | **工作区内**的 `write`/`edit` 自动放行；`bash` 与工作区外的写仍然询问 |
-| `auto`（启动默认） | ✦ auto mode on（琥珀） | **自主模式**：在 `acceptEdits` 基础上，命令工具（`bash`，含 `run_in_background`）也自动放行、无人值守运行（先过一层风险分类器）。比 `acceptEdits` 更宽，但仍窄于 `bypassPermissions`——工作区外的写和用户 `deny` 规则不被绕过 |
+| `auto`（启动默认） | ✦ auto mode on（琥珀） | **自主模式**：在 `acceptEdits` 基础上，命令工具（`bash`，含 `run_in_background`）也自动放行、无人值守运行（先过一层风险分类器）；工作区外的读先走只读白名单（系统/工具链目录、包管理器缓存、临时目录），其余首次询问并可「本会话内允许读取该目录」。比 `acceptEdits` 更宽，但仍窄于 `bypassPermissions`——工作区外的写、敏感路径和用户 `deny` 规则不被绕过 |
 | `plan` | ⏸ plan mode on（青） | **只读**：`write`/`edit`/`bash` 一律拒绝，逼模型先调查、给出分步计划——与只读 `/plan` 子 agent 同源 |
 
 `plan` 这一档模型自己也能进：`enterPlanMode` 让它在动手前先切成只读（只收权，不问你）。整套由 `planMode.agentTools` 控制，默认开；见 [§9](#9-内置工具一览)。模式无论谁切的，都会在下一次请求时以一条 `<plan-mode>` 提示告诉模型，行为完全一致。
@@ -451,21 +451,29 @@ Output: … — read or grep it if you need the command's output.</background-no
 
 ### 读操作被限定在工作区
 
-`read`/`glob`/`grep` 的路径在裁决前会被**规范化（resolve + realpath）**，再检查是否落在「工作区根」内：
+`read`/`glob`/`grep` 的路径在裁决前会被**规范化（resolve + realpath）**，再检查是否落在「读根」内：
 
-- 工作区根 = `--cwd`（或当前目录）+ `permissions.additionalDirectories` 里列出的目录。
+- 读根 = `--cwd`（或当前目录）+ `permissions.additionalDirectories` + `permissions.readOnlyDirectories` + 内置的 Nova Code Guide 检出目录。
+- **`readOnlyDirectories` 只放宽读**：不进写根、不进 `auto`/`acceptEdits` 的写自动放行，也不进沙箱写白名单。`additionalDirectories` 则是读写都放宽（并进沙箱写根），只为读放宽时请用前者。
 - `..` 穿越、符号链接逃逸都会被折算成真实路径后再判断，因此 `../../etc/passwd`、`link→/etc` 这类逃逸会被正确拦下。
 - `glob`/`grep` 不带 `path` 时自动注入工作区根，所以无参搜索默认就在工作区内。
 
+`auto` 模式下，读根之外还有两层，目标是让「读依赖源码/工具链」这类高频操作不再逐个确认：
+
+- **只读白名单**：系统与工具链目录（`/usr`、`/opt/homebrew`、`/Library/Developer`）、语言与包管理器缓存（`~/.nvm`、`~/.cargo/registry`、`~/go/pkg/mod`、`~/.npm/_cacache`、`~/.m2/repository` 等）、临时目录（`/tmp`、`$TMPDIR`）自动放行。
+- **目录级会话放行**：其余越界读第一次会问，审批框里可选「本会话内允许读取 `<dir>`」，之后该目录（含子目录）的 `read`/`glob`/`grep` 都静默；换目录才再问一次。
+- **越界的敏感路径永远不吃目录授权**：`~/.ssh`、`~/.aws`、`~/.gnupg`、`~/.nova`（含会话记录）、shell history、浏览器凭据目录、`/etc/shadow`，以及 `*.pem`/`*.key`/`id_rsa*`/`.env*` 这类文件名，仍逐次询问，并且不会提供「允许此目录」选项——所以一次「允许 ~」也不会静默暴露密钥。（工作区内的同名文件仍按现有工作区规则放行。）
+
 ### 交互式审批
 
-需要询问时，弹出三选一：
+需要询问时弹出选项（读类工具会多一个目录授权项）：
 
 | 选项 | 快捷键 | 效果 |
 |------|--------|------|
 | Allow once | `y` | 只放行这一次，下次同样的调用还会再问 |
 | Deny | `n` / `Esc` | 拒绝本次调用 |
 | Always allow this tool | `a` | 本 session 内该工具今后都放行（仅存内存，不写盘） |
+| Always allow reads in `<dir>` | `d` | 本 session 内该目录（含子目录）的 `read`/`glob`/`grep` 全部放行；仅读类工具且目标不是敏感路径时出现（仅存内存，不写盘） |
 
 ### 自定义权限规则
 
@@ -823,7 +831,8 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 | `defaultEffect` | `"ask"` | 无规则命中时的兜底（`allow`/`deny`/`ask`） |
 | `rules` | `[]` | 规则数组（首个匹配生效），见 [§10](#10-权限与安全) |
 | `deny` | `[]` | 裸工具名黑名单：启动时从注册表摘除，模型看不到也调不了（比 `rules` 的 `deny` 更硬），系统提示里与之绑定的说明同步消失，见 [§10](#10-权限与安全) |
-| `additionalDirectories` | `[]` | 工作区之外、读工具可免询问触及的目录 |
+| `additionalDirectories` | `[]` | 工作区之外、**读写都放宽**的目录（同时进沙箱写根）；只为读放宽请用 `readOnlyDirectories` |
+| `readOnlyDirectories` | `[]` | 工作区之外、**仅读**工具可免询问触及的目录（不放宽写，也不进沙箱写根） |
 | `autoMode.llmClassifier` | `true` | `auto` 模式下把规则判不定的命令交给 LLM 风险分类器；关掉则一律弹确认 |
 | `autoMode.model` | （无→ 便宜档） | 分类器用的模型（裸 id 或档位名），独立于 `/model` |
 | `autoMode.classifierTimeoutMs` | `8000` | 分类器超时；超时按「有风险」处理（弹确认，不静默执行） |

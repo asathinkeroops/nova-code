@@ -66,6 +66,7 @@ export const zh: DeepPartial<Catalog> = {
     allowOnce: "仅允许一次",
     deny: "拒绝",
     alwaysAllow: "始终允许该工具",
+    alwaysAllowDir: (dir: string): string => `本会话内允许读取 ${dir}`,
   },
 
   planMode: {

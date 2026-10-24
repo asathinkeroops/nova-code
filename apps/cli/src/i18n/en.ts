@@ -74,6 +74,7 @@ export const en = {
     allowOnce: "Allow once",
     deny: "Deny",
     alwaysAllow: "Always allow this tool",
+    alwaysAllowDir: (dir: string): string => `Always allow reads in ${dir} (session)`,
   },
 
   /**

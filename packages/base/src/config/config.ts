@@ -516,11 +516,19 @@ const settingsObjectSchema = z.object({
       // "bash", or an MCP "mcp__server__tool"); unknown names are ignored.
       deny: z.array(z.string().min(1)).default([]),
       // Extra directories (beyond the workspace cwd) that file tools may touch
-      // without a per-call prompt. Mirrors Claude Code's `--add-dir`. Relative
-      // entries resolve against the workspace; each is canonicalized (realpath)
-      // at startup so the containment check compares real on-disk paths. The
+      // without a per-call prompt — READ AND WRITE. Mirrors Claude Code's
+      // `--add-dir`: these roots also feed the auto/acceptEdits in-workspace
+      // write grant and the OS sandbox's write allowlist. Relative entries
+      // resolve against the workspace; each is canonicalized (realpath) at
+      // startup so the containment check compares real on-disk paths. The
       // workspace cwd is always an allowed root and need not be listed here.
       additionalDirectories: z.array(z.string().min(1)).default([]),
+      // READ-ONLY roots outside the workspace: read/glob/grep are allowed
+      // without a prompt, but they are NOT added to the write roots, the
+      // auto/acceptEdits write grant, or the sandbox's write allowlist. Use this
+      // for dependency checkouts / reference trees you want the agent to read
+      // without widening its write surface.
+      readOnlyDirectories: z.array(z.string().min(1)).default([]),
       // The `auto` permission mode (shift+tab) runs commands (bash,
       // incl. run_in_background) unattended, gated by a command-risk classifier:
       // static rules block clearly destructive commands and fast-path clearly
@@ -551,6 +559,7 @@ const settingsObjectSchema = z.object({
       rules: [],
       deny: [],
       additionalDirectories: [],
+      readOnlyDirectories: [],
       autoMode: { llmClassifier: true, classifierTimeoutMs: 8000 },
     }),
   // Agent-driven plan mode. When `agentTools` is on, the CLI registers the
