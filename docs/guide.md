@@ -27,8 +27,9 @@
 17. [LSP 代码智能](#17-lsp-代码智能)
 18. [插件（Plugins）](#18-插件plugins)
 19. [会话、检查点与数据落盘](#19-会话检查点与数据落盘)
-20. [配置文件完整参考](#20-配置文件完整参考)
-21. [常见问题与排查](#21-常见问题与排查)
+20. [Git Worktree（多检出并行）](#20-git-worktree多检出并行)
+21. [配置文件完整参考](#21-配置文件完整参考)
+22. [常见问题与排查](#22-常见问题与排查)
 
 ---
 
@@ -82,7 +83,7 @@ echo "总结这个 diff" | pnpm dev  # 无 TTY：headless 跑一轮后退出
 >
 > 想覆盖某一档，只写要改的字段即可，例如 `"models": { "pro": { "thinking": "low" } }`——其余字段（`id`、`pricing`、`maxTokens`…）继续跟随内置默认。**但如果你把某档的 `id` 改成别的模型**，该档就整条以你的为准（不再继承内置的价格与上限）；反过来，同 `id` 的档位无法「删掉」某个内置字段（省略即继承）。`/effort` 持久化写的也正是这种最小覆盖。
 
-按 `Ctrl+C` 可中止向导。当前 provider 同时有有效 API key 和可用模型表时才跳过向导；导出的环境变量 `NOVA_API_KEY` 可以满足 key 条件，但只有环境变量、还没有模型表时，向导仍会跑（不再问你 key，也不会把这个 key 写进配置文件）。要接别的端点，在选择器里选“自定义服务商”，再按打印的骨架编辑 `~/.nova/nova.config.json`——这个入口固定使用 `profile: "generic"`，而传输协议由 `transport: "anthropic" | "openai"` 独立选择。通用档 `generic` 无内置档位表，会对 408、409、429 和 5xx 做退避重试，并遵循 `Retry-After`；配置时需按 `lite`/`pro`/`max` 三档骨架填全，完整字段见 [§20](#20-配置文件完整参考)。
+按 `Ctrl+C` 可中止向导。当前 provider 同时有有效 API key 和可用模型表时才跳过向导；导出的环境变量 `NOVA_API_KEY` 可以满足 key 条件，但只有环境变量、还没有模型表时，向导仍会跑（不再问你 key，也不会把这个 key 写进配置文件）。要接别的端点，在选择器里选“自定义服务商”，再按打印的骨架编辑 `~/.nova/nova.config.json`——这个入口固定使用 `profile: "generic"`，而传输协议由 `transport: "anthropic" | "openai"` 独立选择。通用档 `generic` 无内置档位表，会对 408、409、429 和 5xx 做退避重试，并遵循 `Retry-After`；配置时需按 `lite`/`pro`/`max` 三档骨架填全，完整字段见 [§21](#21-配置文件完整参考)。
 
 配置多个 `providers[]` 连接后，在 REPL 输入 `/connect` 可从列表切换，输入 `/connect <name>` 可按 `providers[].name` 精确切换。命令会先检查名称、API key、模型表与必需的 `baseURL`；不合法或不可用的连接不会改变当前状态。成功后会重建主模型、预测模型及后续子 agent 使用的模型连接，并持久化 `currentProvider`。
 
@@ -106,6 +107,8 @@ nova [prompt...]                   # 先跑一轮初始 prompt，再留在 REPL�
       --output-format text|json|jsonl  # headless 输出格式（默认 text）
       --resume <id>                # 恢复当前 workspace 下指定 id 的 session
   -c, --continue                   # 恢复当前 workspace 最近一个 session
+      --worktree [name]            # 在 .nova/worktrees/<name> 里开工（不存在则新建）
+      --worktree-from <ref>        # 新 worktree 从该 commit-ish 起，而不是配置的基线
       --no-transcript              # 本次不写 transcript
       --no-pretty                  # 关闭 pretty 日志
   -v, --version                    # 打印版本后退出
@@ -126,6 +129,7 @@ nova upgrade                       # 跑配置里的安装器把 nova 升到最�
 - **`-p/--prompt` 是 headless 触发器**：跑**一轮**、打印结果、直接退出，**不进 REPL**——和位置参数不同。**没有 TTY** 时（管道 / 重定向 / CI）也会自动走 headless；此时若没给 prompt，会从 **stdin** 读取。`--output-format json|jsonl` 让 headless 输出结构化结果（`json` = 结果 + 完整消息；`jsonl` = 流式事件）。
 - **`-m` / `-t` / `--max-turns` 都是本次会话的临时覆盖**，不写回配置文件。
 - **`--cwd`** 决定工具的「工作区根」——读写权限、沙箱写入范围、工作区信任判定都以它为基准（见 [§10](#10-权限与安全)）。
+- **`--worktree [名称]`** 是先建（或复用）一个 git worktree、再把它当作工作区启动；等价于先 `git worktree add` 再 `nova --cwd <路径>`，但只写一条命令（见 [§21](#20-git-worktree多检出并行)）。
 - **首次在某个目录启动会先问「是否信任这个文件夹」**；headless 弹不出确认框，未信任的工作区直接失败退出（见 [§10](#10-权限与安全)）。
 
 ---
@@ -177,7 +181,7 @@ Nova 是一个全屏 Ink/React REPL：顶部是滚动的历史区，底部是固
 
 命令跑完后，这次执行会以 `<bash-input>` / `<bash-stdout>` / `<bash-stderr>` 三段记录进入上下文，并**立刻触发一轮模型回应**——所以 `! git diff` 之后可以直接接「解释一下上面的改动」，模型已经看过了。这条记录标为 synthetic，历史区不会因此多出一个用户气泡（`!` 卡片已经展示了这次执行）；`Esc` 中断的命令和空的 `!` 都不入上下文、也不触发回合。
 
-它和 `/` 命令行一样带本地副作用，所以即使在回合运行中键入也**始终排队**、由 REPL 在空闲时派发——不会被 `queue.consumeInLoop` 折进当前回合（见 [§20](#20-配置文件完整参考)）。
+它和 `/` 命令行一样带本地副作用，所以即使在回合运行中键入也**始终排队**、由 REPL 在空闲时派发——不会被 `queue.consumeInLoop` 折进当前回合（见 [§21](#21-配置文件完整参考)）。
 
 ### 状态行
 
@@ -223,7 +227,7 @@ Nova 是一个全屏 Ink/React REPL：顶部是滚动的历史区，底部是固
 | `/init [focus…]` | 探索代码库后生成 / 刷新项目记忆（`NOVA.md`） |
 | `/agents [reload]` · `/agent <name> <task>` | 列出子 agent 类型 / 委派一项任务 |
 | `/nova-code-guide <question>` · `/nova-code-guide-update` | 就 Nova 自身答疑的只读 Q&A 子 agent；`-update` 拉取 / 刷新它读取的 Nova 源码 |
-| `/loop <interval> <prompt\|/cmd>` | 按固定间隔重复投递某条 prompt 或命令；`/loop stop` 停止，`/clear`/`/resume`/退出 亦终止（配置见 [§20](#20-配置文件完整参考) `loop.*`） |
+| `/loop <interval> <prompt\|/cmd>` | 按固定间隔重复投递某条 prompt 或命令；`/loop stop` 停止，`/clear`/`/resume`/退出 亦终止（配置见 [§21](#21-配置文件完整参考) `loop.*`） |
 | `/doctor` | 体检全局配置（JSON/schema、模型/key、项目 hook 文件、MCP 摘要）并在弹窗里报告；按 `f` 把问题交给 agent 就地修复 |
 | `/usage` · `/context` | 累计 token 用量与缓存命中 / 上下文窗口占用可视化 |
 | `/predict [on\|off]` | 查看或切换「下一条输入预测」 |
@@ -234,6 +238,7 @@ Nova 是一个全屏 Ink/React REPL：顶部是滚动的历史区，底部是固
 | `/plugin` | 列出已加载的插件及其贡献（安装 / 启停用 `nova plugin` CLI，见 [§18](#18-插件plugins)） |
 | `/sandbox [on\|off]` | 本会话内开关 OS 命令沙箱（见 [§11](#11-命令沙箱)） |
 | `/tasks [list\|stop <id\|all>]` | 查看和管理后台命令（`bash` + `run_in_background`），支持 list / stop |
+| `/worktree [list\|new <名称> [from <起点>]\|enter <名称>\|remove <名称>\|prune]` | 管理 git worktree；`new` / `enter` 会把**当前会话**切到那个检出（不重启、不换 session，见 [§21](#20-git-worktree多检出并行)） |
 | `/exit`, `/quit` | 退出 |
 
 `/help` 与 `/commands` 会把**内置 + 项目 + 用户**三层命令都列出来。`/connect` 只按已配置的连接名精确切换（如 `/connect glm`）；`/model` 只按已配置的档位名切换（如 `/model pro`），裸模型 id 会被拒绝。自定义命令的加载规则见 [§15](#15-自定义-slash-命令)。
@@ -348,7 +353,7 @@ Nova 把思考强度保留为六个 provider-neutral 等级：`auto` / `off` / `
 | `cronCreate` | 只读放行 | 把一条 prompt 或 `/command` 排进定时表——`schedule` 支持**重复间隔**（`30s`/`5m`/`1h`）或**标准 5 字段 cron 表达式**（`0 9 * * *` 每天 9 点、`*/15 * * * *` 每 15 分钟）；可选 `label`、`maxIterations` |
 | `cronList` / `cronDelete` | 只读放行 | 列出 / 删除定时表条目 |
 
-定时条目落盘在 `~/.nova/sessions/{id}/cron/`，`/resume` 时重新装载并重排，`/clear` 时清空。**只有会话活着时才会触发**（没有后台守护进程）——到点的 tick 若正好有回合在跑，会等 REPL 空闲后立刻补跑，不会重叠堆积。三个工具本身默认放行（只是登记元数据），但**排定的 payload 真正动手时仍在触发那一刻走完整权限门**。`/loop` 就是基于这套机制的薄封装（见 [§6](#6-slash-命令大全)）。配置见 [§20](#20-配置文件完整参考) `cron.*`。
+定时条目落盘在 `~/.nova/sessions/{id}/cron/`，`/resume` 时重新装载并重排，`/clear` 时清空。**只有会话活着时才会触发**（没有后台守护进程）——到点的 tick 若正好有回合在跑，会等 REPL 空闲后立刻补跑，不会重叠堆积。三个工具本身默认放行（只是登记元数据），但**排定的 payload 真正动手时仍在触发那一刻走完整权限门**。`/loop` 就是基于这套机制的薄封装（见 [§6](#6-slash-命令大全)）。配置见 [§21](#21-配置文件完整参考) `cron.*`。
 
 ### 后台长任务
 
@@ -406,6 +411,7 @@ Output: … — read or grep it if you need the command's output.</background-no
 - 判定是**包含关系**：工作区等于或位于某个已记录根之下即视为可信，因此信任仓库根即覆盖其所有子目录。
 - **家目录例外**：对 `~` 授予的信任只在本次会话有效，不落盘。
 - **headless（`-p` / 无 TTY）没法弹确认框**，所以未信任的工作区是**硬性拒绝**：先交互式跑一次并信任、或手工把路径加进 `trust.trustedRoots`、或传 `--dangerously-skip-permissions` 绕过。
+- **检查的是「最终工作区」，不是「启动目录」**：启动顺序固定为 ① 信任启动目录（`--worktree` 即将往这个仓库里写一份检出）→ ② 创建/复用检出 → ③ 解析 session（可能回到它绑定的 worktree）→ ④ 再对**最终那个目录**做一次信任判定。因为接下来要加载的是它的 `CLAUDE.md`、项目 hooks（可执行的 shell 命令）和插件，所以判定必须落在它上面。
 - 写配置失败不会中断会话（你已经同意了，本次有效，只是下次还会再问）。设 `trust.enabled: false` 可恢复「启动即信任」的旧行为。
 
 ### 权限引擎
@@ -510,7 +516,7 @@ Output: … — read or grep it if you need the command's output.</background-no
 
 要点：
 
-- **默认关闭（opt-in）。** 需显式设 `sandbox.enabled: true` 才开启（或会话内 `/sandbox on`）。开启后读放行；**网络默认不限制**（只管文件系统），但可选 `network.allowedDomains` / `deniedDomains` 收紧出站连接（见 [§20](#20-配置文件完整参考)）。
+- **默认关闭（opt-in）。** 需显式设 `sandbox.enabled: true` 才开启（或会话内 `/sandbox on`）。开启后读放行；**网络默认不限制**（只管文件系统），但可选 `network.allowedDomains` / `deniedDomains` 收紧出站连接（见 [§21](#21-配置文件完整参考)）。
 - **自动降级安全。** 仅 macOS / Linux 支持；不支持的平台或缺依赖（macOS 需 `ripgrep`；Linux 还需 `bubblewrap`/`socat`）会**静默降级**为不沙箱，agent 照常运行。
 - **常见缓存默认放行。** npm/pnpm/yarn/cargo/rustup/go 等工具链缓存目录、以及 `~/.config/gh`（gh/PR 工作流下 token 刷新）已预置进白名单，常用命令开箱即用。显式设置 `filesystem.allowWrite` 会**替换**这组默认值。
 - **SDK 强制保护的危险路径。** 即使在工作区里，这些也写不了：`.git/hooks`、`.git/config`、`.vscode/`、`.idea/`、`.claude/{commands,agents}`，以及 `.gitconfig`/`.zshrc`/`.mcp.json` 等 dotfile。其中只有 `.git/config` 能通过 `allowGitConfig`（默认 `true`）放行（`git config --local`、`git remote set-url` 需要它）；`.git/hooks` 始终拦。要写其它被保护路径，只能整个关掉沙箱。
@@ -542,7 +548,12 @@ Output: … — read or grep it if you need the command's output.</background-no
 
 **auto 压缩（默认开）**：只在上下文窗口吃紧时触发。它不截断历史，而是往 append-only 历史里**追加一条 `<compacted>` 摘要边界**——完整历史仍留在磁盘、TUI 里照旧全量渲染，只有喂给**模型**的视图缩短到「最后一条边界往后」。这是一次有意为之的「前缀重置」：边界之内前缀依旧稳定命中缓存，边界推进时才重置一次。可调 `compact.auto.enabled` / `thresholdTokens` / `contextWindowPercent` / `maxSummaryTokens`。
 
-触发阈值默认是**上下文窗口的 90%**（`contextWindowPercent`，或用 `thresholdTokens` 钉死一个绝对值）。这个 90% 算的是**整个请求**——system 提示词、记忆、skills 索引、工具 schema，加上对话消息，和 `/context` 面板显示的口径一致。固定开销通常在一万多 token，窗口越小占比越高，所以把它计入触发判断是必要的：只按消息量算的话，128k 窗口下等阈值触发时真实请求已经超出窗口了。
+触发阈值默认是**可用输入预算的 90%**（`contextWindowPercent`，或用 `thresholdTokens` 钉死一个绝对值，仍会被输入预算夹住）。这里有两个口径要分清：
+
+- **输入预算 = 上下文窗口 − 输出预留**。请求能成立的前提是 `prompt + max_tokens ≤ 窗口`；窗口 1M、档位输出上限 393k 时，可用输入只有 ~655k。所以触发判断先扣掉一份**输出预留**（`min(该档 maxTokens, max(8k, 窗口的 10%))`，1M 窗口约 105k），再按比例算阈值——1M 窗口实际在 ~81% 触发，而不是 90%。
+- **整个请求**都算在占用里——system 提示词、记忆、skills 索引、工具 schema，加上对话消息，和 `/context` 面板显示的口径一致（面板会单列一行「输出预留」，其余各行相加正好等于窗口）。固定开销通常在一万多 token，窗口越小占比越高，所以把它计入触发判断是必要的：只按消息量算的话，128k 窗口下等阈值触发时真实请求已经超出窗口了。
+
+**输出上限是「封顶」，不是「预留」**：每次请求的 `max_tokens` 取「该档 maxTokens」与「窗口剩余空间」（扣掉 prompt 估算和 10% 余量）的较小者。对话越长，单次可生成的上限越小，但请求始终能成立；被 `max_tokens` 截断时仍由「续写」机制接着写（见 `maxTokensContinuations`）。极端情况下连最小输出（1024 token）都放不下，会在本地直接报错并提示 `/compact` 或 `/clear`，而不是把供应商的 400 原样抛给用户。
 
 手动压缩：随时 `/compact`，可附带关注点（如 `/compact 保留关于鉴权的部分`）让摘要更聚焦。
 
@@ -755,7 +766,7 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 
 ### 恢复与切换
 
-- session 创建时会永久绑定当时的 workspace，后续恢复不会改变归属。旧 session 没有独立 metadata 时，以 transcript 中第一次 `session_start.cwd` 作为固定归属。
+- session 创建时会绑定当时的 workspace。唯一会改写这个绑定的是 `/worktree`：切到某个检出后绑定随之移动，`nova --resume <id>` 因此会回到那次会话结束所在的 worktree（同一仓库才允许；目录已删除则退回启动目录并清除绑定）。其余情况恢复不会改变归属。旧 session 没有独立 metadata 时，以 transcript 中第一次 `session_start.cwd` 作为固定归属。
 - `nova -c` / `nova --continue`：恢复当前 workspace 最近一个有消息的 session。
 - `nova --resume <id>`：按 id 恢复当前 workspace 的 session；目标属于其他 workspace 时拒绝恢复，并提示其绑定目录。
 - REPL 内 `/resume [<id>]`：只列出和切换当前 workspace 的 session；显式指定其他 workspace 的 id 同样会被拒绝。
@@ -763,6 +774,8 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 ### 回退（Rewind）
 
 `/rewind [<n>]` 回到此前某条消息——**其后的对话历史与文件改动都会被丢弃**，相当于一个检查点回滚。
+
+文件快照属于 **session**（存在 `~/.nova/sessions/{id}/snapshots/`），不是属于某个 worktree；记录里存的是**绝对路径**。所以跨 `/worktree` 切换回退时：会话历史照常回退，而文件会回到它**当时被修改的那个检出**里（撤销本来就该作用在它发生的地方），预览里这类路径按绝对路径显示。若那个检出已经被 `/worktree remove` 删除，对应文件会被跳过并在预览里标注为「所在检出已不存在」，不会凭空重建目录。另一种情况是文件在这一轮里被 `bash` 之类在 nova 之外改过——会被列为冲突、保留不动。
 
 ### 自动清理
 
@@ -795,7 +808,51 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 
 ---
 
-## 20. 配置文件完整参考
+## 20. Git Worktree（多检出并行）
+
+一个 worktree 是**同一个仓库的另一份检出**：独立的工作目录与分支，共用一份对象库。Nova 把它当作**可切换的 workspace**——切过去之后，工具 cwd、权限边界、沙箱写入范围、LSP 根和 system prompt 全部跟着走，而**对话历史留在原地**。
+
+### 启动即进入
+
+```bash
+nova --worktree fix-auth                    # 在 <repo>/.nova/worktrees/fix-auth 里开工
+nova --worktree                             # 不给名字 → 用当前分支名
+nova --worktree fix-auth --worktree-from origin/main
+```
+
+默认建在 `<主检出>/.nova/worktrees/<名称>`，分支 `worktree-<名称>`。**存放位置始终以主检出为基准**——即使你在某个 worktree 里执行 `nova --worktree …`，新检出也落在主检出下面，不会嵌套在当前 worktree 里。同名 worktree 已存在时直接复用（同样按主检出查找），所以重复执行安全。
+
+**起点**则由 `worktree.baseRef` 决定，且按**你启动时所在的检出**解析：`head` 用这个检出的 HEAD（带着它的未推送提交）；`fresh` 优先用本地缓存的 `origin/HEAD`（不联网 fetch），解析不到才退回这个检出的 HEAD。
+
+`--worktree` 与 `--resume <id>` **互斥**：恢复的会话会留在它自己绑定的检出里，再建一个只会被忽略——所以这种组合直接报错、不落任何文件（想回到那个检出就直接 `nova --resume <id>`）。`--continue` 不受影响：它找的正是"这个 worktree 里最近的会话"。
+
+### 会话内切换
+
+| 命令 | 行为 |
+|------|------|
+| `/worktree` | 列出所有检出（`*` = 当前），带分支与未提交改动数；git 读不出状态时显示「状态未知」，而不是当成干净 |
+| `/worktree new <名称> [from <起点>]` | 新建（或复用）并**切换过去** |
+| `/worktree enter <名称>` | 切换到已有 worktree |
+| `/worktree remove <名称>` | 删除（工作区不干净会拒绝） |
+| `/worktree prune` | 清理手工删掉目录后的残留记录 |
+
+切换是**原地**发生的：不重启、不换 session。会话已有历史时会先确认一次；确认后 Nova 依次重建记忆 bundle、权限根、沙箱白名单、LSP 根，推进 system prompt 的 epoch（提示词里写的已是新检出），最后把 `session.json` 的 workspace 改到新路径。
+
+### 切过去之后
+
+- **隔离**：`worktree.enforceIsolation`（默认开）拒绝回到主检出的动作——写文件到主检出、命令 cwd 指向主检出、`git -C`/`--git-dir`/`--work-tree` 或 `GIT_*` 重定向（命令文本里**和**工具 `env` 里都查；`env GIT_DIR=…` 这类包装赋值也算，嵌套 `sh -c` 会继承）、`cd` 进主检出，以及**含 git 且带 `$(…)` / 反引号 / `${!x}` 这类动态展开**（无法静态判定去向）的命令。命令文本里的相对路径按**命令实际运行的目录**解析，且两边都先解析成真实路径（指向主检出的符号链接按目标判定，指回 worktree 的链接不会被误判；`..` 按 OS 的遍历语义处理——`link/..` 是链接**目标**的父目录，不是链接所在目录）。这个目录不是一个值：`(…)` 子 shell、管道、后台 `&` 里的 `cd` 不会留到外层，`&&`/`||` 两侧都算可能执行，`cd` 到不存在的目录会失败并停在原地，`env -C`、`pushd`/`popd`、嵌套的 `sh -c '…'` / `eval '…'` 也会移动或重跑命令——只要**任一可能目录**落在主检出就拒绝。`GIT_DIR` 这类「指名 git 状态」的重定向另按一条规则判定：共享 git 目录本身就是主检出的 HEAD/index/config/hooks，指向它一律拒绝；`<公共目录>/objects`（内容寻址）与 `<公共目录>/worktrees/<名字>`（各检出私有状态）照常可用。`env` 只在真正生效的分支检查（`monitor` 与**后台** `bash`；前台 `bash` 忽略 `env`）。无法解析的 `cd` 目标只有在命令里同时出现 git 时才拒绝。它只看「编辑目标 / 命令 cwd / 命令文本」，不管 shell 实际写了哪些文件——后者仍由权限引擎与沙箱兜。
+- **要重新准备的东西**：`node_modules` 等构建产物不在检出里，需要重新安装。用 `.worktreeinclude` 把 `.env` 这类**被忽略文件**自动复制进每个新 worktree。复制前会按**目标检出**的规则再判一次：目标起点已跟踪、目标已存在、或该路径在目标里并未被忽略的，一律跳过；真正复制失败的文件也会单独计数。卡片上会分别报告「跳过」和「复制失败」的数量——失败绝不会被算成已复制。
+- **共享的东西**：对象库（`.git`）、自动记忆（按仓库根键控，所有检出共用一份）、Task 计划（落在仓库根 `.tasks/`）。**项目配置（skills / 插件 / 斜杠命令 / hooks）仍以启动时的 workspace 为准**，切换不会重新扫描。
+- **独立 git 目录**：用 `git init --separate-git-dir` 把 git 元数据放在检出之外时，从某个 worktree 内部**无法可靠反推**主检出的路径（git 自己会把元数据目录列成「主 worktree」）。这不影响正常使用：仓库身份按**共享 git 目录**判定，所以从主检出 `/worktree new` 照样能创建并**切入**；隔离检查也照常生效——它按目标的 `.git` 归类，指向同一个公共 git 目录的属于本仓库主工作树（拒绝），指向 `<公共目录>/worktrees/<名字>` 的是同级检出（放行），其它仓库不受影响。只有在这个布局下**从 linked worktree 内部新建** worktree 会拒绝（定位不到该把新检出放在哪），此时先 `git worktree add` 手工创建、再用 `nova --cwd` 进入。
+- **恢复**：`nova --resume <id>` 会回到该 session 上次所在的 worktree（同一仓库才允许；目录已删除则退回启动目录并清除绑定）。`--continue` 仍只匹配启动目录。恢复到另一个检出时，**信任门会重新检查那个目录**（在信任根之外会再问一次；headless 直接拒绝），因为接下来要加载的是它的项目配置。
+- **不脏 `git status`**：创建时会把 `/.nova/worktrees/` 与 `/.tasks/` 写进 `$GIT_COMMON_DIR/info/exclude`——仓库本地元数据，不进提交。
+- **退出不自动删除**：worktree 与分支都保留，用 `/worktree remove` 显式清理（要求干净）。
+
+> `/worktree` 切的是**当前会话的检出**，`/resume` 切的是**会话**。想跨 worktree 恢复某次对话，用启动参数 `nova --resume <id>`。
+
+---
+
+## 21. 配置文件完整参考
 
 配置文件位于 `~/.nova/nova.config.json`，是一份 JSON。下面列出全部字段及默认值（来自 zod schema，**每个可配项都有默认值，缺省即用默认**）。运行时 provider 配置只接受 `providers` / `currentProvider` 结构；启动检测到旧的顶层 `provider`、`baseURL`、`apiKey`、`models`、`transport` 时，会先把它们一次性迁移成一个 provider 连接、原子写回，再用新 schema 校验。若文件已经有非空 `providers`，它优先，残留的旧顶层字段只会被清除。
 
@@ -823,6 +880,8 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 | `toolConcurrency` | `3` | 单轮内工具并发上限（1 = 全串行） |
 
 > **每档输出上限 / 上下文窗口是 per-tier 的**：写在 `providers[].models.<tier>.maxTokens`（schema 缺省 32768；DeepSeek 内置默认 393216，GLM 内置默认 131072）和 `providers[].models.<tier>.contextWindowSize`（缺省与 GLM 内置默认均为 1048576 = 1024×1024）里。`providers[].models.<tier>.thinking` 让同一个模型 id 也能拉出 lite/pro/max 的能力梯度（见 [§7](#7-思考等级thinking)）；`providers[].models.<tier>.pricing` 提供 `/usage` 成本估算的每百万 token 单价（见 `pricing` 一节）。
+>
+> `maxTokens` 是**单次生成的上限**（封顶），不是每次都预留这么多：请求里的 `max_tokens` 会按「窗口剩余空间」自动收窄，保证 `prompt + max_tokens ≤ contextWindowSize`。所以把 `maxTokens` 设得很大不会让长对话提前失败，只会让短对话里的单次生成上限更高（详见 [§12](#12-上下文管理与压缩)）。
 
 ### `permissions`
 
@@ -851,6 +910,16 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 | `trust.enabled` | `true` | 启动时确认工作区可访问；`false` 恢复「启动即信任」，见 [§10](#10-权限与安全) |
 | `trust.trustedRoots` | `[]` | 已信任的绝对路径（授权时自动追加，也可手工预置）；工作区位于任一根之下即可信 |
 
+### `worktree`（git worktree）
+
+| 字段 | 默认 | 说明 |
+|------|------|------|
+| `enabled` | `true` | 是否允许 `/worktree` 与 `--worktree` |
+| `dir` | `".nova/worktrees"` | 相对**主检出**根：检出目录父级，每个 worktree 是 `<dir>/<名称>`（从任何 worktree 启动都一样）。放在仓库内是有意的——落在信任根之下（不再弹信任框）、与仓库同卷（pnpm 硬链接有效）、且创建时会把 `/<dir>/` 写进 `$GIT_COMMON_DIR/info/exclude`，不会污染 `git status` |
+| `baseRef` | `"fresh"` | 新 worktree 的基线，按**启动所在的检出**解析：`fresh` 用本地缓存的 `origin/HEAD`（**不联网 fetch**，避免卡在凭据提示；解析不到则退回该检出的 HEAD），`head` 从该检出当前的本地 HEAD 起（带着未推送提交） |
+| `includeFile` | `".worktreeinclude"` | 仓库根下的 `.gitignore` 语法文件，列出要被复制进每个新 worktree 的**被忽略文件**（`.env`、本地密钥等）。只有「匹配且被 gitignore」的候选才会进入复制列表；复制前还要过目标检出这一关——已跟踪、已存在、在目标中未被忽略的都会跳过并计数 |
+| `enforceIsolation` | `true` | 在 worktree 中运行时拒绝回到主检出：写文件到主检出、命令 cwd 指向主检出、`git -C`/`--git-dir`/`GIT_WORK_TREE`/`GIT_DIR` 重定向、`cd` 进主检出，以及含 git 的动态展开命令。`bypassPermissions` 模式可跳过 |
+
 ### 思考等级（thinking）
 
 **没有顶层 `thinking` 配置项**——思考等级是 per-tier 的，写在 `providers[].models.<tier>.thinking`（`auto`/`off`/`low`/`medium`/`high`/`max`；缺省回退 `auto`）。`-t/--think` 是会话内覆盖，`/effort` 会写回当前档位，见 [§7](#7-思考等级thinking)。
@@ -868,8 +937,8 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 | 字段 | 默认 | 说明 |
 |------|------|------|
 | `auto.enabled` | `true` | 上下文吃紧时自动压缩（追加 `<compacted>` 边界，见 [§12](#12-上下文管理与压缩)） |
-| `auto.contextWindowPercent` | `0.9` | 触发阈值占上下文窗口的比例，按**整个请求**计（含 system / 工具 schema，与 `/context` 同口径） |
-| `auto.thresholdTokens` | 未设置 | 绝对触发阈值覆写，优先于比例 |
+| `auto.contextWindowPercent` | `0.9` | 触发阈值占**可用输入预算**（窗口 − 输出预留）的比例，按**整个请求**计（含 system / 工具 schema，与 `/context` 同口径） |
+| `auto.thresholdTokens` | 未设置 | 绝对触发阈值覆写，优先于比例，但仍被输入预算夹住 |
 | `auto.maxSummaryTokens` | `4000` | 模型生成的摘要正文上限；不含程序附加的最近原文，自动与手动压缩共用 |
 
 ### `invariants`（工具不变量，dispatcher 强制）
@@ -1038,7 +1107,7 @@ Manifest 位于 `.nova-plugin/plugin.json`（优先）或 `.claude-plugin/plugin
 
 ---
 
-## 21. 常见问题与排查
+## 22. 常见问题与排查
 
 **Q：在管道 / CI 里能用吗？没有 TTY 会怎样？**
 A：能。没有 TTY 时 Nova 不会报错，而是走 **headless** 模式：跑一轮（prompt 从参数、`-p` 或 stdin 取）、打印结果、退出。要机器可读输出用 `--output-format json|jsonl`；无人值守批准配 `--dangerously-skip-permissions`。全屏 REPL 才需要真正的终端。

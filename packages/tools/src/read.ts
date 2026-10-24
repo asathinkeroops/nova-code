@@ -1,10 +1,11 @@
 import { readFile } from "node:fs/promises";
-import { basename, extname, resolve } from "node:path";
+import { basename, extname } from "node:path";
 import { z } from "zod";
 import type { ImageBlock, ToolFollowupMessage, ToolHandler } from "@nova/core";
 import type { Sharp } from "sharp";
 import type * as XLSX from "xlsx";
 import { extractText } from "unpdf";
+import { resolveToolPath } from "./cwd.js";
 import { fileExecutionKey } from "./file-execution.js";
 import { PATH_ALIASES, withAliases } from "./schema.js";
 
@@ -605,7 +606,7 @@ export const readTool: ToolHandler = {
   executionKey: fileExecutionKey,
   async run(rawInput, ctx) {
     const input = inputSchema.parse(rawInput);
-    const abs = resolve(ctx.cwd, input.path);
+    const abs = await resolveToolPath(ctx.cwd, input.path);
     const ext = extname(abs).toLowerCase();
 
     // Image: when the model supports images, read as a provider-neutral

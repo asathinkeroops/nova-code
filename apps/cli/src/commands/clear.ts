@@ -19,6 +19,10 @@ export async function handleClear(ctx: CliContext): Promise<void> {
 
   const fresh = await createSession({
     workspace: ctx.workspace,
+    // Keep the worktree binding in step with a normal startup: `resolveSession`
+    // uses it to tell "the checkout was deleted" (fall back to the launch
+    // directory) from "this session belongs somewhere else" (refuse).
+    ...(ctx.worktree?.main ? { worktreeMain: ctx.worktree.main } : {}),
     ...(ctx.settings.sessionDir ? { rootOverride: ctx.settings.sessionDir } : {}),
   });
   await switchToSession(ctx, fresh, {

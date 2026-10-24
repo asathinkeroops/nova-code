@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -8,6 +8,16 @@ const sessionMetadataSchema = z
   .object({
     version: z.literal(1),
     workspace: z.string().min(1),
+    /**
+     * Set when the workspace above is a LINKED git worktree: the main checkout
+     * it belongs to. Recorded so a resume can tell "this worktree was deleted"
+     * (fall back to the launch directory, clearing the binding) apart from
+     * "this session belongs to an unrelated directory" (refuse).
+     */
+    worktree: z
+      .object({ main: z.string().min(1) })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -24,6 +34,8 @@ export interface Session {
 
 export interface CreateSessionOptions {
   workspace: string;
+  /** Main checkout, when `workspace` is a linked worktree of one. */
+  worktreeMain?: string;
   rootOverride?: string;
 }
 
@@ -45,8 +57,13 @@ export async function createSession(opts: CreateSessionOptions): Promise<Session
   const input = sessionMetadataSchema.parse({
     version: 1,
     workspace: opts.workspace,
+    ...(opts.worktreeMain ? { worktree: { main: opts.worktreeMain } } : {}),
   });
-  const metadata: SessionMetadata = { ...input, workspace: resolve(input.workspace) };
+  const metadata: SessionMetadata = {
+    ...input,
+    workspace: resolve(input.workspace),
+    ...(input.worktree ? { worktree: { main: resolve(input.worktree.main) } } : {}),
+  };
   await mkdir(dir, { recursive: true });
   // The workspace is creation-time identity, not mutable session activity.
   // `wx` makes accidental rebinding fail even if this code is later reused
@@ -71,6 +88,44 @@ export async function readSessionWorkspace(session: Session): Promise<string | u
   } catch {
     // Legacy sessions have no session.json. Their transcript fallback lives in
     // the CLI, which owns the session_start event shape.
+    return undefined;
+  }
+}
+
+/**
+ * Re-bind a session to a different workspace, in place.
+ *
+ * The binding is "immutable at creation" by default — that is what makes
+ * `--continue`/`--resume` safe (a session can't be silently adopted by an
+ * unrelated directory). A git-worktree switch is the one deliberate exception:
+ * the session moves with its workspace, so the recorded path has to move too,
+ * or the next resume would refuse to re-enter. Written via a temp file +
+ * rename so a crash mid-write can't leave unparseable metadata behind (an
+ * unreadable `session.json` reads as "no binding", which would make the session
+ * resumable from anywhere).
+ */
+export async function writeSessionWorkspace(
+  session: Session,
+  workspace: string,
+  worktreeMain?: string,
+): Promise<void> {
+  const metadata: SessionMetadata = {
+    version: 1,
+    workspace: resolve(workspace),
+    ...(worktreeMain ? { worktree: { main: resolve(worktreeMain) } } : {}),
+  };
+  const tmp = `${session.metadataPath}.tmp`;
+  await writeFile(tmp, `${JSON.stringify(metadata)}\n`, "utf8");
+  await rename(tmp, session.metadataPath);
+}
+
+/** The main checkout, when the session's workspace is a linked worktree. */
+export async function readSessionWorktreeMain(session: Session): Promise<string | undefined> {
+  try {
+    const parsed: unknown = JSON.parse(await readFile(session.metadataPath, "utf8"));
+    const result = sessionMetadataSchema.safeParse(parsed);
+    return result.success ? result.data.worktree?.main : undefined;
+  } catch {
     return undefined;
   }
 }

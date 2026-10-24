@@ -31,6 +31,7 @@ import {
   handleSkills,
   handleTasks,
   handleUsage,
+  handleWorktree,
 } from "./commands/index.js";
 
 export function registerBuiltinSlashCommands(ctx: CliContext): void {
@@ -140,6 +141,16 @@ export function registerBuiltinSlashCommands(ctx: CliContext): void {
     source: { kind: "builtin" },
     run: async (_c, args) => {
       await handleSandbox(ctx, args.trim());
+      return handled;
+    },
+  });
+  ctx.registry.register({
+    name: "worktree",
+    description: t.commands.worktree,
+    argHint: "[list|new <name> [from <ref>]|enter <name>|remove <name>|prune]",
+    source: { kind: "builtin" },
+    run: async (_c, args) => {
+      await handleWorktree(ctx, args.trim());
       return handled;
     },
   });

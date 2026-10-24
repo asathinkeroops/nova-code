@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { ToolHandler } from "@nova/core";
+import { resolveToolCwd } from "../cwd.js";
 import { MonitorError, type MonitorManager } from "./manager.js";
 
 const DEFAULT_TIMEOUT_MS = 300_000;
@@ -86,7 +87,7 @@ export function monitorTool(manager: MonitorManager): ToolHandler {
           command,
           label: input.command,
           description: input.description,
-          cwd: input.cwd ?? ctx.cwd,
+          cwd: await resolveToolCwd(input.cwd, ctx.cwd),
           persistent: input.persistent,
           timeoutMs: input.timeout_ms,
           ...(input.env ? { env: input.env } : {}),

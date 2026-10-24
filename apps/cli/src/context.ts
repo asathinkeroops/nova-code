@@ -1,4 +1,5 @@
-import { join } from "node:path";
+import { stat } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import {
   AgentRegistry,
   assembleSession,
@@ -54,6 +55,7 @@ import {
   resolveApiKey,
   resolveThinkingLevel,
   Transcript,
+  writeSessionWorkspace,
   type Logger,
   type Settings,
 } from "@nova/base";
@@ -113,10 +115,17 @@ import { registerUiHooks } from "./hooks.js";
 import { restoreFromTranscript } from "./usage-restore.js";
 import { UserHooks } from "./user-hooks.js";
 import { SnapshotStore } from "./snapshots.js";
+import {
+  repoIdentity,
+  sandboxGitAllowWrite,
+  worktreeBinding,
+  type WorktreeBinding,
+} from "./worktree.js";
+import { worktreeIsolationDenial } from "./worktree-guard.js";
 import { renderSkillsBlock } from "./skills-render.js";
 import { loadFileCommandsInto, loadSkillCommandsInto } from "./slash.js";
 import { loadSessionName } from "./session-name.js";
-import { resolveSession } from "./session.js";
+import { resolveSession, type ResolvedSession } from "./session.js";
 import { Screen, fatalExit } from "./screen.js";
 import type { CliContext, CliRuntimeOptions } from "./ctx-types.js";
 import {
@@ -180,6 +189,12 @@ export async function createContext(
   settings: Settings,
   screen: Screen,
   cliOpts: CliRuntimeOptions,
+  /**
+   * The session + checkout the host already resolved (and trust-checked). When
+   * omitted — tests, or a host that has not split the startup order — this
+   * resolves it here, as every caller used to.
+   */
+  target?: ResolvedSession,
 ): Promise<CliContext> {
   const provider = activeProvider(settings);
   if (!provider) {
@@ -190,25 +205,49 @@ export async function createContext(
     throw new Error(`active provider apiKey is not set (nor in $${API_KEY_ENV})`);
   }
 
-  const workspace = cliOpts.cwd ?? process.cwd();
+  // Resolve the session FIRST: resuming one that ended inside a linked worktree
+  // re-enters that checkout, so the workspace below may come from the session
+  // rather than from the launch directory (see resolveSession).
+  const {
+    session,
+    resumed,
+    workspace: resolvedWorkspace,
+  } = target ?? (await resolveSession(cliOpts, settings.sessionDir, cliOpts.cwd ?? process.cwd()));
+  const workspace = resolvedWorkspace;
   const noPretty = cliOpts.noPretty ?? false;
   const noTranscript = cliOpts.noTranscript ?? false;
+  // Which checkout this is, if any. Worktrees are re-detected on every switch
+  // (`setWorkspace`), so this is the startup snapshot only.
+  let worktree: WorktreeBinding | undefined = await worktreeBinding(workspace);
+  const memoryRoot = worktree?.main ?? workspace;
 
-  const memoryOpts: Parameters<typeof loadMemory>[1] = {
+  /**
+   * Memory options for a checkout. The auto-memory store is keyed by the
+   * REPOSITORY, not the worktree: every checkout of a repo shares one learned
+   * store, the same way it shares a history. `memory.auto.dir` is documented as
+   * workspace-relative, so an explicit override still resolves against the
+   * checkout actually in use.
+   */
+  const autoDirFor = (ws: string, repoMain: string | undefined): string | undefined =>
+    settings.memory.auto.enabled
+      ? settings.memory.auto.dir
+        ? resolve(ws, settings.memory.auto.dir)
+        : resolveAutoMemoryDir(repoMain ?? ws)
+      : undefined;
+  const memoryOptsFor = (ws: string, repoMain: string | undefined) => ({
     filenames: settings.memory.filenames,
     ...(settings.memory.userPaths ? { userPaths: settings.memory.userPaths } : {}),
     ...(settings.memory.globalPath ? { globalPath: settings.memory.globalPath } : {}),
     ...(settings.memory.auto.enabled
       ? {
-          autoDir: resolveAutoMemoryDir(workspace, settings.memory.auto.dir),
+          autoDir: autoDirFor(ws, repoMain),
           autoMaxEntries: settings.memory.auto.maxEntries,
         }
       : {}),
-  };
+  });
+  const memoryOpts = memoryOptsFor(workspace, memoryRoot);
   const memory = await loadMemory(workspace, memoryOpts);
   const version = await readCliVersion();
-
-  const { session, resumed } = await resolveSession(cliOpts, settings.sessionDir, workspace);
 
   const buildLogger = (destination: string): Logger =>
     createLogger({
@@ -387,7 +426,11 @@ export async function createContext(
   }
 
   const todoStore = new TodoStore();
-  const taskStore = new TaskStore(workspace, session.id);
+  // Tasks describe a PLAN, not a checkout, so they live at the repository root
+  // (shared by every worktree of it) instead of inside the per-checkout dir —
+  // switching worktrees must not lose the plan. In a normal checkout the root
+  // IS the workspace, so behavior is unchanged there.
+  const taskStore = new TaskStore(worktree?.main ?? workspace, session.id);
   // Scheduled tasks live under the session dir; the cron tools are gated by
   // settings.cron.enabled, but the store/scheduler always exist so `/loop` works
   // regardless (it rides the same mechanism, not the tool registration).
@@ -642,6 +685,10 @@ export async function createContext(
       apiKey: currentApiKey,
       model,
       provider: resolveProfile(currentProfile),
+      // Lets the adapter clamp `max_tokens` so prompt + completion fits: the
+      // provider counts both against the window, and the tier's cap (393k on a
+      // 1M DeepSeek window) otherwise makes long conversations fail at ~63%.
+      contextWindowSize: resolveContextWindowSize(settings, name),
       // Explicit wire-protocol override; omitted → the profile's default
       // transport. Lets e.g. `profile: "deepseek"` run against DeepSeek's
       // OpenAI-compatible endpoint (baseURL without the /anthropic suffix).
@@ -692,6 +739,8 @@ export async function createContext(
     pendingAutoCompactNotice: null,
     apiKey,
     workspace,
+    worktree: worktree ?? null,
+    setWorkspace: null as unknown as CliContext["setWorkspace"],
     memory,
     reloadMemory: null as unknown as CliContext["reloadMemory"],
     skillsBlock,
@@ -732,7 +781,9 @@ export async function createContext(
   // it never disturbs an in-session prefix cache. The agent reads the bundle via
   // `getMemory: () => ctx.memory`, so the next turn picks this up automatically.
   ctx.reloadMemory = async () => {
-    ctx.memory = await loadMemory(workspace, memoryOpts);
+    // Reads the LIVE workspace: a worktree switch reloads memory from the
+    // checkout the session is in now (the auto-memory dir stays repo-keyed).
+    ctx.memory = await loadMemory(ctx.workspace, memoryOptsFor(ctx.workspace, ctx.worktree?.main));
     return ctx.memory;
   };
 
@@ -771,24 +822,28 @@ export async function createContext(
   //  - readRoots: what read/glob/grep may touch without a prompt. The write set
   //    plus `permissions.readOnlyDirectories` and the Nova Code Guide checkout
   //    (a read-only reference tree — auto mode must not be able to write it).
-  // Canonicalized once here so the engine's `within` matcher compares real
-  // on-disk paths (a symlinked cwd still matches).
-  const writeRoots = await canonicalizeRoots(
-    [workspace, ...settings.permissions.additionalDirectories],
-    workspace,
-  );
-  const readRoots = await canonicalizeRoots(
-    [...writeRoots, ...settings.permissions.readOnlyDirectories, ...(guideDir ? [guideDir] : [])],
-    workspace,
-  );
+  // Canonicalized here so the engine's `within` matcher compares real on-disk
+  // paths (a symlinked cwd still matches) — and rebuilt by `setWorkspace`,
+  // which is why both are `let`: a worktree switch moves the fence.
+  const buildWriteRoots = (ws: string): Promise<string[]> =>
+    canonicalizeRoots([ws, ...settings.permissions.additionalDirectories], ws);
+  const buildReadRoots = (ws: string, write: readonly string[]): Promise<string[]> =>
+    canonicalizeRoots(
+      [...write, ...settings.permissions.readOnlyDirectories, ...(guideDir ? [guideDir] : [])],
+      ws,
+    );
+  let writeRoots = await buildWriteRoots(workspace);
+  let readRoots = await buildReadRoots(workspace, writeRoots);
   // The agent maintains its own auto-memory store under this directory; auto-allow
   // read/write/edit inside it so persisting a learned fact doesn't prompt. Resolve
   // to the same canonical form the gate compares paths in (the dir may not exist
   // yet — canonicalizePath folds that to the logical absolute path).
-  const autoMemoryDir =
-    memoryOpts.autoDir !== undefined
-      ? await canonicalizePath(workspace, memoryOpts.autoDir)
-      : undefined;
+  const autoMemoryDirFor = async (
+    ws: string,
+    autoDir: string | undefined,
+  ): Promise<string | undefined> =>
+    autoDir !== undefined ? await canonicalizePath(ws, autoDir) : undefined;
+  let autoMemoryDir = await autoMemoryDirFor(workspace, memoryOpts.autoDir);
   // Captured-output dirs are the model's read-back path for still-running work
   // (`bash` returns a background command's `output_path`; `monitor` returns its
   // watch script's `log_path`) and for the images the user pastes into the
@@ -799,11 +854,13 @@ export async function createContext(
       canonicalizePath(workspace, join(session.dir, d)),
     ),
   );
-  const permission = new PermissionEngine({
-    defaultEffect: settings.permissions.defaultEffect,
-    rules: resolvePermissionRules(settings, readRoots, autoMemoryDir, sessionCaptureDirs),
-    ask: askWithSignal,
-  });
+  const buildPermission = (roots: readonly string[], memoryDir: string | undefined) =>
+    new PermissionEngine({
+      defaultEffect: settings.permissions.defaultEffect,
+      rules: resolvePermissionRules(settings, roots, memoryDir, sessionCaptureDirs),
+      ask: askWithSignal,
+    });
+  let permission = buildPermission(readRoots, autoMemoryDir);
   (ctx as { permission: PermissionEngine }).permission = permission;
 
   // OS command sandbox (opt-in). Confines subprocess writes to the same
@@ -815,18 +872,25 @@ export async function createContext(
   // createSandbox never throws — on an unsupported platform / missing deps /
   // disabled it returns an inactive control and tools run unsandboxed. The bridge
   // is read by the dispatch closure above via the `sandboxBridge` variable.
-  const sandboxWriteRoots = autoMemoryDir ? [...writeRoots, autoMemoryDir] : writeRoots;
-  const sandboxControl = await createSandbox({
-    enabled: settings.sandbox.enabled,
-    writeRoots: sandboxWriteRoots,
-    extraAllowWrite: settings.sandbox.filesystem.allowWrite,
-    denyWrite: settings.sandbox.filesystem.denyWrite,
-    denyRead: settings.sandbox.filesystem.denyRead,
-    allowGitConfig: settings.sandbox.filesystem.allowGitConfig,
-    monitorViolations: settings.sandbox.monitorViolations,
-    network: settings.sandbox.network,
-    logger,
-  });
+  let sandboxWriteRoots = autoMemoryDir ? [...writeRoots, autoMemoryDir] : writeRoots;
+  const buildSandbox = (enabled: boolean): Promise<SandboxControl> =>
+    createSandbox({
+      enabled,
+      writeRoots: sandboxWriteRoots,
+      // A linked worktree's object database lives in the MAIN checkout's `.git`,
+      // outside the worktree path — see `sandboxGitAllowWrite`.
+      extraAllowWrite: [
+        ...settings.sandbox.filesystem.allowWrite,
+        ...sandboxGitAllowWrite(ctx.worktree),
+      ],
+      denyWrite: settings.sandbox.filesystem.denyWrite,
+      denyRead: settings.sandbox.filesystem.denyRead,
+      allowGitConfig: settings.sandbox.filesystem.allowGitConfig,
+      monitorViolations: settings.sandbox.monitorViolations,
+      network: settings.sandbox.network,
+      logger,
+    });
+  const sandboxControl = await buildSandbox(settings.sandbox.enabled);
   (ctx as { sandbox: SandboxControl }).sandbox = sandboxControl;
   await transcript.append({
     kind: "sandbox_init",
@@ -848,19 +912,9 @@ export async function createContext(
   (ctx as { setSandbox: CliContext["setSandbox"] }).setSandbox = async (enabled) => {
     await ctx.sandbox?.dispose();
     ctx.settings.sandbox.enabled = enabled;
-    const next = await createSandbox({
-      enabled,
-      writeRoots: sandboxWriteRoots,
-      extraAllowWrite: settings.sandbox.filesystem.allowWrite,
-      denyWrite: settings.sandbox.filesystem.denyWrite,
-      denyRead: settings.sandbox.filesystem.denyRead,
-      allowGitConfig: settings.sandbox.filesystem.allowGitConfig,
-      monitorViolations: settings.sandbox.monitorViolations,
-      network: settings.sandbox.network,
-      logger,
-    });
+    const next = await buildSandbox(enabled);
     (ctx as { sandbox: SandboxControl }).sandbox = next;
-    await transcript.append({
+    await ctx.transcript.append({
       kind: "sandbox_init",
       data: {
         active: next.active,
@@ -887,8 +941,35 @@ export async function createContext(
     const evalInput = await canonicalizeGateInput(
       tool,
       input as Record<string, unknown>,
-      workspace,
+      ctx.workspace,
     );
+    // Worktree isolation outranks every grant below: once the session works in
+    // a linked worktree, the main checkout is one directory away and shares the
+    // object database, so `acceptEdits`, a session "always allow", or a user
+    // rule must not be able to reach back into it. Only an explicit
+    // bypassPermissions mode skips these checks (matching Claude Code).
+    if (
+      settings.worktree.enforceIsolation &&
+      ctx.worktree &&
+      ctx.screen.getPermissionMode() !== "bypassPermissions"
+    ) {
+      const denial = worktreeIsolationDenial({
+        // `main` is absent when git metadata cannot name the main checkout; the
+        // guard then classifies each target against `gitDir` instead.
+        ...(ctx.worktree.main ? { main: ctx.worktree.main } : {}),
+        gitDir: ctx.worktree.gitDir,
+        workspace: ctx.workspace,
+        checkouts: ctx.worktree.checkouts,
+        tool,
+        // `evalInput` carries the canonical `cwd`/`path`; the command text and
+        // every other field pass through unchanged.
+        input: evalInput,
+        ...(PATH_INPUT_TOOLS.has(tool) && typeof evalInput.path === "string"
+          ? { path: evalInput.path }
+          : {}),
+      });
+      if (denial) return { granted: false, reason: denial.reason };
+    }
     // PreToolUse hooks run BEFORE the permission system (Claude Code semantics):
     // they see the raw tool input and can deny, allow (bypass mode + rules), or
     // ask (force a confirmation even when the gate would auto-allow). A "none"
@@ -1017,6 +1098,9 @@ export async function createContext(
     getTokenEstimate: () =>
       resolveProfile(activeProviderProfile(ctx.settings) ?? "generic").tokenEstimate,
     getOverheadTokens: () => fixedOverheadTotal(measureCtxOverhead(ctx)),
+    // The tier's output cap sets the reserve the trigger must leave free, so
+    // compaction fires before `prompt + max_tokens` can overrun the window.
+    getMaxTokens: () => resolveMaxTokens(ctx.settings, ctx.settings.model),
     onPreCompact: async ({ before }) => {
       const r = await ctx.userHooks.firePreCompact({
         subject: "auto",
@@ -1048,10 +1132,28 @@ export async function createContext(
 
   const assembled = assembleSession({
     workspace,
+    // Live binding: `/worktree` moves the session to another checkout, and both
+    // the tool host's `cwd` and the system prompt read it per use.
+    getWorkspace: () => ctx.workspace,
     getSessionId: () => ctx.session.id,
     getLogger: () => ctx.logger,
     memory: {
       getMemory: () => ctx.memory,
+      getWorkspace: () => ctx.workspace,
+      getWorktree: () =>
+        ctx.worktree
+          ? {
+              path: ctx.worktree.path,
+              gitDir: ctx.worktree.gitDir,
+              ...(ctx.worktree.main ? { main: ctx.worktree.main } : {}),
+              ...(ctx.worktree.branch ? { branch: ctx.worktree.branch } : {}),
+            }
+          : undefined,
+      // The workspace is part of the prompt text, so a worktree switch has to
+      // advance the epoch — otherwise `freezeSystemPrompt` would (correctly)
+      // discard the new prompt and the model would keep describing the old
+      // checkout. Same mechanism `/resume` uses.
+      getEpoch: () => `${ctx.session.id}\u0000${ctx.workspace}`,
       // Read late (the block is rendered below, after every registration), but
       // constant from the first turn on — never a live view of the registry.
       getToolsGuidance: () => ctx.toolsGuidance,
@@ -1310,6 +1412,7 @@ export async function createContext(
   (ctx as { userHooks: UserHooks }).userHooks = new UserHooks({
     config: mergedHooks,
     cwd: ctx.workspace,
+    getCwd: () => ctx.workspace,
     getSignal: () => ctx.agent.currentSignal(),
     getSession: () => ({ id: ctx.session.id, transcriptPath: ctx.session.transcriptPath }),
     wrapCommand: (command, signal) => {
@@ -1456,6 +1559,102 @@ export async function createContext(
   // it re-arms the session's cron entries (intervals one interval out, cron at the
   // next matching minute).
   await ctx.cronScheduler.init();
+
+  /**
+   * Move the session to another checkout of the same repository (a worktree).
+   *
+   * Everything workspace-shaped was built once, from the launch directory, and
+   * is embedded in live objects: the memory bundle (byte 0 of the prompt), the
+   * permission fence, the sandbox allowlist, the LSP root, and every tool's
+   * `cwd`. They are rebuilt here in one place, in dependency order, so a switch
+   * can never leave the session half-moved. The prompt itself is allowed to
+   * change because the epoch getter folds in the workspace (see assembleSession).
+   */
+  (ctx as { setWorkspace: CliContext["setWorkspace"] }).setWorkspace = async (nextWorkspace) => {
+    const target = resolve(nextWorkspace);
+    const targetStat = await stat(target).catch(() => null);
+    if (!targetStat?.isDirectory()) {
+      throw new Error(`not a directory: ${target}`);
+    }
+
+    const nextWorktree = (await worktreeBinding(target)) ?? null;
+    // Same repository only: history, memory and permission rules were built for
+    // this one, and silently adopting another project's files would leak them
+    // across projects. Moving back to this repo's main checkout is allowed
+    // (`nextWorktree === null`, repo equal).
+    //
+    // Identity is the SHARED GIT DIR, not a main-checkout path: with
+    // `git init --separate-git-dir` + a linked worktree the main working tree
+    // cannot be named at all (`worktreeBinding().main` is undefined and
+    // `mainCheckoutRoot` refuses to guess), yet both checkouts are plainly the
+    // same repository. Comparing main paths rejected that switch outright
+    // ("not inside …") after `/worktree new` had already created the checkout.
+    // Canonicalize both sides: `git rev-parse` reports absolute but not
+    // necessarily symlink-resolved paths, and a launch through `/tmp` or a
+    // symlinked workspace would otherwise look like a different repository.
+    const currentRepo = await repoIdentity(ctx.workspace, ctx.worktree?.gitDir);
+    const nextRepo = await repoIdentity(target, nextWorktree?.gitDir);
+    if (currentRepo && nextRepo && currentRepo !== nextRepo) {
+      throw new Error(
+        `refusing to switch checkouts across repositories: ${currentRepo} -> ${nextRepo}`,
+      );
+    }
+    if (currentRepo && !nextRepo) {
+      throw new Error(`refusing to switch to ${target}: not inside ${currentRepo}`);
+    }
+
+    ctx.workspace = target;
+    (ctx as { worktree: WorktreeBinding | null }).worktree = nextWorktree;
+    worktree = nextWorktree ?? undefined;
+
+    // 1) Memory: project instruction files come from the new checkout; the
+    //    auto-memory store stays keyed by the repository.
+    await ctx.reloadMemory();
+
+    // 2) Permission fence, from the same rules but the new roots.
+    writeRoots = await buildWriteRoots(target);
+    readRoots = await buildReadRoots(target, writeRoots);
+    autoMemoryDir = await autoMemoryDirFor(target, autoDirFor(target, worktree?.main));
+    permission = buildPermission(readRoots, autoMemoryDir);
+    (ctx as { permission: PermissionEngine }).permission = permission;
+
+    // 3) Sandbox: same toggle, new write fence. The old control is disposed
+    //    before the new one exists so two platform sandboxes never overlap.
+    sandboxWriteRoots = autoMemoryDir ? [...writeRoots, autoMemoryDir] : writeRoots;
+    await ctx.sandbox?.dispose();
+    const nextSandbox = await buildSandbox(ctx.settings.sandbox.enabled);
+    (ctx as { sandbox: SandboxControl }).sandbox = nextSandbox;
+    await ctx.transcript.append({
+      kind: "sandbox_init",
+      data: {
+        active: nextSandbox.active,
+        ...(nextSandbox.reason ? { reason: nextSandbox.reason } : {}),
+      },
+    });
+
+    // 4) Language servers are bound to their root at spawn time.
+    await ctx.lspManager?.setRoot(target);
+
+    // 5) Re-bind the session, so a later `--resume` re-enters here.
+    await writeSessionWorkspace(ctx.session, target, nextWorktree?.main);
+    await ctx.transcript.append({
+      kind: "workspace_switched",
+      data: {
+        cwd: target,
+        ...(nextWorktree
+          ? {
+              worktree: {
+                main: nextWorktree.main,
+                ...(nextWorktree.branch ? { branch: nextWorktree.branch } : {}),
+              },
+            }
+          : {}),
+      },
+    });
+    ctx.logger.info({ workspace: target, main: nextWorktree?.main }, "workspace switched");
+    refreshBanner(ctx);
+    return nextWorktree;
+  };
 
   return ctx;
 }

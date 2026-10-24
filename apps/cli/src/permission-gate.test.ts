@@ -1,4 +1,5 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -140,5 +141,26 @@ describe("permission gate path resolution", () => {
       ws,
     );
     expect(evalInput.path).toBe(ws);
+  });
+
+  // WT17: the gate canonicalizes (follow the link, then `..`); the tool used to
+  // re-resolve lexically. The two must name the same file, or an approved
+  // in-workspace write lands somewhere else entirely.
+  it("approves and executes the same file when `..` follows a symlink (WT17)", async () => {
+    await mkdir(join(ws, "sub"), { recursive: true });
+    await writeFile(join(ws, "victim.txt"), "WORKTREE\n");
+    // A link OUTSIDE the workspace pointing back in: the literal path lives
+    // under `outsideDir/`, the real file is `ws/victim.txt`.
+    await symlink(join(ws, "sub"), join(outsideDir, "worktree-link"));
+    const raw = `${outsideDir}/worktree-link/../victim.txt`;
+
+    const evalInput = await canonicalizeGateInput("write", { path: raw, content: "x" }, ws);
+    expect(evalInput.path).toBe(join(ws, "victim.txt"));
+
+    const res = await writeTool.run({ path: raw, content: "OVERWRITTEN\n" }, { cwd: ws });
+    expect(res.isError).toBeUndefined();
+    expect(await readFile(join(ws, "victim.txt"), "utf8")).toBe("OVERWRITTEN\n");
+    // The lexical answer (`outsideDir/victim.txt`) was never created.
+    expect(existsSync(join(outsideDir, "victim.txt"))).toBe(false);
   });
 });

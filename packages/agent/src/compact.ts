@@ -133,12 +133,24 @@ function projectImagesForText(messages: MessageParam[]): {
 }
 
 export interface ThresholdOptions {
-  /** Hard token ceiling. Wins if set. */
+  /** Hard token ceiling for the INPUT side. Wins if set (but is capped by the input budget). */
   thresholdTokens?: number;
-  /** Otherwise: compute from context window × percent. */
+  /** Otherwise: compute from the input budget × percent. */
   contextWindowSize?: number;
-  /** Percent of context window that triggers compaction. Default 0.9. */
+  /** Percent of the input budget that triggers compaction. Default 0.9. */
   contextWindowPercent?: number;
+  /**
+   * Tokens kept out of the input budget for the model's own answer.
+   *
+   * A request is valid only while `prompt + max_tokens <= window`, so a
+   * threshold measured against the WHOLE window fires too late: with a 1M
+   * window and a 393k output cap, the real ceiling is 655k (62.5%) while a 90%
+   * trigger waits for 944k — the provider rejects the request in between (the
+   * 2026-10-25 DeepSeek 400: 659,902 input + 393,216 completion > 1,048,576).
+   * Subtracting the reserve makes the trigger and the adapter's per-request
+   * clamp agree on how much room is actually usable.
+   */
+  outputReserveTokens?: number;
 }
 
 export interface CompactTriggerOptions extends ThresholdOptions {
@@ -155,11 +167,23 @@ export interface CompactTriggerOptions extends ThresholdOptions {
   overheadTokens?: number;
 }
 
+/** Usable INPUT budget: the window minus the slice reserved for the answer. */
+function inputBudget(t: ThresholdOptions): number {
+  if (!t.contextWindowSize || t.contextWindowSize <= 0) return 0;
+  const reserve = Math.max(0, t.outputReserveTokens ?? 0);
+  return Math.max(1, t.contextWindowSize - Math.min(reserve, t.contextWindowSize - 1));
+}
+
 export function computeThreshold(t: ThresholdOptions): number {
-  if (t.thresholdTokens && t.thresholdTokens > 0) return t.thresholdTokens;
-  if (t.contextWindowSize && t.contextWindowSize > 0) {
+  const budget = inputBudget(t);
+  if (t.thresholdTokens && t.thresholdTokens > 0) {
+    // An absolute override may not push the trigger past the input budget —
+    // that is exactly the over-window request the reserve exists to prevent.
+    return budget > 0 ? Math.min(t.thresholdTokens, budget) : t.thresholdTokens;
+  }
+  if (budget > 0) {
     const pct = t.contextWindowPercent ?? DEFAULT_CONTEXT_WINDOW_PERCENT;
-    return Math.floor(t.contextWindowSize * pct);
+    return Math.floor(budget * pct);
   }
   throw new Error("computeThreshold requires either thresholdTokens or contextWindowSize");
 }

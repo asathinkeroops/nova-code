@@ -4,6 +4,7 @@
 // CLI-local because @nova/base must not know specific tool identifiers.
 import { canonicalizePath } from "@nova/base";
 import { aliasedPath } from "@nova/tools";
+import { SHELL_TOOLS } from "./worktree-guard.js";
 
 export { canonicalizePath, canonicalizeRoots } from "@nova/base";
 
@@ -46,19 +47,33 @@ const PATH_ALIAS_TOOLS: ReadonlySet<string> = new Set(["read", "write", "edit"])
  * executed against the real out-of-workspace target. Hence `aliasedPath` here,
  * not `input.path`.
  *
- * Returns a shallow copy with `path` replaced by the canonical form; the alias
- * keys are preserved. Tools outside {@link PATH_INPUT_TOOLS} are returned
- * untouched. An absent/empty path falls back to `"."` (glob/grep's documented
- * "search the cwd" default); for read/write/edit the schema rejects the call
- * afterwards, so the fallback cannot grant anything the tool would accept.
+ * Shell tools (`bash`, `monitor`) get their optional `cwd` canonicalized the
+ * same way, against the session workspace: the isolation gate and the spawned
+ * process must agree on where a command runs, and a symlink inside the worktree
+ * must not resolve execution back into the main checkout after the gate has
+ * judged the lexical path.
+ *
+ * Returns a shallow copy with `path` / `cwd` replaced by the canonical form;
+ * the alias keys are preserved. Tools outside both sets are returned untouched.
+ * An absent/empty path falls back to `"."` (glob/grep's documented "search the
+ * cwd" default); for read/write/edit the schema rejects the call afterwards,
+ * so the fallback cannot grant anything the tool would accept.
  */
 export async function canonicalizeGateInput(
   tool: string,
   input: Record<string, unknown>,
   workspace: string,
 ): Promise<Record<string, unknown>> {
-  if (!PATH_INPUT_TOOLS.has(tool)) return input;
+  const rawCwd = input.cwd;
+  const cwd =
+    SHELL_TOOLS.has(tool) && typeof rawCwd === "string" && rawCwd.length > 0
+      ? { cwd: await canonicalizePath(workspace, rawCwd) }
+      : {};
+
+  if (!PATH_INPUT_TOOLS.has(tool)) {
+    return Object.keys(cwd).length > 0 ? { ...input, ...cwd } : input;
+  }
   const raw = PATH_ALIAS_TOOLS.has(tool) ? aliasedPath(input) : input.path;
   const target = typeof raw === "string" && raw.length > 0 ? raw : ".";
-  return { ...input, path: await canonicalizePath(workspace, target) };
+  return { ...input, ...cwd, path: await canonicalizePath(workspace, target) };
 }

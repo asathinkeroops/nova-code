@@ -46,7 +46,7 @@ export class LspUnavailableError extends Error {
  * so e.g. `.ts` and `.tsx` share a single typescript-language-server process.
  */
 export class LspManager {
-  private readonly root: string;
+  private root: string;
   private readonly servers: ServerConfig[];
   private readonly initTimeoutMs: number;
   private readonly requestTimeoutMs: number;
@@ -181,5 +181,19 @@ export class LspManager {
     const clients = Array.from(this.clients.values());
     this.clients.clear();
     await Promise.allSettled(clients.map((c) => c.dispose()));
+  }
+
+  /**
+   * Re-root the manager at a different workspace (a git-worktree switch).
+   *
+   * Running servers are bound to the old root at spawn time (`rootUri`), so
+   * they are disposed rather than reused: a `typescript-language-server` still
+   * rooted at the previous checkout would answer diagnostics about the wrong
+   * tree. The next `lsp` call lazily starts fresh ones under the new root.
+   */
+  async setRoot(root: string): Promise<void> {
+    if (root === this.root) return;
+    await this.disposeAll();
+    this.root = root;
   }
 }

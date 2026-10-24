@@ -2,7 +2,12 @@ import { computeThreshold, estimateTokens, sliceFromLastCompacted } from "@nova/
 import {
   resolveProfile,
 } from "@nova/model";
-import { activeProviderProfile, resolveContextWindowSize } from "@nova/base";
+import {
+  activeProviderProfile,
+  outputReserveTokens,
+  resolveContextWindowSize,
+  resolveMaxTokens,
+} from "@nova/base";
 import { accent, ACCENT_HEX, blue, bold, cyan, dim, green, yellow, magenta } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { measureCtxOverhead } from "../context-usage.js";
@@ -53,18 +58,25 @@ export async function handleContext(ctx: CliContext): Promise<void> {
   const used =
     systemTokens + memoryTokens + skillsTokens + toolsTokens + mcpTokens + messagesTokens;
 
-  // Auto-compact reserves the slice of the window above its trigger threshold;
-  // free space is what remains below it. With auto-compact off, the whole
-  // window is usable and there is no reserved buffer.
+  // The answer needs its own slice: providers count `prompt + max_tokens`
+  // against the window, so the input side is not the whole window. Auto-compact
+  // then triggers inside that input budget; with it off, there is still no
+  // buffer, but the reserve remains unusable for input.
   const auto = ctx.settings.compact.auto;
+  const reserveTokens = outputReserveTokens(
+    windowTokens,
+    resolveMaxTokens(ctx.settings, ctx.settings.model),
+  );
+  const inputBudget = Math.max(0, windowTokens - reserveTokens);
   const threshold = auto.enabled
     ? computeThreshold({
         contextWindowSize: windowTokens,
         thresholdTokens: auto.thresholdTokens,
         contextWindowPercent: auto.contextWindowPercent,
+        outputReserveTokens: reserveTokens,
       })
-    : windowTokens;
-  const autocompactBuffer = Math.max(0, windowTokens - threshold);
+    : inputBudget;
+  const autocompactBuffer = Math.max(0, inputBudget - threshold);
   const freeSpace = Math.max(0, threshold - used);
 
   const rows: Row[] = [
@@ -78,6 +90,12 @@ export async function handleContext(ctx: CliContext): Promise<void> {
     {
       label: t.contextView.labelAutocompactBuffer,
       tokens: autocompactBuffer,
+      color: dim,
+      hideWhenEmpty: true,
+    },
+    {
+      label: t.contextView.labelOutputReserve,
+      tokens: reserveTokens,
       color: dim,
       hideWhenEmpty: true,
     },

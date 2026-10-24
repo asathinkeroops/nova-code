@@ -4,6 +4,7 @@ import fg from "fast-glob";
 import ignore from "ignore";
 import { z } from "zod";
 import type { ToolHandler } from "@nova/core";
+import { resolveToolPath } from "./cwd.js";
 
 const inputSchema = z.object({
   pattern: z
@@ -82,11 +83,10 @@ export const globTool: ToolHandler = {
   },
   async run(rawInput, ctx) {
     const input = inputSchema.parse(rawInput);
-    const base = input.path
-      ? isAbsolute(input.path)
-        ? input.path
-        : resolve(ctx.cwd, input.path)
-      : ctx.cwd;
+    // The same resolution the permission gate, the ledger and the execution key
+    // use — a raw `resolve()` here would fold `..` before the symlink the OS
+    // follows and search a different directory than the one that was approved.
+    const base = await resolveToolPath(ctx.cwd, input.path ?? ".");
 
     let matches: string[];
     try {

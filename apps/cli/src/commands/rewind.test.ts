@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MessageParam } from "@nova/core";
-import { collectUserTurns } from "./rewind.js";
+import { collectUserTurns, partitionRestoreTargets } from "./rewind.js";
 
 const userTurn = (text: string): MessageParam => ({ role: "user", content: text });
 const assistant = (text: string): MessageParam => ({
@@ -51,10 +51,18 @@ describe("collectUserTurns", () => {
   it("skips nova-injected synthetic messages (reminders, interruptions, …)", () => {
     const messages: MessageParam[] = [
       userTurn("a real ask"),
-      { role: "user", content: "<todo-reminder>Update your todos: store.ts", meta: { synthetic: true, kind: "todo-reminder" } },
+      {
+        role: "user",
+        content: "<todo-reminder>Update your todos: store.ts",
+        meta: { synthetic: true, kind: "todo-reminder" },
+      },
       assistant("took care of it"),
       userTurn("another real ask"),
-      { role: "user", content: "<interrupted-by-user>", meta: { synthetic: true, kind: "interrupted" } },
+      {
+        role: "user",
+        content: "<interrupted-by-user>",
+        meta: { synthetic: true, kind: "interrupted" },
+      },
     ];
     const turns = collectUserTurns(messages);
     expect(turns.map((t) => t.turn)).toEqual([1, 2]);
@@ -66,5 +74,64 @@ describe("collectUserTurns", () => {
     const turns = collectUserTurns([userTurn("<todo-reminder> I typed this myself")]);
     expect(turns).toHaveLength(1);
     expect(turns[0]?.text).toBe("<todo-reminder> I typed this myself");
+  });
+});
+
+describe("partitionRestoreTargets", () => {
+  /** Every parent "exists" except the removed checkout's — the case under test. */
+  const parentExists = async (p: string): Promise<boolean> =>
+    !p.startsWith("/repo/.nova/worktrees/gone/");
+  const plan = (over: Partial<Parameters<typeof partitionRestoreTargets>[0]> = {}) => ({
+    toModify: [
+      { path: "/repo/.nova/worktrees/feat/src/a.ts", blob: "b1" },
+      { path: "/repo/src/main.ts", blob: "b2" },
+      { path: "/repo/.nova/worktrees/gone/src/c.ts", blob: "b3" },
+    ],
+    toRemove: ["/repo/.nova/worktrees/gone/src/d.ts", "/repo/.nova/worktrees/feat/src/e.ts"],
+    conflicts: [],
+    fromEpoch: 0,
+    ...over,
+  });
+
+  it("keeps targets inside existing checkouts, including other live worktrees", async () => {
+    const { plan: kept, unreachable } = await partitionRestoreTargets(plan(), {
+      roots: ["/repo/.nova/worktrees/feat", "/repo"],
+      parentExists,
+    });
+    expect(kept.toModify.map((m) => m.path)).toEqual([
+      "/repo/.nova/worktrees/feat/src/a.ts",
+      "/repo/src/main.ts",
+    ]);
+    expect(kept.toRemove).toEqual(["/repo/.nova/worktrees/feat/src/e.ts"]);
+    // A path under a checkout that no longer exists is never recreated.
+    expect(unreachable).toEqual([
+      "/repo/.nova/worktrees/gone/src/c.ts",
+      "/repo/.nova/worktrees/gone/src/d.ts",
+    ]);
+  });
+
+  it("treats a sibling prefix as outside (no ../repo-other confusion)", async () => {
+    const { plan: kept } = await partitionRestoreTargets(
+      {
+        toModify: [{ path: "/repo-other/a.ts", blob: "b" }],
+        toRemove: [],
+        conflicts: [],
+        fromEpoch: 0,
+      },
+      { roots: ["/repo"], parentExists },
+    );
+    expect(kept.toModify).toEqual([]);
+  });
+
+  it("leaves the plan untouched when everything is inside the workspace", async () => {
+    const inside = {
+      toModify: [{ path: "/repo/src/a.ts", blob: "b" }],
+      toRemove: ["/repo/src/new.ts"],
+      conflicts: [],
+      fromEpoch: 3,
+    };
+    const result = await partitionRestoreTargets(inside, { roots: ["/repo"], parentExists });
+    expect(result.unreachable).toEqual([]);
+    expect(result.plan).toEqual(inside);
   });
 });

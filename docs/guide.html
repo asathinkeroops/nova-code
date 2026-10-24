@@ -439,7 +439,7 @@
       <p><strong>Nova</strong>（命令行二进制 <code>nova</code>）是一个跑在终端里的编码 agent —— 它读代码、跑命令、改文件，通过工具调用把一项任务推到完成。模型层面向<strong>国产大模型</strong>，内置两套传输协议：Anthropic 兼容（DeepSeek 与 Kimi/Moonshot 原生）与 OpenAI 兼容（GLM Coding Plan 及其他 <code>chat/completions</code> 端点原生）。DeepSeek、GLM 与 Kimi 有专用 provider profile，没有专用适配的端点走通用档 <code>generic</code>；具体协议由 <code>providers[].transport</code> 独立选择。</p>
       <p>本手册面向<strong>使用者</strong>：怎么装、怎么配、怎么在日常里把它用顺。若想了解内部架构（loop 契约、包依赖、扩展点），请读仓库根的 <code>CLAUDE.md</code> 与 <code>README.md</code>。</p>
       <div class="doc-hero-meta">
-        <span>21 章 · 单文件文档</span>
+        <span>22 章 · 单文件文档</span>
         <span>国产模型深度定制</span>
         <span>MIT</span>
       </div>
@@ -447,7 +447,7 @@
         <a href="#sec-2"><span class="n">02</span>安装与环境</a>
         <a href="#sec-6"><span class="n">06</span>Slash 命令大全</a>
         <a href="#sec-9"><span class="n">09</span>内置工具</a>
-        <a href="#sec-20"><span class="n">20</span>配置完整参考</a>
+        <a href="#sec-21"><span class="n">21</span>配置完整参考</a>
       </div>
     </div>
   </div>
@@ -486,8 +486,9 @@
 
       <div class="nav-group">运维与参考</div>
       <a class="nav-link" href="#sec-19" data-nav="sec-19">19 · 会话与数据落盘</a>
-      <a class="nav-link" href="#sec-20" data-nav="sec-20">20 · 配置完整参考</a>
-      <a class="nav-link" href="#sec-21" data-nav="sec-21">21 · FAQ 与排查</a>
+      <a class="nav-link" href="#sec-20" data-nav="sec-20">20 · Git Worktree</a>
+      <a class="nav-link" href="#sec-21" data-nav="sec-21">21 · 配置完整参考</a>
+      <a class="nav-link" href="#sec-22" data-nav="sec-22">22 · FAQ 与排查</a>
 
       <p id="no-results" class="hidden text-xs text-mute px-3 py-4">没有匹配的章节</p>
     </nav>
@@ -551,7 +552,7 @@
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
           <div><div class="callout-title">默认模型表不落盘</div><p><code>providers[].models</code> 的默认值按 provider profile 内置在代码里，加载配置时才层叠进对应的 <code>providers[]</code> 条目；配置文件里只放<strong>你自己的覆盖项</strong>。这样 Nova 升级带来的新模型 id、新价格、新上下文窗口也能直接生效。若某个 <code>providers[]</code> 条目带着 Nova 曾写出的完整默认表，启动时会把它缩减成实际覆盖项（通常为空，或一条 <code>/effort</code> 设过的 <code>thinking</code>），取值不变。</p><p class="mt-3">想覆盖某一档，只写要改的字段即可，例如 <code>"models": { "pro": { "thinking": "low" } }</code> —— 其余字段（<code>id</code>、<code>pricing</code>、<code>maxTokens</code>…）继续跟随内置默认。<strong>但如果你把某档的 <code>id</code> 改成别的模型</strong>，该档就整条以你的为准（不再继承内置的价格与上限）；反过来，同 <code>id</code> 的档位无法「删掉」某个内置字段（省略即继承）。<code>/effort</code> 持久化写的也正是这种最小覆盖。</p></div>
         </div>
-        <p>按 <span class="kbd">Ctrl+C</span> 可中止向导。当前 provider 同时有有效 API key 和可用模型表时才跳过向导；导出的环境变量 <code>NOVA_API_KEY</code> 可以满足 key 条件，但只有环境变量、还没有模型表时，向导仍会跑（不再问你 key，也不会把这个 key 写进配置文件）。要接别的端点，在选择器里选“自定义服务商”，再按打印的骨架编辑 <code>~/.nova/nova.config.json</code> —— 这个入口固定使用 <code>profile: "generic"</code>，而传输协议由 <code>transport: "anthropic" | "openai"</code> 独立选择。通用档 <code>generic</code> 无内置档位表，会对 408、409、429 和 5xx 做退避重试，并遵循 <code>Retry-After</code>；配置时需按 <code>lite</code>/<code>pro</code>/<code>max</code> 三档骨架填全，完整字段见 <a class="inline-link" href="#sec-20">§20</a>。</p>
+        <p>按 <span class="kbd">Ctrl+C</span> 可中止向导。当前 provider 同时有有效 API key 和可用模型表时才跳过向导；导出的环境变量 <code>NOVA_API_KEY</code> 可以满足 key 条件，但只有环境变量、还没有模型表时，向导仍会跑（不再问你 key，也不会把这个 key 写进配置文件）。要接别的端点，在选择器里选“自定义服务商”，再按打印的骨架编辑 <code>~/.nova/nova.config.json</code> —— 这个入口固定使用 <code>profile: "generic"</code>，而传输协议由 <code>transport: "anthropic" | "openai"</code> 独立选择。通用档 <code>generic</code> 无内置档位表，会对 408、409、429 和 5xx 做退避重试，并遵循 <code>Retry-After</code>；配置时需按 <code>lite</code>/<code>pro</code>/<code>max</code> 三档骨架填全，完整字段见 <a class="inline-link" href="#sec-21">§21</a>。</p>
         <p>配置多个 <code>providers[]</code> 连接后，在 REPL 输入 <code>/connect</code> 可从列表切换，输入 <code>/connect &lt;name&gt;</code> 可按 <code>providers[].name</code> 精确切换。命令会先检查名称、API key、模型表与必需的 <code>baseURL</code>；不合法或不可用的连接不会改变当前状态。成功后会重建主模型、预测模型及后续子 agent 使用的模型连接，并持久化 <code>currentProvider</code>。</p>
         <div class="callout callout-info">
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
@@ -576,6 +577,8 @@
       <span class="tok-f">--cwd</span> &lt;dir&gt;                   <span class="tok-c"># 工具的工作目录（工作区根）</span>
       <span class="tok-f">--resume</span> &lt;id&gt;                 <span class="tok-c"># 恢复当前 workspace 下指定 id 的 session</span>
   <span class="tok-f">-c, --continue</span>                  <span class="tok-c"># 恢复当前 workspace 最近一个 session</span>
+      <span class="tok-f">--worktree</span> [name]            <span class="tok-c"># 在 .nova/worktrees/&lt;name&gt; 里开工（不存在则新建）</span>
+      <span class="tok-f">--worktree-from</span> &lt;ref&gt;       <span class="tok-c"># 新 worktree 从该 commit-ish 起</span>
       <span class="tok-f">--no-transcript</span>             <span class="tok-c"># 本次不写 transcript</span>
       <span class="tok-f">--no-pretty</span>                 <span class="tok-c"># 关闭 pretty 日志</span>
       <span class="tok-f">--output-format</span> text|json|jsonl  <span class="tok-c"># headless 输出格式（默认 text）</span>
@@ -597,6 +600,7 @@
           <li><strong><code>-p / --prompt</code> 是无头模式</strong>：传了这个 flag，Nova 跑一轮后直接打印结果并退出，不进入交互式 REPL。如果 stdin/stdout 不是 TTY（管道、重定向、CI），也会自动进入无头模式。用 <code>--output-format json</code> 可以拿到结构化 JSON。</li>
           <li><strong><code>-m</code> / <code>-t</code> / <code>--max-turns</code> 都是本次会话的临时覆盖</strong>，不写回配置文件。</li>
           <li><strong><code>--cwd</code></strong> 决定工具的「工作区根」—— 读写权限、沙箱写入范围、工作区信任判定都以它为基准（见 <a class="inline-link" href="#sec-10">§10</a>）。</li>
+          <li><strong><code>--worktree [名称]</code></strong> 先建（或复用）一个 git worktree、再把它当作工作区启动——等价于先 <code>git worktree add</code> 再 <code>nova --cwd &lt;路径&gt;</code>（见 <a class="inline-link" href="#sec-20">§20</a>）。</li>
           <li><strong>首次在某个目录启动会先问「是否信任这个文件夹」</strong>；headless 弹不出确认框，未信任的工作区直接失败退出（见 <a class="inline-link" href="#sec-10">§10</a>）。</li>
           <li><strong><code>--permission-mode</code></strong> 启动时直接设定权限模式（REPL 内也可用 <span class="kbd">Shift+Tab</span> 切换）。<code>--dangerously-skip-permissions</code> 对所有权限提示自动批准，适合无人值守场景。</li>
           <li><strong>session 列表</strong> 在 REPL 内用 <code>/resume</code>（不带参数）的交互式选择器查看，无独立 CLI 参数。</li>
@@ -644,7 +648,7 @@
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)"><code>!</code> shell 直通</h3>
         <p>以 <code>!</code> 开头的一行<strong>不作为 prompt 发给模型</strong>，而是直接在 shell 里跑（输入框边框会变绿提示）。它复用 <code>bash</code> 工具：同样在工作区根执行、同样受 OS 沙箱约束（见 <a class="inline-link" href="#sec-11">§11</a>），输出以一张卡片贴回历史区，<span class="kbd">Esc</span> 可中断。因为是你自己敲的命令，<strong>不走权限门</strong>。</p>
         <p>命令跑完后，这次执行会以 <code>&lt;bash-input&gt;</code> / <code>&lt;bash-stdout&gt;</code> / <code>&lt;bash-stderr&gt;</code> 三段记录进入上下文，并<strong>立刻触发一轮模型回应</strong> —— 所以 <code>! git diff</code> 之后可以直接接「解释一下上面的改动」，模型已经看过了。这条记录标为 synthetic，历史区不会因此多出一个用户气泡（<code>!</code> 卡片已经展示了这次执行）；<span class="kbd">Esc</span> 中断的命令和空的 <code>!</code> 都不入上下文、也不触发回合。</p>
-        <p>它和 <code>/</code> 命令行一样带本地副作用，所以即使在回合运行中键入也<strong>始终排队</strong>、由 REPL 在空闲时派发 —— 不会被 <code>queue.consumeInLoop</code> 折进当前回合（见 <a class="inline-link" href="#sec-20">§20</a>）。</p>
+        <p>它和 <code>/</code> 命令行一样带本地副作用，所以即使在回合运行中键入也<strong>始终排队</strong>、由 REPL 在空闲时派发 —— 不会被 <code>queue.consumeInLoop</code> 折进当前回合（见 <a class="inline-link" href="#sec-21">§21</a>）。</p>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">状态行</h3>
         <p>输入框下方两行实时状态：</p>
@@ -703,6 +707,7 @@
           <tr><td><code>/lsp</code></td><td>查看已配置的语言服务器（是否在 PATH、本 session 是否已启动）</td></tr>
           <tr><td><code>/plugin</code></td><td>列出已加载的插件及其贡献（安装 / 启停用 <code>nova plugin</code> CLI，见 <a class="inline-link" href="#sec-18">§18</a>）</td></tr>
           <tr><td><code>/sandbox [on|off]</code></td><td>本会话内开关 OS 命令沙箱（见 <a class="inline-link" href="#sec-11">§11</a>）</td></tr>
+          <tr><td><code>/worktree [list|new &lt;名称&gt; [from &lt;起点&gt;]|enter &lt;名称&gt;|remove &lt;名称&gt;|prune]</code></td><td>管理 git worktree；<code>new</code> / <code>enter</code> 会把<strong>当前会话</strong>切到那个检出（不重启、不换 session，见 <a class="inline-link" href="#sec-20">§20</a>）</td></tr>
           <tr><td><code>/tasks [list|stop &lt;id|all&gt;]</code></td><td>查看和管理后台命令（<code>bash</code> + <code>run_in_background</code>），支持 list / stop</td></tr>
           <tr><td><code>/exit</code>, <code>/quit</code></td><td>退出</td></tr>
         </tbody></table></div>
@@ -838,7 +843,7 @@
           <tr><td><code>cronCreate</code></td><td><span class="pill pill-ro">只读放行</span></td><td>把一条 prompt 或 <code>/command</code> 排进定时表：<code>schedule</code> 支持<strong>重复间隔</strong>（<code>30s</code>/<code>5m</code>/<code>1h</code>）或<strong>标准 5 字段 cron 表达式</strong>（<code>0 9 * * *</code>、<code>*/15 * * * *</code>）；可选 <code>label</code>、<code>maxIterations</code></td></tr>
           <tr><td><code>cronList</code> / <code>cronDelete</code></td><td><span class="pill pill-ro">只读放行</span></td><td>列出 / 删除定时表条目</td></tr>
         </tbody></table></div>
-        <p>定时条目落盘在 <code>~/.nova/sessions/{id}/cron/</code>，<code>/resume</code> 时重新装载并重排，<code>/clear</code> 时清空。<strong>只有会话活着时才会触发</strong>（没有后台守护进程）—— 到点的 tick 若正好有回合在跑，会等 REPL 空闲后立刻补跑，不重叠堆积。三个工具本身默认放行（只登记元数据），但<strong>排定的 payload 真正动手时仍在触发那一刻走完整权限门</strong>。<code>/loop</code> 就是基于这套机制的薄封装（见 <a class="inline-link" href="#sec-6">§6</a>）。配置见 <a class="inline-link" href="#sec-20">§20</a> <code>cron.*</code>。</p>
+        <p>定时条目落盘在 <code>~/.nova/sessions/{id}/cron/</code>，<code>/resume</code> 时重新装载并重排，<code>/clear</code> 时清空。<strong>只有会话活着时才会触发</strong>（没有后台守护进程）—— 到点的 tick 若正好有回合在跑，会等 REPL 空闲后立刻补跑，不重叠堆积。三个工具本身默认放行（只登记元数据），但<strong>排定的 payload 真正动手时仍在触发那一刻走完整权限门</strong>。<code>/loop</code> 就是基于这套机制的薄封装（见 <a class="inline-link" href="#sec-6">§6</a>）。配置见 <a class="inline-link" href="#sec-21">§21</a> <code>cron.*</code>。</p>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">后台长任务</h3>
         <div class="tbl-wrap"><table class="doc"><thead><tr><th>工具</th><th>权限</th><th>说明</th></tr></thead><tbody>
@@ -873,6 +878,7 @@
           <li>判定是<strong>包含关系</strong>：工作区等于或位于某个已记录根之下即视为可信，因此信任仓库根即覆盖其所有子目录。</li>
           <li><strong>家目录例外</strong>：对 <code>~</code> 授予的信任只在本次会话有效，不落盘。</li>
           <li><strong>headless（<code>-p</code> / 无 TTY）没法弹确认框</strong>，所以未信任的工作区是<strong>硬性拒绝</strong>：先交互式跑一次并信任、或手工把路径加进 <code>trust.trustedRoots</code>、或传 <code>--dangerously-skip-permissions</code> 绕过。</li>
+          <li><strong>检查的是「最终工作区」，不是「启动目录」</strong>：启动顺序固定为 ① 信任启动目录（<code>--worktree</code> 即将往这个仓库里写一份检出）→ ② 创建/复用检出 → ③ 解析 session（可能回到它绑定的 worktree）→ ④ 再对<strong>最终那个目录</strong>做一次信任判定。因为接下来要加载的是它的 <code>CLAUDE.md</code>、项目 hooks（可执行的 shell 命令）和插件，所以判定必须落在它上面。</li>
           <li>写配置失败不会中断会话（你已经同意了，本次有效，只是下次还会再问）。设 <code>trust.enabled: false</code> 可恢复「启动即信任」的旧行为。</li>
         </ul>
 
@@ -1010,7 +1016,13 @@
         <p class="font-medium mt-5" style="color:var(--text)">auto 压缩（默认开）：</p>
         <ul class="space-y-3">
           <li>只在上下文窗口吃紧时触发。它<strong>不截断历史</strong>，而是往 append-only 历史里<strong>追加一条 <code>&lt;compacted&gt;</code> 摘要边界</strong> —— 完整历史仍留在磁盘、TUI 里照旧全量渲染，只有喂给<strong>模型</strong>的视图缩短到「最后一条边界往后」。这是一次有意为之的「前缀重置」：边界之内前缀依旧稳定命中缓存，边界推进时才重置一次。可调 <code>compact.auto.enabled</code> / <code>thresholdTokens</code> / <code>contextWindowPercent</code> / <code>maxSummaryTokens</code>。</li>
-          <li>触发阈值默认是<strong>上下文窗口的 90%</strong>（<code>contextWindowPercent</code>，或用 <code>thresholdTokens</code> 钉死一个绝对值）。这个 90% 算的是<strong>整个请求</strong> —— system 提示词、记忆、skills 索引、工具 schema，加上对话消息，和 <code>/context</code> 面板显示的口径一致。固定开销通常在一万多 token，窗口越小占比越高，所以把它计入触发判断是必要的：只按消息量算的话，128k 窗口下等阈值触发时真实请求已经超出窗口了。</li>
+          <li>触发阈值默认是<strong>可用输入预算的 90%</strong>（<code>contextWindowPercent</code>，或用 <code>thresholdTokens</code> 钉死一个绝对值，仍会被输入预算夹住）。两个口径要分清：
+            <ul>
+              <li><strong>输入预算 = 上下文窗口 − 输出预留</strong>。请求能成立的前提是 <code>prompt + max_tokens ≤ 窗口</code>；窗口 1M、档位输出上限 393k 时，可用输入只有 ~655k。所以触发判断先扣掉一份<strong>输出预留</strong>（<code>min(该档 maxTokens, max(8k, 窗口的 10%))</code>，1M 窗口约 105k），再按比例算阈值 —— 1M 窗口实际在 ~81% 触发，而不是 90%。</li>
+              <li><strong>整个请求</strong>都算在占用里 —— system 提示词、记忆、skills 索引、工具 schema，加上对话消息，和 <code>/context</code> 面板显示的口径一致（面板会单列一行「输出预留」，其余各行相加正好等于窗口）。固定开销通常在一万多 token，窗口越小占比越高，所以把它计入触发判断是必要的：只按消息量算的话，128k 窗口下等阈值触发时真实请求已经超出窗口了。</li>
+            </ul>
+          </li>
+          <li><strong>输出上限是「封顶」，不是「预留」</strong>：每次请求的 <code>max_tokens</code> 取「该档 maxTokens」与「窗口剩余空间」（扣掉 prompt 估算和 10% 余量）的较小者。对话越长，单次可生成的上限越小，但请求始终能成立；被 <code>max_tokens</code> 截断时仍由「续写」机制接着写（见 <code>maxTokensContinuations</code>）。极端情况下连最小输出（1024 token）都放不下，会在本地直接报错并提示 <code>/compact</code> 或 <code>/clear</code>，而不是把供应商的 400 原样抛给用户。</li>
         </ul>
         <p>手动压缩：随时 <code>/compact</code>，可附带关注点（如 <code>/compact 保留关于鉴权的部分</code>）让摘要更聚焦。</p>
         <p><strong>摘要末尾保留最近原文</strong>：自动压缩和 <code>/compact</code> 都先生成摘要正文，再由程序从完整历史中提取最近 <strong>3 个模型交互轮次</strong>，按原顺序附在同一条 <code>&lt;compacted&gt;</code> 消息末尾。每轮包含一次 assistant 回复、全部工具调用与结果及其关联内容；末尾尚未回复的真实用户输入另行保留。最新一条真实用户输入优先单独保留，不会被连续工具调用挤掉，重复记录只附加一次。附录按 <code>meta.synthetic</code> 排除 Todo/Task 提醒、框架续写提示等注入消息，不把它们当成用户输入；<code>role: user</code> 的工具结果仍随调用保留。框架续写提示带来源标记，记录在历史与 transcript 中，不显示为用户气泡。新写入的历史记录带格式版本，恢复时不再根据正文标签猜测来源；旧无版本记录仍兼容迁移。附录保留文本、角色和工具参数/结果，图片数据换成占位描述，因此不保留视觉内容，也不会重放工具调用。旧摘要不作为原文复制，连续压缩不会由程序嵌套旧附录。排除的注入消息仍参与摘要生成，完整历史也照常保留。模型仍只看到「最新摘要（含附录）＋新消息」。</p>
@@ -1211,13 +1223,14 @@
         <div class="flex items-center gap-3 mb-5"><span class="sec-num">19</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">会话、检查点与数据落盘</h2></div>
         <h3 class="text-base font-semibold mt-2 mb-3" style="color:var(--text)">恢复与切换</h3>
         <ul class="space-y-2">
-          <li>session 创建时会永久绑定当时的 workspace，后续恢复不会改变归属。旧 session 没有独立 metadata 时，以 transcript 中第一次 <code>session_start.cwd</code> 作为固定归属。</li>
+          <li>session 创建时会绑定当时的 workspace。唯一会改写这个绑定的是 <code>/worktree</code>：切到某个检出后绑定随之移动，<code>nova --resume &lt;id&gt;</code> 因此会回到那次会话结束所在的 worktree（同一仓库才允许；目录已删除则退回启动目录并清除绑定）。其余情况恢复不会改变归属。旧 session 没有独立 metadata 时，以 transcript 中第一次 <code>session_start.cwd</code> 作为固定归属。</li>
           <li><code>nova -c</code> / <code>nova --continue</code>：恢复当前 workspace 最近一个有消息的 session。</li>
           <li><code>nova --resume &lt;id&gt;</code>：按 id 恢复当前 workspace 的 session；目标属于其他 workspace 时拒绝恢复，并提示其绑定目录。</li>
           <li>REPL 内 <code>/resume [&lt;id&gt;]</code>：只列出和切换当前 workspace 的 session；显式指定其他 workspace 的 id 同样会被拒绝。</li>
         </ul>
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">回退（Rewind）</h3>
         <p><code>/rewind [&lt;n&gt;]</code> 回到此前某条消息 —— <strong>其后的对话历史与文件改动都会被丢弃</strong>，相当于一个检查点回滚。</p>
+        <p>文件快照属于 <strong>session</strong>（存在 <code>~/.nova/sessions/{id}/snapshots/</code>），不是属于某个 worktree；记录里存的是<strong>绝对路径</strong>。所以跨 <code>/worktree</code> 切换回退时：会话历史照常回退，而文件会回到它<strong>当时被修改的那个检出</strong>里（撤销本来就该作用在它发生的地方），预览里这类路径按绝对路径显示。若那个检出已经被 <code>/worktree remove</code> 删除，对应文件会被跳过并在预览里标注为「所在检出已不存在」，不会凭空重建目录。文件若在这一轮里被 <code>bash</code> 之类在 nova 之外改过，会被列为冲突、保留不动。</p>
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">自动清理</h3>
         <p>启动时 Nova 会删掉<strong>最近活动超过 <code>sessionCleanup.maxAgeDays</code>（默认 30 天）</strong>的 session 目录（按文件最新 mtime 算「最后一次使用」，不是创建时间；当前活动 session 始终受保护）。设 <code>sessionCleanup.enabled: false</code> 可永久保留。</p>
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">版本更新</h3>
@@ -1248,7 +1261,49 @@
 
       <!-- §20 -->
       <section id="sec-20" class="mb-20">
-        <div class="flex items-center gap-3 mb-5"><span class="sec-num">20</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">配置文件完整参考</h2></div>
+        <div class="flex items-center gap-3 mb-5"><span class="sec-num">20</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">Git Worktree（多检出并行）</h2></div>
+        <p>一个 worktree 是<strong>同一个仓库的另一份检出</strong>：独立的工作目录与分支，共用一份对象库。Nova 把它当作<strong>可切换的 workspace</strong> —— 切过去之后，工具 cwd、权限边界、沙箱写入范围、LSP 根和 system prompt 全部跟着走，而<strong>对话历史留在原地</strong>。</p>
+
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">启动即进入</h3>
+        <div class="code-block">
+          <div class="code-head"><span class="lang">bash</span><button class="copy-btn" onclick="copyCode(this)">复制</button></div>
+<pre><code><span class="tok-f">nova</span> --worktree fix-auth                    <span class="tok-c"># 在 &lt;repo&gt;/.nova/worktrees/fix-auth 里开工</span>
+<span class="tok-f">nova</span> --worktree                             <span class="tok-c"># 不给名字 → 用当前分支名</span>
+<span class="tok-f">nova</span> --worktree fix-auth --worktree-from origin/main</code></pre>
+        </div>
+        <p>默认建在 <code>&lt;主检出&gt;/.nova/worktrees/&lt;名称&gt;</code>，分支 <code>worktree-&lt;名称&gt;</code>。<strong>存放位置始终以主检出为基准</strong> —— 即使你在某个 worktree 里执行 <code>nova --worktree …</code>，新检出也落在主检出下面，不会嵌套在当前 worktree 里。同名 worktree 已存在时直接复用（同样按主检出查找），所以重复执行安全。</p>
+        <p><strong>起点</strong>则由 <code>worktree.baseRef</code> 决定，且按<strong>你启动时所在的检出</strong>解析：<code>head</code> 用这个检出的 HEAD（带着它的未推送提交）；<code>fresh</code> 优先用本地缓存的 <code>origin/HEAD</code>（不联网 fetch），解析不到才退回这个检出的 HEAD。</p>
+        <p><code>--worktree</code> 与 <code>--resume &lt;id&gt;</code> <strong>互斥</strong>：恢复的会话会留在它自己绑定的检出里，再建一个只会被忽略 —— 所以这种组合直接报错、不落任何文件（想回到那个检出就直接 <code>nova --resume &lt;id&gt;</code>）。<code>--continue</code> 不受影响：它找的正是「这个 worktree 里最近的会话」。</p>
+
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">会话内切换</h3>
+        <div class="tbl-wrap"><table class="doc"><thead><tr><th>命令</th><th>行为</th></tr></thead><tbody>
+          <tr><td><code>/worktree</code></td><td>列出所有检出（<code>*</code> = 当前），带分支与未提交改动数；git 读不出状态时显示「状态未知」，而不是当成干净</td></tr>
+          <tr><td><code>/worktree new &lt;名称&gt; [from &lt;起点&gt;]</code></td><td>新建（或复用）并<strong>切换过去</strong></td></tr>
+          <tr><td><code>/worktree enter &lt;名称&gt;</code></td><td>切换到已有 worktree</td></tr>
+          <tr><td><code>/worktree remove &lt;名称&gt;</code></td><td>删除（工作区不干净会拒绝）</td></tr>
+          <tr><td><code>/worktree prune</code></td><td>清理手工删掉目录后的残留记录</td></tr>
+        </tbody></table></div>
+        <p>切换是<strong>原地</strong>发生的：不重启、不换 session。会话已有历史时会先确认一次；确认后 Nova 依次重建记忆 bundle、权限根、沙箱白名单、LSP 根，推进 system prompt 的 epoch（提示词里写的已是新检出），最后把 <code>session.json</code> 的 workspace 改到新路径。</p>
+
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">切过去之后</h3>
+        <ul class="space-y-2">
+          <li><strong>隔离</strong>：<code>worktree.enforceIsolation</code>（默认开）拒绝回到主检出的动作 —— 写文件到主检出、命令 cwd 指向主检出、<code>git -C</code>/<code>--git-dir</code>/<code>--work-tree</code> 或 <code>GIT_*</code> 重定向（命令文本里<strong>和</strong>工具 <code>env</code> 里都查；<code>env GIT_DIR=…</code> 这类包装赋值也算，嵌套 <code>sh -c</code> 会继承）、<code>cd</code> 进主检出，以及<strong>含 git 且带 <code>$(…)</code> / 反引号 / <code>${!x}</code> 这类动态展开</strong>（无法静态判定去向）的命令。命令文本里的相对路径按<strong>命令实际运行的目录</strong>解析，且两边都先解析成真实路径（指向主检出的符号链接按目标判定，指回 worktree 的链接不会被误判；<code>..</code> 按 OS 的遍历语义处理 —— <code>link/..</code> 是链接<strong>目标</strong>的父目录，不是链接所在目录）。这个目录不是一个值：<code>(…)</code> 子 shell、管道、后台 <code>&amp;</code> 里的 <code>cd</code> 不会留到外层，<code>&amp;&amp;</code>/<code>||</code> 两侧都算可能执行，<code>cd</code> 到不存在的目录会失败并停在原地，<code>env -C</code>、<code>pushd</code>/<code>popd</code>、嵌套的 <code>sh -c '…'</code> / <code>eval '…'</code> 也会移动或重跑命令 —— 只要<strong>任一可能目录</strong>落在主检出就拒绝。<code>GIT_DIR</code> 这类「指名 git 状态」的重定向另按一条规则判定：共享 git 目录本身就是主检出的 HEAD/index/config/hooks，指向它一律拒绝；<code>&lt;公共目录&gt;/objects</code>（内容寻址）与 <code>&lt;公共目录&gt;/worktrees/&lt;名字&gt;</code>（各检出私有状态）照常可用。<code>env</code> 只在真正生效的分支检查（<code>monitor</code> 与<strong>后台</strong> <code>bash</code>；前台 <code>bash</code> 忽略 <code>env</code>）。无法解析的 <code>cd</code> 目标只有在命令里同时出现 git 时才拒绝。它只看「编辑目标 / 命令 cwd / 命令文本」，不管 shell 实际写了哪些文件 —— 后者仍由权限引擎与沙箱兜。</li>
+          <li><strong>要重新准备的东西</strong>：<code>node_modules</code> 等构建产物不在检出里，需要重新安装。用 <code>.worktreeinclude</code> 把 <code>.env</code> 这类<strong>被忽略文件</strong>自动复制进每个新 worktree。复制前会按<strong>目标检出</strong>的规则再判一次：目标起点已跟踪、目标已存在、或该路径在目标里并未被忽略的，一律跳过；真正复制失败的文件也会单独计数。卡片上会分别报告「跳过」和「复制失败」的数量 —— 失败绝不会被算成已复制。</li>
+          <li><strong>共享的东西</strong>：对象库（<code>.git</code>）、自动记忆（按仓库根键控，所有检出共用一份）、Task 计划（落在仓库根 <code>.tasks/</code>）。<strong>项目配置（skills / 插件 / 斜杠命令 / hooks）仍以启动时的 workspace 为准</strong>，切换不会重新扫描。</li>
+          <li><strong>恢复</strong>：<code>nova --resume &lt;id&gt;</code> 会回到该 session 上次所在的 worktree（同一仓库才允许；目录已删除则退回启动目录并清除绑定）。<code>--continue</code> 仍只匹配启动目录。恢复到另一个检出时，<strong>信任门会重新检查那个目录</strong>（在信任根之外会再问一次；headless 直接拒绝），因为接下来要加载的是它的项目配置。</li>
+          <li><strong>不脏 <code>git status</code></strong>：创建时会把 <code>/.nova/worktrees/</code> 与 <code>/.tasks/</code> 写进 <code>$GIT_COMMON_DIR/info/exclude</code> —— 仓库本地元数据，不进提交。</li>
+          <li><strong>退出不自动删除</strong>：worktree 与分支都保留，用 <code>/worktree remove</code> 显式清理（要求干净）。</li>
+          <li><strong><code>git init --separate-git-dir</code></strong>：git 元数据在检出之外时，从某个 worktree 内部<strong>无法可靠反推</strong>主检出的路径（git 自己会把元数据目录列成「主 worktree」）。这不影响正常使用：仓库身份按<strong>共享 git 目录</strong>判定，所以从主检出 <code>/worktree new</code> 照样能创建并<strong>切入</strong>；隔离检查也照常生效 —— 它按目标的 <code>.git</code> 归类：指向同一个公共 git 目录的就属于本仓库的主工作树（拒绝），指向 <code>&lt;公共目录&gt;/worktrees/&lt;名字&gt;</code> 的是同级检出（放行），其它仓库不受影响。只有在这个布局下<strong>从 linked worktree 内部新建</strong> worktree 会拒绝（定位不到该把新检出放在哪），此时先用 <code>git worktree add</code> 手工创建、再用 <code>nova --cwd</code> 进入。</li>
+        </ul>
+        <div class="callout callout-info">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          <div><p><code>/worktree</code> 切的是<strong>当前会话的检出</strong>，<code>/resume</code> 切的是<strong>会话</strong>。想跨 worktree 恢复某次对话，用启动参数 <code>nova --resume &lt;id&gt;</code>。</p></div>
+        </div>
+      </section>
+
+      <!-- §21 -->
+      <section id="sec-21" class="mb-20">
+        <div class="flex items-center gap-3 mb-5"><span class="sec-num">21</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">配置文件完整参考</h2></div>
         <p>配置文件位于 <code>~/.nova/nova.config.json</code>，是一份 JSON。下面列出全部字段及默认值（来自 zod schema，<strong>每个可配项都有默认值，缺省即用默认</strong>）。运行时 provider 配置只接受 <code>providers</code> / <code>currentProvider</code> 结构；启动检测到旧的顶层 <code>provider</code>、<code>baseURL</code>、<code>apiKey</code>、<code>models</code>、<code>transport</code> 时，会先把它们一次性迁移成一个 provider 连接、原子写回，再用新 schema 校验。若文件已经有非空 <code>providers</code>，它优先，残留的旧顶层字段只会被清除。</p>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">顶层与模型</h3>
@@ -1274,7 +1329,8 @@
         </tbody></table></div>
         <div class="callout callout-info">
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
-          <div><p><strong>每档输出上限 / 上下文窗口是 per-tier 的</strong>：写在 <code>providers[].models.&lt;tier&gt;.maxTokens</code>（schema 缺省 32768；DeepSeek 内置默认 393216，GLM 内置默认 131072）和 <code>providers[].models.&lt;tier&gt;.contextWindowSize</code>（缺省与 GLM 内置默认均为 1048576 = 1024×1024）。<code>providers[].models.&lt;tier&gt;.thinking</code> 让同一模型 id 拉出 lite/pro/max 能力梯度（见 <a class="inline-link" href="#sec-7">§7</a>）；<code>providers[].models.&lt;tier&gt;.pricing</code> 提供 <code>/usage</code> 成本估算单价。</p></div>
+          <div><p><strong>每档输出上限 / 上下文窗口是 per-tier 的</strong>：写在 <code>providers[].models.&lt;tier&gt;.maxTokens</code>（schema 缺省 32768；DeepSeek 内置默认 393216，GLM 内置默认 131072）和 <code>providers[].models.&lt;tier&gt;.contextWindowSize</code>（缺省与 GLM 内置默认均为 1048576 = 1024×1024）。<code>providers[].models.&lt;tier&gt;.thinking</code> 让同一模型 id 拉出 lite/pro/max 能力梯度（见 <a class="inline-link" href="#sec-7">§7</a>）；<code>providers[].models.&lt;tier&gt;.pricing</code> 提供 <code>/usage</code> 成本估算单价。</p>
+          <p><code>maxTokens</code> 是<strong>单次生成的上限</strong>（封顶），不是每次都预留这么多：请求里的 <code>max_tokens</code> 会按「窗口剩余空间」自动收窄，保证 <code>prompt + max_tokens ≤ contextWindowSize</code>。所以把 <code>maxTokens</code> 设得很大不会让长对话提前失败，只会让短对话里的单次生成上限更高（详见 <a class="inline-link" href="#sec-12">§12</a>）。</p></div>
         </div>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)"><code>permissions</code></h3>
@@ -1301,14 +1357,23 @@
           <tr><td><code>trust.trustedRoots</code></td><td><code>[]</code></td><td>已信任的绝对路径（授权时自动追加，也可手工预置）；工作区位于任一根之下即可信</td></tr>
         </tbody></table></div>
 
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)"><code>worktree</code>（git worktree）</h3>
+        <div class="tbl-wrap"><table class="doc"><thead><tr><th>字段</th><th>默认</th><th>说明</th></tr></thead><tbody>
+          <tr><td><code>worktree.enabled</code></td><td><code>true</code></td><td>是否允许 <code>/worktree</code> 与 <code>--worktree</code></td></tr>
+          <tr><td><code>worktree.dir</code></td><td><code>".nova/worktrees"</code></td><td>相对<strong>主检出</strong>根：检出目录父级，每个 worktree 是 <code>&lt;dir&gt;/&lt;名称&gt;</code>（从任何 worktree 启动都一样）。放在仓库内是有意的 —— 落在信任根之下（不二次弹窗）、与仓库同卷（pnpm 硬链接有效），且创建时会把 <code>/&lt;dir&gt;/</code> 写进 <code>$GIT_COMMON_DIR/info/exclude</code></td></tr>
+          <tr><td><code>worktree.baseRef</code></td><td><code>"fresh"</code></td><td>新 worktree 的基线，按<strong>启动所在的检出</strong>解析：<code>fresh</code> 用本地缓存的 <code>origin/HEAD</code>（<strong>不联网 fetch</strong>，解析不到退回该检出的 HEAD），<code>head</code> 从该检出当前的本地 HEAD 起</td></tr>
+          <tr><td><code>worktree.includeFile</code></td><td><code>".worktreeinclude"</code></td><td>仓库根下的 <code>.gitignore</code> 语法文件，列出要被复制进每个新 worktree 的<strong>被忽略文件</strong>（<code>.env</code> 等）。只有「匹配且被 gitignore」的候选才进入复制列表；复制前还要过目标检出这一关 —— 已跟踪、已存在、在目标中未被忽略的都会跳过并计数</td></tr>
+          <tr><td><code>worktree.enforceIsolation</code></td><td><code>true</code></td><td>在 worktree 中运行时拒绝回到主检出：写文件到主检出、命令 cwd 指向主检出、<code>git -C</code>/<code>--git-dir</code>/<code>GIT_WORK_TREE</code>/<code>GIT_DIR</code> 重定向、<code>cd</code> 进主检出，以及含 git 的动态展开命令。<code>bypassPermissions</code> 模式可跳过</td></tr>
+        </tbody></table></div>
+
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">思考等级（thinking）</h3>
         <p><strong>没有顶层 <code>thinking</code> 配置项</strong> —— 思考等级是 per-tier 的，写在 <code>providers[].models.&lt;tier&gt;.thinking</code>（<code>auto</code>/<code>off</code>/<code>low</code>/<code>medium</code>/<code>high</code>/<code>max</code>；缺省回退 <code>auto</code>）。<code>-t/--think</code> 是会话内覆盖，<code>/effort</code> 会写回当前档位，见 <a class="inline-link" href="#sec-7">§7</a>。</p>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)"><code>compact</code></h3>
         <div class="tbl-wrap"><table class="doc"><thead><tr><th>字段</th><th>默认</th><th>说明</th></tr></thead><tbody>
           <tr><td><code>auto.enabled</code></td><td><code>true</code></td><td>上下文吃紧时自动压缩（追加 <code>&lt;compacted&gt;</code> 边界，见 <a class="inline-link" href="#sec-12">§12</a>）</td></tr>
-          <tr><td><code>auto.contextWindowPercent</code></td><td><code>0.9</code></td><td>触发阈值占上下文窗口的比例，按<strong>整个请求</strong>计（含 system / 工具 schema，与 <code>/context</code> 同口径）</td></tr>
-          <tr><td><code>auto.thresholdTokens</code></td><td>未设置</td><td>绝对触发阈值覆写，优先于比例</td></tr>
+          <tr><td><code>auto.contextWindowPercent</code></td><td><code>0.9</code></td><td>触发阈值占<strong>可用输入预算</strong>（窗口 − 输出预留）的比例，按<strong>整个请求</strong>计（含 system / 工具 schema，与 <code>/context</code> 同口径）</td></tr>
+          <tr><td><code>auto.thresholdTokens</code></td><td>未设置</td><td>绝对触发阈值覆写，优先于比例，但仍被输入预算夹住</td></tr>
           <tr><td><code>auto.maxSummaryTokens</code></td><td><code>4000</code></td><td>模型生成的摘要正文上限；不含程序附加的最近原文，自动与手动压缩共用</td></tr>
         </tbody></table></div>
 
@@ -1394,9 +1459,9 @@
         </div>
       </section>
 
-      <!-- §21 -->
-      <section id="sec-21" class="mb-12">
-        <div class="flex items-center gap-3 mb-5"><span class="sec-num">21</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">常见问题与排查</h2></div>
+      <!-- §22 -->
+      <section id="sec-22" class="mb-12">
+        <div class="flex items-center gap-3 mb-5"><span class="sec-num">22</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">常见问题与排查</h2></div>
         <div class="space-y-3">
           <details class="group bg-surface border border-line rounded-xl overflow-hidden" open>
             <summary class="cursor-pointer list-none px-5 py-3.5 flex items-center justify-between gap-3 font-medium select-none" style="color:var(--text)">
@@ -1531,8 +1596,9 @@
         <a class="toc-link" href="#sec-17" data-toc="sec-17">LSP 代码智能</a>
         <a class="toc-link" href="#sec-18" data-toc="sec-18">插件 Plugins</a>
         <a class="toc-link" href="#sec-19" data-toc="sec-19">会话与数据落盘</a>
-        <a class="toc-link" href="#sec-20" data-toc="sec-20">配置完整参考</a>
-        <a class="toc-link" href="#sec-21" data-toc="sec-21">FAQ 与排查</a>
+        <a class="toc-link" href="#sec-20" data-toc="sec-20">Git Worktree</a>
+        <a class="toc-link" href="#sec-21" data-toc="sec-21">配置完整参考</a>
+        <a class="toc-link" href="#sec-22" data-toc="sec-22">FAQ 与排查</a>
       </nav>
       <a href="#top" class="mt-6 inline-flex items-center gap-1.5 text-xs text-mute hover:text-brand-500 transition">
         <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m18 15-6-6-6 6"/></svg> 回到顶部

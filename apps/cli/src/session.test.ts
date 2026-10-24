@@ -1,10 +1,11 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { MessageParam } from "@nova/core";
 import { createSession, readSessionWorkspace } from "@nova/base";
 import { buildSessionRows, resolveSession } from "./session.js";
+import { addWorktree, runGit } from "./worktree.js";
 
 let root: string;
 
@@ -151,6 +152,61 @@ describe("resolveSession --resume", () => {
     await expect(resolveSession({ resume: a.id }, root, "/repo/b")).rejects.toThrow(
       /belongs to workspace \/repo\/a, not the current workspace \/repo\/b/,
     );
+  });
+
+  it("re-enters the worktree a session was last bound to", async () => {
+    const repo = await realpath(await mkdtemp(join(tmpdir(), "nova-resume-wt-")));
+    try {
+      await runGit(repo, ["init", "-q", "-b", "main"]);
+      await runGit(repo, ["config", "user.email", "t@example.com"]);
+      await runGit(repo, ["config", "user.name", "T"]);
+      await writeFile(join(repo, "a.txt"), "a\n");
+      await runGit(repo, ["add", "."]);
+      await runGit(repo, ["commit", "-q", "-m", "init"]);
+
+      const wt = await addWorktree({ repo, name: "feat", dir: ".nova/worktrees", baseRef: "head" });
+      const s = await createSession({
+        workspace: wt.path,
+        worktreeMain: repo,
+        rootOverride: root,
+      });
+
+      // Launching from the main checkout re-enters the session's worktree.
+      const resumed = await resolveSession({ resume: s.id }, root, repo);
+      expect(resumed.workspace).toBe(await realpath(wt.path));
+
+      // …and the binding moves with it, so a second resume still lands there.
+      expect(await readSessionWorkspace(resumed.session)).toBe(await realpath(wt.path));
+    } finally {
+      await rm(repo, { recursive: true, force: true });
+    }
+  });
+
+  it("falls back to the launch directory when the session's worktree is gone", async () => {
+    const repo = await realpath(await mkdtemp(join(tmpdir(), "nova-resume-gone-")));
+    try {
+      await runGit(repo, ["init", "-q", "-b", "main"]);
+      await runGit(repo, ["config", "user.email", "t@example.com"]);
+      await runGit(repo, ["config", "user.name", "T"]);
+      await writeFile(join(repo, "a.txt"), "a\n");
+      await runGit(repo, ["add", "."]);
+      await runGit(repo, ["commit", "-q", "-m", "init"]);
+
+      const wt = await addWorktree({ repo, name: "feat", dir: ".nova/worktrees", baseRef: "head" });
+      const s = await createSession({
+        workspace: wt.path,
+        worktreeMain: repo,
+        rootOverride: root,
+      });
+      await rm(wt.path, { recursive: true, force: true });
+
+      const resumed = await resolveSession({ resume: s.id }, root, repo);
+      expect(resumed.workspace).toBe(repo);
+      // The stale binding is cleared rather than left to fail every resume.
+      expect(await readSessionWorkspace(resumed.session)).toBe(repo);
+    } finally {
+      await rm(repo, { recursive: true, force: true });
+    }
   });
 
   it("rejects a legacy session whose workspace cannot be determined", async () => {

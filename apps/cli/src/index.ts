@@ -31,6 +31,10 @@ import { ensureSettings } from "./setup.js";
 import { settingsReadiness } from "./startup-readiness.js";
 import { buildUpgradeCommand } from "./upgrade-cli.js";
 import { readCliVersion } from "./version.js";
+import type { AddWorktreeOptions } from "./worktree.js";
+import { materializeWorktree, planWorktreeLaunch } from "./worktree-launch.js";
+import { resolveLaunchTarget } from "./launch.js";
+import type { ResolvedSession } from "./session.js";
 import { ensureWorkspaceTrust, isWorkspaceTrusted } from "./workspace-trust.js";
 
 interface CliOptions {
@@ -46,6 +50,10 @@ interface CliOptions {
   outputFormat?: string;
   permissionMode?: string;
   dangerouslySkipPermissions?: boolean;
+  /** `--worktree [name]`: create (or re-open) a worktree and run there. */
+  worktree?: string | boolean;
+  /** `--worktree-from <ref>`: branch the new worktree from this commit-ish. */
+  worktreeFrom?: string;
 }
 
 /** Session-only reasoning overrides parsed from `--think` (see CliRuntimeOptions). */
@@ -76,9 +84,7 @@ function applyCliOverrides(settings: Settings, opts: CliOptions): ThinkOverride 
   if (isThinkingLevel(raw)) {
     return { thinkingLevelOverride: raw };
   }
-  throw new Error(
-    `invalid --think value: ${raw} (expected auto|off|low|medium|high|max)`,
-  );
+  throw new Error(`invalid --think value: ${raw} (expected auto|off|low|medium|high|max)`);
 }
 
 /**
@@ -119,6 +125,7 @@ async function runHeadlessMode(
   settings: Settings,
   positional: string[],
   opts: CliOptions,
+  worktreePlan?: AddWorktreeOptions,
 ): Promise<never> {
   let prompt = opts.prompt ?? positional.join(" ").trim();
   if (!prompt && !process.stdin.isTTY) prompt = (await readStdin()).trim();
@@ -171,18 +178,34 @@ async function runHeadlessMode(
   }
   const approvalPolicy: HeadlessApprovalPolicy = opts.dangerouslySkipPermissions ? "allow" : "deny";
 
-  // Workspace trust. Headless has no way to show the confirmation prompt, so an
-  // untrusted workspace is a hard stop (deny by default). `--dangerously-skip-
-  // permissions` bypasses it; otherwise the user must trust the folder in an
-  // interactive session, or add it to `trust.trustedRoots` in the config.
-  const headlessCwd = opts.cwd ?? process.cwd();
-  if (!opts.dangerouslySkipPermissions && !(await isWorkspaceTrusted(settings, headlessCwd))) {
-    dieHeadless(
-      `workspace not trusted: ${headlessCwd}\n` +
-        `Trust it by running nova interactively here once, by adding it to ` +
-        `trust.trustedRoots in nova.config.json, or by passing --dangerously-skip-permissions.`,
-      1,
-    );
+  // Workspace trust + session binding, in the order `resolveLaunchTarget`
+  // enforces: the launch repo first (a --worktree run writes into it), then
+  // whichever checkout the session actually lands in — that is whose memory,
+  // project hooks and plugins get loaded. Headless cannot show the confirmation
+  // prompt, so an untrusted directory is a hard stop (deny by default).
+  // `--dangerously-skip-permissions` bypasses it; otherwise the user must trust
+  // the folder in an interactive session or add it to `trust.trustedRoots`.
+  let target: ResolvedSession;
+  try {
+    target = await resolveLaunchTarget({
+      launchDir: opts.cwd ?? process.cwd(),
+      ...(settings.sessionDir ? { sessionDir: settings.sessionDir } : {}),
+      ...(opts.resume ? { resume: opts.resume } : {}),
+      ...(opts.continue ? { continue: true } : {}),
+      requireTrust: async (dir) => {
+        if (opts.dangerouslySkipPermissions) return;
+        if (await isWorkspaceTrusted(settings, dir)) return;
+        dieHeadless(
+          `workspace not trusted: ${dir}\n` +
+            `Trust it by running nova interactively here once, by adding it to ` +
+            `trust.trustedRoots in nova.config.json, or by passing --dangerously-skip-permissions.`,
+          1,
+        );
+      },
+      ...(worktreePlan ? { materializeWorktree: () => materializeWorktree(worktreePlan) } : {}),
+    });
+  } catch (err) {
+    dieHeadless(err instanceof Error ? err.message : String(err), 1);
   }
 
   let code: number;
@@ -192,7 +215,8 @@ async function runHeadlessMode(
       outputFormat,
       permissionMode,
       approvalPolicy,
-      ...(opts.cwd !== undefined ? { cwd: opts.cwd } : {}),
+      target,
+      cwd: target.workspace,
       ...(opts.resume !== undefined ? { resume: opts.resume } : {}),
       ...(opts.continue !== undefined ? { continue: opts.continue } : {}),
       ...(opts.noTranscript !== undefined ? { noTranscript: opts.noTranscript } : {}),
@@ -209,8 +233,22 @@ async function runHeadlessMode(
 
 async function run(positional: string[], opts: CliOptions): Promise<void> {
   // Convert the removed flat provider fields into one provider entry before any
-  // other config cleanup or validation. Runtime Settings still has one shape.
+  // other config cleanup or validation. Runtime Settings still have one shape.
   await migrateLegacyProviderConfig(DEFAULT_CONFIG_PATH);
+
+  // Plan (never materialize) the --worktree checkout: the actual `git worktree
+  // add` writes into the repository and waits for the trust gate, which needs a
+  // mounted screen. A bad name / non-repo still fails here, before any UI work.
+  let worktreePlan: AddWorktreeOptions | undefined;
+  if (opts.worktree !== undefined) {
+    try {
+      worktreePlan = await planWorktreeLaunch(opts);
+    } catch (err) {
+      // No screen is mounted yet, so this is a plain stderr error.
+      process.stderr.write(`nova: ${err instanceof Error ? err.message : String(err)}\n`);
+      process.exit(1);
+    }
+  }
 
   // Cleanup for configs written by older versions, which persisted the
   // provider's whole tier table. Those tables are built-ins now (layered in at
@@ -226,6 +264,9 @@ async function run(positional: string[], opts: CliOptions): Promise<void> {
   // warnings we show and continue past. When it's INVALID, `settings` is
   // all-defaults — unusable — so we stop with the real errors rather than
   // continue and misreport downstream (e.g. a bogus "apiKey is not set").
+  // Diagnosed against the LAUNCH directory, deliberately: with `--worktree` the
+  // checkout does not exist yet (it is materialized after the trust gate), and
+  // the report only uses the workspace for its project-hook section.
   const { report, settings: loaded } = await diagnoseConfig({
     workspace: opts.cwd ?? process.cwd(),
   });
@@ -249,7 +290,7 @@ async function run(positional: string[], opts: CliOptions): Promise<void> {
       process.exit(1);
     }
     if (report.issues.length > 0) process.stderr.write(`\n${formatIssues(report)}\n\n`);
-    await runHeadlessMode(settings, positional, opts);
+    await runHeadlessMode(settings, positional, opts, worktreePlan);
   }
 
   const initialPrompt = positional.join(" ").trim();
@@ -298,25 +339,43 @@ async function run(positional: string[], opts: CliOptions): Promise<void> {
       );
     }
 
-    // Workspace trust gate: nova is configured and ready — now confirm it may
-    // access the launch folder before createContext opens the session (which
-    // loads workspace memory/CLAUDE.md, runs project hooks, and starts tools).
+    // Startup order, and it matters:
+    //   1. trust the launch directory — a --worktree run is about to write a
+    //      checkout into that repository;
+    //   2. materialize the checkout (only now);
+    //   3. resolve the session, which may re-enter a worktree it was bound to;
+    //   4. trust THAT directory, because createContext is about to load its
+    //      memory, project hooks (shell commands) and plugins.
+    // `resolveLaunchTarget` owns the sequence so headless cannot drift from it.
     // Declining exits (via fatalExit inside the helper);
-    // `--dangerously-skip-permissions` bypasses the check entirely.
-    if (!opts.dangerouslySkipPermissions) {
-      await ensureWorkspaceTrust(settings, screen, opts.cwd ?? process.cwd());
-    }
-
-    const ctx = await createContext(settings, screen, {
-      ...(opts.cwd !== undefined ? { cwd: opts.cwd } : {}),
-      ...(opts.resume !== undefined ? { resume: opts.resume } : {}),
-      ...(opts.continue !== undefined ? { continue: opts.continue } : {}),
-      ...(opts.noTranscript !== undefined ? { noTranscript: opts.noTranscript } : {}),
-      ...(opts.noPretty !== undefined ? { noPretty: opts.noPretty } : {}),
-      ...(think.thinkingLevelOverride !== undefined
-        ? { thinkingLevelOverride: think.thinkingLevelOverride }
-        : {}),
+    // `--dangerously-skip-permissions` bypasses every check.
+    const target = await resolveLaunchTarget({
+      launchDir: opts.cwd ?? process.cwd(),
+      ...(settings.sessionDir ? { sessionDir: settings.sessionDir } : {}),
+      ...(opts.resume ? { resume: opts.resume } : {}),
+      ...(opts.continue ? { continue: true } : {}),
+      requireTrust: async (dir) => {
+        if (opts.dangerouslySkipPermissions) return;
+        await ensureWorkspaceTrust(settings, screen, dir);
+      },
+      ...(worktreePlan ? { materializeWorktree: () => materializeWorktree(worktreePlan) } : {}),
     });
+
+    const ctx = await createContext(
+      settings,
+      screen,
+      {
+        cwd: target.workspace,
+        ...(opts.resume !== undefined ? { resume: opts.resume } : {}),
+        ...(opts.continue !== undefined ? { continue: opts.continue } : {}),
+        ...(opts.noTranscript !== undefined ? { noTranscript: opts.noTranscript } : {}),
+        ...(opts.noPretty !== undefined ? { noPretty: opts.noPretty } : {}),
+        ...(think.thinkingLevelOverride !== undefined
+          ? { thinkingLevelOverride: think.thinkingLevelOverride }
+          : {}),
+      },
+      target,
+    );
 
     await pruneOldSessions(ctx);
 
@@ -335,12 +394,17 @@ program
   .argument("[prompt...]", "optional initial prompt (REPL still starts after it runs)")
   .option("-p, --prompt <text>", "run a single turn headless (print the answer and exit)")
   .option("-m, --model <tier>", "override active model tier (a key in `models`, e.g. lite/pro/max)")
-  .option(
-    "-t, --think <level>",
-    "reasoning level (auto|off|low|medium|high|max)",
-  )
+  .option("-t, --think <level>", "reasoning level (auto|off|low|medium|high|max)")
   .option("--max-turns <n>", "override maxTurns", (v) => Number.parseInt(v, 10))
   .option("--cwd <dir>", "override working directory for tools")
+  .option(
+    "--worktree [name]",
+    "run in a git worktree: create (or re-open) <name> under settings.worktree.dir and use it as the workspace (not with --resume)",
+  )
+  .option(
+    "--worktree-from <ref>",
+    "branch the new worktree from <ref> instead of the configured base",
+  )
   .option("--no-transcript", "skip writing to the session transcript")
   .option("--no-pretty", "disable pretty logging")
   .option("-c, --continue", "resume the most recent session in this workspace")

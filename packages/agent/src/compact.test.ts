@@ -87,6 +87,39 @@ describe("shouldAutoCompact / computeThreshold", () => {
     );
   });
 
+  // The provider validates `prompt + max_tokens <= window`, so the input side is
+  // not the whole window. On 2026-10-25 a 1M DeepSeek window with the tier's
+  // 393k output cap failed at 63% input occupancy: 659,902 + 393,216 > 1,048,576,
+  // while a 90%-of-window trigger would not have fired until 944k.
+  it("keeps the output reserve out of the input budget", () => {
+    const window = 1_048_576;
+    const reserve = 104_857; // min(393,216, 10% of the window)
+    expect(computeThreshold({ contextWindowSize: window, outputReserveTokens: reserve })).toBe(
+      Math.floor((window - reserve) * 0.9),
+    );
+  });
+
+  it("caps an absolute threshold at the input budget", () => {
+    expect(
+      computeThreshold({
+        contextWindowSize: 100_000,
+        outputReserveTokens: 20_000,
+        thresholdTokens: 95_000,
+      }),
+    ).toBe(80_000);
+  });
+
+  it("triggers before the request could outgrow the window", () => {
+    // ~75k tokens of conversation in a 100k window with a 20k output reserve:
+    // under the old whole-window trigger (90k) it passed; with the reserve the
+    // input budget is 80k and its 90% trigger (72k) catches it.
+    const messages = [{ role: "user" as const, content: "x".repeat(250_000) }];
+    expect(shouldAutoCompact(messages, { contextWindowSize: 100_000 })).toBe(false);
+    expect(
+      shouldAutoCompact(messages, { contextWindowSize: 100_000, outputReserveTokens: 20_000 }),
+    ).toBe(true);
+  });
+
   it("triggers when estimated tokens cross the threshold", () => {
     const long = "x".repeat(4 * 50_001);
     const opts = { thresholdTokens: 50_000 };

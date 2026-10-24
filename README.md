@@ -153,6 +153,7 @@ DeepSeek 的内置模型梯度是 `lite` → `deepseek-flash`（原生多模态�
 | `--dangerously-skip-permissions` | 跳过全部审批，适合无人值守 |
 | `--output-format <fmt>` | headless 输出：`text`（默认）/ `json`（结果 + 完整消息）/ `jsonl`（流式事件） |
 | `--max-turns <n>` · `--cwd <dir>` | 覆盖单轮模型调用上限与工具工作目录 |
+| `--worktree [name]` · `--worktree-from <ref>` | 在 `<repo>/.nova/worktrees/<name>` 里开工（不存在则新建），可指定基线 commit-ish；同名已存在则复用。与 `--resume <id>` 互斥（恢复的会话留在它绑定的检出），`--continue` 可用 |
 | `--no-transcript` · `--no-pretty` | 不写 transcript、关闭美化输出 |
 
 ### 📦 更多子命令
@@ -211,6 +212,7 @@ DeepSeek 的内置模型梯度是 `lite` → `deepseek-flash`（原生多模态�
 | `/commands` · `/skills` · `/lsp` | 查看或重载命令、查看 skills 与语言服务器 |
 | `/mcp` · `/plugin` | MCP 菜单可鉴权、重连、退出登录和查看工具；插件菜单查看本会话已加载贡献（安装 / 启停走 `nova plugin`） |
 | `/sandbox` | 本会话内开关 OS 命令沙箱（`on` / `off`） |
+| `/worktree` | 管理 git worktree：`new` / `enter` 把**当前会话**原地切到那个检出（不重启、不换 session），另有 `list` / `remove` / `prune` |
 | `/loop` | 按间隔重复跑某条 prompt 或命令（`/loop <间隔> <prompt\|/cmd>`，`/loop stop` 停止） |
 | `/doctor` | 体检全局配置（JSON/schema、模型/key、hooks、MCP），报告问题，可交给 agent 就地修复 |
 | `/usage` · `/context` | 查看 token 用量与估算成本、缓存命中、上下文占用 |
@@ -218,7 +220,7 @@ DeepSeek 的内置模型梯度是 `lite` → `deepseek-flash`（原生多模态�
 | `/predict` | 开关下一条输入预测 |
 | `/exit` · `/quit` | 退出 |
 
-每个 session 在创建时永久绑定当前 workspace。`nova -c` 和 `/resume` 只查找当前 workspace 的 session；`nova --resume <id>` 或 `/resume <id>` 遇到其他 workspace 的 session 时会拒绝恢复并提示其绑定目录。
+每个 session 在创建时绑定当前 workspace。`nova -c` 和 `/resume` 只查找当前 workspace 的 session；`nova --resume <id>` 或 `/resume <id>` 遇到其他 workspace 的 session 时会拒绝恢复并提示其绑定目录。唯一例外是 `/worktree`：切到某个检出后绑定随之移动，`nova --resume <id>` 因此会回到那次会话结束所在的 worktree（同一仓库才允许）。
 
 ### 核心特性
 

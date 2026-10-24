@@ -30,6 +30,7 @@ import { sliceFromLastCompacted } from "./compact.js";
 import type { AgentDefinition, AgentRegistry } from "./definitions.js";
 import type { MemoryBundle } from "./memory.js";
 import { createMemoryPrompt, type AgentSettingsSlice } from "./ports.js";
+import type { WorktreePromptInfo } from "./system-prompt.js";
 import { createSubAgentTool, type SubAgentDeps } from "./subagent.js";
 
 /** Subdirectory of the session dir that per-sub-agent logs are written to. */
@@ -43,6 +44,14 @@ const SUBAGENT_LOG_DIR = "subagents";
  */
 export interface SessionMemoryOptions {
   getMemory: () => MemoryBundle;
+  /** Live workspace binding — a worktree switch moves the session, and both
+   *  system prompts (parent and child) have to describe the new checkout. */
+  getWorkspace?: () => string;
+  /** Live worktree description for the `<worktree>` block, if any. */
+  getWorktree?: () => WorktreePromptInfo | undefined;
+  /** Prefix epoch. Defaults to the session id; a host that can move the session
+   *  between workspaces folds that revision in so the prompt may change. */
+  getEpoch?: () => string;
   /**
    * The main agent's tool-guidance block. Bound as a getter so the host can set
    * it once its registry is final, NOT so it can track the live tool set — see
@@ -170,15 +179,24 @@ function subAgentModelResolver(
 export function assembleSession(opts: AssembleSessionOptions): AssembleSessionResult {
   const { memory, subagent, ...agentOpts } = opts;
 
+  // One live workspace binding for both consumers: the tool host (via
+  // `agentOpts`, which carries `getWorkspace` through) and the prompt. The
+  // session-level one wins when the host supplied both.
+  const getWorkspace = memory.getWorkspace ?? opts.getWorkspace;
+
   const agent = assembleAgent({
     ...agentOpts,
+    ...(getWorkspace ? { getWorkspace } : {}),
     systemPrompt: createMemoryPrompt({
       workspace: opts.workspace,
+      ...(getWorkspace ? { getWorkspace } : {}),
       getMemory: memory.getMemory,
+      ...(memory.getWorktree ? { getWorktree: memory.getWorktree } : {}),
       ...(memory.getToolsGuidance ? { getToolsGuidance: memory.getToolsGuidance } : {}),
       // Doubles as the prefix epoch: the session id is the only thing whose
       // change licenses a new system prompt (see freezeSystemPrompt).
       getSessionId: opts.getSessionId,
+      ...(memory.getEpoch ? { getEpoch: memory.getEpoch } : {}),
       ...(memory.getLanguage ? { getLanguage: memory.getLanguage } : {}),
     }),
   });
@@ -187,6 +205,7 @@ export function assembleSession(opts: AssembleSessionOptions): AssembleSessionRe
 
   const subAgentTool = createSubAgentTool({
     workspace: opts.workspace,
+    ...(getWorkspace ? { getWorkspace } : {}),
     getMemory: memory.getMemory,
     ...(memory.renderToolsGuidance ? { renderToolsGuidance: memory.renderToolsGuidance } : {}),
     getAgentRegistry: subagent.getAgentRegistry,

@@ -12,7 +12,7 @@
  */
 
 import type { Compactor, MessageParam, ModelClient } from "@nova/core";
-import type { TokenEstimate } from "@nova/base";
+import { outputReserveTokens, type TokenEstimate } from "@nova/base";
 import {
   autoCompact,
   computeThreshold,
@@ -62,6 +62,14 @@ export interface BuildCompactorOptions {
    */
   getOverheadTokens?: () => number;
   /**
+   * The tier's output cap (`maxTokens`). Converted by `outputReserveTokens` into
+   * the slice of the window kept free for the answer, so the trigger fires
+   * inside the INPUT budget the provider actually accepts rather than at a
+   * percentage of the whole window. A getter because `/model`/`/config` switch
+   * tiers and caps mid-session.
+   */
+  getMaxTokens?: () => number;
+  /**
    * Fired right before auto-compact runs the summarizer (awaited). Return
    * `{ block: true }` to skip this compaction (a PreCompact hook vetoed it).
    */
@@ -110,7 +118,14 @@ export async function manualCompact(
 }
 
 export function buildCompactor(opts: BuildCompactorOptions): Compactor {
-  const { auto, getModel, getContextWindowSize, getTokenEstimate, getOverheadTokens } = opts;
+  const {
+    auto,
+    getModel,
+    getContextWindowSize,
+    getTokenEstimate,
+    getOverheadTokens,
+    getMaxTokens,
+  } = opts;
   const { onPreCompact, onAutoCompact } = opts;
 
   const compact: Compactor["compact"] = async (messages, req) => {
@@ -126,8 +141,14 @@ export function buildCompactor(opts: BuildCompactorOptions): Compactor {
     // Read live for both auto and manual compaction. The appendix must leave
     // room below the trigger, including the system prompt and tool schemas.
     const contextWindowSize = getContextWindowSize();
+    // The answer's own budget is not usable input: providers count
+    // `prompt + max_tokens` against the window, so the trigger has to sit
+    // inside `window - reserve` or it fires after the provider already refuses.
+    const maxTokens = getMaxTokens?.() ?? 0;
+    const reserveTokens = maxTokens > 0 ? outputReserveTokens(contextWindowSize, maxTokens) : 0;
     const thresholdTokens = computeThreshold({
       contextWindowSize,
+      ...(reserveTokens > 0 ? { outputReserveTokens: reserveTokens } : {}),
       ...(auto.thresholdTokens !== undefined ? { thresholdTokens: auto.thresholdTokens } : {}),
       ...(auto.contextWindowPercent !== undefined
         ? { contextWindowPercent: auto.contextWindowPercent }

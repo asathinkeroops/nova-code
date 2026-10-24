@@ -76,6 +76,12 @@ export interface HookRunner {
 export interface UserHooksDeps {
   config: Settings["hooks"];
   cwd: string;
+  /**
+   * Live workspace binding. A worktree switch moves the session, and hook
+   * payloads / script cwd report where its tools actually run. Falls back to
+   * `cwd` when absent.
+   */
+  getCwd?: () => string;
   /** Current turn abort signal, read lazily at fire time. */
   getSignal: () => AbortSignal | undefined;
   /** Session identity, read lazily and injected into every payload. */
@@ -258,7 +264,7 @@ export class UserHooks {
     event: HookEventName,
     fields: Record<string, unknown>,
   ): Promise<HookRunResult> {
-    const { cwd } = this.deps;
+    const cwd = this.deps.getCwd?.() ?? this.deps.cwd;
     const session = this.deps.getSession();
     const signal = this.deps.getSignal();
     const payload = {
@@ -286,7 +292,8 @@ export class UserHooks {
    * across matched hooks: a deny short-circuits; otherwise ask > allow > none.
    */
   async evaluatePreToolUse(tool: string, input: unknown): Promise<PreToolUseVerdict> {
-    const { config, cwd } = this.deps;
+    const { config } = this.deps;
+    const cwd = this.deps.getCwd?.() ?? this.deps.cwd;
     if (!config.enabled || config.PreToolUse.length === 0) return { decision: "none" };
     const use: ToolUseBlock = {
       type: "tool_use",
@@ -320,7 +327,8 @@ export class UserHooks {
 
   /** Wire the two agent-loop events onto the agent's HookRegistry. */
   register(on: Agent["on"]): void {
-    const { config, cwd } = this.deps;
+    const { config } = this.deps;
+    const cwd = this.deps.getCwd?.() ?? this.deps.cwd;
     if (!config.enabled) return;
 
     // PostToolUse — append stdout to the result fed back to the model.

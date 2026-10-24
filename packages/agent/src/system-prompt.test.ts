@@ -6,12 +6,21 @@ const emptyMemory: MemoryBundle = { system: "", sources: [] };
 
 describe("buildSystemPrompt", () => {
   it("ends with the language guard naming the configured language", () => {
-    const prompt = buildSystemPrompt({ workspace: "/ws", memory: emptyMemory, sessionId: "sess-1", language: "zh-CN" });
+    const prompt = buildSystemPrompt({
+      workspace: "/ws",
+      memory: emptyMemory,
+      sessionId: "sess-1",
+      language: "zh-CN",
+    });
     expect(prompt.trimEnd()).toMatch(/respond in zh-CN[\s\S]*$/i);
   });
 
   it("defaults the configured language to English", () => {
-    const prompt = buildSystemPrompt({ workspace: "/ws", memory: emptyMemory, sessionId: "sess-1" });
+    const prompt = buildSystemPrompt({
+      workspace: "/ws",
+      memory: emptyMemory,
+      sessionId: "sess-1",
+    });
     expect(prompt.trimEnd()).toMatch(/respond in en[\s\S]*$/i);
   });
 
@@ -22,7 +31,12 @@ describe("buildSystemPrompt", () => {
       system: '<memory layer="project" path="/ws/CLAUDE.md">请始终用中文回答</memory>',
       sources: [{ layer: "project", path: "/ws/CLAUDE.md", filename: "CLAUDE.md" }],
     };
-    const prompt = buildSystemPrompt({ workspace: "/ws", memory, sessionId: "sess-1", language: "en" });
+    const prompt = buildSystemPrompt({
+      workspace: "/ws",
+      memory,
+      sessionId: "sess-1",
+      language: "en",
+    });
 
     const memoryIdx = prompt.indexOf("请始终用中文回答");
     const guardIdx = prompt.indexOf("respond in en");
@@ -30,13 +44,62 @@ describe("buildSystemPrompt", () => {
     expect(guardIdx).toBeGreaterThan(memoryIdx);
   });
 
+  it("names the shared git dir when the main checkout is unknown", () => {
+    const prompt = buildSystemPrompt({
+      workspace: "/linked/wt",
+      memory: emptyMemory,
+      sessionId: "s",
+      worktree: { path: "/linked/wt", branch: "feat", gitDir: "/metadata/gitdir" },
+    });
+    expect(prompt).toContain(
+      '<worktree path="/linked/wt" branch="feat" gitdir="/metadata/gitdir">',
+    );
+    expect(prompt).not.toContain("main=");
+    expect(prompt).toContain("/metadata/gitdir");
+  });
+
+  it("is byte-identical when no worktree is supplied", () => {
+    const base = { workspace: "/ws", memory: emptyMemory, sessionId: "s", language: "en" };
+    expect(buildSystemPrompt(base)).toBe(buildSystemPrompt({ ...base, worktree: undefined }));
+  });
+
   it("anchors the in-list language bullet on the configured language", () => {
-    const prompt = buildSystemPrompt({ workspace: "/ws", memory: emptyMemory, sessionId: "sess-1", language: "fr" });
+    const prompt = buildSystemPrompt({
+      workspace: "/ws",
+      memory: emptyMemory,
+      sessionId: "sess-1",
+      language: "fr",
+    });
     expect(prompt).toContain("Respond in fr by default");
   });
 
+  it("renders a <worktree> block only when the session is in one", () => {
+    const plain = buildSystemPrompt({ workspace: "/ws", memory: emptyMemory, sessionId: "s" });
+    expect(plain).not.toContain("<worktree");
+
+    const inWorktree = buildSystemPrompt({
+      workspace: "/repo/.nova/worktrees/feat",
+      memory: emptyMemory,
+      sessionId: "s",
+      worktree: {
+        path: "/repo/.nova/worktrees/feat",
+        branch: "worktree-feat",
+        main: "/repo",
+      },
+    });
+    expect(inWorktree).toContain('<worktree path="/repo/.nova/worktrees/feat"');
+    expect(inWorktree).toContain('branch="worktree-feat"');
+    expect(inWorktree).toContain('main="/repo"');
+    expect(inWorktree).toContain("linked git worktree of /repo");
+    expect(inWorktree).toContain("worktree-feat");
+  });
+
   it("bakes in version-control guidance so committing needs no slash command", () => {
-    const prompt = buildSystemPrompt({ workspace: "/ws", memory: emptyMemory, sessionId: "sess-1" });
+    const prompt = buildSystemPrompt({
+      workspace: "/ws",
+      memory: emptyMemory,
+      sessionId: "sess-1",
+    });
     expect(prompt).toContain("Conventional Commits");
     expect(prompt).toMatch(/never push/i);
     expect(prompt).toMatch(/git log/);
@@ -49,7 +112,11 @@ describe("buildSystemPrompt", () => {
     const now = new Date();
     const date = now.toLocaleDateString("en-CA");
     const weekday = now.toLocaleDateString("en-US", { weekday: "long" });
-    const prompt = buildSystemPrompt({ workspace: "/ws", memory: emptyMemory, sessionId: "sess-1" });
+    const prompt = buildSystemPrompt({
+      workspace: "/ws",
+      memory: emptyMemory,
+      sessionId: "sess-1",
+    });
     expect(prompt).toContain(`date="${date} (${weekday})"`);
     // No time-of-day component — that would change every request and defeat caching.
     expect(prompt).not.toMatch(/date="\d{4}-\d{2}-\d{2}T/);
@@ -64,14 +131,25 @@ describe("buildSystemPrompt", () => {
   });
 
   it("omits memory-upkeep instructions when auto memory is disabled (no autoDir)", () => {
-    const prompt = buildSystemPrompt({ workspace: "/ws", memory: emptyMemory, sessionId: "sess-1" });
+    const prompt = buildSystemPrompt({
+      workspace: "/ws",
+      memory: emptyMemory,
+      sessionId: "sess-1",
+    });
     expect(prompt).not.toContain("<memory-instructions>");
   });
 
   it("keeps the language guard after the memory-upkeep instructions", () => {
     const memory: MemoryBundle = { system: "", sources: [], autoDir: "/ws/.nova/memory" };
-    const prompt = buildSystemPrompt({ workspace: "/ws", memory, sessionId: "sess-1", language: "en" });
-    expect(prompt.indexOf("respond in en")).toBeGreaterThan(prompt.indexOf("<memory-instructions>"));
+    const prompt = buildSystemPrompt({
+      workspace: "/ws",
+      memory,
+      sessionId: "sess-1",
+      language: "en",
+    });
+    expect(prompt.indexOf("respond in en")).toBeGreaterThan(
+      prompt.indexOf("<memory-instructions>"),
+    );
   });
 
   it("injects the host's tool-guidance block", () => {

@@ -85,6 +85,23 @@ describe("buildCompactor — the auto path", () => {
     expect(await c.compact(messages, { reason: "auto" })).not.toBe(messages);
   });
 
+  // A request is valid only while `prompt + max_tokens <= window`, so the
+  // trigger has to sit inside the INPUT budget. Without the reserve, a 100k
+  // window with a 20k cap waits for 90k of input; with it, the input budget is
+  // 90k and its 90% trigger is 81k.
+  it("triggers inside the input budget, keeping the output reserve free", async () => {
+    const messages: MessageParam[] = [{ role: "user", content: "x".repeat(290_000) }]; // ~87k
+    const model = fakeModel();
+    const c = build({
+      auto: { enabled: true },
+      getContextWindowSize: () => 100_000,
+      getMaxTokens: () => 20_000,
+      getModel: () => model,
+    });
+    expect(await c.compact(messages, { reason: "auto" })).not.toBe(messages);
+    expect(model.call).toHaveBeenCalled();
+  });
+
   it("prefers the request's overheadTokens over the getter", async () => {
     const getOverheadTokens = vi.fn(() => 20_000);
     const messages: MessageParam[] = [{ role: "user", content: "hi" }];

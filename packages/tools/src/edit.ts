@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
 import { z } from "zod";
 import type { ToolHandler } from "@nova/core";
+import { resolveToolPath } from "./cwd.js";
 import { fileExecutionKey } from "./file-execution.js";
 import { PATH_ALIASES, withAliases } from "./schema.js";
 
@@ -53,7 +53,7 @@ export const editTool: ToolHandler = {
     if (input.old_string === input.new_string) {
       return { output: "edit failed: new_string is identical to old_string", isError: true };
     }
-    const abs = resolve(ctx.cwd, input.path);
+    const abs = await resolveToolPath(ctx.cwd, input.path);
     let original: string;
     try {
       original = await readFile(abs, "utf8");

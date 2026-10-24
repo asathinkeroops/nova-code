@@ -515,3 +515,82 @@ describe("createModel client options", () => {
     expect(clientOptions[1]).not.toHaveProperty("defaultHeaders");
   });
 });
+
+describe("createModel completion clamp", () => {
+  beforeEach(() => {
+    mockCreate.mockReset();
+    streamEvents = [];
+  });
+
+  const call = async (over: Record<string, unknown>, system = "sys") => {
+    mockCreate.mockResolvedValueOnce(okResponse());
+    const m = createModel({
+      apiKey: "x",
+      model: "deepseek-chat",
+      provider: deepseekProfile,
+      contextWindowSize: 10_000,
+      ...over,
+    });
+    await m.call({ ...baseReq, system });
+    return mockCreate.mock.calls[0]?.[0] as Record<string, unknown>;
+  };
+
+  it("shrinks max_tokens so prompt + completion fits the window", async () => {
+    // DeepSeek counts max_tokens against the window: 659,902 input + 393,216
+    // completion > 1,048,576 was the real 2026-10-25 failure. Here the same
+    // shape in miniature: a ~900-token prompt with an 8192 cap in a 10k window.
+    const params = await call({}, "x".repeat(3000));
+    const maxTokens = params.max_tokens as number;
+    expect(maxTokens).toBeLessThan(8192);
+    expect(maxTokens).toBeGreaterThanOrEqual(1024);
+  });
+
+  it("leaves max_tokens alone when the window has room, and when it is unknown", async () => {
+    expect((await call({ contextWindowSize: 1_000_000 }, "x".repeat(3000))).max_tokens).toBe(8192);
+    // No window (tests, callers without a model table) → unchanged behavior.
+    expect((await call({ contextWindowSize: undefined })).max_tokens).toBe(8192);
+  });
+
+  it("does not count base64 image bytes as prompt tokens", async () => {
+    // Images are not paid at the char-to-token ratio; counting their bytes
+    // would collapse the completion budget (or refuse the request outright).
+    mockCreate.mockResolvedValueOnce(okResponse());
+    const m = createModel({
+      apiKey: "x",
+      model: "deepseek-chat",
+      provider: deepseekProfile,
+      contextWindowSize: 100_000,
+    });
+    await m.call({
+      ...baseReq,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "image",
+              source: { type: "base64", media_type: "image/png", data: "A".repeat(400_000) },
+            },
+          ],
+        },
+      ],
+    });
+    const params = mockCreate.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(params.max_tokens).toBe(8192);
+  });
+
+  it("fails locally with actionable guidance when nothing fits", async () => {
+    const m = createModel({
+      apiKey: "x",
+      model: "deepseek-chat",
+      provider: deepseekProfile,
+      contextWindowSize: 10_000,
+    });
+    await expect(m.call({ ...baseReq, system: "x".repeat(60_000) })).rejects.toThrow(
+      /Context window exhausted/,
+    );
+    // The provider was never called — a 400 with the same numbers would be less
+    // actionable than the local message that says to run /compact.
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+});

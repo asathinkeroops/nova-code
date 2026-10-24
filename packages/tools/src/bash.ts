@@ -2,6 +2,7 @@ import { execa, type ExecaError } from "execa";
 import { z } from "zod";
 import type { ToolContext, ToolHandler, ToolRunResult } from "@nova/core";
 import { BackgroundCommandError, type BackgroundCommandManager } from "./background/manager.js";
+import { resolveToolCwd } from "./cwd.js";
 
 const inputSchema = z.object({
   command: z.string().min(1).describe("The shell command to execute (run with `bash -lc`)"),
@@ -148,7 +149,7 @@ async function startBackground(
       // Record the original command, not the sandbox-wrapped form, so `/tasks`
       // and completion notices show what was actually requested.
       label: input.command,
-      cwd: input.cwd ?? ctx.cwd,
+      cwd: await resolveToolCwd(input.cwd, ctx.cwd),
       ...(input.env ? { env: input.env } : {}),
     });
     return {
@@ -205,7 +206,7 @@ async function runBash(
 ): Promise<ToolRunResult> {
   const input = inputSchema.parse(rawInput);
   if (input.run_in_background) return startBackground(manager, input, ctx);
-  const cwd = input.cwd ?? ctx.cwd;
+  const cwd = await resolveToolCwd(input.cwd, ctx.cwd);
   // Annotate against the ORIGINAL command — the sandbox keys violations by the
   // unwrapped command string. No-op when there are no violations.
   const annotate = (s: string): string =>

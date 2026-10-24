@@ -32,6 +32,16 @@ export interface SystemPromptInput {
   /** Doubles as the prefix epoch; embedded as `<session id>`. */
   sessionId: string;
   /**
+   * Set while the session works in a linked git worktree. Rendered as a
+   * `<worktree>` block so the model knows why `.git` is a file, which branch it
+   * is on, and where the main checkout lives — without it, models routinely try
+   * to `cd` to the "real" repo or misread `git status` as incomplete.
+   *
+   * Like everything else here it MUST stay constant for the lifetime of an
+   * epoch: a worktree switch advances the epoch (see `createMemoryPrompt`).
+   */
+  worktree?: WorktreePromptInfo;
+  /**
    * Guidance for the tools this agent actually has, pre-rendered by the host
    * (`renderToolPrompts` in `@nova/tools`) against the FINAL tool set — the
    * skills index included. This package cannot build it: it would have to
@@ -44,8 +54,36 @@ export interface SystemPromptInput {
   language?: string;
 }
 
+/** What the model needs to know about the checkout it is working in. */
+export interface WorktreePromptInfo {
+  /** The worktree this session's tools run in (the session workspace). */
+  path: string;
+  /** Checked-out branch, when git resolves one. */
+  branch?: string;
+  /** The main checkout this worktree is linked to, when git metadata names it. */
+  main?: string;
+  /** The repository's shared git directory (`git rev-parse --git-common-dir`). */
+  gitDir?: string;
+}
+
+function renderWorktreeBlock(wt: WorktreePromptInfo): string {
+  const branch = wt.branch ? ` on branch \`${wt.branch}\`` : "";
+  const shared = wt.main
+    ? `a linked git worktree of ${wt.main}${branch}`
+    : `a linked git worktree of the repository whose shared git directory is ${wt.gitDir ?? "(unknown)"}${branch}`;
+  const attrs = [
+    `path="${wt.path}"`,
+    ...(wt.branch ? [`branch="${wt.branch}"`] : []),
+    ...(wt.main ? [`main="${wt.main}"`] : []),
+    ...(!wt.main && wt.gitDir ? [`gitdir="${wt.gitDir}"`] : []),
+  ].join(" ");
+  return `<worktree ${attrs}>
+You are working in ${shared}. This checkout has its own files and index; its \`.git\` is a file pointing at the shared metadata, and commits land on this worktree's branch. Work only inside this checkout — the other working tree(s) of the same repository are different checkouts, and edits belong here. \`git worktree list\` shows the siblings.
+</worktree>`;
+}
+
 export function buildSystemPrompt(input: SystemPromptInput): string {
-  const { workspace, memory, sessionId, toolsGuidance = "", language = "en" } = input;
+  const { workspace, memory, sessionId, toolsGuidance = "", language = "en", worktree } = input;
   // Day-level granularity only: stable within a day so it never busts the
   // prompt cache, while still telling the model the current year/date (without
   // it, models fall back to a training-era default like 2025). Local timezone
@@ -59,7 +97,7 @@ export function buildSystemPrompt(input: SystemPromptInput): string {
   // on a tool being present is a `ToolPromptSection` in the package that owns
   // that tool, gated on the host's final tool set and arriving as `toolsGuidance`
   // — otherwise the prompt keeps teaching tools the session doesn't have.
-  const base = `You are a coding agent at ${workspace}. Use tools to solve tasks.
+  const base = `You are a coding agent at ${workspace}. Use tools to solve tasks.${worktree ? `\n${renderWorktreeBlock(worktree)}` : ""}
 - Don't guess file paths. When unsure whether a file or directory exists, locate it with glob/grep/ls before acting — a read, write, edit, or mkdir on a wrong path just wastes a turn or causes damage.
 - Respond in ${language} by default, even when a tool or sub-agent returns content in another language — relay and summarize it in ${language}. Preserve that exact script and regional variant; do not switch it.
 

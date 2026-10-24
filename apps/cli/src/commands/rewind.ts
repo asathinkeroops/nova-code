@@ -1,7 +1,11 @@
-import { relative } from "node:path";
+import { stat } from "node:fs/promises";
+import { dirname, relative, resolve } from "node:path";
 import { blocksOf, extractText, type MessageParam } from "@nova/core";
+import { isWithin } from "@nova/safety";
 import { ACCENT_HEX, dim, green, yellow, red } from "../colors.js";
 import { persist, type CliContext } from "../context.js";
+import type { RestorePlan } from "../snapshots.js";
+import { listWorktrees, repoRoot } from "../worktree.js";
 import { pickerArrow } from "../ui/picker.js";
 import { t } from "../i18n/index.js";
 import { overlayNotice } from "./overlay-notice.js";
@@ -46,6 +50,65 @@ export function collectUserTurns(messages: MessageParam[]): UserTurn[] {
     });
   });
   return turns;
+}
+
+/**
+ * Split a restore plan by reachability.
+ *
+ * Snapshot records carry ABSOLUTE paths, and a session keeps the same snapshot
+ * store across a `/worktree` switch (the store lives in the session dir). So a
+ * rewind that crosses a switch legitimately restores files in the checkout
+ * where the edit happened — undoing what actually happened is the point. What
+ * must not happen is restoring into a checkout that no longer exists: that
+ * would `mkdir -p` a removed worktree back into being, unregistered and full of
+ * one stale file. Those targets are pulled out and surfaced instead.
+ *
+ * Only called when some target lies outside the current workspace, so an
+ * ordinary session never pays for the git lookup.
+ */
+export async function partitionRestoreTargets(
+  plan: RestorePlan,
+  opts: {
+    /** Existing checkout roots (the workspace plus every live worktree). */
+    roots: readonly string[];
+    /** Whether a path's parent directory exists; injectable for tests. */
+    parentExists: (path: string) => Promise<boolean>;
+  },
+): Promise<{ plan: RestorePlan; unreachable: string[] }> {
+  const insideCheckout = (path: string): boolean =>
+    opts.roots.some((root) => resolve(root) === resolve(path) || isWithin(root, path));
+  // Both record kinds describe a path that existed (or was created) while its
+  // directory was there. A missing parent now means the checkout — or that
+  // whole subtree — was removed; writing into it would resurrect a directory
+  // nobody asked for. (Worktrees live INSIDE the repo root, so containment
+  // alone cannot tell a removed checkout from the main one.)
+  const reachable = async (path: string): Promise<boolean> =>
+    insideCheckout(path) && (await opts.parentExists(path));
+  const toModify: RestorePlan["toModify"] = [];
+  const toRemove: string[] = [];
+  const unreachable: string[] = [];
+  for (const m of plan.toModify) {
+    if (await reachable(m.path)) toModify.push(m);
+    else unreachable.push(m.path);
+  }
+  for (const path of plan.toRemove) {
+    if (await reachable(path)) toRemove.push(path);
+    else unreachable.push(path);
+  }
+  return { plan: { ...plan, toModify, toRemove }, unreachable };
+}
+
+/** The current workspace plus every registered checkout that still exists. */
+async function existingCheckoutRoots(ctx: CliContext): Promise<string[]> {
+  const roots = [resolve(ctx.workspace)];
+  const repo = ctx.worktree?.main ?? (await repoRoot(ctx.workspace));
+  if (!repo) return roots;
+  for (const entry of await listWorktrees(repo)) {
+    const path = resolve(entry.path);
+    if (roots.includes(path)) continue;
+    if ((await stat(path).catch(() => null))?.isDirectory()) roots.push(path);
+  }
+  return roots;
 }
 
 /**
@@ -109,10 +172,27 @@ export async function handleRewind(ctx: CliContext, arg: string): Promise<void> 
   // which is exactly the epoch the snapshot store tags captures with. Files
   // whose on-disk content has diverged from nova's last write come back as
   // conflicts — shown, but never overwritten.
-  const plan = await ctx.snapshots.plan(target.index);
+  let plan = await ctx.snapshots.plan(target.index);
+  // Paths from another checkout (a `/worktree` earlier in the session) would
+  // render as `../../../…`; show them absolute instead.
+  const rel = (p: string): string => {
+    const r = relative(ctx.workspace, p);
+    return r && !r.startsWith("..") ? r : p;
+  };
+  let unreachable: string[] = [];
+  const crossesCheckouts = [...plan.toModify.map((m) => m.path), ...plan.toRemove].some(
+    (p) => !isWithin(ctx.workspace, p) && resolve(p) !== resolve(ctx.workspace),
+  );
+  if (crossesCheckouts) {
+    const partitioned = await partitionRestoreTargets(plan, {
+      roots: await existingCheckoutRoots(ctx),
+      parentExists: async (p) => (await stat(dirname(p)).catch(() => null))?.isDirectory() ?? false,
+    });
+    plan = partitioned.plan;
+    unreachable = partitioned.unreachable;
+  }
   const fileCount = plan.toModify.length + plan.toRemove.length;
-  if (fileCount > 0 || plan.conflicts.length > 0) {
-    const rel = (p: string): string => relative(ctx.workspace, p) || p;
+  if (fileCount > 0 || plan.conflicts.length > 0 || unreachable.length > 0) {
     const header =
       fileCount > 0
         ? t.rewind.restoreHeader(plan.toModify.length, plan.toRemove.length)
@@ -125,18 +205,31 @@ export async function handleRewind(ctx: CliContext, arg: string): Promise<void> 
             ...plan.conflicts.map((c) => `  ${yellow("!")} ${rel(c.path)}`),
           ]
         : [];
+    const unreachableNote =
+      unreachable.length > 0
+        ? [
+            "",
+            dim(t.rewind.unreachableNote(unreachable.length)),
+            ...unreachable.map((p) => `  ${red("?")} ${rel(p)}`),
+          ]
+        : [];
     const preview = [
       dim(header),
       ...plan.toModify.map((m) => `  ${green("~")} ${rel(m.path)}`),
       ...plan.toRemove.map((p) => `  ${red("-")} ${rel(p)}`),
       ...conflictNote,
+      ...unreachableNote,
     ].join("\n");
     const confirm = await ctx.screen.pickHorizontal<boolean>({
       items: [true, false],
       header: preview,
       footer: dim(t.rewind.confirmFooter),
       label: (ok) =>
-        ok ? (fileCount > 0 ? t.rewind.restoreAndRewind : t.rewind.rewindHistoryOnly) : t.rewind.cancel,
+        ok
+          ? fileCount > 0
+            ? t.rewind.restoreAndRewind
+            : t.rewind.rewindHistoryOnly
+          : t.rewind.cancel,
       border: false,
       topRuleColor: ACCENT_HEX,
     });
@@ -176,8 +269,9 @@ export async function handleRewind(ctx: CliContext, arg: string): Promise<void> 
   ctx.screen.clearCards();
   const fileNote = fileCount > 0 ? t.rewind.fileNote(fileCount) : "";
   const skipNote = plan.conflicts.length > 0 ? t.rewind.skipNote(plan.conflicts.length) : "";
+  const missingNote = unreachable.length > 0 ? t.rewind.unreachableSummary(unreachable.length) : "";
   ctx.screen.card(
-    dim(t.rewind.rewoundSummary({ turn: target.turn, dropped, fileNote, skipNote })),
+    dim(t.rewind.rewoundSummary({ turn: target.turn, dropped, fileNote, skipNote, missingNote })),
     { title: TITLE },
   );
   ctx.screen.setMessages(truncated);

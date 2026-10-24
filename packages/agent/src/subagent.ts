@@ -132,6 +132,11 @@ function buildToolDescription(defs: AgentDefinition[]): string {
 
 export interface SubAgentDeps {
   workspace: string;
+  /**
+   * Live workspace binding. A sub-agent spawned AFTER a worktree switch must
+   * run in the checkout the session is in now — read per spawn, never captured.
+   */
+  getWorkspace?: () => string;
   /** Read per-spawn so a session-boundary memory reload reaches new sub-agents. */
   getMemory: () => MemoryBundle;
   /**
@@ -279,16 +284,19 @@ export function createSubAgentTool(deps: SubAgentDeps): ToolHandler {
 
       let cursor = emptyCursor;
       const transcript = new Transcript(join(logDir, `${id}.transcript.jsonl`));
+      // The workspace the child runs in, resolved at spawn: a worktree switch
+      // between two spawns must not leave the second child in the old checkout.
+      const workspace = deps.getWorkspace?.() ?? deps.workspace;
 
       const agent = assembleAgent({
-        workspace: deps.workspace,
+        workspace,
         getSessionId: () => id,
         getLogger: deps.getLogger,
         // A sub-agent lives for one task, so its epoch never advances and its
         // prompt is fixed at spawn — memory is snapshotted here by design.
         systemPrompt: staticPrompt(
           buildSubAgentSystemPrompt({
-            workspace: deps.workspace,
+            workspace,
             memory: deps.getMemory(),
             // Gated on childTools, not the parent's set: the whole point of
             // withholding a tool is that the child never learns to reach for it.

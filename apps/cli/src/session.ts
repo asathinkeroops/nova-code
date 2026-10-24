@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { blocksOf, extractText, type MessageParam } from "@nova/core";
 import {
@@ -7,6 +7,8 @@ import {
   listSessions,
   pruneSessions,
   readSessionWorkspace,
+  readSessionWorktreeMain,
+  writeSessionWorkspace,
   Transcript,
   type Session,
 } from "@nova/base";
@@ -19,6 +21,7 @@ import { loadGoal } from "./goal.js";
 import { loadSessionName } from "./session-name.js";
 import { restoreFromTranscript } from "./usage-restore.js";
 import { SnapshotStore } from "./snapshots.js";
+import { gitCommonDir, mainCheckoutRoot, worktreeBinding } from "./worktree.js";
 import { loadMessages, emptyCursor } from "@nova/agent";
 
 export function formatTimestamp(d: Date): string {
@@ -106,6 +109,13 @@ export async function buildSessionRows(
   return rows;
 }
 
+export interface ResolvedSession {
+  session: Session;
+  resumed: boolean;
+  /** The checkout the session runs in — may differ from the launch directory. */
+  workspace: string;
+}
+
 export interface ResolveSessionOptions {
   resume?: string;
   continue?: boolean;
@@ -175,34 +185,83 @@ async function newestResumableSession(
   return undefined;
 }
 
+/**
+ * Two directories are the same repository when git says so (same common dir).
+ * Path equality is the fallback for non-repositories and for a git failure, so
+ * a plain directory can never be "re-entered" as if it were a checkout.
+ */
+async function sameRepository(a: string, b: string): Promise<boolean> {
+  if (resolve(a) === resolve(b)) return true;
+  const [left, right] = await Promise.all([gitCommonDir(a), gitCommonDir(b)]);
+  return left !== undefined && right !== undefined && resolve(left) === resolve(right);
+}
+
+/**
+ * Resolve which session to run, and WHICH CHECKOUT it runs in.
+ *
+ * `--resume` re-enters the workspace the session was last bound to when that
+ * directory still exists and is a checkout of the same repository — a worktree
+ * session picked up from the main checkout continues in its worktree, which is
+ * what makes `/worktree` sessions resumable at all. A missing directory clears
+ * the binding and continues where nova was launched; a directory belonging to
+ * ANOTHER repository is still refused (a session must never teleport tools into
+ * an unrelated project).
+ */
 export async function resolveSession(
   opts: ResolveSessionOptions,
   sessionDir: string | undefined,
   workspace: string,
-): Promise<{ session: Session; resumed: boolean }> {
+): Promise<ResolvedSession> {
+  const requested = resolve(workspace);
   if (opts.resume) {
     const found = await getSession(opts.resume, sessionDir);
     if (!found) {
       throw new Error(`session ${opts.resume} not found`);
     }
-    await assertSessionWorkspace(found, workspace);
-    return { session: found, resumed: true };
+    const bound = await sessionWorkspace(found);
+    // No binding at all (a legacy session whose transcript has no cwd either):
+    // resuming it elsewhere could splatter an unknown history into an unrelated
+    // project, so refuse — same rule as `/resume`.
+    if (!bound) throw new Error(t.resume.workspaceUnknown(found.id, requested));
+    const boundAbs = resolve(bound);
+    if (boundAbs === requested) return { session: found, resumed: true, workspace: requested };
+
+    const stillThere = (await stat(boundAbs).catch(() => null))?.isDirectory() ?? false;
+    if (!stillThere) {
+      // A deleted worktree is recoverable: the checkout is disposable by
+      // construction, so continue where nova was launched and clear the
+      // binding. A plain workspace that vanished is not — refuse.
+      const worktreeMain = await readSessionWorktreeMain(found);
+      const here = (await mainCheckoutRoot(requested)) ?? requested;
+      if (worktreeMain && resolve(worktreeMain) === resolve(here)) {
+        await writeSessionWorkspace(found, requested);
+        return { session: found, resumed: true, workspace: requested };
+      }
+      throw new Error(t.resume.workspaceMismatch(found.id, bound, requested));
+    }
+    if (await sameRepository(boundAbs, requested)) {
+      return { session: found, resumed: true, workspace: boundAbs };
+    }
+    throw new Error(t.resume.workspaceMismatch(found.id, bound, requested));
   }
   if (opts.continue) {
     const list = await listSessions(sessionDir);
     // Session directories are global, but continuation is workspace-local.
-    const match = await newestResumableSession(list, workspace);
+    const match = await newestResumableSession(list, requested);
     if (!match) {
-      throw new Error(`no sessions to continue for ${resolve(workspace)}`);
+      throw new Error(`no sessions to continue for ${requested}`);
     }
-    return { session: match, resumed: true };
+    return { session: match, resumed: true, workspace: requested };
   }
+  const fresh = await worktreeBinding(requested);
   return {
     session: await createSession({
-      workspace,
+      workspace: requested,
+      ...(fresh?.main ? { worktreeMain: fresh.main } : {}),
       ...(sessionDir ? { rootOverride: sessionDir } : {}),
     }),
     resumed: false,
+    workspace: requested,
   };
 }
 

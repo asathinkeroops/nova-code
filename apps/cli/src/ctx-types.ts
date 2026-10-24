@@ -27,6 +27,7 @@ import type { OutputRateTracker } from "./output-rate.js";
 import type { LoadedPlugin } from "./plugins/loader.js";
 import type { UserHooks } from "./user-hooks.js";
 import type { SnapshotStore } from "./snapshots.js";
+import type { WorktreeBinding } from "./worktree.js";
 import type { Screen, Spinner } from "./screen.js";
 
 export interface CliRuntimeOptions {
@@ -162,7 +163,31 @@ export interface CliContext {
 
   // ===== Read-only after init =====
   readonly agent: Agent;
-  readonly workspace: string;
+  /**
+   * The directory this session's tools run in.
+   *
+   * Mutable ONLY through {@link setWorkspace}: the workspace is embedded in the
+   * system prompt, the permission roots, the sandbox write allowlist, the LSP
+   * root and every tool's `cwd`, so a switch has to move all of them together.
+   * Assigning this field directly leaves the session half-moved (the prompt
+   * still names the old checkout, writes are still fenced to it) — the exact
+   * silent failure the ports' liveness rule warns about.
+   */
+  workspace: string;
+  /**
+   * The linked git worktree this session works in, or null in a normal
+   * checkout. Read by the isolation guard and rendered into the system prompt.
+   */
+  worktree: WorktreeBinding | null;
+  /**
+   * Move the session to another checkout (a git worktree) of the SAME
+   * repository. Rebuilds everything workspace-scoped — memory bundle, permission
+   * roots, sandbox allowlist, LSP root, task root, and the prompt epoch so the
+   * frozen system prompt may change — then re-binds `session.json` so a later
+   * `--resume` re-enters here. Returns the new binding (null for a normal
+   * checkout). Throws when the target is missing or belongs to another repo.
+   */
+  readonly setWorkspace: (workspace: string) => Promise<WorktreeBinding | null>;
   /**
    * Pre-rendered `<available-skills>` block. Not injected on its own — it is
    * one section of {@link toolsGuidance}; kept here so `/context` can report the

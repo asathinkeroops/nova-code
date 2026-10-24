@@ -596,6 +596,46 @@ const settingsObjectSchema = z.object({
       trustedRoots: z.array(z.string().min(1)).default([]),
     })
     .default({ enabled: true, trustedRoots: [] }),
+  // Git worktrees as first-class session workspaces (`/worktree`, `--worktree`).
+  // A worktree is a separate checkout of the SAME repository, so it is created
+  // under the repository root — that keeps it inside the trusted root (no second
+  // trust prompt), on the same filesystem (pnpm hardlinks), and easy to find.
+  // Switching into one moves the session's workspace: tool cwd, permission
+  // roots, sandbox write roots, LSP root and the system-prompt epoch all follow
+  // (see `setWorkspace` in the CLI's context).
+  worktree: z
+    .object({
+      enabled: z.boolean().default(true),
+      // Directory (relative to the repository root) holding the linked
+      // worktrees. Each entry is `<dir>/<name>`. Kept inside the repo on
+      // purpose; `nova` writes it into `$GIT_COMMON_DIR/info/exclude` so the
+      // checkouts never show up as untracked files in the main checkout.
+      dir: z.string().min(1).default(".nova/worktrees"),
+      // Where a new worktree branches from. "fresh" uses `origin/HEAD` when it
+      // resolves locally (a stale ref is used as-is — nova never fetches during
+      // creation, so it cannot hang on a credential prompt); "head" starts from
+      // the current local HEAD, carrying unpushed commits into the checkout.
+      baseRef: z.enum(["head", "fresh"]).default("fresh"),
+      // Optional file (relative to the repository root, `.gitignore` syntax)
+      // listing GITIGNORED files to copy into every new worktree — `.env`,
+      // local secrets, anything a fresh checkout would otherwise lack. Only
+      // files that match a pattern AND are gitignored are copied.
+      includeFile: z.string().min(1).default(".worktreeinclude"),
+      // Refuse tool calls that would reach back into the main checkout while
+      // the session runs in a linked worktree: file writes targeting it,
+      // shell commands whose working directory lands there, `git` redirected
+      // at it (`-C`, `--git-dir`, `GIT_DIR`, `GIT_WORK_TREE`, `cd`), and git
+      // commands whose text cannot be verified statically. Mirrors Claude
+      // Code's worktree isolation checks. Turn off to opt out.
+      enforceIsolation: z.boolean().default(true),
+    })
+    .default({
+      enabled: true,
+      dir: ".nova/worktrees",
+      baseRef: "fresh",
+      includeFile: ".worktreeinclude",
+      enforceIsolation: true,
+    }),
   transcript: z
     .object({
       enabled: z.boolean().default(true),
@@ -1409,9 +1449,52 @@ export function modelDescription(settings: Settings, name: string): string {
  * The per-response output cap for a model tier: the tier's own `maxTokens`
  * (always present — schema default), else {@link DEFAULT_MAX_TOKENS}.
  * ALIAS-ONLY, matched by tier key (see {@link resolveContextWindowSize}).
+ *
+ * This is a CAP, not a reservation: the model adapter shrinks it per request so
+ * that prompt + `max_tokens` still fits the window (see
+ * {@link MIN_COMPLETION_TOKENS}). Providers such as DeepSeek count the whole
+ * `max_tokens` against the context window, so asking for the full tier cap on a
+ * long conversation is rejected as over-window even though the prompt alone fits.
  */
 export function resolveMaxTokens(settings: Settings, name: string): number {
   return activeModels(settings)[name]?.maxTokens ?? DEFAULT_MAX_TOKENS;
+}
+
+/**
+ * Share of the context window the compactor keeps free for the model's answer.
+ *
+ * A request is valid only while `prompt + max_tokens <= window`; the adapter
+ * clamps `max_tokens` to make that true, but compaction has to fire early
+ * enough that the clamp still leaves a usable answer budget. Reserving a slice
+ * of the window is how the trigger and the clamp stay consistent.
+ */
+export const OUTPUT_RESERVE_FRACTION = 0.1;
+
+/** The output reserve never drops below this many tokens, whatever the window. */
+export const MIN_OUTPUT_RESERVE_TOKENS = 8192;
+
+/**
+ * The floor the adapter leaves for a completion before it refuses a request.
+ * Below this there is no useful answer left, so the failure is surfaced
+ * locally (with `/compact` guidance) instead of as a provider 400.
+ */
+export const MIN_COMPLETION_TOKENS = 1024;
+
+/**
+ * Tokens held back from the context window for the model's own answer.
+ *
+ * `min(maxTokens, max(8k, 10% of the window))`: a 1M window with a 393k output
+ * cap reserves ~105k (so compaction triggers around 81% of the window), while a
+ * tier with a small cap reserves only that cap. Reading it fresh per request
+ * keeps `/model` and `/config` switches effective.
+ */
+export function outputReserveTokens(contextWindowSize: number, maxTokens: number): number {
+  if (contextWindowSize <= 0 || maxTokens <= 0) return 0;
+  const floor = Math.max(
+    MIN_OUTPUT_RESERVE_TOKENS,
+    Math.floor(contextWindowSize * OUTPUT_RESERVE_FRACTION),
+  );
+  return Math.min(maxTokens, floor);
 }
 
 /**

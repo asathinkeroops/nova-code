@@ -3,7 +3,7 @@ import type { Settings } from "@nova/base";
 import { createContext, type CliRuntimeOptions } from "./context.js";
 import { emitInit, registerHeadlessStream } from "./headless-events.js";
 import { HeadlessScreen, type HeadlessApprovalPolicy } from "./headless-screen.js";
-import { pruneOldSessions } from "./session.js";
+import { pruneOldSessions, type ResolvedSession } from "./session.js";
 import type { PermissionMode } from "./permissions.js";
 
 /**
@@ -16,6 +16,11 @@ import type { PermissionMode } from "./permissions.js";
 export type HeadlessOutputFormat = "text" | "json" | "jsonl";
 
 export interface HeadlessOptions extends CliRuntimeOptions {
+  /**
+   * Session + checkout resolved BEFORE the trust gate (see `resolveLaunchTarget`).
+   * The host passes it so nothing here re-resolves into a different directory.
+   */
+  target?: ResolvedSession;
   prompt: string;
   outputFormat: HeadlessOutputFormat;
   permissionMode: PermissionMode;
@@ -50,16 +55,21 @@ export async function runHeadless(settings: Settings, opts: HeadlessOptions): Pr
     approvalPolicy: opts.approvalPolicy,
   });
 
-  const ctx = await createContext(settings, screen, {
-    ...(opts.cwd !== undefined ? { cwd: opts.cwd } : {}),
-    ...(opts.resume !== undefined ? { resume: opts.resume } : {}),
-    ...(opts.continue !== undefined ? { continue: opts.continue } : {}),
-    ...(opts.noTranscript !== undefined ? { noTranscript: opts.noTranscript } : {}),
-    ...(opts.noPretty !== undefined ? { noPretty: opts.noPretty } : {}),
-    ...(opts.thinkingLevelOverride !== undefined
-      ? { thinkingLevelOverride: opts.thinkingLevelOverride }
-      : {}),
-  });
+  const ctx = await createContext(
+    settings,
+    screen,
+    {
+      ...(opts.cwd !== undefined ? { cwd: opts.cwd } : {}),
+      ...(opts.resume !== undefined ? { resume: opts.resume } : {}),
+      ...(opts.continue !== undefined ? { continue: opts.continue } : {}),
+      ...(opts.noTranscript !== undefined ? { noTranscript: opts.noTranscript } : {}),
+      ...(opts.noPretty !== undefined ? { noPretty: opts.noPretty } : {}),
+      ...(opts.thinkingLevelOverride !== undefined
+        ? { thinkingLevelOverride: opts.thinkingLevelOverride }
+        : {}),
+    },
+    opts.target,
+  );
 
   // `jsonl` streams intermediate events live; register the hooks and emit the
   // opening `init` line before the turn starts so the trajectory is complete.

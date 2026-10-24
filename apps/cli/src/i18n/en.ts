@@ -34,6 +34,7 @@ export const en = {
     resume: "switch to a saved session in this workspace",
     rewind: "rewind history to a previous message (history after it is discarded)",
     sandbox: "enable/disable the OS command sandbox for this session",
+    worktree: "manage git worktrees: list / create+switch / enter / remove",
     init: "generate or refresh NOVA.md by analyzing the codebase",
     plan: "plan a task via a read-only plan sub-agent (no implementation)",
     diff: "browse uncommitted changes in a modal: file list → per-file diff",
@@ -269,6 +270,40 @@ export const en = {
   },
 
   /** The `/predict` status/result cards (`commands/predict.ts`). */
+  worktree: {
+    notRepo: (cwd: string): string => `${cwd} is not a git repository — worktrees need one`,
+    disabled: "worktrees are disabled (settings.worktree.enabled = false)",
+    usage: (title: string): string =>
+      `usage: ${title} [list] | ${title} new <name> [from <ref>] | ${title} enter <name> | ${title} remove <name> | ${title} prune`,
+    listHeader: "worktrees (* = current)",
+    none: "no worktrees yet — create one with `new <name>`",
+    mainLabel: "(main checkout)",
+    dirty: (n: number): string => `${n} uncommitted change(s)`,
+    clean: "clean",
+    stateUnknown: "state unknown (git could not report it)",
+    creating: (name: string): string => `Creating worktree ${name}`,
+    created: (path: string, branch: string): string => `created ${branch}\n${path}`,
+    reused: (path: string, branch: string): string => `reusing ${branch}\n${path}`,
+    includeCopied: (copied: number, skipped: number, failed: number): string =>
+      `copied ${copied} gitignored file(s) from .worktreeinclude` +
+      (skipped > 0 ? ` — skipped ${skipped} (tracked, already present, or not ignored here)` : "") +
+      (failed > 0 ? ` — ${failed} could not be copied` : ""),
+    unknownName: (name: string): string => `no worktree named ${name}`,
+    isMain: (path: string): string => `${path} is the main checkout, not a worktree`,
+    alreadyHere: (path: string): string => `already working in ${path}`,
+    entered: (path: string): string => `switched to ${path}`,
+    switched: (path: string, branch: string): string => `now working in ${path} (${branch})`,
+    switchedHint:
+      "tool cwd, the permission fence, the sandbox allowlist and the system prompt moved with it; `git worktree list` shows every checkout",
+    inUse: (path: string): string => `can't remove the worktree this session is using: ${path}`,
+    removeDirty: (n: number, path: string): string =>
+      `refusing to remove ${path}: ${n} uncommitted change(s) — commit or discard them first`,
+    removed: (path: string): string => `removed ${path}`,
+    pruned: (out: string): string => `pruned: ${out || "nothing to remove"}`,
+    confirmSwitch: "switch this session to the worktree",
+    cancel: "cancel",
+  },
+
   predict: {
     label: "predict:",
     on: "on",
@@ -398,6 +433,7 @@ export const en = {
     labelMessages: "messages",
     labelFreeSpace: "free space",
     labelAutocompactBuffer: "autocompact buffer",
+    labelOutputReserve: "output reserve",
   },
 
   /** The `/diff` file-list picker + per-file diff viewer (`commands/diff.ts`). */
@@ -510,6 +546,8 @@ export const en = {
     noneRevertable: "no files can be auto-reverted (all changed outside nova):",
     conflictNote: (count: number): string =>
       `${count} file(s) changed outside nova since that turn — left untouched to avoid clobbering newer work:`,
+    unreachableNote: (count: number): string =>
+      `${count} file(s) live in a checkout that no longer exists — skipped rather than recreated:`,
     confirmFooter: "←→ navigate · enter confirm · esc cancel",
     restoreAndRewind: "restore & rewind",
     rewindHistoryOnly: "rewind history only",
@@ -518,13 +556,16 @@ export const en = {
     restoreFailed: (msg: string): string => `file restore failed: ${msg}`,
     fileNote: (count: number): string => ` restored ${count} file(s).`,
     skipNote: (count: number): string => ` skipped ${count} file(s) changed outside nova.`,
+    unreachableSummary: (count: number): string =>
+      ` ${count} file(s) belong to a checkout that no longer exists and were left alone.`,
     rewoundSummary: (p: {
       turn: number;
       dropped: number;
       fileNote: string;
       skipNote: string;
+      missingNote: string;
     }): string =>
-      `rewound to turn #${p.turn}; dropped ${p.dropped} message(s).${p.fileNote}${p.skipNote} ` +
+      `rewound to turn #${p.turn}; dropped ${p.dropped} message(s).${p.fileNote}${p.skipNote}${p.missingNote} ` +
       `your message is back in the prompt (→ to edit).`,
   },
 

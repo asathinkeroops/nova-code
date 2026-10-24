@@ -28,6 +28,7 @@ import {
   resolveLanguage,
   resolveMaxTokens,
   resolveModelId,
+  outputReserveTokens,
   settingsSchema,
   type HooksConfig,
 } from "./config.js";
@@ -281,6 +282,27 @@ describe("resolveContextWindowSize", () => {
   it("falls back for an unknown name with no matching tier", () => {
     const s = base({ pro: { id: "deepseek-v4-pro", contextWindowSize: 800_000 } });
     expect(resolveContextWindowSize(s, "claude-sonnet-4-5")).toBe(DEFAULT_CONTEXT_WINDOW_SIZE);
+  });
+});
+
+describe("outputReserveTokens", () => {
+  it("reserves 10% of the window, capped by the tier's output cap", () => {
+    // The 2026-10-25 DeepSeek shape: 1M window, 393k cap → reserve 10%.
+    expect(outputReserveTokens(1_048_576, 393_216)).toBe(104_857);
+  });
+
+  it("never reserves less than 8k when the window is small", () => {
+    expect(outputReserveTokens(128_000, 32_768)).toBe(12_800);
+    expect(outputReserveTokens(20_000, 32_768)).toBe(8_192);
+  });
+
+  it("reserves no more than the configured cap", () => {
+    expect(outputReserveTokens(1_000_000, 4_096)).toBe(4_096);
+  });
+
+  it("reserves nothing for a degenerate window or cap", () => {
+    expect(outputReserveTokens(0, 8_192)).toBe(0);
+    expect(outputReserveTokens(100_000, 0)).toBe(0);
   });
 });
 
@@ -754,5 +776,23 @@ describe("providers array & currentProvider access", () => {
       enable_thinking: true,
       user: "provider",
     });
+  });
+});
+
+describe("worktree settings", () => {
+  it("defaults to enabled, under the repository, branching fresh", () => {
+    const s = parseSettings({});
+    expect(s.worktree.enabled).toBe(true);
+    expect(s.worktree.dir).toBe(".nova/worktrees");
+    expect(s.worktree.baseRef).toBe("fresh");
+    expect(s.worktree.includeFile).toBe(".worktreeinclude");
+    expect(s.worktree.enforceIsolation).toBe(true);
+  });
+
+  it("accepts overrides and rejects an unknown baseRef", () => {
+    const s = parseSettings({ worktree: { dir: "wt", baseRef: "head" } });
+    expect(s.worktree.dir).toBe("wt");
+    expect(s.worktree.baseRef).toBe("head");
+    expect(() => parseSettings({ worktree: { baseRef: "nope" } })).toThrow();
   });
 });

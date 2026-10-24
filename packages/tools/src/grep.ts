@@ -1,23 +1,24 @@
-import { isAbsolute, resolve } from "node:path";
 import { rgPath } from "@vscode/ripgrep";
 import { execa, type ExecaError } from "execa";
 import { z } from "zod";
 import type { ToolHandler } from "@nova/core";
+import { resolveToolPath } from "./cwd.js";
 
 const inputSchema = z.object({
   pattern: z.string().min(1).describe("Regex pattern (ripgrep syntax) to search for."),
   path: z
     .string()
     .optional()
-    .describe("File or directory to search (absolute or cwd-relative). Defaults to the session cwd."),
+    .describe(
+      "File or directory to search (absolute or cwd-relative). Defaults to the session cwd.",
+    ),
   glob: z
     .string()
     .optional()
-    .describe("Optional glob filter on file paths, e.g. '*.ts' or '!**/dist/**'. Passed as ripgrep's -g."),
-  case_insensitive: z
-    .boolean()
-    .default(false)
-    .describe("Match case-insensitively (ripgrep -i)."),
+    .describe(
+      "Optional glob filter on file paths, e.g. '*.ts' or '!**/dist/**'. Passed as ripgrep's -g.",
+    ),
+  case_insensitive: z.boolean().default(false).describe("Match case-insensitively (ripgrep -i)."),
   fixed_strings: z
     .boolean()
     .default(false)
@@ -46,7 +47,9 @@ const inputSchema = z.object({
   files_with_matches: z
     .boolean()
     .default(false)
-    .describe("Only list file paths that contain matches (ripgrep -l). Cheaper for broad searches."),
+    .describe(
+      "Only list file paths that contain matches (ripgrep -l). Cheaper for broad searches.",
+    ),
 });
 
 const MAX_OUTPUT = 200_000;
@@ -65,11 +68,8 @@ export const grepTool: ToolHandler = {
   },
   async run(rawInput, ctx) {
     const input = inputSchema.parse(rawInput);
-    const target = input.path
-      ? isAbsolute(input.path)
-        ? input.path
-        : resolve(ctx.cwd, input.path)
-      : ctx.cwd;
+    // Same canonical target as the gate/ledger (see glob.ts).
+    const target = await resolveToolPath(ctx.cwd, input.path ?? ".");
 
     const args: string[] = ["--color=never"];
     if (input.files_with_matches) {

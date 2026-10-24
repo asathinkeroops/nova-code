@@ -56,6 +56,10 @@ export {
   resolveContextWindowSize,
   resolveSkillsIndexBudget,
   resolveMaxTokens,
+  outputReserveTokens,
+  OUTPUT_RESERVE_FRACTION,
+  MIN_OUTPUT_RESERVE_TOKENS,
+  MIN_COMPLETION_TOKENS,
   resolveModelModalities,
   resolveThinkingLevel,
   thinkingLevelSchema,
@@ -130,6 +134,8 @@ export {
   listSessions,
   getSession,
   readSessionWorkspace,
+  readSessionWorktreeMain,
+  writeSessionWorkspace,
   pruneSessions,
   selectExpiredSessions,
   type CreateSessionOptions,
@@ -140,7 +146,11 @@ export {
   type PruneSessionsResult,
 } from "./host/session.js";
 
-export { canonicalizePath, canonicalizeRoots } from "./host/path-safety.js";
+export {
+  canonicalizePath,
+  canonicalizePathSync,
+  canonicalizeRoots,
+} from "./host/path-safety.js";
 
 // ── prompt: slash-command contract + prompt-body expansion ─────────────────
 export type {

@@ -153,6 +153,7 @@ DeepSeek's built-in ladder is `lite` → `deepseek-flash` (natively multimodal, 
 | `--dangerously-skip-permissions` | Skip every approval prompt — for unattended runs |
 | `--output-format <fmt>` | Headless output: `text` (default) / `json` (result + full messages) / `jsonl` (streamed events) |
 | `--max-turns <n>` · `--cwd <dir>` | Override the per-turn model-call budget and the tools' working directory |
+| `--worktree [name]` · `--worktree-from <ref>` | Run inside `<repo>/.nova/worktrees/<name>` (created when missing), optionally from a given commit-ish; an existing name is reused. Conflicts with `--resume <id>` (a resumed session stays in its own checkout); `--continue` is fine |
 | `--no-transcript` · `--no-pretty` | Skip the transcript, disable pretty logging |
 
 ### 📦 More subcommands
@@ -211,6 +212,7 @@ Model-callable tools cover read/write, search, execution, code intelligence, and
 | `/commands` · `/skills` · `/lsp` | Inspect or reload commands, and inspect skills and language servers |
 | `/mcp` · `/plugin` | Authenticate/reconnect/log out MCP servers and inspect tools; inspect contributions loaded from plugins (installation and toggles use `nova plugin`) |
 | `/sandbox` | Enable/disable the OS command sandbox for this session (`on` / `off`) |
+| `/worktree` | Manage git worktrees: `new` / `enter` move the **current session** into that checkout in place (no restart, same session); also `list` / `remove` / `prune` |
 | `/loop` | Re-run a prompt or command on an interval (`/loop <interval> <prompt\|/cmd>`, `/loop stop` to end) |
 | `/doctor` | Health-check the global config (JSON/schema, model/key, hooks, MCP), report issues, optionally hand them to the agent to fix in place |
 | `/usage` · `/context` | See token usage with estimated cost, cache hits, context fill |
@@ -218,7 +220,7 @@ Model-callable tools cover read/write, search, execution, code intelligence, and
 | `/predict` | Toggle next-input prediction |
 | `/exit` · `/quit` | Quit |
 
-Each session is permanently bound to the workspace where it was created. `nova -c` and `/resume` only search sessions from the current workspace; `nova --resume <id>` and `/resume <id>` reject sessions from another workspace and report the directory they belong to.
+Each session is bound to the workspace where it was created. `nova -c` and `/resume` only search sessions from the current workspace; `nova --resume <id>` and `/resume <id>` reject sessions from another workspace and report the directory they belong to. The one exception is `/worktree`: switching checkouts moves the binding, so `nova --resume <id>` returns to the worktree that session ended in (same repository only).
 
 ### Core capabilities
 

@@ -1,8 +1,9 @@
+import { realpathSync } from "node:fs";
 import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { canonicalizePath, canonicalizeRoots } from "./path-safety.js";
+import { canonicalizePath, canonicalizePathSync, canonicalizeRoots } from "./path-safety.js";
 
 // Mirror the permission engine's `within` check so tests assert end-to-end
 // containment on canonicalized paths.
@@ -64,5 +65,82 @@ describe("path-safety", () => {
     await mkdir(join(dir, "sub"));
     const roots = await canonicalizeRoots([dir, "sub", dir], dir);
     expect(roots).toEqual([dir, join(dir, "sub")]);
+  });
+
+  it("canonicalizePathSync matches the async twin, symlink and missing tail included", async () => {
+    await mkdir(join(dir, "real"));
+    await symlink(join(dir, "real"), join(dir, "link"));
+    for (const p of ["link/file.ts", "link/new/deep/file.txt", "src/../../escape.txt", "missing"]) {
+      expect(canonicalizePathSync(dir, p)).toBe(await canonicalizePath(dir, p));
+    }
+    // Same fallback for a path whose whole chain is missing: lexical, `..`-folded.
+    expect(canonicalizePathSync("/no/such/root", "a/../b")).toBe("/no/such/root/b");
+  });
+
+  // `..` is applied to the RESOLVED target of the preceding component, exactly
+  // as the kernel does it — `link/..` is the parent of what link points at, not
+  // the directory holding the link. Both the lexical pre-fold (resolve) and
+  // Node's non-native realpath got this wrong, which let `git -C link/..`
+  // reach the main checkout past the worktree guard.
+  it("resolves `..` after a symlink the way the kernel does", async () => {
+    await mkdir(join(dir, "target", "inner"), { recursive: true });
+    await symlink(join(dir, "target", "inner"), join(dir, "link"));
+
+    // NB: build the string by hand — `path.join(dir, "link/..")` would
+    // normalize the `..` away before the kernel ever sees it, which is exactly
+    // the bug this test is about.
+    const kernel = realpathSync.native(`${dir}/link/..`);
+    expect(kernel).toBe(join(dir, "target"));
+    expect(canonicalizePathSync(dir, "link/..")).toBe(kernel);
+    expect(await canonicalizePath(dir, "link/..")).toBe(kernel);
+
+    // A deeper tail keeps applying to the resolved directory.
+    expect(canonicalizePathSync(dir, "link/../inner")).toBe(join(dir, "target", "inner"));
+  });
+
+  it("follows a chain of symlinks before applying `..`", async () => {
+    await mkdir(join(dir, "target", "inner"), { recursive: true });
+    await symlink(join(dir, "target", "inner"), join(dir, "link"));
+    await symlink(join(dir, "link"), join(dir, "link2")); // link2 -> link -> target/inner
+
+    expect(canonicalizePathSync(dir, "link2/..")).toBe(join(dir, "target"));
+    expect(canonicalizePathSync(dir, "link2/../..")).toBe(dir);
+    expect(await canonicalizePath(dir, "link2/../..")).toBe(dir);
+  });
+
+  it("keeps an in-tree symlink's `..` inside the tree", async () => {
+    await mkdir(join(dir, "real", "sub"), { recursive: true });
+    await symlink(join(dir, "real"), join(dir, "link"));
+
+    expect(canonicalizePathSync(dir, "link/sub/..")).toBe(join(dir, "real"));
+    // Missing tail after the link still starts from the resolved target.
+    expect(canonicalizePathSync(dir, "link/new/deep/file.txt")).toBe(
+      join(dir, "real", "new", "deep", "file.txt"),
+    );
+  });
+
+  // A final DANGLING link is not a missing path: the OS follows it and creates
+  // its target. Reporting the link would let the gate approve one file while the
+  // write creates another.
+  it("follows a final dangling symlink to the file the OS would create", async () => {
+    await mkdir(join(dir, "target"));
+    await symlink(join(dir, "target", "new.txt"), join(dir, "dangling.txt"));
+    const expected = join(dir, "target", "new.txt");
+
+    expect(canonicalizePathSync(dir, "dangling.txt")).toBe(expected);
+    expect(await canonicalizePath(dir, "dangling.txt")).toBe(expected);
+
+    // Relative link targets resolve against the link's directory, and a chain
+    // of dangling links is followed too.
+    await symlink("dangling.txt", join(dir, "dangling2.txt"));
+    expect(canonicalizePathSync(dir, "dangling2.txt")).toBe(expected);
+    expect(await canonicalizePath(dir, "dangling2.txt")).toBe(expected);
+  });
+
+  it("leaves a plain missing path alone", async () => {
+    // No link involved: the nearest-ancestor fallback is still the answer.
+    expect(canonicalizePathSync(dir, "not/created/yet.txt")).toBe(
+      join(dir, "not", "created", "yet.txt"),
+    );
   });
 });

@@ -113,4 +113,19 @@ describe("handleContext", () => {
     await handleContext(makeCtx(off, { autoCompact: { enabled: false } }));
     expect(viewerText(off)).not.toContain("autocompact buffer");
   });
+
+  it("shows the output reserve the provider counts against the window", async () => {
+    // The provider validates `prompt + max_tokens <= window`; the panel has to
+    // show that the answer's slice is not available for input, or the 100% mark
+    // looks like it arrives without warning.
+    const on: Viewer[] = [];
+    await handleContext(makeCtx(on, { autoCompact: { enabled: true } }));
+    expect(viewerText(on)).toContain("output reserve");
+
+    // Still unusable for input when auto-compact is off — the reserve is a
+    // request-size rule, not a compaction policy.
+    const off: Viewer[] = [];
+    await handleContext(makeCtx(off, { autoCompact: { enabled: false } }));
+    expect(viewerText(off)).toContain("output reserve");
+  });
 });

@@ -28,6 +28,7 @@ import { appendFile, readFile } from "node:fs/promises";
  */
 export type TranscriptKind =
   | "session_start"
+  | "workspace_switched"
   | "memory_loaded"
   | "skills_loaded"
   | "agents_loaded"

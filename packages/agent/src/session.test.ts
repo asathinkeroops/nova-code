@@ -127,6 +127,46 @@ describe("assembleSession", () => {
     expect(seen[0]?.system).toContain("sess-1");
   });
 
+  it("moves the system prompt when the workspace changes and the epoch advances", async () => {
+    // A worktree switch: the same session, a new checkout, and an epoch that
+    // folds the workspace in — otherwise `freezeSystemPrompt` would keep the
+    // old prompt (correctly, for a prefix-cache standpoint) and the model would
+    // keep describing the previous directory.
+    const seen: { system: string; tools: ToolDefinition[] }[] = [];
+    let workspace = "/repo/.nova/worktrees/feat";
+    let epoch = "sess-1\u0000/repo/.nova/worktrees/feat";
+    let worktree: { path: string; branch?: string; main: string } | undefined = {
+      path: workspace,
+      branch: "worktree-feat",
+      main: "/repo",
+    };
+    const { agent } = assembleSession(
+      makeOptions(recordingModel(seen), dir, {
+        workspace,
+        getWorkspace: () => workspace,
+        memory: {
+          getMemory: () => ({ system: "", sources: [] }),
+          getWorktree: () => worktree,
+          getEpoch: () => epoch,
+        },
+      }),
+    );
+
+    await agent.runTurn("hi");
+    expect(seen[0]?.system).toContain("a coding agent at /repo/.nova/worktrees/feat");
+    expect(seen[0]?.system).toContain("<worktree");
+    expect(seen[0]?.system).toContain("worktree-feat");
+
+    // Switch to the main checkout of the same repo.
+    workspace = "/repo";
+    epoch = "sess-1\u0000/repo";
+    worktree = undefined;
+    await agent.runTurn("again");
+
+    expect(seen[1]?.system).toContain("a coding agent at /repo.");
+    expect(seen[1]?.system).not.toContain("<worktree");
+  });
+
   it("returns no sub-agent tool when the block is absent or disabled", () => {
     const model = recordingModel([]);
     expect(assembleSession(makeOptions(model, dir)).subAgentTool).toBeUndefined();

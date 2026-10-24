@@ -1,7 +1,8 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { dirname } from "node:path";
 import { z } from "zod";
 import type { ToolHandler } from "@nova/core";
+import { resolveToolPath } from "./cwd.js";
 import { fileExecutionKey } from "./file-execution.js";
 import { PATH_ALIASES, withAliases } from "./schema.js";
 
@@ -31,7 +32,7 @@ export const writeTool: ToolHandler = {
   executionKey: fileExecutionKey,
   async run(rawInput, ctx) {
     const input = inputSchema.parse(rawInput);
-    const abs = resolve(ctx.cwd, input.path);
+    const abs = await resolveToolPath(ctx.cwd, input.path);
     try {
       if (input.create_dirs) {
         await mkdir(dirname(abs), { recursive: true });

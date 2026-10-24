@@ -28,7 +28,7 @@ import type {
 } from "@nova/core";
 import type { Logger as RuntimeLogger, Transcript } from "@nova/base";
 import type { MemoryBundle } from "./memory.js";
-import { buildSystemPrompt } from "./system-prompt.js";
+import { buildSystemPrompt, type WorktreePromptInfo } from "./system-prompt.js";
 import { persistMessages, type PersistCursor } from "./persistence.js";
 
 /**
@@ -61,6 +61,14 @@ export interface AgentSettingsSlice {
 export interface MemoryPromptOptions {
   workspace: string;
   /**
+   * Live workspace binding. A git-worktree switch moves the session, so the
+   * prompt has to read the CURRENT checkout — not the one captured at startup.
+   * Takes precedence over {@link workspace} when set.
+   */
+  getWorkspace?: () => string;
+  /** Live worktree description, or undefined when the session is not in one. */
+  getWorktree?: () => WorktreePromptInfo | undefined;
+  /**
    * The memory bundle. MUST return a reference that is stable WITHIN a session:
    * the bundle is embedded in the system prompt, which is byte 0 of the request
    * prefix. A session-boundary reload is fine — that advances the epoch.
@@ -76,6 +84,13 @@ export interface MemoryPromptOptions {
   getToolsGuidance?: () => string;
   /** Doubles as the prefix epoch: a new session is the only time the prompt may change. */
   getSessionId: () => string;
+  /**
+   * Overrides the epoch. The default (the session id) is right for `/clear` and
+   * `/resume`; a host that can move the session to another workspace (a git
+   * worktree switch) must fold that move in here, because the workspace is part
+   * of the prompt text.
+   */
+  getEpoch?: () => string;
   /** Resolved response language ("en", "zh-CN", …). */
   getLanguage?: () => string | undefined;
 }
@@ -83,15 +98,18 @@ export interface MemoryPromptOptions {
 /** The main agent's system prompt: workspace + memory + tool guidance + language. */
 export function createMemoryPrompt(opts: MemoryPromptOptions): SystemPromptProvider {
   return {
-    epoch: () => opts.getSessionId(),
-    system: () =>
-      buildSystemPrompt({
-        workspace: opts.workspace,
+    epoch: () => opts.getEpoch?.() ?? opts.getSessionId(),
+    system: () => {
+      const worktree = opts.getWorktree?.();
+      return buildSystemPrompt({
+        workspace: opts.getWorkspace?.() ?? opts.workspace,
         memory: opts.getMemory(),
         sessionId: opts.getSessionId(),
         toolsGuidance: opts.getToolsGuidance?.() ?? "",
+        ...(worktree ? { worktree } : {}),
         ...(opts.getLanguage?.() !== undefined ? { language: opts.getLanguage() as string } : {}),
-      }),
+      });
+    },
   };
 }
 
@@ -131,6 +149,12 @@ export function createSessionStore(opts: SessionStoreOptions): {
 
 export interface ToolHostOptions {
   workspace: string;
+  /**
+   * Live workspace binding. A worktree switch moves the session, and every
+   * tool's `cwd` has to follow it — taken from here on each call, never
+   * captured (the liveness rule: the port container is built once).
+   */
+  getWorkspace?: () => string;
   getTools: () => ToolDefinition[];
   dispatch: ToolExecutor;
   fileLedger: FileAccessLedger;
@@ -147,7 +171,7 @@ export function createToolHost(opts: ToolHostOptions): ToolHost {
       const settings = opts.getSettings();
       // No `signal` here — the agent injects the in-flight turn's controller.
       return {
-        cwd: opts.workspace,
+        cwd: opts.getWorkspace?.() ?? opts.workspace,
         fileLedger: opts.fileLedger,
         askUser: opts.askUser,
         sessionId: opts.getSessionId(),

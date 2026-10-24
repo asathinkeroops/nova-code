@@ -44,6 +44,24 @@ describe("monitor tool", () => {
     expect(readFileSync(out.log_path, "utf8")).toContain("hi");
   });
 
+  it("forwards env to the watch script (so the isolation guard has to check it)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "nova-mt-env-"));
+    const mgr = new MonitorManager({ outputDir: dir });
+    const res = await monitorTool(mgr).run(
+      {
+        command: 'echo "gitdir=$GIT_DIR"',
+        description: "env probe",
+        env: { GIT_DIR: "/main/.git" },
+      },
+      ctx,
+    );
+
+    const out = JSON.parse(res.output) as { id: string; log_path: string };
+    await waitFor(() => mgr.get(out.id)?.status === "exited");
+    expect(readFileSync(out.log_path, "utf8")).toContain("gitdir=/main/.git");
+    await mgr.disposeAll();
+  });
+
   it("returns immediately for an unbounded watch (does not block)", async () => {
     const mgr = new MonitorManager();
     const res = await monitorTool(mgr).run({ command: "sleep 30", description: "long watch" }, ctx);

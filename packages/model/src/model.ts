@@ -1,7 +1,13 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { toWireMessages, toWireTools, type ModelClient, type ModelRequest } from "@nova/core";
-import { isCjkCodePoint } from "@nova/base";
+import {
+  MIN_COMPLETION_TOKENS,
+  estimateTextTokens,
+  isCjkCodePoint,
+  type TokenEstimate,
+} from "@nova/base";
 import { type ProviderProfile } from "./providers/index.js";
+import { ProviderError } from "./providers/error.js";
 import {
   RETRY_LIMITS,
   backoffMs,
@@ -50,6 +56,14 @@ export interface ModelConfig {
    * its Anthropic endpoint).
    */
   transport?: ModelTransport;
+  /**
+   * The model's context window, when the caller knows it. Enables the per-request
+   * completion clamp ({@link fitCompletionTokens}): providers such as DeepSeek
+   * count `max_tokens` against the window, so a long prompt with a large output
+   * cap is rejected as over-window even though the prompt alone fits. Omit it
+   * (tests, callers without a model table) to send `maxTokens` unchanged.
+   */
+  contextWindowSize?: number;
   /**
    * Live progress callback for this request. High-frequency and best-effort —
    * callers should throttle their own UI updates. The exact final numbers are
@@ -138,6 +152,78 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 }
 
 /**
+ * Rough size of the request BEFORE the answer: system prompt + tool schemas +
+ * messages, measured on the wire shape (the same bytes the provider counts).
+ *
+ * Images are replaced by a placeholder first — base64 bytes are not tokens the
+ * model pays for at the same rate, and counting them would collapse the
+ * completion budget of any vision request. The estimate feeds the completion
+ * clamp, so being a little conservative is fine; being wildly wrong is not.
+ */
+function estimatePromptTokens(req: ModelRequest, weights: TokenEstimate): number {
+  // `this` is the holder object, so this can tell an image source's `data` from
+  // any other field literally named "data" (a tool input, say).
+  const imageSafe = function (this: unknown, key: string, value: unknown): unknown {
+    const holder = this as { type?: unknown } | null;
+    if (key === "data" && holder?.type === "base64") return "[image]";
+    return value;
+  };
+  const tools = req.tools.length > 0 ? JSON.stringify(toWireTools(req.tools)) : "";
+  const messages = JSON.stringify(toWireMessages(req.messages), imageSafe);
+  return (
+    estimateTextTokens(req.system, weights) +
+    (tools ? estimateTextTokens(tools, weights) : 0) +
+    estimateTextTokens(messages, weights)
+  );
+}
+
+/**
+ * Clamp `max_tokens` so the request fits the window.
+ *
+ * DeepSeek (and other providers that size the context window as
+ * `input + max_tokens`) rejects a request whose completion reservation pushes
+ * it over, even when the prompt alone is comfortably inside. The tier's
+ * `maxTokens` is a CAP, not a promise: send the smaller of it and the room left
+ * after the prompt, with a safety margin for tokenizer differences.
+ *
+ * When even {@link MIN_COMPLETION_TOKENS} does not fit, no useful answer is
+ * possible, so fail locally with `/compact` guidance instead of forwarding a
+ * provider 400 whose "requested N tokens" numbers look unrelated to what the
+ * user can control.
+ */
+function fitCompletionTokens(req: ModelRequest, config: ModelConfig): number {
+  const window = config.contextWindowSize;
+  if (!window || window <= 0) return req.maxTokens;
+  const prompt = estimatePromptTokens(req, config.provider.tokenEstimate);
+  // 10% (min 2k) absorbs tokenizer differences between our char-based estimate
+  // and the provider's real count — CJK text in particular can run ~10% denser
+  // than the profile's ratio. Over-reserving costs a little output budget;
+  // under-reserving costs a rejected request.
+  const margin = Math.max(2048, Math.ceil(prompt * 0.1));
+  const room = window - prompt - margin;
+  if (room < MIN_COMPLETION_TOKENS) {
+    throw new ProviderError(
+      config.provider.id,
+      {
+        title: "Context window exhausted",
+        cause:
+          `the request needs ~${prompt} input tokens and the model's window is ${window}, ` +
+          `leaving no room for an answer (minimum ${MIN_COMPLETION_TOKENS}).`,
+        remedy:
+          "Run /compact to summarize the conversation and retry, or /clear to start a fresh " +
+          "one. Raising the tier's contextWindowSize or lowering its maxTokens also helps.",
+        retryable: false,
+      },
+      {
+        detail:
+          `window=${window} estimatedPrompt=${prompt} requestedMaxTokens=${req.maxTokens}`,
+      },
+    );
+  }
+  return Math.min(req.maxTokens, room);
+}
+
+/**
  * Create a model client for the profile's wire protocol. The EFFECTIVE
  * transport is `config.transport` (from the active provider entry) falling back to
  * the profile's `transport` default, falling back to "anthropic". "anthropic"
@@ -182,7 +268,7 @@ export function createModel(config: ModelConfig): ModelClient {
         config.model,
         transport,
       );
-      const maxTokens = req.maxTokens;
+      const maxTokens = fitCompletionTokens(req, config);
 
       // One attempt = run the effective transport's branch once. The branch
       // streams (keeping the socket active against gateway resets) and returns

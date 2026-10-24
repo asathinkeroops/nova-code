@@ -36,6 +36,13 @@ import {
  */
 export interface AssembleAgentOptions {
   workspace: string;
+  /**
+   * Live workspace binding for hosts whose session can move between checkouts
+   * (a git-worktree switch). Everything workspace-scoped — tool `cwd`, the
+   * system prompt — reads this per use; `workspace` is the startup value and the
+   * fallback.
+   */
+  getWorkspace?: () => string;
   getSessionId: () => string;
   getLogger: () => RuntimeLogger;
 
@@ -71,6 +78,7 @@ export function assembleAgent(opts: AssembleAgentOptions): Agent {
     systemPrompt: opts.systemPrompt,
     tools: createToolHost({
       workspace: opts.workspace,
+      ...(opts.getWorkspace ? { getWorkspace: opts.getWorkspace } : {}),
       getTools: opts.getTools,
       dispatch: opts.dispatch,
       fileLedger: opts.fileLedger,
