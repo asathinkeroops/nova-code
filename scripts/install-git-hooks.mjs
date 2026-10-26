@@ -8,8 +8,8 @@ import { join } from "node:path";
  * `pnpm install` arms the AI-native gate before the next commit.
  *
  * An existing custom hooksPath is left alone unless AI_NATIVE_FORCE_HOOKS=1:
- * silently replacing a user's hook setup is worse than a missing gate, and the
- * standard documents the manual command.
+ * silently replacing a user's hook setup is worse than a missing gate, and
+ * docs/ai-native-gate.md documents the manual command.
  */
 try {
   const root = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();

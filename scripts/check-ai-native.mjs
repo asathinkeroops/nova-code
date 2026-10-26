@@ -7,9 +7,10 @@ import ts from "typescript";
 /**
  * AI-native architecture gate.
  *
- * The standard lives in docs/ai-native-architecture.md. This script contains
- * only the rules that can be decided deterministically from source; the
- * judgement calls stay in the review checklist.
+ * The generic standard lives in docs/ai-native-architecture.md; Nova's
+ * implementation rules and manual checklist live in docs/ai-native-gate.md.
+ * This script contains only the rules that can be decided deterministically
+ * from source; the judgement calls stay in the review checklist.
  *
  * Usage:
  *   node scripts/check-ai-native.mjs --staged   # pre-commit
@@ -244,7 +245,7 @@ if (findings.length > 0) {
 if (errors.length > 0) {
   console.error(
     `\nRefusing commit: ${errors.length} AI-native architecture violation(s). ` +
-      "See docs/ai-native-architecture.md.",
+      "See docs/ai-native-gate.md.",
   );
   process.exit(1);
 }
