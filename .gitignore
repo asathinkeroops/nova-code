@@ -16,3 +16,4 @@ __pycache__/
 .commands
 .tasks
 .agents
+output/
