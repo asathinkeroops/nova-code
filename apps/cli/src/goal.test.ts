@@ -31,9 +31,39 @@ describe("parseVerdict", () => {
     expect(v.reason).toBe("all good");
   });
 
-  it("falls back to a bare MET / NOT_MET when the marker is absent", () => {
+  it("does not treat a bare MET / NOT_MET word as a verdict", () => {
     expect(parseVerdict("looks NOT_MET to me").met).toBe(false);
-    expect(parseVerdict("seems MET").met).toBe(true);
+    expect(parseVerdict("seems MET").met).toBe(false);
+  });
+
+  it("keeps ambiguous prose NOT met", () => {
+    expect(parseVerdict("I cannot determine whether the goal is met.").met).toBe(false);
+    expect(parseVerdict("The goal is not yet met.").met).toBe(false);
+    expect(parseVerdict("It isn't met yet; the tests fail.").met).toBe(false);
+    expect(parseVerdict("The goal may have been met.").met).toBe(false);
+  });
+
+  it("ignores quoted format examples and prose mentions", () => {
+    expect(
+      parseVerdict(
+        "Example format: VERDICT: MET\nActual verdict: VERDICT: NOT_MET\nTests still fail.",
+      ).met,
+    ).toBe(false);
+    expect(parseVerdict("You must end with VERDICT: MET or VERDICT: NOT_MET.").met).toBe(false);
+    // Four leading spaces are a code block, not a verdict line.
+    expect(parseVerdict("    VERDICT: MET\nnot actually done").met).toBe(false);
+  });
+
+  it("treats conflicting verdict lines as NOT met", () => {
+    const v = parseVerdict("VERDICT: MET\nall green\nVERDICT: NOT_MET\ntests fail");
+    expect(v.met).toBe(false);
+    expect(v.reason).toContain("conflicting");
+  });
+
+  it("accepts a verdict line with markdown decoration", () => {
+    expect(parseVerdict("**VERDICT: MET**\nall green").met).toBe(true);
+    expect(parseVerdict("> **VERDICT: MET**\nall green").met).toBe(true);
+    expect(parseVerdict("> VERDICT: NOT_MET\ntests fail").met).toBe(false);
   });
 
   it("defaults to NOT met when there is no clear verdict", () => {
@@ -61,7 +91,10 @@ describe("digestMessages", () => {
   it("includes tool results and tool calls as evidence", () => {
     const messages: MessageParam[] = [
       { role: "user", content: "run the tests" },
-      { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "bash", input: { command: "pnpm test" } }] },
+      {
+        role: "assistant",
+        content: [{ type: "tool_use", id: "t1", name: "bash", input: { command: "pnpm test" } }],
+      },
       {
         role: "user",
         content: [{ type: "tool_result", tool_use_id: "t1", content: "2 passed, 0 failed" }],

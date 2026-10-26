@@ -119,8 +119,17 @@ export function digestMessages(messages: MessageParam[]): string {
   return out.length > MAX_DIGEST_CHARS ? out.slice(out.length - MAX_DIGEST_CHARS) : out;
 }
 
-/** Marker the evaluator must end on; parsed by {@link parseVerdict}. */
-export const VERDICT_RE = /VERDICT:\s*(NOT[\s_]*MET|MET)/i;
+/**
+ * Marker the evaluator must end on; parsed by {@link parseVerdict}.
+ *
+ * A verdict is a LINE, not a word. `VERDICT: MET` / `VERDICT: NOT_MET` has to
+ * start the line (up to three spaces of list indentation and common markdown
+ * decoration are tolerated). Anchoring is what keeps prose like `Example
+ * format: VERDICT: MET` or `I cannot determine whether the goal is met.` from
+ * being read as a verdict — the old bare-`MET` fallback did exactly that.
+ */
+export const VERDICT_RE =
+  /^ {0,3}(?:[*_#>-]+[ \t]*)*VERDICT:[ \t*_]*(NOT[\s_]*MET|MET)(?![A-Za-z0-9])[ \t*_]*(.*)$/i;
 
 /**
  * System prompt for the goal evaluator agent. It has the full tool set and is
@@ -141,7 +150,8 @@ export const GOAL_EVAL_SYSTEM =
   "or\n" +
   "VERDICT: NOT_MET\n" +
   "followed by a one-sentence reason in the user's language. If you cannot " +
-  "gather enough evidence that the goal holds, the verdict is NOT_MET.";
+  "gather enough evidence that the goal holds, the verdict is NOT_MET. Emit " +
+  "exactly one verdict line, and do not quote this format as an example.";
 
 /** Build the evaluator's user prompt: the goal plus recent-conversation context. */
 export function buildGoalEvalPrompt(condition: string, messages: MessageParam[]): string {
@@ -154,19 +164,48 @@ export function buildGoalEvalPrompt(condition: string, messages: MessageParam[])
   );
 }
 
-/** Map the evaluator's final text to a verdict. Defaults to NOT met on doubt. */
+/**
+ * Map the evaluator's final text to a verdict. Defaults to NOT met on doubt:
+ * only an explicit, line-anchored `VERDICT:` line can report success. A bare
+ * `MET` in prose (or a quoted format example) is not evidence.
+ */
 export function parseVerdict(raw: string): GoalVerdict {
-  const text = raw.trim();
-  const m = text.match(VERDICT_RE);
-  if (m) {
-    const met = !/NOT/i.test(m[1] ?? "");
-    const after = text.slice((m.index ?? 0) + m[0].length).replace(/^[\s.:—-]+/, "").trim();
-    const reason = after || text;
-    return { met, reason, raw };
+  // Trim blank framing lines, but NOT a first-line indent: four spaces mean a
+  // code block, and code examples must not masquerade as a verdict.
+  const text = raw.replace(/^\s*\n+/, "").trimEnd();
+  const lines = text.split(/\r?\n/);
+
+  // Apply the line regex per line, collecting every explicit verdict. Taking
+  // the last match (below) means an early quoted example cannot win; if the
+  // lines disagree, the result is ambiguous and therefore NOT met.
+  const matches: Array<{ met: boolean; lineIndex: number; rest: string }> = [];
+  for (const [lineIndex, line] of lines.entries()) {
+    const m = line.match(VERDICT_RE);
+    if (!m) continue;
+    matches.push({ met: !/NOT/i.test(m[1] ?? ""), lineIndex, rest: m[2] ?? "" });
   }
-  // Fallbacks for an evaluator that didn't follow the VERDICT format.
-  const upper = text.toUpperCase();
-  if (/NOT[\s_]*MET/.test(upper)) return { met: false, reason: text, raw };
-  if (/\bMET\b/.test(upper)) return { met: true, reason: text, raw };
-  return { met: false, reason: text || "evaluator returned no clear verdict", raw };
+
+  if (matches.length === 0) {
+    return {
+      met: false,
+      reason: text
+        ? `evaluator returned no explicit verdict: ${text}`
+        : "evaluator returned no clear verdict",
+      raw,
+    };
+  }
+
+  if (new Set(matches.map((m) => m.met)).size > 1) {
+    return {
+      met: false,
+      reason: "evaluator returned conflicting verdicts; treating the goal as not met",
+      raw,
+    };
+  }
+
+  const last = matches[matches.length - 1]!;
+  const stripLead = (s: string): string => s.replace(/^[\s.:—–-]+/, "").trim();
+  const sameLine = stripLead(last.rest);
+  const following = stripLead(lines.slice(last.lineIndex + 1).join("\n"));
+  return { met: last.met, reason: sameLine || following || text, raw };
 }
