@@ -16,7 +16,10 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "ai-native:check": "node scripts/check-ai-native.mjs --all",
+    "ai-native:check:staged": "node scripts/check-ai-native.mjs --staged",
+    "prepare": "node scripts/install-git-hooks.mjs"
   },
   "devDependencies": {
     "@types/node": "^20.12.7",
