@@ -56,7 +56,7 @@ export function collectUserTurns(messages: MessageParam[]): UserTurn[] {
  * Split a restore plan by reachability.
  *
  * Snapshot records carry ABSOLUTE paths, and a session keeps the same snapshot
- * store across a `/worktree` switch (the store lives in the session dir). So a
+ * store across a worktree switch (the store lives in the session dir). So a
  * rewind that crosses a switch legitimately restores files in the checkout
  * where the edit happened — undoing what actually happened is the point. What
  * must not happen is restoring into a checkout that no longer exists: that
@@ -173,7 +173,7 @@ export async function handleRewind(ctx: CliContext, arg: string): Promise<void> 
   // whose on-disk content has diverged from nova's last write come back as
   // conflicts — shown, but never overwritten.
   let plan = await ctx.snapshots.plan(target.index);
-  // Paths from another checkout (a `/worktree` earlier in the session) would
+  // Paths from another checkout (a worktree switch earlier in the session) would
   // render as `../../../…`; show them absolute instead.
   const rel = (p: string): string => {
     const r = relative(ctx.workspace, p);

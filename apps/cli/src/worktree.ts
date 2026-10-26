@@ -10,11 +10,13 @@ import ignore from "ignore";
  * Everything here runs `git` directly (never through the `bash` tool): creating
  * or removing a worktree writes the repository's shared `.git` metadata, which
  * the OS sandbox confines away from the workspace. Running it here also keeps
- * the operation out of the model's permission flow — the user asked for it.
+ * the worktree plumbing out of the shell sandbox; the model reaches it through
+ * `enterWorktree`/`exitWorktree`, which are permission-gated as tools.
  *
- * The file is deliberately I/O-only and free of UI: the `/worktree` command and
- * `--worktree` both call in, and the pure helpers (`parseWorktreeList`,
- * `sanitizeWorktreeName`, `planAddWorktree`) are unit-testable without a repo.
+ * The file is deliberately I/O-only and free of UI: the `enterWorktree`/
+ * `exitWorktree` tools and `--worktree` all call in, and the pure helpers
+ * (`parseWorktreeList`, `sanitizeWorktreeName`, `planAddWorktree`) are
+ * unit-testable without a repo.
  */
 
 export interface GitResult {
@@ -223,7 +225,7 @@ export interface WorktreeEntry {
  *
  * Records are blank-line separated `key value` lines; the first record is the
  * main checkout. A worktree is listed by path even when it is locked or its
- * branch is gone, which is exactly what `/worktree` needs to show.
+ * branch is gone, which is exactly what the worktree tools need to report.
  */
 export function parseWorktreeList(text: string): WorktreeEntry[] {
   const entries: WorktreeEntry[] = [];
@@ -389,7 +391,7 @@ async function resolveStartPoint(opts: AddWorktreeOptions, checkout: string): Pr
 /**
  * Create (or re-open) a worktree. Idempotent by name: if a worktree is already
  * registered at the computed path, it is returned untouched — that is what
- * makes `nova --worktree fix` safe to re-run and `/worktree new` a no-op when
+ * makes `nova --worktree fix` safe to re-run and `enterWorktree({ name })` a no-op when
  * the user forgets they already made one.
  *
  * Two different roots are involved, and conflating them was a bug:

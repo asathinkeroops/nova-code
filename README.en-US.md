@@ -188,6 +188,7 @@ Model-callable tools cover read/write, search, execution, code intelligence, and
 | `createTask` / `updateTask` / `getTaskList` / `clearTaskList` | Cross-session task plan with dependencies |
 | `askUserQuestion` | Ask the user multiple-choice questions and wait for answers |
 | `createSubAgent` | Delegate to an `explore`, `plan`, `general-purpose`, or custom sub-agent with fresh context and its own tool set |
+| `enterWorktree` / `exitWorktree` | Create/reuse or switch git worktrees from natural language and move the **current session** into that checkout in place (tool cwd, permission roots, sandbox allowlist, LSP, and system prompt move with it); `exitWorktree` returns to the main checkout. A switch is exclusive: sibling tool calls in the same response are deferred to the next response, and plan mode rejects `enterWorktree({ name })` (create/reuse). Neither tool is exposed to sub-agents |
 | `enterPlanMode` / `exitPlanMode` | The model puts itself into read-only plan mode to work out an approach, then asks you to approve the plan before it leaves and starts implementing. Even when it forgets to call `exitPlanMode`, nova raises the prompt itself once the turn ends — approving restores your previous mode and continues straight into the work |
 | `cronCreate` / `cronList` / `cronDelete` | Schedule a prompt or `/command` on an interval or cron expression; live within a session and re-arm on `/resume` |
 | `loadSkill` | Load a skill on demand |
@@ -212,7 +213,6 @@ Model-callable tools cover read/write, search, execution, code intelligence, and
 | `/commands` · `/skills` · `/lsp` | Inspect or reload commands, and inspect skills and language servers |
 | `/mcp` · `/plugin` | Authenticate/reconnect/log out MCP servers and inspect tools; inspect contributions loaded from plugins (installation and toggles use `nova plugin`) |
 | `/sandbox` | Enable/disable the OS command sandbox for this session (`on` / `off`) |
-| `/worktree` | Manage git worktrees: `new` / `enter` move the **current session** into that checkout in place (no restart, same session); also `list` / `remove` / `prune` |
 | `/loop` | Re-run a prompt or command on an interval (`/loop <interval> <prompt\|/cmd>`, `/loop stop` to end) |
 | `/doctor` | Health-check the global config (JSON/schema, model/key, hooks, MCP), report issues, optionally hand them to the agent to fix in place |
 | `/usage` · `/context` | See token usage with estimated cost, cache hits, context fill |
@@ -220,7 +220,7 @@ Model-callable tools cover read/write, search, execution, code intelligence, and
 | `/predict` | Toggle next-input prediction |
 | `/exit` · `/quit` | Quit |
 
-Each session is bound to the workspace where it was created. `nova -c` and `/resume` only search sessions from the current workspace; `nova --resume <id>` and `/resume <id>` reject sessions from another workspace and report the directory they belong to. The one exception is `/worktree`: switching checkouts moves the binding, so `nova --resume <id>` returns to the worktree that session ended in (same repository only).
+Each session is bound to the workspace where it was created. `nova -c` and `/resume` only search sessions from the current workspace; `nova --resume <id>` and `/resume <id>` reject sessions from another workspace and report the directory they belong to. The one exception is the worktree tools: `enterWorktree` / `exitWorktree` move the binding with the session, so `nova --resume <id>` returns to the worktree that session ended in (same repository only).
 
 ### Core capabilities
 

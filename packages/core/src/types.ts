@@ -182,6 +182,18 @@ export interface ToolDefinition {
    * so core stays model-agnostic.
    */
   inputJsonSchema?: Record<string, unknown>;
+  /**
+   * True when this tool mutates SESSION-wide context (the workspace, its
+   * permission roots, the prompt epoch) rather than one resource inside it.
+   *
+   * The loop treats an exclusive call as a batch barrier: only the first
+   * exclusive tool in an assistant message executes; every other call in that
+   * message is answered with a deferred error and must be re-issued after the
+   * switch, when the host has refreshed `system` / `toolContext`. That keeps a
+   * concurrent sibling (or a second switch) from running against a workspace
+   * that is being torn down underneath it.
+   */
+  exclusive?: boolean;
 }
 
 /** What a {@link ToolPromptSection} may look at when it renders. */

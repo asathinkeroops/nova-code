@@ -27,7 +27,6 @@ export const zh: DeepPartial<Catalog> = {
     resume: "切换到当前 workspace 下已保存的会话",
     rewind: "将历史回退到之前的某条消息（其后的历史会被丢弃）",
     sandbox: "为当前会话启用/停用操作系统命令沙箱",
-    worktree: "管理 git worktree：列出 / 新建并切换 / 进入 / 删除",
     init: "分析代码库以生成或刷新 NOVA.md",
     plan: "通过只读的 plan 子智能体规划任务（不做实现）",
     diff: "在弹窗中浏览未提交的改动：文件列表 → 单文件 diff",
@@ -220,40 +219,6 @@ export const zh: DeepPartial<Catalog> = {
     saveFailed: (msg: string): string => `本次会话已切换沙箱，但保存到配置失败：${msg}`,
     disableWith: "停用命令",
     enableWith: "启用命令",
-  },
-
-  worktree: {
-    notRepo: (cwd: string): string => `${cwd} 不是 git 仓库 —— worktree 需要仓库`,
-    disabled: "worktree 已关闭（settings.worktree.enabled = false）",
-    usage: (title: string): string =>
-      `用法：${title} [list] | ${title} new <名称> [from <起点>] | ${title} enter <名称> | ${title} remove <名称> | ${title} prune`,
-    listHeader: "worktree（* = 当前）",
-    none: "还没有 worktree —— 用 `new <名称>` 新建一个",
-    mainLabel: "（主检出）",
-    dirty: (n: number): string => `${n} 处未提交改动`,
-    clean: "干净",
-    stateUnknown: "状态未知（git 未能报告）",
-    creating: (name: string): string => `正在创建 worktree ${name}`,
-    created: (path: string, branch: string): string => `已创建 ${branch}\n${path}`,
-    reused: (path: string, branch: string): string => `复用已有 ${branch}\n${path}`,
-    includeCopied: (copied: number, skipped: number, failed: number): string =>
-      `已按 .worktreeinclude 复制 ${copied} 个被忽略的文件` +
-      (skipped > 0 ? `，跳过 ${skipped} 个（已被跟踪、已存在或在此检出未被忽略）` : "") +
-      (failed > 0 ? `，${failed} 个复制失败` : ""),
-    unknownName: (name: string): string => `没有名为 ${name} 的 worktree`,
-    isMain: (path: string): string => `${path} 是主检出，不是 worktree`,
-    alreadyHere: (path: string): string => `已经在 ${path} 中工作`,
-    entered: (path: string): string => `已切换到 ${path}`,
-    switched: (path: string, branch: string): string => `当前在 ${path}（${branch}）中工作`,
-    switchedHint:
-      "工具 cwd、权限边界、sandbox 白名单与 system prompt 都已随之切换；`git worktree list` 可查看全部检出",
-    inUse: (path: string): string => `不能删除当前会话正在使用的 worktree：${path}`,
-    removeDirty: (n: number, path: string): string =>
-      `拒绝删除 ${path}：还有 ${n} 处未提交改动 —— 先提交或丢弃`,
-    removed: (path: string): string => `已删除 ${path}`,
-    pruned: (out: string): string => `已清理：${out || "无残留记录"}`,
-    confirmSwitch: "把当前会话切换到该 worktree",
-    cancel: "取消",
   },
 
   predict: {

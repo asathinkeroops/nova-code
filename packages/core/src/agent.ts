@@ -13,7 +13,7 @@ import {
   type SystemPromptProvider,
   type ToolHost,
 } from "./ports.js";
-import type { MessageMeta, MessageParam, StopReason } from "./types.js";
+import type { MessageMeta, MessageParam, StopReason, ToolContext } from "./types.js";
 
 /**
  * Everything an agent runs on, in one container.
@@ -250,13 +250,33 @@ export function createAgent(ctx: AgentContext): Agent {
 
     const turnOptions = ctx.options.turn();
 
+    // `system` is byte 0 of every request, so it may only be rebuilt when the
+    // prompt epoch moves (a worktree switch does: the CLI folds the workspace
+    // into the epoch). Within an epoch this returns the same string, which is
+    // exactly what the prefix cache needs. `toolContext` is cheap and is
+    // re-read every iteration so a tool that moved the workspace cannot leave
+    // the rest of the turn executing in the old checkout.
+    let currentEpoch = systemPrompt.epoch();
+    let currentSystem = await systemPrompt.system();
+    const refreshContext = async (): Promise<{ system: string; toolContext: ToolContext }> => {
+      const epoch = systemPrompt.epoch();
+      if (epoch !== currentEpoch) {
+        currentEpoch = epoch;
+        currentSystem = await systemPrompt.system();
+      }
+      return {
+        system: currentSystem,
+        toolContext: { ...ctx.tools.contextFor(), signal: controller.signal },
+      };
+    };
+
     let result: Awaited<ReturnType<typeof agentLoop>> | null = null;
     let aborted = false;
     let error: Error | undefined;
     try {
       result = await agentLoop({
         model: ctx.model,
-        system: await systemPrompt.system(),
+        system: currentSystem,
         tools: ctx.tools.list(),
         executeTool: (use, toolCtx) => ctx.tools.execute(use, toolCtx),
         messages: baseMessages,
@@ -272,6 +292,7 @@ export function createAgent(ctx: AgentContext): Agent {
           ? { thinkingLevel: turnOptions.thinkingLevel }
           : {}),
         toolContext: { ...ctx.tools.contextFor(), signal: controller.signal },
+        refreshContext,
         hooks,
         ...(ctx.compactor ? { compactor: ctx.compactor } : {}),
         ...(ctx.permission ? { permission: ctx.permission } : {}),

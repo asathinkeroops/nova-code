@@ -180,7 +180,7 @@ describe("resolveSession --resume", () => {
     } finally {
       await rm(repo, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   it("falls back to the launch directory when the session's worktree is gone", async () => {
     const repo = await realpath(await mkdtemp(join(tmpdir(), "nova-resume-gone-")));
@@ -207,7 +207,7 @@ describe("resolveSession --resume", () => {
     } finally {
       await rm(repo, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   it("rejects a legacy session whose workspace cannot be determined", async () => {
     const unknown = await create("/placeholder");

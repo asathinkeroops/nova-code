@@ -323,6 +323,23 @@ describe("resolveModeDecision", () => {
     }
   });
 
+  it("plan mode blocks creating a worktree but allows switching/exiting", () => {
+    const create = resolveModeDecision("plan", "enterWorktree", undefined, roots, {
+      input: { name: "plan-proof" },
+    });
+    expect(create?.granted).toBe(false);
+    expect(create?.reason).toMatch(/plan mode/i);
+
+    // Switching an existing checkout does not write a branch/checkout, and
+    // exit must stay available so plan mode cannot trap the session.
+    expect(
+      resolveModeDecision("plan", "enterWorktree", undefined, roots, {
+        input: { path: "/repo/.nova/worktrees/existing" },
+      }),
+    ).toBeNull();
+    expect(resolveModeDecision("plan", "exitWorktree", undefined, roots, { input: {} })).toBeNull();
+  });
+
   it("accept-edits auto-grants in-workspace write/edit", () => {
     expect(resolveModeDecision("acceptEdits", "write", `${CWD}/src/a.ts`, roots)).toEqual({
       granted: true,

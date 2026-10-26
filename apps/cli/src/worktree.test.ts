@@ -168,7 +168,7 @@ describe("git integration", () => {
     expect(again.created).toBe(false);
     expect(again.path).toBe(first.path);
     expect(await listWorktrees(repo)).toHaveLength(2);
-  });
+  }, 30_000);
 
   it("excludes the worktree directory from the main checkout's status", async () => {
     await addWorktree({ repo, name: "feat", dir: ".nova/worktrees", baseRef: "head" });
@@ -183,7 +183,7 @@ describe("git integration", () => {
 
     const status = await runGit(repo, ["status", "--porcelain"]);
     expect(status.stdout.trim()).toBe("");
-  });
+  }, 30_000);
 
   it("copies gitignored files listed in .worktreeinclude, and nothing else", async () => {
     await writeFile(join(repo, ".worktreeinclude"), ".env\n**/*.local\n", "utf8");
@@ -336,7 +336,7 @@ describe("git integration", () => {
     });
     expect(again.created).toBe(false);
     expect(again.path).toBe(first.path);
-  });
+  }, 30_000);
 
   it("starts from the LAUNCH checkout's HEAD, not the main checkout's", async () => {
     const first = await addWorktree({

@@ -33,6 +33,7 @@ import {
   MonitorManager,
   makeTaskReminder,
   makeTodoReminder,
+  WORKTREE_TOOL_NAMES,
   type InterjectFn,
 } from "@nova/tools";
 import {
@@ -122,6 +123,7 @@ import {
   type WorktreeBinding,
 } from "./worktree.js";
 import { worktreeIsolationDenial } from "./worktree-guard.js";
+import { registerWorktreeTools } from "./worktree-tools.js";
 import { renderSkillsBlock } from "./skills-render.js";
 import { loadFileCommandsInto, loadSkillCommandsInto } from "./slash.js";
 import { loadSessionName } from "./session-name.js";
@@ -776,6 +778,13 @@ export async function createContext(
     buildModel,
   };
 
+  // Worktree tools are host-owned: `enterWorktree`/`exitWorktree` call
+  // `ctx.setWorkspace`, which rebuilds every workspace-scoped binding. They are
+  // registered here, before `permissions.deny`, so a user can remove either by
+  // name like any other builtin. Their guidance is gated on the final registry
+  // (see WORKTREE_PROMPT in @nova/tools).
+  registerWorktreeTools(ctx);
+
   // Re-read memory from disk and swap in the fresh bundle. Only invoked at a
   // session boundary (switchToSession), where the prefix is already rebuilt, so
   // it never disturbs an in-session prefix cache. The agent reads the bundle via
@@ -1000,7 +1009,7 @@ export async function createContext(
       tool,
       PATH_INPUT_TOOLS.has(tool) ? (evalInput.path as string) : undefined,
       writeRoots,
-      { canSelfExit: settings.planMode.agentTools },
+      { canSelfExit: settings.planMode.agentTools, input: evalInput },
     );
     // Plan mode is an outright denial: it outranks every grant below, including
     // a session-scoped always-allow. Read-only has to stay read-only.
@@ -1132,7 +1141,7 @@ export async function createContext(
 
   const assembled = assembleSession({
     workspace,
-    // Live binding: `/worktree` moves the session to another checkout, and both
+    // Live binding: the worktree tools move the session to another checkout, and both
     // the tool host's `cwd` and the system prompt read it per use.
     getWorkspace: () => ctx.workspace,
     getSessionId: () => ctx.session.id,
@@ -1206,7 +1215,11 @@ export async function createContext(
       // The plan-mode pair: a sub-agent runs inside the parent session, so
       // letting it flip the PARENT's permission mode (or ask the user to leave
       // plan mode on its behalf) is never right.
-      excludeTools: PLAN_MODE_TOOL_NAMES,
+      //
+      // Worktree tools are withheld for the same reason: they move the LIVE
+      // session's workspace, so a child calling one would move the parent
+      // mid-turn (and its own tool cwd underneath it).
+      excludeTools: [...PLAN_MODE_TOOL_NAMES, ...WORKTREE_TOOL_NAMES],
       getSessionDir: () => ctx.session.dir,
       // Live progress: update the UI on every tick; persist the snapshot to
       // the display sidecar once the sub-agent finishes so it survives resume
@@ -1569,8 +1582,12 @@ export async function createContext(
    * `cwd`. They are rebuilt here in one place, in dependency order, so a switch
    * can never leave the session half-moved. The prompt itself is allowed to
    * change because the epoch getter folds in the workspace (see assembleSession).
+   *
+   * Switches are serialized: the move is a multi-step async transaction, and
+   * two overlapping calls would otherwise leave the permission engine, sandbox
+   * roots and `session.json` describing different checkouts.
    */
-  (ctx as { setWorkspace: CliContext["setWorkspace"] }).setWorkspace = async (nextWorkspace) => {
+  const performWorkspaceSwitch = async (nextWorkspace: string): Promise<WorktreeBinding | null> => {
     const target = resolve(nextWorkspace);
     const targetStat = await stat(target).catch(() => null);
     if (!targetStat?.isDirectory()) {
@@ -1588,7 +1605,7 @@ export async function createContext(
     // cannot be named at all (`worktreeBinding().main` is undefined and
     // `mainCheckoutRoot` refuses to guess), yet both checkouts are plainly the
     // same repository. Comparing main paths rejected that switch outright
-    // ("not inside …") after `/worktree new` had already created the checkout.
+    // ("not inside …") after `enterWorktree` had already created the checkout.
     // Canonicalize both sides: `git rev-parse` reports absolute but not
     // necessarily symlink-resolved paths, and a launch through `/tmp` or a
     // symlinked workspace would otherwise look like a different repository.
@@ -1654,6 +1671,16 @@ export async function createContext(
     ctx.logger.info({ workspace: target, main: nextWorktree?.main }, "workspace switched");
     refreshBanner(ctx);
     return nextWorktree;
+  };
+
+  let workspaceSwitchTail: Promise<unknown> = Promise.resolve();
+  (ctx as { setWorkspace: CliContext["setWorkspace"] }).setWorkspace = (nextWorkspace) => {
+    // Queue behind the previous switch. `run` on both settle paths means a
+    // failed switch doesn't poison every later one.
+    const run = (): Promise<WorktreeBinding | null> => performWorkspaceSwitch(nextWorkspace);
+    const next = workspaceSwitchTail.then(run, run);
+    workspaceSwitchTail = next.catch(() => {});
+    return next;
   };
 
   return ctx;

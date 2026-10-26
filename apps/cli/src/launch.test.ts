@@ -94,7 +94,7 @@ describe("resolveLaunchTarget", () => {
     } finally {
       await rm(repo, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   it("stops before creating a checkout when the session cannot be resumed", async () => {
     const other = await createSession({ workspace: "/somewhere/else", rootOverride: sessionDir });

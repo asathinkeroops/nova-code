@@ -1,5 +1,6 @@
 import type { PermissionRule, Settings } from "@nova/base";
 import { isWithin } from "@nova/safety";
+import { ENTER_WORKTREE_TOOL_NAME } from "@nova/tools";
 
 /**
  * Input-box permission mode, cycled with shift+tab. Stored in the UI store and
@@ -57,7 +58,9 @@ export function resolveModeDecision(
   // Mirrors `settings.planMode.agentTools` — whether exitPlanMode is registered,
   // and so whether the denial can tell the model to call it. Defaults off:
   // pointing at a tool the host never registered just buys a failed call.
-  { canSelfExit = false }: { canSelfExit?: boolean } = {},
+  // `input` is the canonicalized tool input, used where a decision depends on
+  // the arguments rather than the tool name (worktree creation vs switching).
+  { canSelfExit = false, input }: { canSelfExit?: boolean; input?: Record<string, unknown> } = {},
 ): { granted: boolean; reason?: string } | null {
   if (mode === "plan" && MODE_MUTATING_TOOLS.has(tool)) {
     return {
@@ -71,6 +74,24 @@ export function resolveModeDecision(
             "the plan — do that before retrying this call, and note that a user telling you " +
             "to go ahead does not turn plan mode off by itself."
           : "the user can turn off plan mode (shift+tab) to apply it."),
+    };
+  }
+  // Creating a worktree is a side effect (new branch + checkout), so plan mode
+  // must deny it even when a rule/session grant would otherwise allow the tool.
+  // Switching to an existing worktree by `path` is not a write and stays
+  // available, as does `exitWorktree` — otherwise a plan session could enter a
+  // checkout and never leave it.
+  if (
+    mode === "plan" &&
+    tool === ENTER_WORKTREE_TOOL_NAME &&
+    typeof input?.name === "string" &&
+    input.name.length > 0
+  ) {
+    return {
+      granted: false,
+      reason:
+        "Plan mode is on (read-only): creating a worktree is disabled. " +
+        "Switch to an existing worktree with `path`, or exit plan mode first.",
     };
   }
   // In-workspace write/edit auto-grant, shared by `acceptEdits` and `auto`.

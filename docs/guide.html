@@ -707,7 +707,6 @@
           <tr><td><code>/lsp</code></td><td>查看已配置的语言服务器（是否在 PATH、本 session 是否已启动）</td></tr>
           <tr><td><code>/plugin</code></td><td>列出已加载的插件及其贡献（安装 / 启停用 <code>nova plugin</code> CLI，见 <a class="inline-link" href="#sec-18">§18</a>）</td></tr>
           <tr><td><code>/sandbox [on|off]</code></td><td>本会话内开关 OS 命令沙箱（见 <a class="inline-link" href="#sec-11">§11</a>）</td></tr>
-          <tr><td><code>/worktree [list|new &lt;名称&gt; [from &lt;起点&gt;]|enter &lt;名称&gt;|remove &lt;名称&gt;|prune]</code></td><td>管理 git worktree；<code>new</code> / <code>enter</code> 会把<strong>当前会话</strong>切到那个检出（不重启、不换 session，见 <a class="inline-link" href="#sec-20">§20</a>）</td></tr>
           <tr><td><code>/tasks [list|stop &lt;id|all&gt;]</code></td><td>查看和管理后台命令（<code>bash</code> + <code>run_in_background</code>），支持 list / stop</td></tr>
           <tr><td><code>/exit</code>, <code>/quit</code></td><td>退出</td></tr>
         </tbody></table></div>
@@ -1223,14 +1222,14 @@
         <div class="flex items-center gap-3 mb-5"><span class="sec-num">19</span><h2 class="text-2xl font-semibold m-0" style="color:var(--text)">会话、检查点与数据落盘</h2></div>
         <h3 class="text-base font-semibold mt-2 mb-3" style="color:var(--text)">恢复与切换</h3>
         <ul class="space-y-2">
-          <li>session 创建时会绑定当时的 workspace。唯一会改写这个绑定的是 <code>/worktree</code>：切到某个检出后绑定随之移动，<code>nova --resume &lt;id&gt;</code> 因此会回到那次会话结束所在的 worktree（同一仓库才允许；目录已删除则退回启动目录并清除绑定）。其余情况恢复不会改变归属。旧 session 没有独立 metadata 时，以 transcript 中第一次 <code>session_start.cwd</code> 作为固定归属。</li>
+          <li>session 创建时会绑定当时的 workspace。唯一会改写这个绑定的是 worktree 工具（<code>enterWorktree</code> / <code>exitWorktree</code>）：切到某个检出后绑定随之移动，<code>nova --resume &lt;id&gt;</code> 因此会回到那次会话结束所在的 worktree（同一仓库才允许；目录已删除则退回启动目录并清除绑定）。其余情况恢复不会改变归属。旧 session 没有独立 metadata 时，以 transcript 中第一次 <code>session_start.cwd</code> 作为固定归属。</li>
           <li><code>nova -c</code> / <code>nova --continue</code>：恢复当前 workspace 最近一个有消息的 session。</li>
           <li><code>nova --resume &lt;id&gt;</code>：按 id 恢复当前 workspace 的 session；目标属于其他 workspace 时拒绝恢复，并提示其绑定目录。</li>
           <li>REPL 内 <code>/resume [&lt;id&gt;]</code>：只列出和切换当前 workspace 的 session；显式指定其他 workspace 的 id 同样会被拒绝。</li>
         </ul>
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">回退（Rewind）</h3>
         <p><code>/rewind [&lt;n&gt;]</code> 回到此前某条消息 —— <strong>其后的对话历史与文件改动都会被丢弃</strong>，相当于一个检查点回滚。</p>
-        <p>文件快照属于 <strong>session</strong>（存在 <code>~/.nova/sessions/{id}/snapshots/</code>），不是属于某个 worktree；记录里存的是<strong>绝对路径</strong>。所以跨 <code>/worktree</code> 切换回退时：会话历史照常回退，而文件会回到它<strong>当时被修改的那个检出</strong>里（撤销本来就该作用在它发生的地方），预览里这类路径按绝对路径显示。若那个检出已经被 <code>/worktree remove</code> 删除，对应文件会被跳过并在预览里标注为「所在检出已不存在」，不会凭空重建目录。文件若在这一轮里被 <code>bash</code> 之类在 nova 之外改过，会被列为冲突、保留不动。</p>
+        <p>文件快照属于 <strong>session</strong>（存在 <code>~/.nova/sessions/{id}/snapshots/</code>），不是属于某个 worktree；记录里存的是<strong>绝对路径</strong>。所以跨 worktree 切换回退时：会话历史照常回退，而文件会回到它<strong>当时被修改的那个检出</strong>里（撤销本来就该作用在它发生的地方），预览里这类路径按绝对路径显示。若那个检出已经被 <code>git worktree remove</code> 删除，对应文件会被跳过并在预览里标注为「所在检出已不存在」，不会凭空重建目录。文件若在这一轮里被 <code>bash</code> 之类在 nova 之外改过，会被列为冲突、保留不动。</p>
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">自动清理</h3>
         <p>启动时 Nova 会删掉<strong>最近活动超过 <code>sessionCleanup.maxAgeDays</code>（默认 30 天）</strong>的 session 目录（按文件最新 mtime 算「最后一次使用」，不是创建时间；当前活动 session 始终受保护）。设 <code>sessionCleanup.enabled: false</code> 可永久保留。</p>
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">版本更新</h3>
@@ -1275,15 +1274,16 @@
         <p><strong>起点</strong>则由 <code>worktree.baseRef</code> 决定，且按<strong>你启动时所在的检出</strong>解析：<code>head</code> 用这个检出的 HEAD（带着它的未推送提交）；<code>fresh</code> 优先用本地缓存的 <code>origin/HEAD</code>（不联网 fetch），解析不到才退回这个检出的 HEAD。</p>
         <p><code>--worktree</code> 与 <code>--resume &lt;id&gt;</code> <strong>互斥</strong>：恢复的会话会留在它自己绑定的检出里，再建一个只会被忽略 —— 所以这种组合直接报错、不落任何文件（想回到那个检出就直接 <code>nova --resume &lt;id&gt;</code>）。<code>--continue</code> 不受影响：它找的正是「这个 worktree 里最近的会话」。</p>
 
-        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">会话内切换</h3>
-        <div class="tbl-wrap"><table class="doc"><thead><tr><th>命令</th><th>行为</th></tr></thead><tbody>
-          <tr><td><code>/worktree</code></td><td>列出所有检出（<code>*</code> = 当前），带分支与未提交改动数；git 读不出状态时显示「状态未知」，而不是当成干净</td></tr>
-          <tr><td><code>/worktree new &lt;名称&gt; [from &lt;起点&gt;]</code></td><td>新建（或复用）并<strong>切换过去</strong></td></tr>
-          <tr><td><code>/worktree enter &lt;名称&gt;</code></td><td>切换到已有 worktree</td></tr>
-          <tr><td><code>/worktree remove &lt;名称&gt;</code></td><td>删除（工作区不干净会拒绝）</td></tr>
-          <tr><td><code>/worktree prune</code></td><td>清理手工删掉目录后的残留记录</td></tr>
+        <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">会话内切换（自然语言）</h3>
+        <p>直接用自然语言说「在 worktree 里做这个」「开一个隔离的 worktree」「退出 worktree」即可；模型会调用两个内置工具：</p>
+        <div class="tbl-wrap"><table class="doc"><thead><tr><th>工具</th><th>行为</th></tr></thead><tbody>
+          <tr><td><code>enterWorktree({ name })</code></td><td>新建（同名则复用）并<strong>切换过去</strong>；可带 <code>from &lt;起点&gt;</code>。位置与分支同 <code>--worktree</code></td></tr>
+          <tr><td><code>enterWorktree({ path })</code></td><td>切换到本仓库已有的某个 linked worktree</td></tr>
+          <tr><td><code>exitWorktree()</code></td><td>回到主检出；<code>git init --separate-git-dir</code> 布局下可用 <code>path</code> 显式指定</td></tr>
         </tbody></table></div>
-        <p>切换是<strong>原地</strong>发生的：不重启、不换 session。会话已有历史时会先确认一次；确认后 Nova 依次重建记忆 bundle、权限根、沙箱白名单、LSP 根，推进 system prompt 的 epoch（提示词里写的已是新检出），最后把 <code>session.json</code> 的 workspace 改到新路径。</p>
+        <p><code>/worktree</code> slash 命令已移除。查看检出、删除、清理残留记录用 git 本身：<code>git worktree list</code> / <code>git worktree remove &lt;路径&gt;</code> / <code>git worktree prune</code>。<code>enterWorktree</code> / <code>exitWorktree</code> <strong>不会暴露给子 agent</strong> —— 子 agent 共享父会话，切换会把它自己的工作区也搬走。</p>
+        <p>切换工具是<strong>独占</strong>的：同一模型响应里的其他工具调用会被推迟到下一次响应，等会话完成迁移后再重试；不要在同一批里混入 write/bash。plan 模式会拒绝 <code>enterWorktree({ name })</code>（创建/复用）；用 <code>path</code> 切换到已有检出、以及 <code>exitWorktree</code> 仍然可用。</p>
+        <p>切换是<strong>原地</strong>发生的：不重启、不换 session。工具调用默认要过权限门（<code>permissions.defaultEffect</code> 为 <code>ask</code>），确认后 Nova 依次重建记忆 bundle、权限根、沙箱白名单、LSP 根，推进 system prompt 的 epoch（提示词里写的已是新检出），最后把 <code>session.json</code> 的 workspace 改到新路径。</p>
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)">切过去之后</h3>
         <ul class="space-y-2">
@@ -1292,12 +1292,12 @@
           <li><strong>共享的东西</strong>：对象库（<code>.git</code>）、自动记忆（按仓库根键控，所有检出共用一份）、Task 计划（落在仓库根 <code>.tasks/</code>）。<strong>项目配置（skills / 插件 / 斜杠命令 / hooks）仍以启动时的 workspace 为准</strong>，切换不会重新扫描。</li>
           <li><strong>恢复</strong>：<code>nova --resume &lt;id&gt;</code> 会回到该 session 上次所在的 worktree（同一仓库才允许；目录已删除则退回启动目录并清除绑定）。<code>--continue</code> 仍只匹配启动目录。恢复到另一个检出时，<strong>信任门会重新检查那个目录</strong>（在信任根之外会再问一次；headless 直接拒绝），因为接下来要加载的是它的项目配置。</li>
           <li><strong>不脏 <code>git status</code></strong>：创建时会把 <code>/.nova/worktrees/</code> 与 <code>/.tasks/</code> 写进 <code>$GIT_COMMON_DIR/info/exclude</code> —— 仓库本地元数据，不进提交。</li>
-          <li><strong>退出不自动删除</strong>：worktree 与分支都保留，用 <code>/worktree remove</code> 显式清理（要求干净）。</li>
-          <li><strong><code>git init --separate-git-dir</code></strong>：git 元数据在检出之外时，从某个 worktree 内部<strong>无法可靠反推</strong>主检出的路径（git 自己会把元数据目录列成「主 worktree」）。这不影响正常使用：仓库身份按<strong>共享 git 目录</strong>判定，所以从主检出 <code>/worktree new</code> 照样能创建并<strong>切入</strong>；隔离检查也照常生效 —— 它按目标的 <code>.git</code> 归类：指向同一个公共 git 目录的就属于本仓库的主工作树（拒绝），指向 <code>&lt;公共目录&gt;/worktrees/&lt;名字&gt;</code> 的是同级检出（放行），其它仓库不受影响。只有在这个布局下<strong>从 linked worktree 内部新建</strong> worktree 会拒绝（定位不到该把新检出放在哪），此时先用 <code>git worktree add</code> 手工创建、再用 <code>nova --cwd</code> 进入。</li>
+          <li><strong>退出不自动删除</strong>：worktree 与分支都保留，用 <code>git worktree remove &lt;路径&gt;</code> 显式清理（工作区不干净时加 <code>--force</code>）。</li>
+          <li><strong><code>git init --separate-git-dir</code></strong>：git 元数据在检出之外时，从某个 worktree 内部<strong>无法可靠反推</strong>主检出的路径（git 自己会把元数据目录列成「主 worktree」）。这不影响正常使用：仓库身份按<strong>共享 git 目录</strong>判定，所以从主检出用 <code>enterWorktree</code> 照样能创建并<strong>切入</strong>；隔离检查也照常生效 —— 它按目标的 <code>.git</code> 归类：指向同一个公共 git 目录的就属于本仓库的主工作树（拒绝），指向 <code>&lt;公共目录&gt;/worktrees/&lt;名字&gt;</code> 的是同级检出（放行），其它仓库不受影响。只有在这个布局下<strong>从 linked worktree 内部新建</strong> worktree 会拒绝（定位不到该把新检出放在哪），此时先用 <code>git worktree add</code> 手工创建，再用 <code>enterWorktree({ path })</code> 切入（或从主检出启动 <code>nova --worktree</code>）。</li>
         </ul>
         <div class="callout callout-info">
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
-          <div><p><code>/worktree</code> 切的是<strong>当前会话的检出</strong>，<code>/resume</code> 切的是<strong>会话</strong>。想跨 worktree 恢复某次对话，用启动参数 <code>nova --resume &lt;id&gt;</code>。</p></div>
+          <div><p><code>enterWorktree</code> / <code>exitWorktree</code> 切的是<strong>当前会话的检出</strong>，<code>/resume</code> 切的是<strong>会话</strong>。想跨 worktree 恢复某次对话，用启动参数 <code>nova --resume &lt;id&gt;</code>。</p></div>
         </div>
       </section>
 
@@ -1359,7 +1359,7 @@
 
         <h3 class="text-base font-semibold mt-8 mb-3" style="color:var(--text)"><code>worktree</code>（git worktree）</h3>
         <div class="tbl-wrap"><table class="doc"><thead><tr><th>字段</th><th>默认</th><th>说明</th></tr></thead><tbody>
-          <tr><td><code>worktree.enabled</code></td><td><code>true</code></td><td>是否允许 <code>/worktree</code> 与 <code>--worktree</code></td></tr>
+          <tr><td><code>worktree.enabled</code></td><td><code>true</code></td><td>是否允许 worktree 工具（<code>enterWorktree</code> / <code>exitWorktree</code>）与 <code>--worktree</code></td></tr>
           <tr><td><code>worktree.dir</code></td><td><code>".nova/worktrees"</code></td><td>相对<strong>主检出</strong>根：检出目录父级，每个 worktree 是 <code>&lt;dir&gt;/&lt;名称&gt;</code>（从任何 worktree 启动都一样）。放在仓库内是有意的 —— 落在信任根之下（不二次弹窗）、与仓库同卷（pnpm 硬链接有效），且创建时会把 <code>/&lt;dir&gt;/</code> 写进 <code>$GIT_COMMON_DIR/info/exclude</code></td></tr>
           <tr><td><code>worktree.baseRef</code></td><td><code>"fresh"</code></td><td>新 worktree 的基线，按<strong>启动所在的检出</strong>解析：<code>fresh</code> 用本地缓存的 <code>origin/HEAD</code>（<strong>不联网 fetch</strong>，解析不到退回该检出的 HEAD），<code>head</code> 从该检出当前的本地 HEAD 起</td></tr>
           <tr><td><code>worktree.includeFile</code></td><td><code>".worktreeinclude"</code></td><td>仓库根下的 <code>.gitignore</code> 语法文件，列出要被复制进每个新 worktree 的<strong>被忽略文件</strong>（<code>.env</code> 等）。只有「匹配且被 gitignore」的候选才进入复制列表；复制前还要过目标检出这一关 —— 已跟踪、已存在、在目标中未被忽略的都会跳过并计数</td></tr>

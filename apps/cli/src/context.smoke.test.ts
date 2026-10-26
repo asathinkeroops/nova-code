@@ -1,4 +1,5 @@
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -15,13 +16,14 @@ import {
   settingsSchema,
   type Settings,
 } from "@nova/base";
+import type { ModelClient } from "@nova/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { createContext } from "./context.js";
 import { HeadlessScreen } from "./headless-screen.js";
 import type { CliContext } from "./ctx-types.js";
 import { addWorktree, runGit } from "./worktree.js";
 import { resolveSession } from "./session.js";
-import { handleWorktree } from "./commands/worktree.js";
+import { createWorktreeHost } from "./worktree-tools.js";
 import { handleClear } from "./commands/clear.js";
 
 /**
@@ -78,10 +80,15 @@ function isolatedSettings(sessionDir: string): Settings {
 
 const built: CliContext[] = [];
 
-async function startup(workspaceOverride?: string): Promise<CliContext> {
+async function startup(
+  workspaceOverride?: string,
+  configure?: (settings: Settings) => void,
+): Promise<CliContext> {
   const workspace = workspaceOverride ?? mkdtempSync(join(tmpdir(), "nova-smoke-ws-"));
   const sessionDir = mkdtempSync(join(tmpdir(), "nova-smoke-sessions-"));
-  const ctx = await createContext(isolatedSettings(sessionDir), new HeadlessScreen(), {
+  const settings = isolatedSettings(sessionDir);
+  configure?.(settings);
+  const ctx = await createContext(settings, new HeadlessScreen(), {
     cwd: workspace,
     noTranscript: true,
     noPretty: true,
@@ -150,7 +157,7 @@ describe("createContext — startup wiring", () => {
   });
 });
 
-describe("createContext — workspace switch (/worktree)", () => {
+describe("createContext — workspace switch (worktree)", () => {
   it("moves the session into a worktree and fences the main checkout", async () => {
     const repo = await makeRepo();
     try {
@@ -178,6 +185,22 @@ describe("createContext — workspace switch (/worktree)", () => {
       });
       expect(inside.reason ?? "").not.toMatch(/main checkout/);
       expect(ctx.worktree?.path).toBe(created.path);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  it("advertises the worktree tools to the model", async () => {
+    const repo = await makeRepo();
+    try {
+      const ctx = await startup(repo);
+      const names = ctx.tools.definitions().map((tool) => tool.name);
+      expect(names).toContain("enterWorktree");
+      expect(names).toContain("exitWorktree");
+      // The guidance is rendered once against the final registry; both tool
+      // names prove it reached the frozen tool-guidance block.
+      expect(ctx.toolsGuidance).toContain("enterWorktree");
+      expect(ctx.toolsGuidance).toContain("exitWorktree");
     } finally {
       rmSync(repo, { recursive: true, force: true });
     }
@@ -264,8 +287,8 @@ describe("createContext — file tools touch the path the gate approved (WT17)",
   }, 30_000);
 });
 
-describe("createContext — worktree command handlers", () => {
-  it("/worktree new builds from the CURRENT checkout (WT09)", async () => {
+describe("createContext — worktree tool handlers", () => {
+  it("enterWorktree builds from the CURRENT checkout (WT09)", async () => {
     const repo = await makeRepo();
     try {
       const first = await addWorktree({
@@ -288,7 +311,7 @@ describe("createContext — worktree command handlers", () => {
       writeFileSync(join(first.path, ".worktreeinclude"), ".env\n");
 
       const ctx = await startup(first.path);
-      await handleWorktree(ctx, "new second from HEAD");
+      await createWorktreeHost(ctx).enter({ name: "second", from: "HEAD" });
 
       const second = join(repo, ".nova", "worktrees", "second");
       expect(ctx.workspace).toBe(second);
@@ -320,6 +343,136 @@ describe("createContext — worktree command handlers", () => {
     } finally {
       rmSync(repo, { recursive: true, force: true });
     }
+  }, 30_000);
+
+  it("applies a tool-driven switch to later tools in the same turn (WTT01)", async () => {
+    const repo = await makeRepo();
+    try {
+      const ctx = await startup(repo, (settings) => {
+        settings.permissions.rules.push(
+          { tool: "enterWorktree", effect: "allow" },
+          { tool: "exitWorktree", effect: "allow" },
+        );
+      });
+      const systems: string[] = [];
+      let calls = 0;
+      const model: ModelClient = {
+        async call(req) {
+          systems.push(req.system);
+          calls += 1;
+          if (calls === 1) {
+            return {
+              content: [
+                {
+                  type: "tool_use",
+                  id: "enter",
+                  name: "enterWorktree",
+                  input: { name: "isolated", from: "HEAD" },
+                },
+              ],
+              stopReason: "tool_use",
+            };
+          }
+          if (calls === 2) {
+            return {
+              content: [
+                {
+                  type: "tool_use",
+                  id: "write-in-worktree",
+                  name: "write",
+                  input: { path: "review-marker.txt", content: "written after enter\n" },
+                },
+              ],
+              stopReason: "tool_use",
+            };
+          }
+          if (calls === 3) {
+            return {
+              content: [{ type: "tool_use", id: "exit", name: "exitWorktree", input: {} }],
+              stopReason: "tool_use",
+            };
+          }
+          if (calls === 4) {
+            return {
+              content: [
+                {
+                  type: "tool_use",
+                  id: "write-in-main",
+                  name: "write",
+                  input: { path: "after-exit.txt", content: "back in main\n" },
+                },
+              ],
+              stopReason: "tool_use",
+            };
+          }
+          return { content: [{ type: "text", text: "done" }], stopReason: "end_turn" };
+        },
+      };
+      // The agent reads `ctx.model` live, so replacing it drives the real loop.
+      ctx.model = model;
+
+      const result = await ctx.agent.runTurn("do it");
+      expect(result.ok).toBe(true);
+
+      const worktree = join(repo, ".nova", "worktrees", "isolated");
+      // The relative write after `enterWorktree` must land in the worktree, not
+      // in the main checkout the turn started in.
+      expect(existsSync(join(worktree, "review-marker.txt"))).toBe(true);
+      expect(existsSync(join(repo, "review-marker.txt"))).toBe(false);
+      // And after `exitWorktree`, the same rule in reverse.
+      expect(existsSync(join(repo, "after-exit.txt"))).toBe(true);
+      expect(existsSync(join(worktree, "after-exit.txt"))).toBe(false);
+
+      // The prompt follows the epoch, not the turn's initial snapshot.
+      expect(systems[1]?.split("\n")[0]).toContain(worktree);
+      expect(systems[3]?.split("\n")[0]).toContain(repo);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  it("serializes concurrent workspace switches (WTT02)", async () => {
+    const repo = await makeRepo();
+    try {
+      const a = await addWorktree({ repo, name: "a", dir: ".nova/worktrees", baseRef: "head" });
+      const b = await addWorktree({ repo, name: "b", dir: ".nova/worktrees", baseRef: "head" });
+      const ctx = await startup(repo);
+
+      await Promise.all([ctx.setWorkspace(a.path), ctx.setWorkspace(b.path)]);
+
+      // The last queued switch wins as a unit — never a mix of A's permission
+      // roots with B's workspace or session binding.
+      expect(ctx.workspace).toBe(b.path);
+      expect(ctx.worktree?.path).toBe(b.path);
+      expect(await readSessionWorkspace(ctx.session)).toBe(b.path);
+      const writeInB = await ctx.checkPermission("write", { path: join(b.path, "x.txt") });
+      expect(writeInB.granted).toBe(true);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  it("denies creating a worktree in plan mode even with an allow rule (WTT03)", async () => {
+    const ctx = await startup(undefined, (settings) => {
+      settings.permissions.rules.push(
+        { tool: "enterWorktree", effect: "allow" },
+        { tool: "exitWorktree", effect: "allow" },
+      );
+    });
+    ctx.screen.setPermissionMode("plan");
+
+    const create = await ctx.checkPermission("enterWorktree", { name: "plan-proof" });
+    expect(create.granted).toBe(false);
+    expect(create.reason).toMatch(/plan mode/i);
+
+    // Switching to an existing checkout is not a write; exit must stay
+    // callable or a plan session could be trapped in a worktree.
+    const switchExisting = await ctx.checkPermission("enterWorktree", {
+      path: "/tmp/existing-worktree",
+    });
+    expect(switchExisting.granted).toBe(true);
+    const exit = await ctx.checkPermission("exitWorktree", {});
+    expect(exit.granted).toBe(true);
   }, 30_000);
 });
 
@@ -381,7 +534,7 @@ describe("createContext — separate git dir layout", () => {
       const ctx = await startup(work);
       expect(ctx.worktree).toBeNull();
 
-      await handleWorktree(ctx, "new feat");
+      await createWorktreeHost(ctx).enter({ name: "feat" });
 
       const target = join(work, ".nova", "worktrees", "feat");
       expect(ctx.workspace).toBe(target);

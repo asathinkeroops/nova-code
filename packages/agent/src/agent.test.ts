@@ -503,6 +503,41 @@ describe("createAgent.runTurn", () => {
     expect(result.ok).toBe(false);
     expect(result.aborted).toBe(true);
   });
+
+  it("keeps the system prompt byte-identical across iterations within one epoch", async () => {
+    const messagesPath = join(tmp, "messages.jsonl");
+    const transcriptPath = join(tmp, "transcript.jsonl");
+    let builds = 0;
+    const model = mockModel([
+      {
+        content: [{ type: "tool_use", id: "t1", name: "echo", input: { msg: "hi" } }],
+        stopReason: "tool_use",
+      },
+      { content: [{ type: "text", text: "done" }], stopReason: "end_turn" },
+    ]);
+    const agent = assembleAgent(
+      makeOptions({
+        model,
+        messagesPath,
+        transcriptPath,
+        systemPrompt: {
+          epoch: () => "epoch-1",
+          system: async () => {
+            builds += 1;
+            return "SYSTEM";
+          },
+        },
+      }),
+    );
+
+    const result = await agent.runTurn("hello");
+
+    expect(result.ok).toBe(true);
+    // `refreshContext` runs every iteration; the system prompt is only rebuilt
+    // when the epoch moves. Two calls here would mean the prefix cache resets
+    // on every tool round-trip.
+    expect(builds).toBe(1);
+  });
 });
 
 describe("createAgent · hooks", () => {

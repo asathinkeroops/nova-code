@@ -202,7 +202,7 @@ async function sameRepository(a: string, b: string): Promise<boolean> {
  * `--resume` re-enters the workspace the session was last bound to when that
  * directory still exists and is a checkout of the same repository — a worktree
  * session picked up from the main checkout continues in its worktree, which is
- * what makes `/worktree` sessions resumable at all. A missing directory clears
+ * what makes worktree sessions resumable at all. A missing directory clears
  * the binding and continues where nova was launched; a directory belonging to
  * ANOTHER repository is still refused (a session must never teleport tools into
  * an unrelated project).

@@ -8,6 +8,7 @@ import { grepTool } from "./grep.js";
 import { createLspTool } from "./lsp.js";
 import { createLoadSkillTool, LOAD_SKILL_PROMPT } from "./load-skill.js";
 import { PLAN_MODE_PROMPT } from "./plan-mode.js";
+import { WORKTREE_PROMPT } from "./worktree/index.js";
 import { readTool } from "./read.js";
 import { getSkill, getSkillList, type SkillsOptions } from "./skills.js";
 import { type TaskStore } from "./task/store.js";
@@ -159,6 +160,20 @@ export {
   type PlanExitDecision,
   type PlanModeDeps,
 } from "./plan-mode.js";
+export {
+  createWorktreeTools,
+  createEnterWorktreeTool,
+  createExitWorktreeTool,
+  ENTER_WORKTREE_TOOL_NAME,
+  EXIT_WORKTREE_TOOL_NAME,
+  WORKTREE_TOOL_NAMES,
+  WORKTREE_PROMPT,
+  type EnterWorktreeInput,
+  type EnterWorktreeResult,
+  type ExitWorktreeInput,
+  type WorktreeHost,
+  type WorktreeSessionInfo,
+} from "./worktree/index.js";
 
 /**
  * System-prompt guidance for the builtin tools, one section per family.
@@ -180,6 +195,7 @@ export const BUILTIN_TOOL_PROMPTS: readonly ToolPromptSection[] = [
   MONITOR_PROMPT,
   LOAD_SKILL_PROMPT,
   PLAN_MODE_PROMPT,
+  WORKTREE_PROMPT,
 ];
 
 /**

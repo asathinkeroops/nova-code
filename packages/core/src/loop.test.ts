@@ -1308,3 +1308,116 @@ describe("agentLoop · ports", () => {
     });
   });
 });
+
+describe("agentLoop · exclusive tools and per-iteration context", () => {
+  it("runs an exclusive tool alone, defers its siblings, and refreshes context next iteration", async () => {
+    const { hooks } = makeHooks();
+    let phase = 0;
+    const change: ToolDefinition = {
+      name: "changeWorkspace",
+      description: "move the session",
+      inputSchema: z.object({}),
+      exclusive: true,
+    };
+    const inspect: ToolDefinition = {
+      name: "inspect",
+      description: "read the current workspace",
+      inputSchema: z.object({}),
+    };
+
+    const systems: string[] = [];
+    let calls = 0;
+    const model: ModelClient = {
+      async call(req) {
+        systems.push(req.system);
+        calls += 1;
+        if (calls === 1) {
+          return {
+            content: [
+              { type: "tool_use", id: "switch", name: "changeWorkspace", input: {} },
+              { type: "tool_use", id: "sibling", name: "inspect", input: {} },
+            ],
+            stopReason: "tool_use",
+          };
+        }
+        if (calls === 2) {
+          return {
+            content: [{ type: "tool_use", id: "retry", name: "inspect", input: {} }],
+            stopReason: "tool_use",
+          };
+        }
+        return { content: [{ type: "text", text: "done" }], stopReason: "end_turn" };
+      },
+    };
+
+    const seen: string[] = [];
+    const exec: ToolExecutor = async (use, ctx) => {
+      seen.push(`${use.name}@${ctx.cwd}`);
+      if (use.name === "changeWorkspace") phase = 1;
+      return { type: "tool_result", tool_use_id: use.id, content: "ok" };
+    };
+
+    const result = await agentLoop({
+      ...baseOpts(hooks),
+      system: "system-old",
+      tools: [change, inspect],
+      model,
+      executeTool: exec,
+      refreshContext: async () => ({
+        system: phase ? "system-new" : "system-old",
+        toolContext: { cwd: phase ? "/new" : "/old" },
+      }),
+    });
+
+    // The sibling was not run in the switch's batch; it was retried after the
+    // refresh, against the new checkout.
+    expect(seen).toEqual(["changeWorkspace@/old", "inspect@/new"]);
+    expect(systems).toEqual(["system-old", "system-new", "system-new"]);
+
+    const deferred = result.messages
+      .flatMap((message) => (Array.isArray(message.content) ? message.content : []))
+      .find((block) => block.type === "tool_result" && block.tool_use_id === "sibling");
+    expect(deferred).toMatchObject({ is_error: true });
+    expect(JSON.stringify(deferred)).toContain("Deferred");
+  });
+
+  it("defers a second exclusive switch in the same response", async () => {
+    const { hooks } = makeHooks();
+    const first: ToolDefinition = {
+      name: "switchA",
+      description: "first switch",
+      inputSchema: z.object({}),
+      exclusive: true,
+    };
+    const second: ToolDefinition = {
+      name: "switchB",
+      description: "second switch",
+      inputSchema: z.object({}),
+      exclusive: true,
+    };
+    const exec = vi.fn(makeExecutor());
+    const result = await agentLoop({
+      ...baseOpts(hooks),
+      tools: [first, second],
+      model: mockModel([
+        {
+          content: [
+            { type: "tool_use", id: "a", name: "switchA", input: {} },
+            { type: "tool_use", id: "b", name: "switchB", input: {} },
+          ],
+          stopReason: "tool_use",
+        },
+        { content: [{ type: "text", text: "done" }], stopReason: "end_turn" },
+      ]),
+      executeTool: exec,
+    });
+
+    expect(exec).toHaveBeenCalledTimes(1);
+    expect(exec.mock.calls[0]?.[0]).toMatchObject({ name: "switchA" });
+    const deferred = result.messages
+      .flatMap((message) => (Array.isArray(message.content) ? message.content : []))
+      .find((block) => block.type === "tool_result" && block.tool_use_id === "b");
+    expect(deferred).toMatchObject({ is_error: true });
+    expect(JSON.stringify(deferred)).toContain("Deferred");
+  });
+});

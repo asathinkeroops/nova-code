@@ -46,6 +46,19 @@ export interface AgentLoopOptions {
   maxTurns: number;
   toolContext: ToolContext;
   /**
+   * Re-read the system prompt and tool context at the start of every
+   * iteration. A tool may move the session's workspace (an `exclusive` tool
+   * such as `enterWorktree`); without this, the rest of the turn would keep
+   * executing with the pre-switch `cwd` while the permission gate reads the
+   * new workspace. Omitted: `system` / `toolContext` stay turn-scoped, which
+   * is the right behavior for hosts that cannot move mid-turn.
+   *
+   * The host is responsible for returning the SAME system string while the
+   * prompt epoch is unchanged — otherwise every iteration would break the
+   * prefix cache.
+   */
+  refreshContext?: () => Promise<{ system: string; toolContext: ToolContext }>;
+  /**
    * Single extension point for every cross-cutting concern: events
    * (`post_*`), policy (`pre_tool_use`, `pre_compact`, `pre_request`),
    * transformation (`post_tool_use`), injection (`pre_continue`).
@@ -121,6 +134,11 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
   let messages = [...opts.messages];
   let turn = 0;
   let forcedFinalTurn = false;
+  let currentSystem = opts.system;
+  let currentToolContext = opts.toolContext;
+  const exclusiveTools = new Set(
+    opts.tools.filter((tool) => tool.exclusive).map((tool) => tool.name),
+  );
   // Consecutive max_tokens continuations granted (see `maxTokensContinuations`).
   let truncationContinuations = 0;
   const totalUsage = {
@@ -159,6 +177,15 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
     }
     turn++;
 
+    // A tool in the previous batch may have moved the session's workspace.
+    // Re-read both halves before the next request; the host guarantees the
+    // same system string while its epoch is unchanged (prefix cache).
+    if (opts.refreshContext) {
+      const refreshed = await opts.refreshContext();
+      currentSystem = refreshed.system;
+      currentToolContext = refreshed.toolContext;
+    }
+
     // ── compaction: port first, then the pre_compact chain ────────────────
     let compactDecision: { messages: MessageParam[] } | undefined;
     let compactSource = "the compactor";
@@ -184,7 +211,7 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
     // ── pre_request (blocking) → model.call → post_request (advisory) ─────
     const requestStartedAt = Date.now();
     const baseRequest = {
-      system: opts.system,
+      system: currentSystem,
       messages,
       tools: forcedFinalTurn ? [] : opts.tools,
       maxTokens: opts.maxTokens,
@@ -219,7 +246,7 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
       res = await opts.model.call({
         ...finalRequest,
         messages: wireMessages,
-        ...(opts.toolContext.signal ? { signal: opts.toolContext.signal } : {}),
+        ...(currentToolContext.signal ? { signal: currentToolContext.signal } : {}),
       });
     } catch (err) {
       const endedAt = Date.now();
@@ -320,9 +347,19 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
     truncationContinuations = 0;
 
     // Two-phase tool handling (see prior comment block, unchanged behavior).
+    //
+    // An `exclusive` tool is a batch barrier: only the first one in this
+    // assistant message may execute. Everything else — including a second
+    // switch and ordinary reads/writes — is deferred to the next model
+    // iteration, whose `refreshContext` will have moved `cwd`/system to the
+    // post-switch checkout. Running a sibling here would race the workspace
+    // teardown (and a sibling's permission check was already made against the
+    // pre-switch context).
+    const barrierUse = toolUses.find((use) => exclusiveTools.has(use.name));
     type Phase1Slot =
       | { use: ToolUseBlock; status: "cancelled" }
       | { use: ToolUseBlock; status: "denied"; reason: string }
+      | { use: ToolUseBlock; status: "deferred"; reason: string }
       | { use: ToolUseBlock; status: "granted" };
 
     const slots: Phase1Slot[] = [];
@@ -332,7 +369,18 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
       messages[assistantMsgIdx] = assistantMessage([...priorBlocks, use]);
       await hooks.runAdvisory("post_messages", { messages });
 
-      if (opts.toolContext.signal?.aborted) {
+      if (barrierUse && use.id !== barrierUse.id) {
+        slots.push({
+          use,
+          status: "deferred",
+          reason:
+            `Deferred: ${barrierUse.name} changes the session workspace and must run alone ` +
+            `in a tool batch. Re-issue ${use.name} in your next response, after the switch completes.`,
+        });
+        continue;
+      }
+
+      if (currentToolContext.signal?.aborted) {
         slots.push({ use, status: "cancelled" });
         continue;
       }
@@ -342,7 +390,7 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
       // compaction): the gate's denial short-circuits, its grant does not.
       let denied: { allow: false; reason: string } | undefined;
       if (opts.permission) {
-        const verdict = await opts.permission.check(use, opts.toolContext);
+        const verdict = await opts.permission.check(use, currentToolContext);
         if (!verdict.granted) denied = { allow: false, reason: verdict.reason ?? "denied" };
       }
       if (!denied) denied = await hooks.runBlocking("pre_tool_use", { use });
@@ -383,12 +431,14 @@ export async function agentLoop(opts: AgentLoopOptions): Promise<LoopResult> {
           result = errorToolResult(slot.use.id, "Tool execution cancelled");
         } else if (slot.status === "denied") {
           result = errorToolResult(slot.use.id, `Permission denied: ${slot.reason}`);
-        } else if (opts.toolContext.signal?.aborted) {
+        } else if (slot.status === "deferred") {
+          result = errorToolResult(slot.use.id, slot.reason);
+        } else if (currentToolContext.signal?.aborted) {
           result = errorToolResult(slot.use.id, "Tool execution cancelled");
         } else {
           try {
             const outcome = normalizeToolExecution(
-              await opts.executeTool(slot.use, opts.toolContext),
+              await opts.executeTool(slot.use, currentToolContext),
             );
             result = outcome.result;
             followupMessages = outcome.followupMessages ?? [];

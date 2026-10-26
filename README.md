@@ -188,6 +188,7 @@ DeepSeek 的内置模型梯度是 `lite` → `deepseek-flash`（原生多模态�
 | `createTask` / `updateTask` / `getTaskList` / `clearTaskList` | 跨会话任务计划，支持依赖 |
 | `askUserQuestion` | 向用户提多选问题并等待作答 |
 | `createSubAgent` | 委派一个有独立上下文和工具集的 `explore` / `plan` / `general-purpose` 或自定义子 agent |
+| `enterWorktree` / `exitWorktree` | 模型按自然语言创建/复用或切换 git worktree，并把**当前会话**原地迁过去（工具 cwd、权限边界、沙箱白名单、LSP 与 system prompt 一起走）；`exitWorktree` 回到主检出。切换是独占操作，同批其他工具调用会延后到下一次响应；plan 模式拒绝按 `name` 创建/复用。两个工具都不会暴露给子 agent |
 | `enterPlanMode` / `exitPlanMode` | 模型自己进入只读的 plan 模式先出方案；方案写好后请用户确认才退出并动手。就算模型忘了调 `exitPlanMode`，一轮结束时 nova 也会自己弹确认框，同意即恢复原权限档并接着实现 |
 | `cronCreate` / `cronList` / `cronDelete` | 按间隔或 cron 表达式定时跑 prompt 或 `/命令`；会话内生效，`/resume` 后自动重挂 |
 | `loadSkill` | 按需加载 skill |
@@ -212,7 +213,6 @@ DeepSeek 的内置模型梯度是 `lite` → `deepseek-flash`（原生多模态�
 | `/commands` · `/skills` · `/lsp` | 查看或重载命令、查看 skills 与语言服务器 |
 | `/mcp` · `/plugin` | MCP 菜单可鉴权、重连、退出登录和查看工具；插件菜单查看本会话已加载贡献（安装 / 启停走 `nova plugin`） |
 | `/sandbox` | 本会话内开关 OS 命令沙箱（`on` / `off`） |
-| `/worktree` | 管理 git worktree：`new` / `enter` 把**当前会话**原地切到那个检出（不重启、不换 session），另有 `list` / `remove` / `prune` |
 | `/loop` | 按间隔重复跑某条 prompt 或命令（`/loop <间隔> <prompt\|/cmd>`，`/loop stop` 停止） |
 | `/doctor` | 体检全局配置（JSON/schema、模型/key、hooks、MCP），报告问题，可交给 agent 就地修复 |
 | `/usage` · `/context` | 查看 token 用量与估算成本、缓存命中、上下文占用 |
@@ -220,7 +220,7 @@ DeepSeek 的内置模型梯度是 `lite` → `deepseek-flash`（原生多模态�
 | `/predict` | 开关下一条输入预测 |
 | `/exit` · `/quit` | 退出 |
 
-每个 session 在创建时绑定当前 workspace。`nova -c` 和 `/resume` 只查找当前 workspace 的 session；`nova --resume <id>` 或 `/resume <id>` 遇到其他 workspace 的 session 时会拒绝恢复并提示其绑定目录。唯一例外是 `/worktree`：切到某个检出后绑定随之移动，`nova --resume <id>` 因此会回到那次会话结束所在的 worktree（同一仓库才允许）。
+每个 session 在创建时绑定当前 workspace。`nova -c` 和 `/resume` 只查找当前 workspace 的 session；`nova --resume <id>` 或 `/resume <id>` 遇到其他 workspace 的 session 时会拒绝恢复并提示其绑定目录。唯一例外是 worktree 工具：`enterWorktree` / `exitWorktree` 切到某个检出后绑定随之移动，`nova --resume <id>` 因此会回到那次会话结束所在的 worktree（同一仓库才允许）。
 
 ### 核心特性
 
