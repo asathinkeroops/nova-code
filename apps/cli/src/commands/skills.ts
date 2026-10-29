@@ -1,4 +1,3 @@
-import { getSkillList } from "@nova/tools";
 import { accent, ACCENT_HEX, dim } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { t } from "../i18n/index.js";
@@ -18,17 +17,14 @@ export async function handleSkills(ctx: CliContext): Promise<void> {
       topRuleColor: ACCENT_HEX,
     });
 
-  if (!ctx.settings.skills.enabled) {
+  if (!ctx.skillsIndex.enabled) {
     await notice(t.skills.disabled);
     return;
   }
-  const items = getSkillList({
-    cwd: ctx.workspace,
-    ...(ctx.settings.skills.projectDirs ? { projectDirs: ctx.settings.skills.projectDirs } : {}),
-    ...(ctx.settings.skills.userPaths ? { userPaths: ctx.settings.skills.userPaths } : {}),
-    ...(ctx.settings.skills.extraDirs ? { extraDirs: ctx.settings.skills.extraDirs } : {}),
-    logger: ctx.logger,
-  });
+  // The provider's snapshot, not a fresh scan: `/skills`, the injected index
+  // and the `/{name}` commands must agree about which skills exist. Run
+  // `/commands reload` to refresh all three.
+  const items = ctx.skillsIndex.list();
   if (items.length === 0) {
     await notice(t.skills.none);
     return;

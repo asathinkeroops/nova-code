@@ -1,9 +1,13 @@
+import { createHash } from "node:crypto";
 import type { SkillListItem } from "@nova/tools";
 
 const HEADER = "<available-skills>";
 const FOOTER =
   "Use the `loadSkill` tool with `name` to read full instructions before acting.";
 const CLOSE = "</available-skills>";
+const CHANGED_LINE = "skills has changed";
+const EMPTY_LINE = "no skills are currently available";
+const EMPTY_VERSION = "empty";
 
 export interface SkillsBlockOptions {
   /**
@@ -37,10 +41,55 @@ function capDescription(desc: string, max: number): string {
   return `${buf.subarray(0, end).toString("utf8")}${ellipsis}`;
 }
 
+interface LineOptions {
+  budgetBytes: number;
+  maxDescriptionBytes: number;
+  /** Bytes the surrounding scaffolding costs before any entry is rendered. */
+  scaffoldBytes: number;
+}
+
+/**
+ * The entry lines, sorted and budget-degraded. Pure: the same items always
+ * produce the same lines, which is what keeps the injected message byte-stable
+ * (and therefore the version fingerprint meaningful).
+ */
+function skillLines(items: SkillListItem[], opts: LineOptions): string[] {
+  const sorted = [...items].sort((a, b) => a.name.localeCompare(b.name));
+
+  const entries = sorted.map((s) => {
+    const nameOnly = `- ${s.name}`;
+    const full = `${nameOnly}: ${capDescription(s.description, opts.maxDescriptionBytes)}`;
+    return { nameOnly, full, cost: bytes(full) - bytes(nameOnly) };
+  });
+
+  // +1 per entry for the newline joining it to the next line.
+  const nameOnlyTotal = entries.reduce((n, e) => n + bytes(e.nameOnly) + 1, opts.scaffoldBytes);
+  const fullTotal = entries.reduce((n, e) => n + e.cost, nameOnlyTotal);
+
+  if (fullTotal <= opts.budgetBytes) return entries.map((e) => e.full);
+
+  // Grant descriptions greedily from the cheapest up. Ties break on name via
+  // the stable sort over the already name-sorted array, keeping the result
+  // deterministic for the prefix cache.
+  let remaining = opts.budgetBytes - nameOnlyTotal;
+  const keepFull = new Set<number>();
+  const order = entries.map((e, i) => ({ i, cost: e.cost })).sort((a, b) => a.cost - b.cost);
+  for (const { i, cost } of order) {
+    if (cost > remaining) continue;
+    keepFull.add(i);
+    remaining -= cost;
+  }
+  return entries.map((e, i) => (keepFull.has(i) ? e.full : e.nameOnly));
+}
+
 /**
  * Render the skill index as an `<available-skills>` block for the system
  * prompt. Returns `""` for an empty list so the caller can drop the section
  * entirely.
+ *
+ * Kept for the legacy system-prompt path and its tests; the message injector
+ * uses {@link renderSkillsMessage}, which omits the footer (the system prompt
+ * carries that instruction once) and adds a version fingerprint.
  *
  * Budget behaviour mirrors Claude Code: when the full listing does not fit,
  * entries are degraded to **name-only** (`- name`) rather than dropped, so
@@ -57,39 +106,55 @@ function capDescription(desc: string, max: number): string {
  */
 export function renderSkillsBlock(items: SkillListItem[], opts: SkillsBlockOptions): string {
   if (items.length === 0) return "";
-  const sorted = [...items].sort((a, b) => a.name.localeCompare(b.name));
-
-  // Reserve bytes for the fixed scaffolding: header + footer + close + the
-  // three newlines that join them.
-  const scaffold = bytes(HEADER) + bytes(FOOTER) + bytes(CLOSE) + 3;
-
-  const entries = sorted.map((s) => {
-    const nameOnly = `- ${s.name}`;
-    const full = `${nameOnly}: ${capDescription(s.description, opts.maxDescriptionBytes)}`;
-    return { nameOnly, full, cost: bytes(full) - bytes(nameOnly) };
+  const lines = skillLines(items, {
+    ...opts,
+    // Reserve bytes for the fixed scaffolding: header + footer + close + the
+    // three newlines that join them.
+    scaffoldBytes: bytes(HEADER) + bytes(FOOTER) + bytes(CLOSE) + 3,
   });
+  return `${HEADER}\n${lines.join("\n")}\n${FOOTER}\n${CLOSE}`;
+}
 
-  // +1 per entry for the newline joining it to the next line.
-  const nameOnlyTotal = entries.reduce((n, e) => n + bytes(e.nameOnly) + 1, scaffold);
-  const fullTotal = entries.reduce((n, e) => n + e.cost, nameOnlyTotal);
+export interface RenderedSkillsMessage {
+  /** The message body used on first injection. */
+  text: string;
+  /** The same list preceded by the "skills has changed" marker. */
+  changedText: string;
+  /**
+   * Fingerprint of the LIST PAYLOAD only (not the marker, not the footer).
+   * Stable for the same rendered list, so a `meta.version` comparison tells
+   * the injector whether the model can still see the current content.
+   */
+  version: string;
+}
 
-  let lines: string[];
-  if (fullTotal <= opts.budgetBytes) {
-    lines = entries.map((e) => e.full);
-  } else {
-    // Grant descriptions greedily from the cheapest up. Ties break on name via
-    // the stable sort over the already name-sorted array, keeping the result
-    // deterministic for the prefix cache.
-    let remaining = opts.budgetBytes - nameOnlyTotal;
-    const keepFull = new Set<number>();
-    const order = entries.map((e, i) => ({ i, cost: e.cost })).sort((a, b) => a.cost - b.cost);
-    for (const { i, cost } of order) {
-      if (cost > remaining) continue;
-      keepFull.add(i);
-      remaining -= cost;
-    }
-    lines = entries.map((e, i) => (keepFull.has(i) ? e.full : e.nameOnly));
+/**
+ * Render the skill index as a standalone message. The model reads it from the
+ * conversation rather than from the system prompt, so a skill-set change costs
+ * a tail append instead of a full prefix-cache reset.
+ */
+export function renderSkillsMessage(
+  items: SkillListItem[],
+  opts: SkillsBlockOptions,
+): RenderedSkillsMessage {
+  if (items.length === 0) {
+    return {
+      text: `${HEADER}\n${EMPTY_LINE}\n${CLOSE}`,
+      changedText: `${HEADER}\n${CHANGED_LINE}\n${EMPTY_LINE}\n${CLOSE}`,
+      version: EMPTY_VERSION,
+    };
   }
 
-  return `${HEADER}\n${lines.join("\n")}\n${FOOTER}\n${CLOSE}`;
+  const lines = skillLines(items, {
+    ...opts,
+    // header + close + the two newlines joining them; no footer in the message.
+    scaffoldBytes: bytes(HEADER) + bytes(CLOSE) + 2,
+  });
+  const payload = lines.join("\n");
+  const version = createHash("sha1").update(payload).digest("hex").slice(0, 12);
+  return {
+    text: `${HEADER}\n${payload}\n${CLOSE}`,
+    changedText: `${HEADER}\n${CHANGED_LINE}\n${payload}\n${CLOSE}`,
+    version,
+  };
 }

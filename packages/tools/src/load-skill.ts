@@ -28,7 +28,12 @@ export const LOAD_SKILL_PROMPT: ToolPromptSection = staticSection({
   id: "load-skill",
   order: 50,
   requires: ["loadSkill"],
-  text: "- Load specialized knowledge with loadSkill.",
+  // The index itself is a synthetic message, not part of this block: it can
+  // change mid-session, and the system prompt must stay byte-identical for the
+  // prefix cache. This line only tells the model where to look.
+  text:
+    "- Load specialized knowledge with loadSkill. The available skills list arrives as " +
+    "`<available-skills>` messages in the conversation; the newest one is authoritative.",
 });
 
 const inputSchema = z.object({

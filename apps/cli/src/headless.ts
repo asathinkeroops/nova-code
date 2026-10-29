@@ -1,4 +1,4 @@
-import type { MessageParam } from "@nova/core";
+import type { MessageParam, SyntheticKind } from "@nova/core";
 import type { Settings } from "@nova/base";
 import { createContext, type CliRuntimeOptions } from "./context.js";
 import { emitInit, registerHeadlessStream } from "./headless-events.js";
@@ -8,8 +8,9 @@ import type { PermissionMode } from "./permissions.js";
 
 /**
  * - `text`  — print only the final assistant text (default).
- * - `json`  — one JSON object with the run outcome plus the full `messages`
- *   trajectory (tool calls and results included).
+ * - `json`  — one JSON object with the run outcome plus the replayable
+ *   `messages` trajectory (tool calls and results included; internal hints
+ *   filtered, execution evidence kept — see {@link replayableMessages}).
  * - `jsonl` — stream one JSON event per line as each step happens, then a final
  *   `result` line. Best for eval harnesses that consume the run live.
  */
@@ -40,6 +41,38 @@ function finalAssistantText(messages: MessageParam[]): string {
       .trim();
   }
   return "";
+}
+
+/**
+ * Synthetic kinds that are EXECUTION EVIDENCE rather than internal guidance and
+ * therefore stay in the exported trajectory:
+ *
+ * - `monitor-notification` — the only carrier of a monitor's event lines; there
+ *   is no corresponding `tool_result`.
+ * - `background-notification` — the only notice that a command finished, and
+ *   (when no log file is configured) the only carrier of its output.
+ * - `shell-escape` — the output of a user-typed `!cmd`, which becomes model
+ *   input on the next turn; dropping it removes what the model actually read.
+ * - `compacted` — structural: dropping the boundary would make the retained
+ *   pre-boundary history look as if it had been fed to the model.
+ *
+ * Everything else — the skills index, todo/task reminders, plan-mode notices,
+ * interruption/continuation markers, goal-eval and stop-hook prompts — is
+ * internal context. It stays in `messages.jsonl` / `transcript.jsonl` for
+ * replay, but must not leak into an eval harness's JSON (the skills index in
+ * particular carries paths and project-specific notes).
+ */
+const REPLAYABLE_SYNTHETIC_KINDS: ReadonlySet<SyntheticKind> = new Set([
+  "compacted",
+  "monitor-notification",
+  "background-notification",
+  "shell-escape",
+]);
+
+export function replayableMessages(messages: MessageParam[]): MessageParam[] {
+  return messages.filter(
+    (message) => !message.meta?.synthetic || REPLAYABLE_SYNTHETIC_KINDS.has(message.meta.kind),
+  );
 }
 
 /**
@@ -115,8 +148,10 @@ export async function runHeadless(settings: Settings, opts: HeadlessOptions): Pr
     // the intermediate events already streamed during the run.
     process.stdout.write(`${JSON.stringify({ type: "result", ...outcome })}\n`);
   } else if (opts.outputFormat === "json") {
-    // One object with the outcome plus the full trajectory (tool calls/results).
-    const payload = { ...outcome, messages: result.messages };
+    // One object with the outcome plus the replayable trajectory. Injections
+    // (reminders, notifications, the skills index) are internal context, not
+    // part of the public output; the compaction boundary is retained.
+    const payload = { ...outcome, messages: replayableMessages(result.messages) };
     process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
   } else {
     if (text) process.stdout.write(`${text}\n`);

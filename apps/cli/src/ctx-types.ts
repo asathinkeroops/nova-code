@@ -29,6 +29,7 @@ import type { UserHooks } from "./user-hooks.js";
 import type { SnapshotStore } from "./snapshots.js";
 import type { WorktreeBinding } from "./worktree.js";
 import type { Screen, Spinner } from "./screen.js";
+import type { SkillsIndexProvider } from "./skills-index.js";
 
 export interface CliRuntimeOptions {
   cwd?: string;
@@ -189,16 +190,18 @@ export interface CliContext {
    */
   readonly setWorkspace: (workspace: string) => Promise<WorktreeBinding | null>;
   /**
-   * Pre-rendered `<available-skills>` block. Not injected on its own — it is
-   * one section of {@link toolsGuidance}; kept here so `/context` can report the
-   * skills index as its own row. Empty when skills are disabled or no SKILL.md
-   * files were found.
+   * The current `<available-skills>` snapshot. It is injected into the
+   * CONVERSATION as a synthetic user message (see `makeSkillsIndexReminder`),
+   * never into the system prompt: a skill edit must cost a tail append, not a
+   * prefix-cache reset. Shared by the injector, `/skills` and `/commands
+   * reload` so every view reads the same refreshed cache entry. Empty when
+   * skills are disabled.
    */
-  readonly skillsBlock: string;
+  readonly skillsIndex: SkillsIndexProvider;
   /**
    * The `<tool-guidance>` block injected into the system prompt: every
-   * `ToolPromptSection` whose tools survived into the final registry, the
-   * skills index included.
+   * `ToolPromptSection` whose tools survived into the final registry. The
+   * skills index is NOT part of it — it travels as a message.
    *
    * Assigned ONCE in `createContext`, right after `applyToolDenylist` — the
    * point where MCP, `createSubAgent`, the plan-mode pair and

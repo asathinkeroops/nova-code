@@ -292,6 +292,22 @@ export function getSkillList(opts?: SkillsOptions): SkillListItem[] {
   return ensureScanned(opts).list;
 }
 
+/**
+ * Re-scan every root and replace the cached entry for this options set.
+ *
+ * `getSkillList` memoizes by options fingerprint and never invalidates, which
+ * is what keeps normal turns cheap — but it also means a skill added or edited
+ * on disk is invisible until the process restarts. Hosts that offer an explicit
+ * refresh (`/commands reload`) call this, then read the same options through
+ * `getSkillList` / `getSkill` so every view agrees on the new list.
+ */
+export function refreshSkills(opts?: SkillsOptions): SkillListItem[] {
+  const resolved = resolveOpts(opts);
+  const entry = scan(resolved, opts?.logger);
+  cache.set(cacheKey(resolved), entry);
+  return entry.list;
+}
+
 export interface LoadedSkill {
   body: string;
   location: string;

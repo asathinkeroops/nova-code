@@ -69,6 +69,7 @@ export type ContentBlock = z.infer<typeof contentBlockSchema>;
 export const syntheticKindSchema = z.enum([
   "todo-reminder",
   "task-reminder",
+  "skills-index",
   "background-notification",
   "monitor-notification",
   "plan-mode",
@@ -110,6 +111,14 @@ export const messageMetaSchema = z.preprocess(
   z.object({
     synthetic: z.literal(true),
     kind: syntheticKindSchema,
+    /**
+     * Opaque fingerprint of the injected content, present only on injections
+     * that need to detect whether the model can still see their current
+     * version (the skills index). Never sent to the model — `toWireMessages`
+     * strips `meta` — and never interpreted by core; the producer owns the
+     * format. Optional so every pre-existing persisted message stays valid.
+     */
+    version: z.string().optional(),
   }),
 );
 

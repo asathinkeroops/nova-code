@@ -9,6 +9,7 @@ import type { MemoryBundle } from "./memory.js";
 import {
   blocksOf,
   extractText,
+  markSynthetic,
   staticPrompt,
   type AskUserFn,
   type Compactor,
@@ -24,6 +25,7 @@ import {
 } from "@nova/core";
 import { Transcript, type Logger } from "@nova/base";
 import type { AgentDefinition, AgentRegistry } from "./definitions.js";
+import { isCompactionMarker } from "./compact.js";
 import { buildSubAgentSystemPrompt } from "./subagent-system-prompt.js";
 
 export const SUBAGENT_TOOL_NAME = "createSubAgent";
@@ -140,6 +142,15 @@ export interface SubAgentDeps {
   /** Read per-spawn so a session-boundary memory reload reaches new sub-agents. */
   getMemory: () => MemoryBundle;
   /**
+   * The host's current skill-index snapshot, or undefined when skills are off
+   * or the list is empty. The child receives it as a synthetic message before
+   * its first request — the index is no longer in the system prompt, and a
+   * child has its own history. The injector additionally gates on the CHILD's
+   * filtered tool set, so a read-only/allow-listed child without `loadSkill`
+   * is never taught a list it cannot read.
+   */
+  getSkillsIndex?: () => { text: string; version: string } | undefined;
+  /**
    * Renders the tool-guidance block from the CHILD's tool set (see
    * `SessionMemoryOptions.renderToolsGuidance`). Called once per spawn, after the
    * set has been filtered — so a read-only sub-agent is never taught the tools
@@ -214,6 +225,57 @@ export interface SubAgentDeps {
    * called in every terminal branch whenever any were consumed.
    */
   onUsage?: (usage: TurnResult["totalUsage"]) => void;
+}
+
+interface SubAgentSkillsIndex {
+  text: string;
+  version: string;
+}
+
+/**
+ * The version of the newest skills index the child can still see. Walks back to
+ * the last compaction boundary, matching the main agent's reminder: anything
+ * before the boundary is outside the model's view.
+ */
+function visibleSkillsVersion(messages: MessageParam[]): string | undefined {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i]!;
+    if (isCompactionMarker(message)) return undefined;
+    if (message.meta?.kind === "skills-index") return message.meta.version;
+  }
+  return undefined;
+}
+
+/**
+ * Keep a child's view of the skill index current. A sub-agent runs one task and
+ * exits, so there is no long-lived loop to version-track against — but it owns
+ * its own history, so the index has to be injected there too. The comparison is
+ * the same visible-history check the main agent uses, which also covers the
+ * (rare) case of a child compacting mid-task.
+ */
+function makeSubAgentSkillsReminder(
+  getSkillsIndex: () => SubAgentSkillsIndex | undefined,
+): (payload: { messages: MessageParam[]; tools: ToolDefinition[] }) =>
+  | { messages: MessageParam[] }
+  | undefined {
+  return ({ messages, tools }) => {
+    // Gate on the CHILD's filtered set, not the parent's: a read-only or
+    // allow-listed child without loadSkill must not be told the list exists.
+    if (!tools.some((tool) => tool.name === "loadSkill")) return undefined;
+    const current = getSkillsIndex();
+    if (!current || current.text === "") return undefined;
+    if (visibleSkillsVersion(messages) === current.version) return undefined;
+    return {
+      messages: [
+        ...messages,
+        markSynthetic(
+          { role: "user", content: [{ type: "text", text: current.text }] },
+          "skills-index",
+          current.version,
+        ),
+      ],
+    };
+  };
 }
 
 export function createSubAgentTool(deps: SubAgentDeps): ToolHandler {
@@ -322,6 +384,13 @@ export function createSubAgentTool(deps: SubAgentDeps): ToolHandler {
         permission,
         compactor: deps.compactor,
       });
+
+      // The skill index lives in the conversation, not the (static) system
+      // prompt, so a child needs its own copy. Registered before runTurn, and
+      // only when the host actually ships skills.
+      if (deps.getSkillsIndex) {
+        agent.on("pre_request", makeSubAgentSkillsReminder(deps.getSkillsIndex));
+      }
 
       // Stream live progress (thinking / tool_use) out to the host, capped at
       // the latest MAX_DETAILS. Only wired when we know the parent tool_use id

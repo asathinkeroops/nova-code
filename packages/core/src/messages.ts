@@ -19,8 +19,15 @@ export function userText(text: string, meta?: MessageMeta): MessageParam {
  * (bubble hiding) and the compaction slice (boundary detection) actually key
  * off, so those decisions no longer depend on matching user-forgeable strings.
  */
-export function markSynthetic(msg: MessageParam, kind: SyntheticKind): MessageParam {
-  return { ...msg, meta: { synthetic: true, kind } };
+export function markSynthetic(
+  msg: MessageParam,
+  kind: SyntheticKind,
+  version?: string,
+): MessageParam {
+  return {
+    ...msg,
+    meta: { synthetic: true, kind, ...(version !== undefined ? { version } : {}) },
+  };
 }
 
 /**
@@ -43,6 +50,7 @@ export function toWireMessages(messages: MessageParam[]): MessageParam[] {
 const LEGACY_TAG_KINDS: ReadonlyArray<readonly [string, SyntheticKind]> = [
   ["<todo-reminder>", "todo-reminder"],
   ["<task-reminder>", "task-reminder"],
+  ["<available-skills>", "skills-index"],
   // Pre-split sessions used a shared `<reminder>` for both todo and task nudges;
   // the subtype drives nothing (both merely hide), so map to todo-reminder.
   ["<reminder>", "todo-reminder"],

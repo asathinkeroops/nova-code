@@ -1,8 +1,8 @@
 import { getSkill, getSkillList, renderSkillPayload } from "@nova/tools";
 import type { Logger, Settings, SlashCommand } from "@nova/base";
 import { SlashRegistry, fileCommandToSlash, loadFileCommands } from "./slash-registry.js";
-import { pluginSkillRoots } from "./plugins/loader.js";
 import type { LoadedPlugin } from "./plugins/loader.js";
+import { createSkillsOptions } from "./skills-options.js";
 import type { SlashCommand as UISlashCommand } from "./ui/input-box.js";
 
 interface LoadOpts {
@@ -80,22 +80,17 @@ export async function reloadFileCommands(
  * that happens to be named `foo`.
  */
 export function loadSkillCommandsInto(registry: SlashRegistry, opts: LoadOpts): { added: number } {
-  if (!opts.settings.skills.enabled) return { added: 0 };
-  // One options object for both the listing scan and the per-invocation reread.
-  // Every field that takes part in the scan cache key (extraDirs, pluginRoots,
-  // maxFileBytes) must match what context.ts passes, or the slash registry and
-  // the model-facing index get built from two different scans.
-  const pluginSkills = pluginSkillRoots(opts.plugins ?? []);
-  const extraDirs = [...(opts.settings.skills.extraDirs ?? []), ...pluginSkills.dirs];
-  const skillsOpts = {
-    cwd: opts.cwd,
-    ...(opts.settings.skills.projectDirs ? { projectDirs: opts.settings.skills.projectDirs } : {}),
-    ...(opts.settings.skills.userPaths ? { userPaths: opts.settings.skills.userPaths } : {}),
-    ...(extraDirs.length > 0 ? { extraDirs } : {}),
-    ...(pluginSkills.dirs.length > 0 ? { pluginRoots: pluginSkills.roots } : {}),
-    maxFileBytes: opts.settings.skills.maxFileBytes,
+  // One options object for the listing scan, the per-invocation reread and the
+  // model-facing index. It has to be the SAME object `context.ts` builds (
+  // `getSkillList` memoizes on its resolved fingerprint), or an explicit
+  // `/commands reload` would refresh one view and leave the other stale.
+  const skillsOpts = createSkillsOptions({
+    settings: opts.settings,
+    workspace: opts.cwd,
+    ...(opts.plugins ? { plugins: opts.plugins } : {}),
     logger: opts.logger,
-  };
+  });
+  if (!skillsOpts) return { added: 0 };
   const items = getSkillList(skillsOpts);
   // register() returns {} both for a fresh add and for a shadowed no-op, so we
   // pre-snapshot the taken names to count only the commands we actually added.

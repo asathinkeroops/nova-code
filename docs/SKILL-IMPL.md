@@ -1,8 +1,8 @@
 # Skills 实现方案
 
 > 范围：把 Anthropic / Claude Code 的 Skill（渐进披露的「知识载体 Tier 3」）能力落到 Nova。
-> 状态：未实现。`packages/external/src/skills.ts` 是空文件占位。
-> 设计原则：**doc 是"告诉模型怎么做"，skill 是"替模型做掉"**。SKILL.md 的描述（"何时该用"）进 system prompt 当索引；正文按需由模型显式调用 `loadSkill` 工具拉。
+> 状态：已实现。扫描/解析在 `packages/tools/src/skills.ts`，工具在 `load-skill.ts`，索引以 synthetic message 注入（见 §4），宿主装配在 `apps/cli/src/skills-index.ts`。
+> 设计原则：**doc 是"告诉模型怎么做"，skill 是"替模型做掉"**。SKILL.md 的描述（"何时该用"）作为 `<available-skills>` 消息进入会话当索引；正文按需由模型显式调用 `loadSkill` 工具拉。
 
 ---
 
@@ -147,66 +147,64 @@ export function getSkill(
 
 ---
 
-## 4. System prompt 注入
+## 4. 会话消息注入
 
 ### 4.1 渲染格式
+
+索引是一条 synthetic user message（`meta.kind: "skills-index"`），不是 system prompt 的一部分。
+
+首次注入：
 
 ```
 <available-skills>
 - code-reviewer: Review a diff for correctness, regressions, and obvious smell
 - migration-safety: Audit a SQL migration for lock duration and rollback risk
-- overflowed-skill   (← 超预算时条目降级成只剩名字)
-Use the `loadSkill` tool with `name` to read full instructions before acting.
 </available-skills>
 ```
 
-- 每行 `- <name>: <description>`，不带 `location`（路径污染缓存命中、对模型无价值，要看的话 `/skills` 自己看）。
-- 排序：按 name 字典序。稳定 → cache 命中率高。
+技能集合变化后追加：
+
+```
+<available-skills>
+skills has changed
+- code-reviewer: Review a diff ...
+</available-skills>
+```
+
+- 每行 `- <name>: <description>`，按 name 字典序；渲染是输入的纯函数，列表载荷的 SHA-1 前 12 位写进 `meta.version`。
 - 单条 description 超 `settings.skills.maxDescriptionBytes`（默认 1536 字节）截断并加 `…`，按 utf8 字节计且不切断多字节字符。
 - 总字节预算 = `resolveSkillsIndexBudget()`：显式 `skills.maxIndexBytes` 优先，否则取上下文窗口 × 4 字节/token × `skills.indexBudgetFraction`（默认 0.01）。
-- 超预算**不丢技能**，而是把条目降级成 `- <name>`，按代价从小到大贪心保留尽量多的 description。降级决策是输入的纯函数 → 输出逐字节稳定，不破坏 prefix cache。
+- 超预算**不丢技能**，而是把条目降级成 `- <name>`，按代价从小到大贪心保留尽量多的 description。
+- 空列表渲染成 `no skills are currently available`；从有到无同样追加一条更新消息。
 
 ### 4.2 接入点
 
-索引不是 `buildSystemPrompt`（`packages/agent/src/system-prompt.ts`）的独立参数，而是**一个 `ToolPromptSection`**——和 todo/task/monitor 那些工具族的说明走同一条路：宿主把所有 section 渲染成一个 `<tool-guidance>` 块，作为 `toolsGuidance` 传进去。
+`apps/cli/src/skills-index.ts` 提供两个东西：
 
-```ts
-// apps/cli/src/context.ts 启动时
-const skillsBlock = renderSkillsBlock(modelSkillItems, {
-  budgetBytes: resolveSkillsIndexBudget(settings, settings.model),
-  maxDescriptionBytes: settings.skills.maxDescriptionBytes,
-});
-const toolPromptSections = [
-  ...BUILTIN_TOOL_PROMPTS,
-  SUBAGENT_PROMPT,
-  // order 200 = 排在指导 bullet 之后；requires 让它跟着工具一起消失
-  staticSection({ id: "skills", order: 200, requires: ["loadSkill"], text: skillsBlock }),
-];
-// applyToolDenylist 之后——工具集在这一刻才定死
-ctx.toolsGuidance = renderToolPrompts(ctx.tools.definitions(), toolPromptSections).text;
-```
+1. `createSkillsIndexProvider()` —— 一份快照。`getSkillList` 的缓存只在会话边界（`switchToSession`）和显式 `/commands reload` 时通过 `refreshSkills` 更新；`current()` 不做任何文件系统访问。这样会话中途不会因为磁盘变化而静默改变模型看到的内容，也避免了逐轮重扫。
+2. `makeSkillsIndexReminder()` —— CLI 的 `combinePreRequestInjectors` 组合注入器（`apps/cli/src/request-injector.ts`）中的一个节点，顺序是通知 → plan-mode → skills。它从消息尾部往前找 `meta.kind === "skills-index"`，遇到 `meta.kind === "compacted"` 停止；比对 `meta.version` 与 provider 的当前指纹：
+   - 相同 → 不注入；
+   - 不同 → 纯尾部 append 一条 `markSynthetic(..., "skills-index", version)`：首次不带 `skills has changed`，更新带；
+   - 历史里没有且当前列表为空 → 不注入（不要用空索引开场）；
+   - `loadSkill` 不在最终工具集（`permissions.deny`）→ 不注入；
+   - 和通知、plan-mode 提醒一起由组合注入器在同一次请求里按顺序追加，不存在 first-non-undefined-wins 竞争。
 
-两个后果值得记住：
+`renderSkillsMessage` 在 `apps/cli/src/skills-render.ts`；`renderSkillsBlock` 只保留给测试（生产路径已经不再把索引拼进 system prompt）。**渲染逻辑不进 tools 包**——它只管"有哪些 skill"，预算怎么算（依赖 settings + 当前模型）是宿主的事。
 
-- **`requires: ["loadSkill"]` 让索引和工具同生共死。** 以前 `permissions.deny: ["loadSkill"]` 会摘掉工具却留下整块索引，模型照着调、拿回 unknown tool 报错。
-- **渲染时机在 `applyToolDenylist` 之后**，那是 MCP、`createSubAgent`、plan-mode 两件套、denylist 全部落定的唯一一刻。渲染一次就冻住：会话中途 `/plugin install` 装进来的新 skill 不会进索引，得等下一个会话边界（system prompt 在 epoch 内必须逐字节不变，否则前缀缓存塌掉）。
-
-`renderSkillsBlock` 仍是 apps/cli 里的小函数：空数组返回 `""`，否则按 name 字典序排，每条渲染成 `- <name>: <description>`（description 超 `maxDescriptionBytes` 截断加 `…`），总量超预算时把条目降级成 `- <name>`，包 `<available-skills>` tag。**渲染逻辑不进 tools 包**——它只管"有哪些 skill"，预算怎么算（依赖 settings + 当前模型）是宿主的事。
-
-拼接顺序：
+拼接顺序变成了：
 
 ```
-base prompt
+system prompt（base + tool-guidance + memory，不含索引）
 ↓
-<tool-guidance>
-  工具族指导 bullet（todo / task / background / monitor / loadSkill / subagent / plan-mode）
-  <available-skills> 块（如果有）
-</tool-guidance>
-↓
-memory.system
+messages:
+  user: 第一条请求
+  user: <available-skills> … </available-skills>   ← 首次
+  assistant / tool_result / …
+  user: <available-skills>
+        skills has changed …                        ← 技能变化后追加
 ```
 
-skill 块放在 memory 之前，让用户的 `NOVA.md` 等可以**指挥模型何时该用 skill**（用户写的 instruction 应该有更高的"信号权重"）。
+索引从 system prompt 移到 messages 的收益：技能变化只影响新追加的尾部消息，system prompt 和已有历史的前缀缓存全部命中。代价是历史里会积累多份列表，但压缩边界会把旧列表移出模型视图，`skills has changed` + `meta.version` 保证不会重复注入。
 
 ---
 
@@ -254,25 +252,24 @@ with the Read tool. Read-only.
 ### 5.3 输出格式
 
 ```
-<skill name="code-reviewer">
+<skill name="code-reviewer" location="/path/to/.nova/skills/code-reviewer">
 body 内容
 </skill>
 ```
 
-`getSkill` 不返回 location，输出里就不带 location；body 里如果出现相对路径，作者应该写明 skill 目录约定（例如 `references/good.ts`），模型用 Read 工具去拿。**保持 external 包的纯函数语义**——location 是实现细节。
+`getSkill` 返回 `{ body, location, pluginRoot? }`：location 供 `<skill location="…">` 和 `${*_SKILL_DIR}` 使用；body 里如果出现相对路径，作者应该写明 skill 目录约定（例如 `references/good.ts`），模型用 Read 工具去拿。
 
 ### 5.4 注册时机
 
-CLI 启动时根据 `getSkillList().length > 0` 决定是否注册 `loadSkillTool`——零 skill 时连工具都不暴露，省 system tools 字节、避免模型对一个空工具产生幻觉。
+只要宿主传入了 `SkillsOptions`（即 `skills.enabled: true`），`builtinTools` 就注册 `loadSkillTool`，不再要求启动扫描非空。否则「启动时零技能、之后新增技能」这条路径是断的：索引能注入，工具却不存在。代价是多一个工具 schema。
 
 ---
 
 ## 6. Slash 命令：`/skills`
 
-仿照 `/commands` 的实现（`apps/cli/src/commands/commands.ts`），但只有列表一个子命令——`getSkillList()` 每次调都会读盘（命中缓存则极快），不需要单独的 reload。
-
-- `/skills`：表格输出 `name | description`（triggers 拼一行追在 description 后做次要提示），按 name 字典序。
-- **没有 reload**：盘上文件改了，重启 CLI；或临时改个 `extraDirs` 让 cache key 失效（这个开口是为 dev 留的，正常用户用不到）。本期不暴露 reload 子命令，让 API 表面尽可能小。
+- `/skills`：弹层列出 `provider.list()` 的全量技能（含 `disable-model-invocation` 的），显示名称与 description，按 name 字典序。它读的是 `SkillsIndexProvider` 的快照，不重新扫描。
+- 刷新统一走 `/commands reload`：先 `ctx.skillsIndex.refresh()`（重新扫描并写回 `getSkillList` 的缓存），再重新注册 `/{name}` 命令。这样 `/skills`、模型索引和 slash 命令三份视图同时更新。
+- 没有单独的 `/skills reload` 子命令，保持 API 表面最小。
 
 ---
 

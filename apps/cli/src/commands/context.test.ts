@@ -11,7 +11,6 @@ interface Viewer {
 
 interface StubOpts {
   memory?: string;
-  skillsBlock?: string;
   messages?: MessageParam[];
   /** Tool names; each gets a small wire schema so its tokens are non-zero. */
   toolNames?: string[];
@@ -27,7 +26,6 @@ function makeCtx(viewers: Viewer[], o: StubOpts = {}): CliContext {
     workspace: "/tmp/ws",
     session: { id: "test-session" },
     memory: { system: o.memory ?? "" },
-    skillsBlock: o.skillsBlock ?? "",
     settings: {
       model: "test-model",
       providers: [

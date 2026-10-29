@@ -21,6 +21,7 @@ import { loadGoal } from "./goal.js";
 import { loadSessionName } from "./session-name.js";
 import { restoreFromTranscript } from "./usage-restore.js";
 import { SnapshotStore } from "./snapshots.js";
+import { refreshSkillsAndCommands } from "./skills-refresh.js";
 import { gitCommonDir, mainCheckoutRoot, worktreeBinding } from "./worktree.js";
 import { loadMessages, emptyCursor } from "@nova/agent";
 
@@ -355,6 +356,14 @@ export async function switchToSession(
   if (ctx.memory.sources.length > 0) {
     await ctx.transcript.append({ kind: "memory_loaded", data: { sources: ctx.memory.sources } });
   }
+  // Session boundary: refresh the skill snapshot too. The new session's model
+  // view is rebuilt anyway, so an on-disk skill edit picked up here costs
+  // nothing cache-wise — while a mid-session refresh would invalidate a prefix
+  // the user is actively working against. The `pre_request` reminder compares
+  // this snapshot against the switched-in history and appends only if it
+  // differs. Commands are rebuilt in the same call: the index and `/{name}`
+  // must never describe two different skill sets.
+  refreshSkillsAndCommands(ctx);
 
   const startSource = resumed ? "resume" : "clear";
   await ctx.userHooks.fire("SessionStart", {

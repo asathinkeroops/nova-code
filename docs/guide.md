@@ -126,7 +126,7 @@ nova upgrade                       # 跑配置里的安装器把 nova 升到最�
 要点：
 
 - **位置参数即初始 prompt（交互）**：`nova 把 README 翻译成英文` 会先跑这一轮，再停在 REPL 等你继续。
-- **`-p/--prompt` 是 headless 触发器**：跑**一轮**、打印结果、直接退出，**不进 REPL**——和位置参数不同。**没有 TTY** 时（管道 / 重定向 / CI）也会自动走 headless；此时若没给 prompt，会从 **stdin** 读取。`--output-format json|jsonl` 让 headless 输出结构化结果（`json` = 结果 + 完整消息；`jsonl` = 流式事件）。
+- **`-p/--prompt` 是 headless 触发器**：跑**一轮**、打印结果、直接退出，**不进 REPL**——和位置参数不同。**没有 TTY** 时（管道 / 重定向 / CI）也会自动走 headless；此时若没给 prompt，会从 **stdin** 读取。`--output-format json|jsonl` 让 headless 输出结构化结果（`json` = 结果 + 可回放消息：skills 索引、todo/plan 提醒等内部提示已过滤，monitor/background 通知与用户 `!cmd` 输出等执行证据保留；`jsonl` = 流式事件）。
 - **`-m` / `-t` / `--max-turns` 都是本次会话的临时覆盖**，不写回配置文件。
 - **`--cwd`** 决定工具的「工作区根」——读写权限、沙箱写入范围、工作区信任判定都以它为基准（见 [§10](#10-权限与安全)）。
 - **`--worktree [名称]`** 是先建（或复用）一个 git worktree、再把它当作工作区启动；等价于先 `git worktree add` 再 `nova --cwd <路径>`，但只写一条命令（见 [§21](#20-git-worktree多检出并行)）。
@@ -231,8 +231,8 @@ Nova 是一个全屏 Ink/React REPL：顶部是滚动的历史区，底部是固
 | `/doctor` | 体检全局配置（JSON/schema、模型/key、项目 hook 文件、MCP 摘要）并在弹窗里报告；按 `f` 把问题交给 agent 就地修复 |
 | `/usage` · `/context` | 累计 token 用量与缓存命中 / 上下文窗口占用可视化 |
 | `/predict [on\|off]` | 查看或切换「下一条输入预测」 |
-| `/commands [reload]` | 列出已注册的 slash 命令；`reload` 重新扫盘加载自定义命令 |
-| `/skills` | 列出已发现的 `SKILL.md`（及各自来源） |
+| `/commands [reload]` | 列出已注册的 slash 命令；`reload` 重新扫盘加载自定义命令，并刷新 skills 索引与 `/{name}` 技能命令 |
+| `/skills` | 列出已发现的 `SKILL.md`（及各自来源）；读的是当前 skills 快照，刷新用 `/commands reload` |
 | `/mcp [tools]` | 打开 MCP 服务器菜单（认证 / 重连 / 登出，见 [§16](#16-mcp-外部工具)）；`tools` 列出所有桥接的工具 |
 | `/lsp` | 查看已配置的语言服务器（是否在 PATH、本 session 是否已启动） |
 | `/plugin` | 列出已加载的插件及其贡献（安装 / 启停用 `nova plugin` CLI，见 [§18](#18-插件plugins)） |
@@ -550,7 +550,7 @@ Output: … — read or grep it if you need the command's output.</background-no
 触发阈值默认是**可用输入预算的 90%**（`contextWindowPercent`，或用 `thresholdTokens` 钉死一个绝对值，仍会被输入预算夹住）。这里有两个口径要分清：
 
 - **输入预算 = 上下文窗口 − 输出预留**。请求能成立的前提是 `prompt + max_tokens ≤ 窗口`；窗口 1M、档位输出上限 393k 时，可用输入只有 ~655k。所以触发判断先扣掉一份**输出预留**（`min(该档 maxTokens, max(8k, 窗口的 10%))`，1M 窗口约 105k），再按比例算阈值——1M 窗口实际在 ~81% 触发，而不是 90%。
-- **整个请求**都算在占用里——system 提示词、记忆、skills 索引、工具 schema，加上对话消息，和 `/context` 面板显示的口径一致（面板会单列一行「输出预留」，其余各行相加正好等于窗口）。固定开销通常在一万多 token，窗口越小占比越高，所以把它计入触发判断是必要的：只按消息量算的话，128k 窗口下等阈值触发时真实请求已经超出窗口了。
+- **整个请求**都算在占用里——system 提示词、记忆、工具 schema，加上对话消息（skills 索引现在也是一条对话消息，计入「messages」行），和 `/context` 面板显示的口径一致（面板会单列一行「输出预留」，其余各行相加正好等于窗口）。固定开销通常在一万多 token，窗口越小占比越高，所以把它计入触发判断是必要的：只按消息量算的话，128k 窗口下等阈值触发时真实请求已经超出窗口了。
 
 **输出上限是「封顶」，不是「预留」**：每次请求的 `max_tokens` 取「该档 maxTokens」与「窗口剩余空间」（扣掉 prompt 估算和 10% 余量）的较小者。对话越长，单次可生成的上限越小，但请求始终能成立；被 `max_tokens` 截断时仍由「续写」机制接着写（见 `maxTokensContinuations`）。极端情况下连最小输出（1024 token）都放不下，会在本地直接报错并提示 `/compact` 或 `/clear`，而不是把供应商的 400 原样抛给用户。
 
@@ -595,7 +595,9 @@ Skill 是「按需加载的专长说明书」。把 `SKILL.md` 放在：
 - 项目层：`.nova/skills/<name>/`（兼容 `.claude/skills/<name>/`）
 - 用户层：`~/.nova/skills/<name>/`（兼容 `~/.claude/skills/<name>/`）
 
-启动时 Nova 扫描这些目录，把每个 skill 的 **name + description 索引**注入 system prompt（只占很少 token），并暴露 `loadSkill` 工具。当某个任务匹配到某个 skill 时，模型才用 `loadSkill` 拉取完整正文。索引与工具是绑在一起的：`skills.enabled: false`、一个 skill 都没扫到、或把 `loadSkill` 写进 `permissions.deny`，索引和工具都会同时消失，不会出现「提示里列着技能、却没有工具去加载」的情况。
+启动时 Nova 扫描这些目录，把每个 skill 的 **name + description 索引**作为一条 `<available-skills>` 消息注入会话，并暴露 `loadSkill` 工具。当某个任务匹配到某个 skill 时，模型才用 `loadSkill` 拉取完整正文。索引与工具是绑在一起的：`skills.enabled: false`、一个 skill 都没扫到、或把 `loadSkill` 写进 `permissions.deny`，索引和工具都会同时消失，不会出现「提示里列着技能、却没有工具去加载」的情况。
+
+索引**不在 system prompt 里**，而是一条 synthetic user message：技能集合可以在会话中途变化，而 system prompt 是请求前缀的 byte 0，改一次就会让整个前缀缓存失效。索引是一份**快照**，在会话边界（`/clear`、`/resume`）和显式 `/commands reload` 时重新扫描；如果列表变了，下一次请求前会追加一条带 `skills has changed` 的新消息，模型永远以最新一条为准。旧消息不会被删除（历史是 append-only），压缩后会自然移出模型视图；压缩发生时如果索引落在边界之前，下一条请求会重新注入。`SKILL.md` 的**正文**仍然每次实时读取，所以只改正文不需要刷新索引。
 
 - 用 `/skills` 查看发现了哪些、各自来自哪里。
 - 索引预算：默认取**当前模型上下文窗口的 1%**（按 4 字节/token 折算），`skills.indexBudgetFraction` 可调。200k 窗口约 8000 字节，1M 窗口自动放大到 40000。想钉死一个绝对值就设 `skills.maxIndexBytes`，它优先于比例。

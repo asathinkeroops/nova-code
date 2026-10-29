@@ -128,6 +128,22 @@ async function makeRepo(): Promise<string> {
   return realpathSync(repo);
 }
 
+/** Write `<workspace>/.nova/skills/<dir>/SKILL.md` with the given front matter. */
+function writeSkill(
+  workspace: string,
+  dir: string,
+  name: string,
+  description: string,
+): void {
+  const skillDir = join(workspace, ".nova", "skills", dir);
+  mkdirSync(skillDir, { recursive: true });
+  writeFileSync(
+    join(skillDir, "SKILL.md"),
+    `---\nname: ${name}\ndescription: ${description}\n---\nBODY\n`,
+    "utf8",
+  );
+}
+
 describe("createContext — startup wiring", () => {
   it("completes without throwing and returns a wired context", async () => {
     const ctx = await startup();
@@ -149,12 +165,41 @@ describe("createContext — startup wiring", () => {
     expect(ctx.registry.list().length).toBeGreaterThan(0);
   });
 
-  it("builds a skills block without a skill directory present", async () => {
-    // The empty-workspace path: no SKILL.md anywhere, so the block collapses to
-    // "" and the system prompt drops the section entirely.
+  it("keeps the skills index out of the system prompt", async () => {
+    // The empty-workspace path: no SKILL.md anywhere. The provider is enabled
+    // but its snapshot is the empty-list form, and the index travels as a
+    // message — the guidance block must never carry it.
     const ctx = await startup();
-    expect(ctx.skillsBlock).toBe("");
+    expect(ctx.skillsIndex.enabled).toBe(true);
+    expect(ctx.skillsIndex.list()).toEqual([]);
+    // The guidance may *mention* the tag; what it must not contain is the
+    // rendered index block itself (tag immediately followed by a line break).
+    expect(ctx.toolsGuidance).not.toContain("<available-skills>\n");
   });
+
+  it("rebuilds skill slash commands when a session boundary refreshes the index", async () => {
+    const ws = mkdtempSync(join(tmpdir(), "nova-smoke-skills-"));
+    try {
+      writeSkill(ws, "alpha", "alpha", "Alpha skill");
+      const ctx = await startup(ws);
+      const commandNames = () => ctx.registry.list().map((command) => command.name);
+
+      expect(ctx.skillsIndex.list().map((skill) => skill.name)).toEqual(["alpha"]);
+      expect(commandNames()).toContain("alpha");
+
+      // Rename the skill in place. The directory stays `alpha`; the scan keys on
+      // the front-matter name, so only the index and command registry move.
+      writeSkill(ws, "alpha", "beta", "Beta skill");
+      ctx.screen.setMessages([{ role: "user", content: "hello" }]);
+      await handleClear(ctx);
+
+      expect(ctx.skillsIndex.list().map((skill) => skill.name)).toEqual(["beta"]);
+      expect(commandNames()).not.toContain("alpha");
+      expect(commandNames()).toContain("beta");
+    } finally {
+      rmSync(ws, { recursive: true, force: true });
+    }
+  }, 30_000);
 });
 
 describe("createContext — workspace switch (worktree)", () => {

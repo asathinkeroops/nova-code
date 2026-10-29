@@ -106,10 +106,11 @@ function visiblePlanState(messages: MessageParam[]): boolean | undefined {
  * head past it, `/clear` starts an empty history, `/resume` switches to another
  * one, `/rewind` truncates it. A flag would stay set through all four and leave
  * the model silently unaware it is read-only until a write came back denied.
- * (It also self-heals the `pre_request` first-non-undefined-wins race: losing to
- * another injector just defers this to the next request.) The flip side is that
- * a session *opening* in plan mode (`--permission-mode plan`, or a resumed one)
- * is announced on turn 1 — the model would otherwise never be told at all.
+ * It is one node of the CLI's combined `pre_request` injector, so it neither
+ * suppresses a co-due message (the skills index) nor is suppressed by one. The
+ * flip side is that a session *opening* in plan mode (`--permission-mode plan`,
+ * or a resumed one) is announced on turn 1 — the model would otherwise never be
+ * told at all.
  *
  * Because `pre_request` persists `messages` overrides into canonical history
  * (loop.ts), the reminder is seen by the model, written to messages.jsonl, and

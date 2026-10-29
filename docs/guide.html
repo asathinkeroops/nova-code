@@ -597,7 +597,7 @@
         <p class="mt-6 font-medium" style="color:var(--text)">要点：</p>
         <ul class="space-y-2">
           <li><strong>位置参数即初始 prompt</strong>：<code>nova 把 README 翻译成英文</code> 会先跑这一轮，再停在 REPL 等你继续。</li>
-          <li><strong><code>-p / --prompt</code> 是无头模式</strong>：传了这个 flag，Nova 跑一轮后直接打印结果并退出，不进入交互式 REPL。如果 stdin/stdout 不是 TTY（管道、重定向、CI），也会自动进入无头模式。用 <code>--output-format json</code> 可以拿到结构化 JSON。</li>
+          <li><strong><code>-p / --prompt</code> 是无头模式</strong>：传了这个 flag，Nova 跑一轮后直接打印结果并退出，不进入交互式 REPL。如果 stdin/stdout 不是 TTY（管道、重定向、CI），也会自动进入无头模式。用 <code>--output-format json</code> 可以拿到结构化 JSON（可回放消息：skills 索引、todo/plan 提醒等内部提示已过滤，monitor/background 通知与用户 <code>!cmd</code> 输出等执行证据保留）。</li>
           <li><strong><code>-m</code> / <code>-t</code> / <code>--max-turns</code> 都是本次会话的临时覆盖</strong>，不写回配置文件。</li>
           <li><strong><code>--cwd</code></strong> 决定工具的「工作区根」—— 读写权限、沙箱写入范围、工作区信任判定都以它为基准（见 <a class="inline-link" href="#sec-10">§10</a>）。</li>
           <li><strong><code>--worktree [名称]</code></strong> 先建（或复用）一个 git worktree、再把它当作工作区启动——等价于先 <code>git worktree add</code> 再 <code>nova --cwd &lt;路径&gt;</code>（见 <a class="inline-link" href="#sec-20">§20</a>）。</li>
@@ -696,8 +696,8 @@
           <tr><td><code>/usage</code></td><td>显示当前会话累计 token 用量和缓存命中率；若配置了价格则估算费用</td></tr>
           <tr><td><code>/context</code></td><td>可视化上下文窗口占用：按类别（system prompt、memory、skills、tools、MCP、messages + 空闲空间）分解为彩色条形图</td></tr>
           <tr><td><code>/predict [on|off]</code></td><td>查看或切换「下一条输入预测」</td></tr>
-          <tr><td><code>/commands [reload]</code></td><td>列出已注册的 slash 命令；<code>reload</code> 重新扫盘加载自定义命令</td></tr>
-          <tr><td><code>/skills</code></td><td>列出已发现的 <code>SKILL.md</code>（及各自来源）</td></tr>
+          <tr><td><code>/commands [reload]</code></td><td>列出已注册的 slash 命令；<code>reload</code> 重新扫盘加载自定义命令，并刷新 skills 索引与 <code>/{name}</code> 技能命令</td></tr>
+          <tr><td><code>/skills</code></td><td>列出已发现的 <code>SKILL.md</code>（及各自来源）；读的是当前 skills 快照，刷新用 <code>/commands reload</code></td></tr>
           <tr><td><code>/agents [reload]</code></td><td>列出可用的子 agent 类型；<code>reload</code> 重新扫盘加载 agent 文件</td></tr>
           <tr><td><code>/agent &lt;name&gt; &lt;task&gt;</code></td><td>把一项任务委派给指定的子 agent</td></tr>
           <tr><td><code>/nova-code-guide &lt;question&gt;</code></td><td>就 Nova 自身答疑的只读 Q&amp;A 子 agent；<code>/nova-code-guide-update</code> 拉取 / 刷新它读取的 Nova 源码</td></tr>
@@ -1018,7 +1018,7 @@
           <li>触发阈值默认是<strong>可用输入预算的 90%</strong>（<code>contextWindowPercent</code>，或用 <code>thresholdTokens</code> 钉死一个绝对值，仍会被输入预算夹住）。两个口径要分清：
             <ul>
               <li><strong>输入预算 = 上下文窗口 − 输出预留</strong>。请求能成立的前提是 <code>prompt + max_tokens ≤ 窗口</code>；窗口 1M、档位输出上限 393k 时，可用输入只有 ~655k。所以触发判断先扣掉一份<strong>输出预留</strong>（<code>min(该档 maxTokens, max(8k, 窗口的 10%))</code>，1M 窗口约 105k），再按比例算阈值 —— 1M 窗口实际在 ~81% 触发，而不是 90%。</li>
-              <li><strong>整个请求</strong>都算在占用里 —— system 提示词、记忆、skills 索引、工具 schema，加上对话消息，和 <code>/context</code> 面板显示的口径一致（面板会单列一行「输出预留」，其余各行相加正好等于窗口）。固定开销通常在一万多 token，窗口越小占比越高，所以把它计入触发判断是必要的：只按消息量算的话，128k 窗口下等阈值触发时真实请求已经超出窗口了。</li>
+              <li><strong>整个请求</strong>都算在占用里 —— system 提示词、记忆、工具 schema，加上对话消息（skills 索引现在也是一条对话消息，计入「messages」行），和 <code>/context</code> 面板显示的口径一致（面板会单列一行「输出预留」，其余各行相加正好等于窗口）。固定开销通常在一万多 token，窗口越小占比越高，所以把它计入触发判断是必要的：只按消息量算的话，128k 窗口下等阈值触发时真实请求已经超出窗口了。</li>
             </ul>
           </li>
           <li><strong>输出上限是「封顶」，不是「预留」</strong>：每次请求的 <code>max_tokens</code> 取「该档 maxTokens」与「窗口剩余空间」（扣掉 prompt 估算和 10% 余量）的较小者。对话越长，单次可生成的上限越小，但请求始终能成立；被 <code>max_tokens</code> 截断时仍由「续写」机制接着写（见 <code>maxTokensContinuations</code>）。极端情况下连最小输出（1024 token）都放不下，会在本地直接报错并提示 <code>/compact</code> 或 <code>/clear</code>，而不是把供应商的 400 原样抛给用户。</li>
@@ -1065,7 +1065,8 @@
           <li>项目层：<code>.nova/skills/&lt;name&gt;/</code>（兼容 <code>.claude/skills/&lt;name&gt;/</code>）</li>
           <li>用户层：<code>~/.nova/skills/&lt;name&gt;/</code>（兼容 <code>~/.claude/skills/&lt;name&gt;/</code>）</li>
         </ul>
-        <p>启动时 Nova 扫描这些目录，把每个 skill 的 <strong>name + description 索引</strong>注入 system prompt（只占很少 token），并暴露 <code>loadSkill</code> 工具。当某个任务匹配到某个 skill 时，模型才用 <code>loadSkill</code> 拉取完整正文。索引与工具是绑在一起的：<code>skills.enabled: false</code>、一个 skill 都没扫到、或把 <code>loadSkill</code> 写进 <code>permissions.deny</code>，索引和工具都会同时消失，不会出现「提示里列着技能、却没有工具去加载」的情况。</p>
+        <p>启动时 Nova 扫描这些目录，把每个 skill 的 <strong>name + description 索引</strong>作为一条 <code>&lt;available-skills&gt;</code> 消息注入会话，并暴露 <code>loadSkill</code> 工具。当某个任务匹配到某个 skill 时，模型才用 <code>loadSkill</code> 拉取完整正文。索引与工具是绑在一起的：<code>skills.enabled: false</code>、一个 skill 都没扫到、或把 <code>loadSkill</code> 写进 <code>permissions.deny</code>，索引和工具都会同时消失，不会出现「提示里列着技能、却没有工具去加载」的情况。</p>
+        <p>索引<strong>不在 system prompt 里</strong>，而是一条 synthetic user message：技能集合可以在会话中途变化，而 system prompt 是请求前缀的 byte 0，改一次就会让整个前缀缓存失效。索引是一份<strong>快照</strong>，在会话边界（<code>/clear</code>、<code>/resume</code>）和显式 <code>/commands reload</code> 时重新扫描；如果列表变了，下一次请求前会追加一条带 <code>skills has changed</code> 的新消息，模型永远以最新一条为准。旧消息不会被删除（历史是 append-only），压缩后会自然移出模型视图；压缩发生时如果索引落在边界之前，下一条请求会重新注入。<code>SKILL.md</code> 的<strong>正文</strong>仍然每次实时读取，所以只改正文不需要刷新索引。</p>
         <ul class="space-y-2">
           <li>用 <code>/skills</code> 查看发现了哪些、各自来自哪里。</li>
           <li>索引预算：默认取<strong>当前模型上下文窗口的 1%</strong>（按 4 字节 / token 折算），<code>skills.indexBudgetFraction</code> 可调。200k 窗口约 8000 字节，1M 窗口自动放大到 40000。想钉死一个绝对值就设 <code>skills.maxIndexBytes</code>，它优先于比例。</li>

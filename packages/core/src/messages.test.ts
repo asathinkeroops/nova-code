@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { messageMetaSchema, messageParamSchema } from "./types.js";
-import { migrateLegacyMeta } from "./messages.js";
+import { markSynthetic, migrateLegacyMeta } from "./messages.js";
 
 /**
  * `meta.kind` is PERSISTED in messages.jsonl, so renaming one of its values is a
@@ -66,5 +66,39 @@ describe("migrateLegacyMeta", () => {
 
   it("does not tag a user who typed the tag themselves in prose", () => {
     expect(inject("I saw a <background-notification> in the logs").meta).toBeUndefined();
+  });
+
+  it("maps a pre-meta <available-skills> block to the skills-index kind", () => {
+    expect(inject("<available-skills>\n- x: do x\n</available-skills>").meta).toEqual({
+      synthetic: true,
+      kind: "skills-index",
+    });
+  });
+});
+
+describe("skills-index meta", () => {
+  it("accepts an optional version", () => {
+    expect(
+      messageMetaSchema.parse({ synthetic: true, kind: "skills-index", version: "v1" }),
+    ).toEqual({ synthetic: true, kind: "skills-index", version: "v1" });
+  });
+
+  it("keeps the version optional so pre-existing messages stay valid", () => {
+    expect(messageMetaSchema.parse({ synthetic: true, kind: "skills-index" })).toEqual({
+      synthetic: true,
+      kind: "skills-index",
+    });
+  });
+
+  it("markSynthetic carries the version only when one is supplied", () => {
+    expect(markSynthetic({ role: "user", content: "x" }, "skills-index", "v1").meta).toEqual({
+      synthetic: true,
+      kind: "skills-index",
+      version: "v1",
+    });
+    expect(markSynthetic({ role: "user", content: "x" }, "skills-index").meta).toEqual({
+      synthetic: true,
+      kind: "skills-index",
+    });
   });
 });

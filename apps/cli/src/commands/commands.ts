@@ -3,7 +3,8 @@ import { accent, ACCENT_HEX, cyan, dim } from "../colors.js";
 import type { CliContext } from "../context.js";
 import { t } from "../i18n/index.js";
 import { pickerArrow } from "../ui/picker.js";
-import { reloadFileCommands, reloadSkillCommands } from "../slash.js";
+import { reloadFileCommands } from "../slash.js";
+import { refreshSkillsAndCommands } from "../skills-refresh.js";
 
 const TITLE = "/commands";
 
@@ -24,14 +25,11 @@ export async function handleCommands(ctx: CliContext, arg: string): Promise<void
       settings: ctx.settings,
       logger: ctx.logger,
     });
-    const skills = reloadSkillCommands(ctx.registry, {
-      cwd: ctx.workspace,
-      settings: ctx.settings,
-      logger: ctx.logger,
-      plugins: ctx.plugins,
-      getSessionId: () => ctx.session.id,
-      getEffort: () => ctx.thinkingLevel,
-    });
+    // Refresh the scan AND re-register `/{name}` together: the index, `/skills`,
+    // `loadSkill` and the slash commands all read the same memoized entry, so a
+    // refresh that skipped the registry would leave a renamed skill unreachable
+    // while its old command survived.
+    const skills = refreshSkillsAndCommands(ctx);
     const ms = Date.now() - t0;
     const tail = errors > 0 ? t.cmdList.reloadErrors(errors) : "";
     ctx.screen.card(t.cmdList.reloaded(added, skills.added, ms, tail), { title: TITLE });

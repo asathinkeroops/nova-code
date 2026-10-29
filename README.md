@@ -77,7 +77,7 @@ Nova 读代码、跑命令、改文件 —— 通过工具调用把任务推到�
 
 ### 🚀 缓存友好刻在骨子里
 
-历史 append-only，请求体逐字节稳定（内部 `meta` 字段发送前剥除，不污染前缀），记忆与 skills 只在会话边界重建、绝不中途变动 —— 尽可能让服务端自动前缀缓存跨轮复用（DeepSeek、Kimi 均为此类缓存），响应更快、token 更省。auto 压缩默认在上下文用到窗口九成时触发（system 与工具 schema 的固定开销同样计入），只追加一条 `<compacted>` 边界：完整历史仍留在磁盘和界面里，只有模型看到的视图缩短。
+历史 append-only，请求体逐字节稳定（内部 `meta` 字段发送前剥除，不污染前缀），记忆只在会话边界重建，skills 索引同样只在会话边界或显式 `/commands reload` 时刷新、绝不逐轮变动 —— 尽可能让服务端自动前缀缓存跨轮复用（DeepSeek、Kimi 均为此类缓存），响应更快、token 更省。索引本身是一条 `<available-skills>` 消息而不是 system prompt 的一部分：技能更新只追加一条尾部消息，不会让整段前缀失效。auto 压缩默认在上下文用到窗口九成时触发（system 与工具 schema 的固定开销同样计入），只追加一条 `<compacted>` 边界：完整历史仍留在磁盘和界面里，只有模型看到的视图缩短。
 
 自动压缩与 `/compact` 都会在摘要正文末尾由程序附上最近 **3 个模型交互轮次**的原文记录（每轮含一次 assistant 回复及其工具调用、结果和关联内容），另保留末尾尚未回复的真实用户输入。最新一条真实用户输入优先单独保留，不会被连续工具调用挤掉，重复记录只附加一次。附录按 `meta.synthetic` 排除 Todo/Task 提醒、框架续写提示等注入消息，不把它们当成用户输入；`role: user` 的工具结果仍随调用保留。框架续写提示带来源标记，记录在历史与 transcript 中，不显示为用户气泡。新写入的历史记录带格式版本，恢复时不再根据正文标签猜测来源；旧无版本记录仍兼容迁移。附录是带角色标识的历史文本，图片数据改用占位描述，不重放工具调用；每次从原始历史提取，跳过旧摘要。排除的注入消息仍参与摘要生成，完整历史也照常保留。正文默认最多生成 4000 token，附录另设 16000 估算 token 上限，使添加附录后的摘要加固定开销不超过压缩触发阈值的 80%。预算先分配给最新真实用户输入，再从新到旧添加完整轮次；空间不足时可能只保留用户输入。若这条输入或摘要正文已超出预算，则不附加原文。
 
@@ -151,7 +151,7 @@ DeepSeek 的内置模型梯度是 `lite` → `deepseek-flash`（原生多模态�
 | `-m, --model <tier>` · `-t, --think <level>` | 只覆盖本次启动的档位与思考等级（持久切换用 `/model` · `/effort`） |
 | `--permission-mode <mode>` | 启动权限模式：`auto`（默认）/ `default` / `acceptEdits` / `plan` |
 | `--dangerously-skip-permissions` | 跳过全部审批，适合无人值守 |
-| `--output-format <fmt>` | headless 输出：`text`（默认）/ `json`（结果 + 完整消息）/ `jsonl`（流式事件） |
+| `--output-format <fmt>` | headless 输出：`text`（默认）/ `json`（结果 + 可回放消息，内部提示已过滤、执行证据保留）/ `jsonl`（流式事件） |
 | `--max-turns <n>` · `--cwd <dir>` | 覆盖单轮模型调用上限与工具工作目录 |
 | `--worktree [name]` · `--worktree-from <ref>` | 在 `<repo>/.nova/worktrees/<name>` 里开工（不存在则新建），可指定基线 commit-ish；同名已存在则复用。与 `--resume <id>` 互斥（恢复的会话留在它绑定的检出），`--continue` 可用 |
 | `--no-transcript` · `--no-pretty` | 不写 transcript、关闭美化输出 |

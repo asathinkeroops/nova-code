@@ -51,7 +51,6 @@ import {
   resolveContextWindowSize,
   resolveMaxTokens,
   resolveModelId,
-  resolveSkillsIndexBudget,
   resolveModelModalities,
   resolveApiKey,
   resolveThinkingLevel,
@@ -75,15 +74,13 @@ import {
   builtinTools,
   createDispatcher,
   createPlanModeTools,
-  getSkillList,
   PLAN_MODE_TOOL_NAMES,
   renderToolPrompts,
-  staticSection,
-  type SkillsOptions,
 } from "@nova/tools";
 import { CronScheduler } from "./cron-scheduler.js";
 import { dim } from "./colors.js";
 import { measureCtxOverhead } from "./context-usage.js";
+import { createSkillsOptions } from "./skills-options.js";
 import { loadGoal } from "./goal.js";
 import { buildMcpManager } from "./mcp.js";
 import {
@@ -101,9 +98,10 @@ import {
 } from "./permissions.js";
 import { classifyCommandRisk } from "./auto-classify.js";
 import { makePlanModeReminder } from "./plan-mode-reminder.js";
+import { combinePreRequestInjectors, type PreRequestInjector } from "./request-injector.js";
 import { askPlanApproval, shouldStopTurn } from "./plan-approval.js";
 import { loadAgents } from "./agents.js";
-import { loadPlugins, pluginSkillRoots } from "./plugins/loader.js";
+import { loadPlugins } from "./plugins/loader.js";
 import { DEFAULT_PLUGIN_CACHE_DIR } from "./plugins/install.js";
 import { buildGuideAgentDefinition, NOVA_GUIDE_AGENT } from "./guide/agent.js";
 import { ensureFresh, resolveGuideSourceDir } from "./guide/provisioner.js";
@@ -124,7 +122,7 @@ import {
 } from "./worktree.js";
 import { worktreeIsolationDenial } from "./worktree-guard.js";
 import { registerWorktreeTools } from "./worktree-tools.js";
-import { renderSkillsBlock } from "./skills-render.js";
+import { createSkillsIndexProvider, makeSkillsIndexReminder } from "./skills-index.js";
 import { loadFileCommandsInto, loadSkillCommandsInto } from "./slash.js";
 import { loadSessionName } from "./session-name.js";
 import { resolveSession, type ResolvedSession } from "./session.js";
@@ -297,37 +295,30 @@ export async function createContext(
       "plugins loaded",
     );
   }
-  // Skill directories contributed by plugins, folded into the index via extraDirs
-  // (each entry is a `skills/` root whose subdirs each hold a SKILL.md).
-  const pluginSkills = pluginSkillRoots(pluginResult.plugins);
-
-  // Skills index: build one SkillsOptions and let getSkillList + builtinTools
-  // both consume it. The first call warms the cache; the second hits it.
-  const skillsExtraDirs = [...(settings.skills.extraDirs ?? []), ...pluginSkills.dirs];
-  const skillsOpts: SkillsOptions | undefined = settings.skills.enabled
-    ? {
-        cwd: workspace,
-        ...(settings.skills.projectDirs ? { projectDirs: settings.skills.projectDirs } : {}),
-        ...(settings.skills.userPaths ? { userPaths: settings.skills.userPaths } : {}),
-        ...(skillsExtraDirs.length > 0 ? { extraDirs: skillsExtraDirs } : {}),
-        ...(pluginSkills.dirs.length > 0 ? { pluginRoots: pluginSkills.roots } : {}),
-        maxResponseBytes: settings.skills.maxResponseBytes,
-        maxFileBytes: settings.skills.maxFileBytes,
-        disableShellExecution: settings.skills.disableShellExecution,
-        logger,
-      }
-    : undefined;
-  const skillItems = skillsOpts ? getSkillList(skillsOpts) : [];
-  // Skills flagged `disable-model-invocation` are withheld from the model-facing
-  // block so the model won't auto-invoke them; they remain reachable via their
-  // `/{name}` slash command (which names the skill explicitly to loadSkill).
-  const modelSkillItems = skillItems.filter((s) => !s.disableModelInvocation);
-  const skillsBlock = skillsOpts
-    ? renderSkillsBlock(modelSkillItems, {
-        budgetBytes: resolveSkillsIndexBudget(settings, settings.model),
-        maxDescriptionBytes: settings.skills.maxDescriptionBytes,
-      })
-    : "";
+  // Skills index: one options object shared by the startup scan, `loadSkill`,
+  // the slash-command bridge, `/skills` and the injected index.
+  // `createSkillsOptions` owns plugin-root folding, so every consumer scans the
+  // same roots under the same cache key — two spellings would be two
+  // independent scans that drift the moment a plugin or a cap changes.
+  const skillsOpts = createSkillsOptions({
+    settings,
+    workspace,
+    plugins: pluginResult.plugins,
+    logger,
+  });
+  // The skill index is a SNAPSHOT delivered to the model as a synthetic user
+  // message (`<available-skills>`), not a system-prompt section: the skill set
+  // changes on disk far more often than the prompt may change, and a prompt
+  // edit would reset the entire prefix cache. The provider owns the scan so
+  // `loadSkill`, the slash bridge, `/skills` and the injected message all read
+  // the same cache entry — an explicit refresh updates all four together.
+  const skillsIndex = createSkillsIndexProvider({
+    settings,
+    workspace,
+    plugins: pluginResult.plugins,
+    logger,
+  });
+  const skillItems = skillsIndex.list();
   if (skillsOpts) {
     await transcript.append({
       kind: "skills_loaded",
@@ -339,18 +330,10 @@ export async function createContext(
   }
 
   // Every system-prompt section that is tied to a tool, in one list: the
-  // builtins' own, `createSubAgent`'s (owned by @nova/agent), and the skills
-  // index — which only the host can build, since its byte budget comes from
-  // settings and the active model. The list is inert until rendered against the
-  // final registry; see `ctx.toolsGuidance`.
-  const toolPromptSections: ToolPromptSection[] = [
-    ...BUILTIN_TOOL_PROMPTS,
-    SUBAGENT_PROMPT,
-    // Ordered last so the index sits after the guidance bullets that explain
-    // what to do with it. Gated on loadSkill so `permissions.deny` removing the
-    // tool also removes the index it advertises.
-    staticSection({ id: "skills", order: 200, requires: ["loadSkill"], text: skillsBlock }),
-  ];
+  // builtins' own and `createSubAgent`'s (owned by @nova/agent). The skills
+  // index is deliberately absent — it is injected as a message, so a skill edit
+  // only appends a tail message instead of invalidating byte 0 of the request.
+  const toolPromptSections: ToolPromptSection[] = [...BUILTIN_TOOL_PROMPTS, SUBAGENT_PROMPT];
   const renderToolsGuidance = (tools: ToolDefinition[]): string =>
     renderToolPrompts(tools, toolPromptSections).text;
 
@@ -745,7 +728,7 @@ export async function createContext(
     setWorkspace: null as unknown as CliContext["setWorkspace"],
     memory,
     reloadMemory: null as unknown as CliContext["reloadMemory"],
-    skillsBlock,
+    skillsIndex,
     // Rendered once the registry is final — see the assignment after
     // applyToolDenylist, and the field's doc comment.
     toolsGuidance: "",
@@ -1166,8 +1149,16 @@ export async function createContext(
       // Read late (the block is rendered below, after every registration), but
       // constant from the first turn on — never a live view of the registry.
       getToolsGuidance: () => ctx.toolsGuidance,
-      // Sub-agents render their own from their filtered tool set.
+      // Sub-agents render their own guidance from their filtered tool set, and
+      // receive the skill index as their own first message (a child has a
+      // separate history; the parent's injected message is not visible to it).
       renderToolsGuidance,
+      getSkillsIndex: () => {
+        const snapshot = skillsIndex.current();
+        return snapshot.text === "" || snapshot.items.length === 0
+          ? undefined
+          : { text: snapshot.text, version: snapshot.version };
+      },
       getLanguage: () => ctx.settings.language,
     },
     getMessagesPath: () => ctx.session.messagesPath,
@@ -1344,21 +1335,31 @@ export async function createContext(
 
   registerInterject(ctx.agent, makeTodoReminder(todoStore));
   registerInterject(ctx.agent, makeTaskReminder(taskStore));
-  ctx.agent.on("pre_request", makeBackgroundNotifier(backgroundManager));
-  ctx.agent.on("pre_request", makeMonitorNotifier(monitorManager));
-  // Keep the model's view honest about plan mode on the next real request
-  // (lazy, trigger-agnostic: shift+tab and the agent's own enterPlanMode /
-  // exitPlanMode are announced identically). Registered AFTER the background
-  // notifier so that on the rare turn where both want to inject, the notifier
-  // wins the first-non-undefined-wins race; the reminder compares against the
-  // visible history rather than a latch, so losing that race just defers it to
-  // the next request.
-  ctx.agent.on(
-    "pre_request",
+  // One `pre_request` injector, not four. `runBlocking` is first-non-undefined-
+  // wins, so separate hooks meant a plan-mode notice (or a background/monitor
+  // notification) on the first request suppressed the skills index — and a
+  // turn that ends without a tool call never gets another request to receive
+  // it. The combined injector appends every due message in one pass, in this
+  // order, while still returning a pure tail append relative to the input.
+  //
+  // Order is append order: notifications first (they may carry execution
+  // evidence), then the plan-mode state, then the index (whose visible-history
+  // check tolerates anything appended before it).
+  const requestInjectors: PreRequestInjector[] = [
+    makeBackgroundNotifier(backgroundManager),
+    makeMonitorNotifier(monitorManager),
+    // Keep the model's view honest about plan mode on the next real request
+    // (lazy, trigger-agnostic: shift+tab and the agent's own enterPlanMode /
+    // exitPlanMode are announced identically).
     makePlanModeReminder(() => ctx.screen.getPermissionMode(), {
       canSelfExit: settings.planMode.agentTools,
     }),
-  );
+    // The skill index rides as a synthetic user message rather than a
+    // system-prompt section, so a skill edit costs a tail append instead of a
+    // prefix-cache reset.
+    makeSkillsIndexReminder(skillsIndex),
+  ];
+  ctx.agent.on("pre_request", combinePreRequestInjectors(requestInjectors));
 
   // Push completion: when a background command finishes while the agent is idle,
   // nudge the REPL to wake and react (the notifier above injects the output on

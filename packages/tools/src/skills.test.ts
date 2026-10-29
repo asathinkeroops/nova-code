@@ -2,7 +2,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, statSync, symlinkSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getSkill, getSkillList, _resetSkillsCacheForTests } from "./skills.js";
+import { getSkill, getSkillList, refreshSkills, _resetSkillsCacheForTests } from "./skills.js";
 
 function fixture(): string {
   return mkdtempSync(join(tmpdir(), "nova-skills-"));
@@ -501,6 +501,51 @@ describe("memoization", () => {
     );
     const second = getSkillList({ cwd, home: cwd, userPaths: [] });
     expect(second[0]?.description).toBe("d");
+  });
+
+  it("refreshSkills re-scans and picks up a skill added after the cache warmed", () => {
+    const cwd = fixture();
+    const projectRoot = join(cwd, ".nova/skills");
+    mkdirSync(projectRoot, { recursive: true });
+    writeSkill(projectRoot, "x", `name: x\ndescription: d`);
+    const opts = { cwd, home: cwd, userPaths: [] };
+
+    expect(
+      getSkillList(opts)
+        .map((s) => s.name)
+        .sort(),
+    ).toEqual(["x"]);
+
+    // Still the cached view — the memoized scan is what keeps normal turns cheap.
+    writeSkill(projectRoot, "y", `name: y\ndescription: d`);
+    expect(getSkillList(opts).map((s) => s.name)).toEqual(["x"]);
+
+    expect(
+      refreshSkills(opts)
+        .map((s) => s.name)
+        .sort(),
+    ).toEqual(["x", "y"]);
+    // The refreshed entry replaces the cached one, so every later reader agrees.
+    expect(
+      getSkillList(opts)
+        .map((s) => s.name)
+        .sort(),
+    ).toEqual(["x", "y"]);
+  });
+
+  it("refreshSkills makes an edited description visible", () => {
+    const cwd = fixture();
+    const projectRoot = join(cwd, ".nova/skills");
+    mkdirSync(projectRoot, { recursive: true });
+    writeSkill(projectRoot, "x", `name: x\ndescription: OLD`);
+    const opts = { cwd, home: cwd, userPaths: [] };
+
+    expect(getSkillList(opts)[0]?.description).toBe("OLD");
+    writeSkill(projectRoot, "x", `name: x\ndescription: NEW`);
+    expect(getSkillList(opts)[0]?.description).toBe("OLD");
+
+    expect(refreshSkills(opts)[0]?.description).toBe("NEW");
+    expect(getSkillList(opts)[0]?.description).toBe("NEW");
   });
 
   it("re-scans when extraDirs changes the cache key", () => {

@@ -68,6 +68,14 @@ export interface SessionMemoryOptions {
    * package depends on neither. Must be pure and deterministic.
    */
   renderToolsGuidance?: (tools: ToolDefinition[]) => string;
+  /**
+   * The host's current skill-index snapshot, handed to each sub-agent at spawn.
+   * The index is a conversation message, not part of either system prompt, and
+   * a child owns its own history — so without this a child would never see the
+   * skills its parent can load. Read per spawn; a refreshed snapshot reaches
+   * the next child.
+   */
+  getSkillsIndex?: () => { text: string; version: string } | undefined;
   /** Resolved response language ("en", "zh-CN", …). */
   getLanguage?: () => string | undefined;
 }
@@ -208,6 +216,7 @@ export function assembleSession(opts: AssembleSessionOptions): AssembleSessionRe
     ...(getWorkspace ? { getWorkspace } : {}),
     getMemory: memory.getMemory,
     ...(memory.renderToolsGuidance ? { renderToolsGuidance: memory.renderToolsGuidance } : {}),
+    ...(memory.getSkillsIndex ? { getSkillsIndex: memory.getSkillsIndex } : {}),
     getAgentRegistry: subagent.getAgentRegistry,
     getModel: subAgentModelResolver(subagent),
     // The parent's own tool list, minus what a child may never see. Withholding

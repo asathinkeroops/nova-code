@@ -19,9 +19,9 @@ export function measureCtxOverhead(ctx: CliContext, weights?: TokenEstimate): Fi
     memory: ctx.memory,
     sessionId: ctx.session.id,
     toolsGuidance: ctx.toolsGuidance,
-    // A slice of toolsGuidance, passed separately only so the skills index keeps
-    // its own row in `/context`.
-    skillsBlock: ctx.skillsBlock,
+    // The skills index is no longer part of the system prompt, so it is not
+    // subtracted from `systemTokens` here; it is counted as conversation
+    // (`messages`) like any other injected message.
     ...(ctx.settings.language !== undefined ? { language: ctx.settings.language } : {}),
     tools: ctx.tools.definitions(),
     tokenEstimate:

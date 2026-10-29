@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SkillListItem } from "@nova/tools";
-import { renderSkillsBlock } from "./skills-render.js";
+import { renderSkillsBlock, renderSkillsMessage } from "./skills-render.js";
 
 const item = (name: string, description: string): SkillListItem => ({
   name,
@@ -40,6 +40,50 @@ describe("renderSkillsBlock", () => {
   it("identical input yields identical output across calls", () => {
     const items = [item("b", "B"), item("a", "A"), item("c", "C")];
     expect(renderSkillsBlock(items, opts(8192))).toBe(renderSkillsBlock(items, opts(8192)));
+  });
+});
+
+describe("renderSkillsMessage", () => {
+  it("renders the first-injection form without the system-prompt footer", () => {
+    const msg = renderSkillsMessage([item("x", "do x")], opts(8192));
+    expect(msg.text).toBe("<available-skills>\n- x: do x\n</available-skills>");
+    expect(msg.text).not.toContain("Use the `loadSkill` tool");
+  });
+
+  it("renders the changed form with a marker line", () => {
+    const msg = renderSkillsMessage([item("x", "do x")], opts(8192));
+    expect(msg.changedText).toBe(
+      "<available-skills>\nskills has changed\n- x: do x\n</available-skills>",
+    );
+  });
+
+  it("renders the empty-list form in both variants", () => {
+    const msg = renderSkillsMessage([], opts(8192));
+    expect(msg.text).toBe(
+      "<available-skills>\nno skills are currently available\n</available-skills>",
+    );
+    expect(msg.changedText).toContain("skills has changed");
+    expect(msg.version).toBe("empty");
+  });
+
+  it("versions the list payload, not the changed marker", () => {
+    const a = renderSkillsMessage([item("x", "do x")], opts(8192));
+    const b = renderSkillsMessage([item("x", "do x")], opts(8192));
+    const c = renderSkillsMessage([item("x", "do y")], opts(8192));
+    expect(a.version).toBe(b.version);
+    expect(c.version).not.toBe(a.version);
+  });
+
+  it("is order-independent (prefix-cache stability)", () => {
+    const a = renderSkillsMessage([item("b", "B"), item("a", "A")], opts(8192));
+    const b = renderSkillsMessage([item("a", "A"), item("b", "B")], opts(8192));
+    expect(a).toEqual(b);
+  });
+
+  it("still degrades entries to name-only under budget pressure", () => {
+    const items = Array.from({ length: 20 }, (_, i) => item(`skill${i}`, "x".repeat(40)));
+    const msg = renderSkillsMessage(items, opts(1));
+    expect(skillLines(msg.text)).toHaveLength(20);
   });
 });
 

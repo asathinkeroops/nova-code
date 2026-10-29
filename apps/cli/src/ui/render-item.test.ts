@@ -208,10 +208,24 @@ describe("buildRenderItems hides system-injected user messages", () => {
     ["plan-approved", "<plan-approved>The user approved your plan.</plan-approved>"],
     ["interrupted", "<interrupted></interrupted>"],
     ["goal-eval", "<goal-eval>\nEvaluation: tests fail\n</goal-eval>"],
+    [
+      "skills-index",
+      "<available-skills>\n- alpha: Alpha\n</available-skills>",
+    ],
     ["compacted", "<compacted>\n[Conversation compacted [compacted].]\n\nSUMMARY\n</compacted>"],
   ] as const)("skips the bubble for synthetic %s", (kind, content) => {
     expect(
       firstUserText({ role: "user", content, meta: { synthetic: true, kind } }),
+    ).toBeUndefined();
+  });
+
+  it("hides the injected skills index even when it carries a version", () => {
+    expect(
+      firstUserText({
+        role: "user",
+        content: "<available-skills>\n- alpha: Alpha\n</available-skills>",
+        meta: { synthetic: true, kind: "skills-index", version: "v1" },
+      }),
     ).toBeUndefined();
   });
 

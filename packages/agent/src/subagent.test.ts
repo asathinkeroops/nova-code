@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   type AssistantTurn,
+  type MessageParam,
   type ModelClient,
   type ToolContext,
   type ToolDefinition,
@@ -45,6 +46,11 @@ const bashDef: ToolDefinition = {
   description: "run a command",
   inputSchema: z.object({ command: z.string() }),
 };
+const loadSkillDef: ToolDefinition = {
+  name: "loadSkill",
+  description: "load a skill",
+  inputSchema: z.object({ name: z.string() }),
+};
 
 const subagentDef: ToolDefinition = {
   name: SUBAGENT_TOOL_NAME,
@@ -60,7 +66,11 @@ function echoExecutor(): ToolExecutor {
 }
 
 /** Records the tool list each model.call saw, then replays scripted turns. */
-function recordingModel(turns: AssistantTurn[], seen: ToolDefinition[][]): ModelClient {
+function recordingModel(
+  turns: AssistantTurn[],
+  seen: ToolDefinition[][],
+  seenMessages?: MessageParam[][],
+): ModelClient {
   let i = 0;
   return {
     async call(req) {
@@ -70,6 +80,7 @@ function recordingModel(turns: AssistantTurn[], seen: ToolDefinition[][]): Model
         throw err;
       }
       seen.push(req.tools);
+      seenMessages?.push(req.messages);
       const turn = turns[i];
       if (!turn) throw new Error(`mock model exhausted at call ${i + 1}`);
       i++;
@@ -136,6 +147,80 @@ describe("createSubAgentTool", () => {
 
     expect(result.isError).toBeFalsy();
     expect(result.output).toBe("final report");
+  });
+
+  it("injects the skill index into the child's first request", async () => {
+    const seen: ToolDefinition[][] = [];
+    const seenMessages: MessageParam[][] = [];
+    const model = recordingModel([textTurn("final report")], seen, seenMessages);
+    const tool = createSubAgentTool(
+      makeDeps(model, tmp, {
+        getToolDefinitions: () => [echoTool, loadSkillDef],
+        getSkillsIndex: () => ({
+          text: "<available-skills>\n- alpha: Alpha\n</available-skills>",
+          version: "v1",
+        }),
+      }),
+    );
+
+    await tool.run({ description: "x", prompt: "do it", type: "general-purpose" }, { cwd: tmp });
+
+    const first = seenMessages[0]!;
+    expect(first).toHaveLength(2);
+    expect(first[0]?.content).toBe("do it");
+    expect(first[1]?.meta).toEqual({ synthetic: true, kind: "skills-index", version: "v1" });
+  });
+
+  it("does not inject the index when the child cannot call loadSkill", async () => {
+    const seen: ToolDefinition[][] = [];
+    const seenMessages: MessageParam[][] = [];
+    const model = recordingModel([textTurn("final report")], seen, seenMessages);
+    const tool = createSubAgentTool(
+      makeDeps(model, tmp, {
+        getToolDefinitions: () => [echoTool],
+        getSkillsIndex: () => ({
+          text: "<available-skills>\n- alpha: Alpha\n</available-skills>",
+          version: "v1",
+        }),
+      }),
+    );
+
+    await tool.run({ description: "x", prompt: "do it", type: "general-purpose" }, { cwd: tmp });
+
+    expect(seenMessages[0]).toHaveLength(1);
+  });
+
+  it("injects the index only once across the child's requests", async () => {
+    const seen: ToolDefinition[][] = [];
+    const seenMessages: MessageParam[][] = [];
+    const model = recordingModel(
+      [
+        {
+          content: [{ type: "tool_use", id: "e1", name: "echo", input: { msg: "hi" } }],
+          stopReason: "tool_use",
+          usage: { inputTokens: 1, outputTokens: 1 },
+        },
+        textTurn("done"),
+      ],
+      seen,
+      seenMessages,
+    );
+    const tool = createSubAgentTool(
+      makeDeps(model, tmp, {
+        getToolDefinitions: () => [echoTool, loadSkillDef],
+        getSkillsIndex: () => ({
+          text: "<available-skills>\n- alpha: Alpha\n</available-skills>",
+          version: "v1",
+        }),
+      }),
+    );
+
+    await tool.run({ description: "x", prompt: "do it", type: "general-purpose" }, { cwd: tmp });
+
+    const count = (messages: MessageParam[]) =>
+      messages.filter((m) => m.meta?.kind === "skills-index").length;
+    expect(count(seenMessages[0]!)).toBe(1);
+    expect(count(seenMessages[1]!)).toBe(1);
   });
 
   it("reports the sub-agent's token usage to onUsage", async () => {

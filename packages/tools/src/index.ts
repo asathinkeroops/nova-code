@@ -10,7 +10,7 @@ import { createLoadSkillTool, LOAD_SKILL_PROMPT } from "./load-skill.js";
 import { PLAN_MODE_PROMPT } from "./plan-mode.js";
 import { WORKTREE_PROMPT } from "./worktree/index.js";
 import { readTool } from "./read.js";
-import { getSkill, getSkillList, type SkillsOptions } from "./skills.js";
+import { getSkill, type SkillsOptions } from "./skills.js";
 import { type TaskStore } from "./task/store.js";
 import { createTaskTools, TASK_PROMPT } from "./task/index.js";
 import { type CronStore } from "./cron/store.js";
@@ -135,6 +135,7 @@ export {
 export {
   getSkill,
   getSkillList,
+  refreshSkills,
   type LoadedSkill,
   type SkillListItem,
   type SkillsLogger,
@@ -201,10 +202,13 @@ export const BUILTIN_TOOL_PROMPTS: readonly ToolPromptSection[] = [
 /**
  * Build the default set of builtin tools.
  *
- * When `skills` is provided, the loadSkill tool is auto-registered iff
- * `getSkillList(skills)` returns at least one entry. The tool's lookup
- * closure shares the same `skills` options, so it sees the same cached
- * scan — no separate plumbing needed.
+ * When `skills` is provided, `loadSkill` is registered unconditionally. It used
+ * to be gated on the scan finding at least one entry, which saved one tool
+ * schema — but that made a skill added after startup unreachable until the
+ * process restarted, because the tool would never exist. The index is delivered
+ * as a message now and can change mid-session, so the tool has to be there too.
+ * The lookup closure shares the same `skills` options, so it sees the same
+ * refreshed cache — no separate plumbing needed.
  */
 export function builtinTools(
   todoStore: TodoStore = new TodoStore(),
@@ -247,7 +251,7 @@ export function builtinTools(
   if (cronStore) {
     tools.push(...createCronTools(cronStore));
   }
-  if (skills && getSkillList(skills).length > 0) {
+  if (skills) {
     tools.push(
       createLoadSkillTool(
         (input) => getSkill(input, skills),
