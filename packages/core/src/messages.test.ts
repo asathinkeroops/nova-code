@@ -68,11 +68,11 @@ describe("migrateLegacyMeta", () => {
     expect(inject("I saw a <background-notification> in the logs").meta).toBeUndefined();
   });
 
-  it("maps a pre-meta <available-skills> block to the skills-index kind", () => {
-    expect(inject("<available-skills>\n- x: do x\n</available-skills>").meta).toEqual({
-      synthetic: true,
-      kind: "skills-index",
-    });
+  it("does not upgrade a user-typed <available-skills> block", () => {
+    // The pre-message index lived in the system prompt, never in messages.jsonl,
+    // so there is no legacy record to upgrade. Treating the tag as ours would
+    // hide a user who typed it and drop the turn from /rewind.
+    expect(inject("<available-skills>\n- x: do x\n</available-skills>").meta).toBeUndefined();
   });
 });
 

@@ -50,7 +50,11 @@ export function toWireMessages(messages: MessageParam[]): MessageParam[] {
 const LEGACY_TAG_KINDS: ReadonlyArray<readonly [string, SyntheticKind]> = [
   ["<todo-reminder>", "todo-reminder"],
   ["<task-reminder>", "task-reminder"],
-  ["<available-skills>", "skills-index"],
+  // `<available-skills>` is deliberately absent: before the index became a
+  // message it lived in the system prompt, never in `messages.jsonl`, so there
+  // is no legacy record to upgrade. Mapping the tag would instead mark a
+  // user-typed block as ours — hiding the bubble and dropping the turn from
+  // `/rewind`. New index messages carry `meta` and need no inference.
   // Pre-split sessions used a shared `<reminder>` for both todo and task nudges;
   // the subtype drives nothing (both merely hide), so map to todo-reminder.
   ["<reminder>", "todo-reminder"],

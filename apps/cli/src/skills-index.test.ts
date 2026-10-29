@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { markSynthetic, type MessageParam, type ToolDefinition } from "@nova/core";
+import { loadMessages } from "@nova/agent";
 import { settingsSchema, type Logger, type Settings } from "@nova/base";
 import {
   createSkillsIndexProvider,
@@ -48,6 +49,31 @@ const LOAD_SKILL = tool("loadSkill");
 
 function user(text: string): MessageParam {
   return { role: "user", content: text };
+}
+
+function assistant(text: string): MessageParam {
+  return { role: "assistant", content: [{ type: "text", text }] };
+}
+
+/**
+ * A pre-migration session: old JSONL records with no `formatVersion` and no
+ * `meta`, exactly what `loadMessages` sees when `/resume` opens a session
+ * written before the index became a message.
+ */
+async function loadLegacyHistory(ws: string): Promise<MessageParam[]> {
+  const path = join(ws, "messages.jsonl");
+  writeFileSync(
+    path,
+    [
+      JSON.stringify({ role: "user", content: "old question" }),
+      JSON.stringify({
+        role: "assistant",
+        content: [{ type: "text", text: "old answer" }],
+      }),
+    ].join("\n") + "\n",
+    "utf8",
+  );
+  return loadMessages(path);
 }
 
 function payload(messages: MessageParam[], tools: ToolDefinition[] = [LOAD_SKILL]) {
@@ -137,6 +163,38 @@ describe("makeSkillsIndexReminder", () => {
     expect(skillsIndexMessageText(injected)).toContain("- alpha: Alpha skill");
   });
 
+  it("injects into a resumed legacy history that predates skills-index", async () => {
+    const ws = workspace();
+    writeSkill(ws, "alpha", "Alpha skill");
+    const provider = createSkillsIndexProvider({ settings: settings(), workspace: ws, logger });
+    const legacy = await loadLegacyHistory(ws);
+
+    expect(legacy.some((message) => message.meta?.kind === "skills-index")).toBe(false);
+    const result = makeSkillsIndexReminder(provider)(payload(legacy));
+    const injected = result?.messages?.at(-1);
+
+    expect(injected?.meta).toEqual({
+      synthetic: true,
+      kind: "skills-index",
+      version: provider.current().version,
+    });
+    const text = skillsIndexMessageText(injected!);
+    expect(text).toContain("- alpha: Alpha skill");
+    // First injection, not an update: the legacy history never had an index.
+    expect(text).not.toContain("skills has changed");
+  });
+
+  it("does not inject twice into the same resumed legacy history", async () => {
+    const ws = workspace();
+    writeSkill(ws, "alpha", "Alpha");
+    const provider = createSkillsIndexProvider({ settings: settings(), workspace: ws, logger });
+    const hook = makeSkillsIndexReminder(provider);
+
+    const once = hook(payload(await loadLegacyHistory(ws)));
+    expect(once).toBeDefined();
+    expect(hook(payload(once!.messages!))).toBeUndefined();
+  });
+
   it("does not re-inject when the visible version matches", () => {
     const ws = workspace();
     writeSkill(ws, "alpha", "Alpha");
@@ -179,6 +237,25 @@ describe("makeSkillsIndexReminder", () => {
     expect(makeSkillsIndexReminder(provider)(payload([user("hi")]))).toBeUndefined();
   });
 
+  it("does not inject into a legacy history when the index is empty or disabled", () => {
+    const emptyWs = workspace();
+    const empty = createSkillsIndexProvider({ settings: settings(), workspace: emptyWs, logger });
+    expect(
+      makeSkillsIndexReminder(empty)(payload([user("old"), assistant("old")])),
+    ).toBeUndefined();
+
+    const ws = workspace();
+    writeSkill(ws, "alpha", "Alpha");
+    const disabled = createSkillsIndexProvider({
+      settings: settings({ enabled: false }),
+      workspace: ws,
+      logger,
+    });
+    expect(
+      makeSkillsIndexReminder(disabled)(payload([user("old"), assistant("old")])),
+    ).toBeUndefined();
+  });
+
   it("announces a transition from skills to none", () => {
     const ws = workspace();
     writeSkill(ws, "alpha", "Alpha");
@@ -212,6 +289,21 @@ describe("makeSkillsIndexReminder", () => {
 
     // The old index sits before the boundary, so the model cannot see it.
     expect(hook(payload([oldIndex, boundary, user("hi")]))).toBeDefined();
+  });
+
+  it("injects after a compaction boundary in a legacy history without an index", () => {
+    const ws = workspace();
+    writeSkill(ws, "alpha", "Alpha");
+    const provider = createSkillsIndexProvider({ settings: settings(), workspace: ws, logger });
+    const boundary = markSynthetic(
+      { role: "user", content: "<compacted>\nsummary\n</compacted>" },
+      "compacted",
+    );
+
+    const result = makeSkillsIndexReminder(provider)(
+      payload([user("old"), boundary, user("next")]),
+    );
+    expect(result?.messages?.at(-1)?.meta).toMatchObject({ kind: "skills-index" });
   });
 
   it("re-injects when a persisted index predates meta.version", () => {
